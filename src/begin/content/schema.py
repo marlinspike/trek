@@ -242,6 +242,10 @@ class Faction:
     captains: CaptainModel
     sensor_scale: float = 1.0
     pd_discipline: float = 0.7
+    # [E] how this race's weapons look on the map: beam colour, how beams are drawn, torpedo colour
+    phaser_color: tuple[int, int, int] = (255, 170, 90)
+    phaser_style: str = "beam"          # "beam" (a steady line) | "pulse" (a string of bolts)
+    torpedo_color: tuple[int, int, int] = (255, 120, 80)
 
 
 @dataclass(slots=True)

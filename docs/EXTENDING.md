@@ -55,6 +55,7 @@ Every tunable number is a field of `Rules` in `sim/rules.py`. To try a change wi
 
 There are three levels, from least to most code:
 
+- **Weapon colours.** Each faction's `colors` in `factions.toml` sets how its weapons look on the map: `phaser` and `torpedo` as `#RRGGBB`, and `phaser_style` as `beam` or `pulse`. The manual's "Who fired what" page draws its legend from the same values.
 - **Personality and doctrine.** Faction personality ranges are in `factions.toml` and tactics are in `doctrines.toml`, such as weapon preferences, focus fire, point-defense posture, cloaking and surrender. Changing these needs no code.
 - **Constants.** The `AI_*` constants at the top of `ai/captain.py` set distances, angles and thresholds. Tag a new one [E] with a short reason.
 - **Decisions.** `AICaptain.think` runs `_strategy` (morale, retreat, last stand, target) once a cycle, and `_tactics` at the captain's reaction speed; `_tactics` follows any ally orders (`_standing_orders`), then calls `_shields`, `_cloak`, `_weapons` and `_maneuver`. Each returns commands built with `self._cmd(...)`, which stamps them with AI authority. Add to the relevant method, and check the result with `begin --balance` and the matchup tests.

@@ -78,7 +78,8 @@ def _detonate_split(world: World, t: Torpedo, n: int) -> None:
     from .ordnance import blast
 
     kind = DamageKind.SHIELD_BORE if t.spec.is_shield_bore else DamageKind.BLAST
-    blast(world, t.x, t.y, t.yield_, "torpedo", t.owner, n, kind, None, None, radius_scale=t.spec.blast_scale)
+    blast(world, t.x, t.y, t.yield_, "torpedo", t.owner, n, kind, None, None, cause="intercepted",
+          radius_scale=t.spec.blast_scale)
 
 
 def fire_bank(
@@ -130,6 +131,7 @@ def fire_bank(
             killed = sum(1 for _ in range(t.salvo) if world.rng.unit() < p_kill)
             if killed >= t.salvo:
                 t.detonate = True
+                t.shot_down = True
             elif killed > 0:
                 t.salvo -= killed
                 _detonate_split(world, t, killed)

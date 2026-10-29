@@ -78,6 +78,9 @@ class Detonation(Event):
     radius: float
     source: str            # "torpedo", "probe", "ship", "destruct"
     yield_: float
+    owner: int | None = None   # whose weapon it was
+    cause: str = ""        # torpedoes: "proximity" (fused on a ship), "fuse" (burst where it was sent),
+                           # "intercepted" (set off by a phaser before it got there) [E]
 
 
 @dataclass(slots=True)

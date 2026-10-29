@@ -7,6 +7,9 @@
 # solution accuracy, scan fidelity, dead-reckoning of lost contacts, threat
 # prediction horizon and the quality of recommendations shown to the player.
 #
+# colors (optional): how the race's weapons look on the map, so you can tell who fired what.
+#   phaser and torpedo are #RRGGBB; phaser_style is "beam" (a steady line) or "pulse" (a string of bolts),
+#   which also tells races apart for players who can't separate two colours.
 # computer.pd_discipline (0..1): how many phaser banks point defense spends on one
 # torpedo. Disciplined crews send one bank per threat and keep the rest charged;
 # trigger-happy ones pour several onto the first round they see, and can be baited [E].
@@ -29,6 +32,7 @@ dogma = {aggression = 0.65, bravery = 0.95, loyalty = 1.20, fanaticism = 0.05, b
 computer = {sophistication = 0.92, pd_discipline = 0.85}
 sensors = {range = 1.0}
 captains = {competence = 0.70, competence_dev = 0.15, discipline = 0.80, creativity = 0.55, deviation = 0.15}
+colors = {phaser = "#FFA04A", phaser_style = "beam", torpedo = "#FF5E3A"}   # orange phasers, red-orange photon torpedoes
 
 [[faction]]
 id = "klingon"
@@ -44,6 +48,7 @@ dogma = {aggression = 0.95, bravery = 0.50, loyalty = 0.60, fanaticism = 0.10, b
 computer = {sophistication = 0.55, pd_discipline = 0.30}
 sensors = {range = 0.7}
 captains = {competence = 0.65, competence_dev = 0.20, discipline = 0.55, creativity = 0.45, deviation = 0.20}
+colors = {phaser = "#62E85A", phaser_style = "pulse", torpedo = "#B8F23C"}    # green disruptor bolts, lime torpedoes
 
 [[faction]]
 id = "romulan"
@@ -59,6 +64,7 @@ dogma = {aggression = 0.75, bravery = 0.95, loyalty = 1.00, fanaticism = 0.95, b
 computer = {sophistication = 0.70, pd_discipline = 0.85}
 sensors = {range = 0.85}
 captains = {competence = 0.68, competence_dev = 0.12, discipline = 0.85, creativity = 0.70, deviation = 0.10}
+colors = {phaser = "#3CD6F0", phaser_style = "beam", torpedo = "#7DFFD2"}    # cyan beams, mint-green plasma
 
 [[faction]]
 id = "orion"
@@ -74,3 +80,4 @@ dogma = {aggression = 0.45, bravery = 0.45, loyalty = 0.45, fanaticism = 0.45, b
 computer = {sophistication = 0.40, pd_discipline = 0.20}
 sensors = {range = 0.8}
 captains = {competence = 0.55, competence_dev = 0.30, discipline = 0.30, creativity = 0.75, deviation = 0.40}
+colors = {phaser = "#E070FF", phaser_style = "pulse", torpedo = "#FF7AD9"}      # violet bolts, magenta torpedoes

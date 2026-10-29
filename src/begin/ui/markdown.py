@@ -3,7 +3,7 @@
 Supports what the help pages use: headings, paragraphs, bullet and numbered
 lists, tables, fenced code (```console blocks become clickable examples),
 `---` rules, `> **Tip**` style callouts, and inline `code`, **bold**,
-*italic* and [[topic]] / [[topic|label]] links.
+*italic*, [[topic]] / [[topic|label]] links, and {#RRGGBB coloured text} (for colour legends).
 
 `layout()` turns text into positioned draw operations for a given width;
 the manual caches it and only redraws, so scrolling stays cheap.
@@ -30,6 +30,7 @@ class Span:
     italic: bool = False
     code: bool = False
     link: str | None = None
+    color: tuple[int, int, int] | None = None
 
 
 @dataclass
@@ -44,7 +45,7 @@ class Block:
     tone: str = ""
 
 
-_INLINE = re.compile(r"(`[^`]+`|\*\*[^*]+\*\*|\[\[[^\]]+\]\]|(?<![*\w])\*[^*\s][^*]*\*(?!\*))")
+_INLINE = re.compile(r"(\{#[0-9A-Fa-f]{6} [^}]+\}|`[^`]+`|\*\*[^*]+\*\*|\[\[[^\]]+\]\]|(?<![*\w])\*[^*\s][^*]*\*(?!\*))")
 
 
 def inline(text: str) -> list[Span]:
@@ -54,7 +55,11 @@ def inline(text: str) -> list[Span]:
         if m.start() > pos:
             out.append(Span(text[pos:m.start()]))
         tok = m.group(0)
-        if tok.startswith("`"):
+        if tok.startswith("{#"):
+            hexa = tok[2:8]
+            out.append(Span(tok[9:-1], bold=True,
+                            color=(int(hexa[0:2], 16), int(hexa[2:4], 16), int(hexa[4:6], 16))))
+        elif tok.startswith("`"):
             out.append(Span(tok[1:-1], code=True))
         elif tok.startswith("**"):
             out.extend(Span(s.text, bold=True, code=s.code, link=s.link) for s in inline(tok[2:-2]))
@@ -217,7 +222,7 @@ def _style(span: Span, base_size: int, base_weight: str, base_color: theme.Color
         return base_size, "ui", "medium", theme.FRIEND
     weight = "semibold" if span.bold else base_weight
     color = theme.TEXT if span.bold and base_color == theme.TEXT_DIM else base_color
-    return base_size, "ui", weight, color
+    return base_size, "ui", weight, span.color or color
 
 
 def _flow(spans: list[Span], x0: int, y: int, width: int, ops: list[Op], hots: list[Hot], size: int = BODY,

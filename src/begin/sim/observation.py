@@ -66,6 +66,12 @@ class OrdnanceView:
     code: str = ""
     fuse: float = 0.0           # own ordnance: cycles until the time fuse expires
     count: int = 1              # rounds flying together in this group (a salvo), which anyone can count
+    faction: str = ""           # whose make it is: anyone can tell a race's torpedoes by their look [E]
+
+
+def _make(w: World, owner: int | None) -> str:
+    s = w.ships.get(owner) if owner is not None else None
+    return s.faction if s is not None else ""
 
 
 class Observation:
@@ -160,7 +166,7 @@ class Observation:
                 out.append(OrdnanceView(
                     t.id, "torpedo", mine, t.owner if mine else None, t.x, t.y, t.course, t.velocity * upw,
                     t.armed, t.yield_ if mine else t.spec.damage, t.prox if mine else t.spec.max_prox,
-                    t.target if mine else None, count=t.salvo,
+                    t.target if mine else None, count=t.salvo, faction=_make(w, t.owner),
                 ))
             for p in w.probes:
                 if p.detonate:
@@ -171,7 +177,7 @@ class Observation:
                 out.append(OrdnanceView(
                     p.id, "probe", mine, p.owner if mine else None, p.x, p.y, p.course, p.spec.velocity * upw,
                     p.armed, p.spec.damage, p.prox if mine else p.spec.max_prox, p.target if mine else None,
-                    p.code if mine else "", p.fuse if mine else 0.0,
+                    p.code if mine else "", p.fuse if mine else 0.0, faction=_make(w, p.owner),
                 ))
             self._ordnance = out
         return self._ordnance

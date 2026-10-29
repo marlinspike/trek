@@ -14,6 +14,7 @@ from typing import Callable
 
 import pygame
 
+from ..content.schema import Faction
 from ..core.angles import norm180
 from ..sim.events import Event, ShieldHit
 from ..sim.factory import SHIELD_FACINGS
@@ -51,6 +52,19 @@ class Snapshot:
         return s
 
 
+
+def faction_seen(obs: Observation, sid: int | None) -> Faction | None:
+    """The race of a ship as our side can see it: our own, or a contact we have identified."""
+    if sid is None:
+        return None
+    own = obs.own(sid)
+    if own is not None:
+        return obs.content.factions.get(own.faction)
+    c = obs.contact(sid)
+    if c is None or c.cls is None or not c.identified:
+        return None
+    return obs.content.factions.get(c.cls.faction)
+
 @dataclass
 class TacticalView:
     cam: Camera
@@ -64,7 +78,7 @@ class TacticalView:
     def ingest(self, events: list[Event], obs: Observation) -> None:
         visible = {s.id for s in obs.own_ships(alive_only=False)} | {c.id for c in obs.contacts().values() if c.visible}
         friendly = {s.id for s in obs.own_ships(alive_only=False)}
-        self.effects.ingest(events, obs.side, visible, friendly)
+        self.effects.ingest(events, obs.side, visible, friendly, lambda sid: faction_seen(obs, sid))
         for ev in events:
             if isinstance(ev, ShieldHit) and ev.ship_id in visible:
                 self.shield_flashes.setdefault(ev.ship_id, []).append([float(ev.sector), 0.0])
@@ -120,7 +134,7 @@ class TacticalView:
             if b is None:
                 continue
             p = lerp_pose(prev.ordnance.get(o.id) if prev else None, b, alpha)
-            self._ordnance(surf, o, p)
+            self._ordnance(surf, o, p, obs.content.factions.get(o.faction))
 
         names = {s.id: s.name for s in obs.own_ships(alive_only=False)}
         names.update({c.id: c.label if c.identified else f"#{c.id}" for c in obs.contacts().values()})
@@ -372,21 +386,21 @@ class TacticalView:
             if sub:
                 theme.text(surf, f"⌖ {sub}", (sx, sy + b + 6), col, 11, anchor="midtop")
 
-    def _ordnance(self, surf: pygame.Surface, o: OrdnanceView, p: Pose) -> None:
+    def _ordnance(self, surf: pygame.Surface, o: OrdnanceView, p: Pose, f: Faction | None) -> None:
         cam = self.cam
         if not cam.visible(p[0], p[1], 20):
             return
         sx, sy = cam.to_screen(p[0], p[1])
         a = math.radians(p[2])
         if o.kind == "torpedo":
-            col = theme.TORPEDO_FRIEND if o.friendly else theme.TORPEDO
+            col = f.torpedo_color if f is not None else theme.TORPEDO
             tail = min(28.0, 8 + o.speed * cam.zoom * 0.05)
             pygame.draw.line(surf, theme.dim(col, 0.45), (sx, sy), (sx - math.sin(a) * tail, sy + math.cos(a) * tail), 1)
             pts = [(sx + math.sin(a) * 4, sy - math.cos(a) * 4), (sx + math.cos(a) * 3, sy + math.sin(a) * 3),
                    (sx - math.sin(a) * 3, sy + math.cos(a) * 3), (sx - math.cos(a) * 3, sy - math.sin(a) * 3)]
             pygame.draw.polygon(surf, col if o.armed else theme.dim(col, 0.6), pts)
         else:
-            col = theme.TORPEDO_FRIEND if o.friendly else theme.PROBE
+            col = f.torpedo_color if f is not None else theme.PROBE
             pygame.draw.circle(surf, col, (int(sx), int(sy)), 4, 1)
             pygame.draw.circle(surf, col, (int(sx), int(sy)), 1)
             if o.code:

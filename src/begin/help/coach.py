@@ -5,6 +5,7 @@ Help pages insert these with `{{name}}` placeholders:
 * `{{torpedo_table}}`, `{{probe_table}}`, `{{class_table}}`: reference tables built from the content data;
 * `{{my_weapons}}`: the weapons fitted to the ship you command;
 * `{{phaser_falloff}}`: how your phaser hits weaken with range and spread;
+* `{{weapon_colors}}`: each race's phaser and torpedo colours, as drawn on the map;
 * `{{coach}}`: advice for the situation you are in right now.
 
 Everything is computed from the same numbers the simulation uses, so the
@@ -61,6 +62,19 @@ def torpedo_table(ctx: HelpContext) -> str:
             f"| {t.name} | `{t.id}` | {t.velocity:g} | {t.damage:g} {WARHEAD.get(t.warhead_type, '')} | "
             f"{st['arm']:,.0f} | {st['reach']:,.0f} | {t.max_prox:,.0f} | {'homing' if t.homing else 'straight'} | "
             f"{t.charge_time:g} c | {_users(ctx.content, 'torpedo', t.id)} |")
+    return "\n".join(rows)
+
+
+def weapon_colors(ctx: HelpContext) -> str:
+    """Each race's weapon colours, drawn in those colours, from factions.toml."""
+    def hexa(c: tuple[int, int, int]) -> str:
+        return "#%02X%02X%02X" % c
+
+    rows = ["| Nation | Phasers | Torpedoes and their blasts |", "|---|---|---|"]
+    for f in ctx.content.factions.values():
+        style = "—— steady beam" if f.phaser_style == "beam" else "- - - string of bolts"
+        rows.append(f"| {f.name} | {{{hexa(f.phaser_color)} {style}}} | {{{hexa(f.torpedo_color)} ◆ torpedo, ○ blast}} |")
+    rows.append("| Not yet identified | {#D7D7D7 —— white beam} | {#D7D7D7 ◆ white} |")
     return "\n".join(rows)
 
 
@@ -357,6 +371,7 @@ def coach(ctx: HelpContext) -> str:
 
 BLOCKS: dict[str, Callable[[HelpContext], str]] = {
     "torpedo_table": torpedo_table,
+    "weapon_colors": weapon_colors,
     "probe_table": probe_table,
     "class_table": class_table,
     "my_weapons": my_weapons,

@@ -32,6 +32,31 @@ class ContentError(ValueError):
     pass
 
 
+def _hex(text: object, where: str) -> tuple[int, int, int]:
+    raw = str(text).strip().lstrip("#")
+    if len(raw) != 6:
+        raise ContentError(f"{where}: colours are written #RRGGBB, not '{text}'")
+    try:
+        return (int(raw[0:2], 16), int(raw[2:4], 16), int(raw[4:6], 16))
+    except ValueError as e:
+        raise ContentError(f"{where}: colours are written #RRGGBB, not '{text}'") from e
+
+
+def _weapon_colors(f: dict[str, Any]) -> dict[str, Any]:
+    """A faction's `colors = {phaser, torpedo, phaser_style}`; anything left out keeps the default look."""
+    c = f.get("colors", {})
+    out: dict[str, Any] = {}
+    if "phaser" in c:
+        out["phaser_color"] = _hex(c["phaser"], f"faction {f['id']} colors.phaser")
+    if "torpedo" in c:
+        out["torpedo_color"] = _hex(c["torpedo"], f"faction {f['id']} colors.torpedo")
+    if "phaser_style" in c:
+        if c["phaser_style"] not in ("beam", "pulse"):
+            raise ContentError(f"faction {f['id']}: phaser_style is beam or pulse")
+        out["phaser_style"] = str(c["phaser_style"])
+    return out
+
+
 def _pt(v: Any) -> tuple[float, float]:
     return float(v[0]), float(v[1])
 
@@ -131,6 +156,7 @@ def load_content(data_dir: Path = DATA_DIR) -> ContentDB:
             sensor_scale=float(f.get("sensors", {}).get("range", 1.0)),
             pd_discipline=float(f["computer"].get("pd_discipline", 0.7)),
             captains=CaptainModel(**{k: float(v) for k, v in cm.items()}),
+            **_weapon_colors(f),
         )
 
     hulls_raw = _read("hulls.toml", data_dir)["hull"]
