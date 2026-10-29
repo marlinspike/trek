@@ -1,17 +1,20 @@
 """Begin-style command console.
 
 Turns typed orders into the same typed commands the mouse, the AI and the
-officers use. Begin's long forms work ("fire phasers 1 2 spread 10"), as do
-terse forms ("fp 1 2 s 10", "al tor al mk7 1200") and readable English-ish
-variants ("autoload all torpedo tubes with mk7 prox 1200").
+officers use. Every command in the Begin manual works in its documented
+forms ("fire phasers 1 2 3 spread 10", "lock all tubes on bluefin with a
+dispersion of 45", "tell the agena to attack the derango"), as do terse
+forms ("fir tor al", "fp 1 2 s 10", "al tor al mk7 1200") and the remake's
+additions (autoload, fire modes, point defense, bank roles, time control).
 
-Words can be abbreviated to any unique prefix of two or more letters.
-Mount lists accept "all"/"al", "1 2 3", "1,2,3" and ranges "1-3".
-Ships are named by any unique prefix of their name, or "#<id>" for an
-unidentified contact.
+As in Begin, any word can be shortened to a unique prefix ("fir tor 1,2,3"),
+and words like "the", "to", "at", "on" and "with" are ignored. Mount lists
+accept "all"/"al", "1 2 3", "1,2,3", "1 2 and 3" and ranges "1-3". Ships are
+named by any unique prefix of their name, or "#<id>" for an unidentified
+contact.
 
 The parser never touches the world: it reads an `Observation` and returns
-commands for the caller to submit, plus UI actions and help text.
+commands for the caller to submit, UI actions, and text displays.
 """
 
 from __future__ import annotations
@@ -19,14 +22,16 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from ..sim.allies import ORDER_WORDS, SHIP_ORDERS, AllyStanding
 from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
-    SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, Surrender,
+    SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, Surrender,
     Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
 from ..sim.ship import TARGETABLE_GROUPS, BankRole, FireMode, Kind, PDDoctrine
+from . import reports
 
 
 class ParseError(Exception):
@@ -37,7 +42,8 @@ class ParseError(Exception):
 class ParseResult:
     commands: list[Command] = field(default_factory=list)
     actions: list[tuple[str, object]] = field(default_factory=list)  # UI actions: ("pause", None), ("speed", 2.0)…
-    info: list[str] = field(default_factory=list)
+    info: list[str] = field(default_factory=list)      # plain help text
+    display: list[str] = field(default_factory=list)   # Begin's tabular status displays (monospaced)
     error: str | None = None
     echo: str = ""
 
@@ -50,15 +56,21 @@ class ParseContext:
 
 # ------------------------------------------------------------------ vocabulary
 
+# canonical verb -> spellings. The first spelling is the primary name: when a prefix
+# matches several verbs, the ones whose primary name it abbreviates win ("fir" = fire).
 VERBS: dict[str, tuple[str, ...]] = {
     "helm": ("helm", "h", "course", "c"),
     "warp": ("warp", "w", "speed"),
-    "pursue": ("pursue", "pu", "chase", "follow"),
-    "elude": ("elude", "el", "evade", "flee"),
+    "pursue": ("pursue", "chase", "follow"),
+    "elude": ("elude", "evade", "flee"),
+    "stop": ("stop", "allstop", "halt"),
     "fire": ("fire", "f", "shoot"),
     "fp": ("fp",),
     "ft": ("ft",),
     "fpr": ("fpr",),
+    "phaser": ("phaser", "phasers"),
+    "torp": ("torp", "torps", "torpedo", "torpedoes", "torpedos"),
+    "probe": ("probe", "probes"),
     "target": ("target", "t", "tgt", "designate"),
     "lock": ("lock", "lk"),
     "turn": ("turn", "point"),
@@ -70,17 +82,29 @@ VERBS: dict[str, tuple[str, ...]] = {
     "disable": ("disable",),
     "role": ("role",),
     "raise": ("raise", "up"),
-    "lower": ("lower", "down"),
+    "lower": ("lower", "drop", "down"),
     "reinforce": ("reinforce", "reenforce", "rf"),
-    "repair": ("repair", "rep"),
+    "repair": ("repair",),
     "scan": ("scan", "sc"),
+    "range": ("range", "display", "rng", "zoom", "scale"),
+    "chart": ("chart",),
+    "report": ("report",),
+    "damage": ("damage", "dmg"),
+    "status": ("status", "st"),
+    "banks": ("banks", "bank"),
+    "tubes": ("tubes", "tube"),
+    "launchers": ("launchers", "launcher"),
+    "shields": ("shields", "shield"),
+    "fleet": ("fleet",),
+    "group": ("group", "groups"),
+    "computer": ("computer", "library"),
     "tractor": ("tractor", "tr"),
     "release": ("release",),
     "dock": ("dock",),
     "undock": ("undock",),
     "cloak": ("cloak", "cl"),
     "decloak": ("decloak", "uncloak"),
-    "destruct": ("destruct", "selfdestruct", "sd"),
+    "destruct": ("destruct", "self", "selfdestruct", "sd"),
     "abort": ("abort",),
     "surrender": ("surrender",),
     "transport": ("transport", "beam"),
@@ -89,67 +113,86 @@ VERBS: dict[str, tuple[str, ...]] = {
     "tell": ("tell", "order"),
     "mode": ("mode", "firemode", "fm"),
     "pd": ("pd", "pointdefense", "point-defense", "defense"),
-    "stop": ("stop", "allstop", "halt"),
     "pause": ("pause", "p"),
     "resume": ("resume", "go", "unpause"),
     "time": ("time", "x"),
-    "range": ("range", "rng", "zoom", "scale", "display"),
     "help": ("help", "?", "commands"),
-    "status": ("status", "st", "report"),
-    "damage": ("damage", "dmg"),
+    "quit": ("quit", "exit"),
+    "key": ("key",),
+    "text": ("text",),
 }
 
 WEAPONS = {
     "phaser": ("phasers", "phaser", "ph", "banks", "bank", "b"),
-    "tube": ("torpedoes", "torpedo", "torps", "torp", "tor", "tubes", "tube", "tu"),
+    "tube": ("torpedoes", "torpedo", "torpedos", "torps", "torp", "tor", "tubes", "tube", "tu"),
     "launcher": ("probes", "probe", "pr", "launchers", "launcher", "la"),
 }
 
 REPAIR_KINDS: dict[str, Kind | None] = {
     "all": None, "none": None, "reactors": Kind.REACTOR, "batteries": Kind.BATTERY, "drives": Kind.DRIVE,
     "warp": Kind.DRIVE, "engines": Kind.DRIVE, "impulse": Kind.IMPULSE, "sensors": Kind.SENSORS,
-    "computer": Kind.COMPUTER, "shields": Kind.SHIELD, "phasers": Kind.PHASER, "tubes": Kind.TUBE,
-    "torpedoes": Kind.TUBE, "launchers": Kind.LAUNCHER, "probes": Kind.LAUNCHER,
+    "computer": Kind.COMPUTER, "shields": Kind.SHIELD, "phasers": Kind.PHASER, "banks": Kind.PHASER,
+    "tubes": Kind.TUBE, "torpedoes": Kind.TUBE, "launchers": Kind.LAUNCHER, "probes": Kind.LAUNCHER,
     "transporters": Kind.TRANSPORTER, "tractor": Kind.TRACTOR, "cloak": Kind.CLOAK,
 }
 
-FILLER = {"with", "the", "to", "at", "on", "of", "and", "set", "please", "by", "using", "for", "a"}
+FILLER = {"with", "the", "to", "at", "on", "of", "and", "set", "please", "by", "using", "for", "a", "an", "from"}
 
+# the manual's command summary, grouped as in its overview (pp. 4-7) plus the 2.0 and remake additions
 HELP = [
-    "helm <course> [warp <w>] · warp <w> · pursue|elude <ship> [warp <w>] · stop",
-    "target <ship> [propulsion|weapons|phasers|torpedoes|shields|power|sensors|cloak] · target off",
-    "fire phasers [all|1 2|1-3] [spread <s>] [at <ship>]  (fp) · fire torpedoes [list] [at <ship>] [fan <deg>]  (ft)",
-    "fire probes [list] at <ship> | course <c>  (fpr) · detonate <code>|all · turn probe <code> course <c>",
-    "lock [banks|tubes] [list] on <ship> [dispersion <d>] · turn banks|tubes <list> <mark> · spread <s>",
-    "autoload <tor|probe> [all|list] [<type>] [<prox>] [time <t>] [on|off]   e.g.  al tor al mk7 400",
-    "load tubes [list] · unload tubes [list] · mode phasers|tubes [list] manual|assisted|automatic",
-    "pd off|conservative|balanced|aggressive [reserve <banks>] · role banks <list> offense|flex|defense",
-    "raise|lower [shields] [all|list] · reinforce <n>|off · repair <system>|all · scan <ship>",
-    "tractor <ship>|off · dock <base> · undock · cloak on|off · destruct <cycles> · abort · surrender",
-    "transport <ship> <crew> · board <ship> [<crew>] · tell <ally> <order> [<ship>]",
-    "range <units> (display radius) · pause · resume · time 0.25|0.5|1|2|4 · status · damage · help",
+    "Helm:     helm <course> [warp] <w> · pursue|elude <ship> [warp] <w> · warp <w> · stop · <course> <warp>",
+    "Display:  range|display|scan <range> · chart [on|off|all|<ship>|by name|distance|nation] · report",
+    "Status:   status [damage|banks|tubes|launchers|probes|shields|fleet] · damage · banks · tubes · launchers · shields · fleet · group",
+    "Phasers:  fire [all] phasers [<list>] [spread] <s> · lock [all] banks [<list>] on <ship> · turn banks [<list>] to <mark>",
+    "          enable|disable [all] banks [<list>] · spread <s> · role banks <list> offense|flex|defense",
+    "Torps:    fire [all] torpedoes [<list>]   (fir tor al, torp 1 2) · lock [all] tubes [<list>] on <ship> [dispersion <d>]",
+    "          turn tubes [<list>] to <mark> · load [all] tubes [<list>] [prox] <p> · unload [all] tubes [<list>] · enable|disable tubes",
+    "Probes:   fire [all] probes [<list>] at <ship> | course <c> · load launchers [<list>] [prox] <p> [time] <t> · unload launchers",
+    "          turn probe <code>|all probes [course] <c> · lock probe <code>|all probes on <ship> · detonate <code>|all · status probes",
+    "Shields:  raise|lower|drop [shields] <list>|all · reenforce <n>|off",
+    "Ship:     beam|transport <ally> (change ships) · beam <ship> <crew> · board <ship> [<crew>] · repair <system>|all",
+    "          tractor <ship>|off · dock <base> [on|off] · undock · cloak on|off · self destruct <cycles> · abort · surrender",
+    "Allies:   tell|order <ally>|<group#> target|attack|torpedo|phaser|probe <enemy> · hold fire · open fire · disengage",
+    "          escort <ally> [at] <range> · course <c> · run · withdraw · cancel · report · approach <ship> <range> · defend <ship>",
+    "          stop · dock <base> · undock · tractor <ship> · tow <ship> <dest> · release · board <ship> <n> · join <n> · leave",
+    "          recover|eject <ship> (bases)",
+    "Library:  computer ship <nation> <class> · computer torpedo <class> · computer probe <class>",
+    "Remake:   autoload tor|probe [<list>] [<type>] [<prox>] [time <t>] [on|off] · mode phasers|tubes manual|assisted|automatic",
+    "          pd off|conservative|balanced|aggressive [reserve <banks>] · target <ship> [subsystem] · pause · resume · time <x>",
+    "Other:    key F<n>|^<x> <commands; separated; by semicolons> · help · quit",
 ]
 
 _NUM = re.compile(r"^[+-]?\d+(\.\d+)?$")
 
 
-def _is_num(tok: str) -> bool:
-    return bool(_NUM.match(tok))
+def _is_num(tok: str | None) -> bool:
+    return tok is not None and bool(_NUM.match(tok))
 
 
-def _match(word: str, table: dict[str, tuple[str, ...]]) -> str | None:
-    """Exact alias first, then a unique prefix (≥ 2 letters) of any alias."""
+def _match(word: str, table: dict[str, tuple[str, ...]], min_len: int = 2) -> str | None:
+    """Exact spelling first, then a unique prefix; a prefix of several entries prefers primary names."""
     for key, aliases in table.items():
         if word in aliases:
             return key
-    if len(word) < 2:
+    if len(word) < min_len:
         return None
-    hits = {key for key, aliases in table.items() for a in aliases if a.startswith(word)}
-    return hits.pop() if len(hits) == 1 else None
+    hits = [key for key, aliases in table.items() if any(a.startswith(word) for a in aliases)]
+    if len(hits) > 1:
+        primary = [key for key in hits if table[key][0].startswith(word)]
+        if primary:
+            hits = primary
+    return hits[0] if len(hits) == 1 else None
+
+
+def _candidates(word: str, table: dict[str, tuple[str, ...]]) -> list[str]:
+    hits = [key for key, aliases in table.items() if any(a.startswith(word) for a in aliases)]
+    primary = [key for key in hits if table[key][0].startswith(word)]
+    return primary or hits
 
 
 class _Tokens:
     def __init__(self, text: str) -> None:
+        self.raw = text
         text = text.replace(",", " ").replace("°", " ")
         self.toks = [t for t in text.lower().split() if t]
         self.i = 0
@@ -168,20 +211,25 @@ class _Tokens:
     def done(self) -> bool:
         return self.i >= len(self.toks)
 
+    def rest(self) -> list[str]:
+        out = self.toks[self.i:]
+        self.i = len(self.toks)
+        return out
+
     def skip_filler(self) -> None:
         while self.peek() in FILLER:
             self.i += 1
 
+    def is_word(self, *words: str, k: int = 0) -> bool:
+        t = self.peek(k)
+        return t is not None and any(t == w or (len(t) >= 2 and w.startswith(t)) for w in words)
+
     def take_word(self, *words: str) -> bool:
         """Consume the next token if it is (a prefix ≥ 2 of) one of `words`."""
         self.skip_filler()
-        t = self.peek()
-        if t is None:
-            return False
-        for w in words:
-            if t == w or (len(t) >= 2 and w.startswith(t)):
-                self.i += 1
-                return True
+        if self.is_word(*words):
+            self.i += 1
+            return True
         return False
 
     def number(self, what: str) -> float:
@@ -194,13 +242,20 @@ class _Tokens:
     def opt_number(self) -> float | None:
         self.skip_filler()
         t = self.peek()
-        if t is not None and _is_num(t):
+        if _is_num(t):
             self.i += 1
-            return float(t)
+            return float(t)  # type: ignore[arg-type]
         return None
 
+    def is_mount(self, t: str | None) -> bool:
+        if t is None:
+            return False
+        if re.match(r"^\d+-\d+$", t):
+            return True
+        return t.isdigit() and 1 <= int(t) <= self.max_mount
+
     def mount_list(self) -> tuple[int, ...] | None:
-        """'all'/'al' → None; '1 2', '1-3' → zero-based indices; nothing → None."""
+        """'all'/'al' → None; '1 2', '1,2', '1 2 and 3', '1-3' → zero-based indices; nothing → None."""
         self.skip_filler()
         t = self.peek()
         if t in ("all", "al", "every"):
@@ -209,19 +264,18 @@ class _Tokens:
         out: list[int] = []
         while True:
             t = self.peek()
-            if t is None:
+            if t == "and" and out and self.is_mount(self.peek(1)):
+                self.i += 1
+                continue
+            if t is None or not self.is_mount(t):
                 break
             m = re.match(r"^(\d+)-(\d+)$", t)
             if m:
                 a, b = int(m.group(1)), int(m.group(2))
                 out.extend(range(min(a, b) - 1, max(a, b)))
-                self.i += 1
-                continue
-            if t.isdigit() and 1 <= int(t) <= self.max_mount:
+            else:
                 out.append(int(t) - 1)
-                self.i += 1
-                continue
-            break
+            self.i += 1
         return tuple(out) if out else None
 
 
@@ -277,6 +331,13 @@ class Parser:
             return None
         raise ParseError(f"No ship named '{t}' on sensors.")
 
+    def _ship_name(self, sid: int) -> str:
+        s = self.obs.own(sid)
+        if s is not None:
+            return s.name
+        c = self.obs.contact(sid)
+        return c.label.split(" (")[0] if c is not None else f"#{sid}"
+
     # entry -------------------------------------------------------------
     def parse(self, text: str) -> ParseResult:
         res = ParseResult(echo=text.strip())
@@ -292,6 +353,7 @@ class Parser:
                 raise ParseError(f"Didn't understand '{' '.join(tok.toks[tok.i:])}'.")
         except ParseError as e:
             res.commands.clear()
+            res.actions.clear()
             res.error = str(e)
         return res
 
@@ -306,9 +368,11 @@ class Parser:
             first = "helm"
         verb = _match(first, VERBS)
         if verb is None:
+            cands = _candidates(first, VERBS) if len(first) >= 2 else []
+            if len(cands) > 1:
+                raise ParseError(f"'{first}' is ambiguous: {', '.join(cands)}.")
             raise ParseError(f"Unknown command '{first}'. Type 'help' for the list.")
-        handler = getattr(self, f"_v_{verb}")
-        handler(tok, res)
+        getattr(self, f"_v_{verb}")(tok, res)
 
     # helm ------------------------------------------------------------
     def _v_helm(self, tok: _Tokens, res: ParseResult) -> None:
@@ -321,7 +385,9 @@ class Parser:
             warp = tok.opt_number()
         if course is None and warp is None:
             raise ParseError("helm needs a course and/or warp, e.g. 'helm 90 warp 4'.")
-        res.commands.append(self._cmd(SetHelm, course=course, warp=warp))
+        if course is not None and not -360 <= course <= 360:
+            raise ParseError("Course must be between -360 and +360 degrees.")
+        res.commands.append(self._cmd(SetHelm, course=course % 360 if course is not None else None, warp=warp))
 
     def _v_warp(self, tok: _Tokens, res: ParseResult) -> None:
         res.commands.append(self._cmd(SetHelm, warp=tok.number("warp")))
@@ -331,9 +397,8 @@ class Parser:
 
     def _pursue(self, tok: _Tokens, res: ParseResult, elude: bool) -> None:
         target = self.resolve_ship(tok)
-        warp = None
         if tok.take_word("warp", "w"):
-            warp = tok.number("warp")
+            warp: float | None = tok.number("warp")
         else:
             warp = tok.opt_number()
         res.commands.append(self._cmd(Pursue, target=target, warp=warp, elude=elude))
@@ -363,45 +428,63 @@ class Parser:
                 sub = g
         res.commands.append(self._cmd(SelectTarget, target=target, subsystem=sub))
 
-    def _weapon(self, tok: _Tokens, default: str | None = None) -> str:
-        """Weapon kind; accepts 'all torpedo tubes', 'torpedo tubes', 'tor' and the like."""
+    def _weapon(self, tok: _Tokens, default: str | None = None) -> tuple[str, bool]:
+        """Weapon noun, with Begin's optional leading 'all' ('all torpedo tubes', 'all banks', 'tor').
+
+        Returns (weapon, all_given)."""
         tok.skip_filler()
-        t = tok.peek()
-        if t in ("all", "al") and _match(tok.peek(1) or "", WEAPONS) is not None:
-            tok.next()  # "all" here is the mount list; mount_list() then sees none and means all
+        all_given = False
+        if tok.peek() in ("all", "al", "every") and _match(tok.peek(1) or "", WEAPONS) is not None:
+            tok.next()
+            all_given = True
         t = tok.peek()
         w = _match(t, WEAPONS) if t else None
         if w is None:
             if default is not None:
-                return default
+                return default, all_given
             raise ParseError("Which weapons? phasers, torpedoes or probes.")
         tok.next()
         while tok.peek() is not None and _match(tok.peek() or "", WEAPONS) == w:
             tok.next()
-        return w
+        return w, all_given
 
+    def _mounts(self, tok: _Tokens, all_given: bool) -> tuple[int, ...] | None:
+        m = tok.mount_list()
+        return None if all_given else m
+
+    # lock / turn ------------------------------------------------------------
     def _v_lock(self, tok: _Tokens, res: ParseResult) -> None:
-        if tok.take_word("probe"):
-            code = tok.next()
+        tok.skip_filler()
+        if tok.is_word("all") and tok.is_word("probes", "probe", k=1) or tok.is_word("probes", "probe"):
+            all_probes = tok.take_word("all")
+            tok.next()
+            code = None
+            if not all_probes and not tok.take_word("all"):
+                code = tok.next()
+                if code is None:
+                    raise ParseError("Lock which probe? 'lock probe <code> on <ship>' (see 'status probes').")
             tok.take_word("on")
             target = self.resolve_ship(tok)
             res.commands.append(self._cmd(ControlProbe, code=code, target=target))
             return
         which = "both"
-        if tok.take_word("all"):
-            which = "both"
+        all_given = False
+        if tok.is_word("all") and _match(tok.peek(1) or "", WEAPONS) is None:
+            tok.next()
         else:
             t = tok.peek()
-            w = _match(t, WEAPONS) if t else None
-            if w is not None:
-                tok.next()
-                which = w
-        mounts = tok.mount_list()
+            if t is not None and (_match(t, WEAPONS) is not None or t in ("all", "al")):
+                which, all_given = self._weapon(tok)
+        mounts = self._mounts(tok, all_given)
         tok.take_word("on")
         target = None if tok.take_word("off", "none") else self.resolve_ship(tok)
         disp = None
-        if tok.take_word("dispersion", "disp"):
+        if tok.take_word("dispersion", "disp", "spread"):
             disp = tok.number("dispersion")
+        else:
+            disp = tok.opt_number()
+        if disp is not None and which == "phaser":
+            raise ParseError("Dispersion applies to torpedo tubes.")
         res.commands.append(self._cmd(
             LockWeapons, target=target,
             banks=mounts if which == "phaser" else None, tubes=mounts if which == "tube" else None,
@@ -409,35 +492,83 @@ class Parser:
         ))
 
     def _v_turn(self, tok: _Tokens, res: ParseResult) -> None:
-        if tok.take_word("probe"):
-            code = tok.next()
+        tok.skip_filler()
+        if tok.is_word("all") and tok.is_word("probes", "probe", k=1) or tok.is_word("probes", "probe"):
+            all_probes = tok.take_word("all")
+            tok.next()
+            code = None
+            if not all_probes and not tok.take_word("all"):
+                code = tok.next()
+                if code is None:
+                    raise ParseError("Turn which probe? 'turn probe <code> course <c>' (see 'status probes').")
+            tok.take_word("to")
             tok.take_word("course")
-            res.commands.append(self._cmd(ControlProbe, code=code, course=tok.number("course")))
+            res.commands.append(self._cmd(ControlProbe, code=code, course=tok.number("course") % 360))
             return
-        w = self._weapon(tok)
-        mounts = tok.mount_list()
-        tok.take_word("to", "mark")
-        mark = tok.number("mark")
+        w, all_given = self._weapon(tok)
+        if w == "launcher":
+            raise ParseError("Probes are turned by code: 'turn probe <code> course <c>' or 'turn all probes course <c>'.")
+        # Begin: 'turn banks [<list>] [to] <mark>' — the last number is the mark
+        nums: list[str] = []
+        saw_to = False
+        while not tok.done():
+            t = tok.peek()
+            if t in ("all", "al"):
+                tok.next()
+                all_given = True
+            elif t in ("to", "mark"):
+                tok.next()
+                saw_to = True
+            elif t == "and":
+                tok.next()
+            elif _is_num(t) or (t and re.match(r"^\d+-\d+$", t)):
+                nums.append(tok.next() or "")
+            else:
+                break
+        if not nums:
+            raise ParseError("Turn to which mark? e.g. 'turn banks 1 2 to 90'.")
+        mark = float(nums.pop())
+        sub = _Tokens(" ".join(nums))
+        sub.max_mount = tok.max_mount
+        mounts = sub.mount_list()
+        if not sub.done():
+            raise ParseError(f"Bad mount list '{' '.join(nums)}'.")
+        if all_given:
+            mounts = None
+        del saw_to
         if w == "phaser":
-            res.commands.append(self._cmd(TurnMounts, mark=mark, banks=mounts if mounts else None))
+            res.commands.append(self._cmd(TurnMounts, mark=mark % 360, banks=mounts))
         else:
-            res.commands.append(self._cmd(TurnMounts, mark=mark, tubes=mounts if mounts else tuple(range(len(self.ship.tubes)))))
+            res.commands.append(self._cmd(TurnMounts, mark=mark % 360,
+                                          tubes=mounts if mounts else tuple(range(len(self.ship.tubes)))))
 
     # fire ------------------------------------------------------------
     def _v_fp(self, tok: _Tokens, res: ParseResult) -> None:
-        self._fire(tok, res, "phaser")
+        self._fire(tok, res, "phaser", False)
 
     def _v_ft(self, tok: _Tokens, res: ParseResult) -> None:
-        self._fire(tok, res, "tube")
+        self._fire(tok, res, "tube", False)
 
     def _v_fpr(self, tok: _Tokens, res: ParseResult) -> None:
-        self._fire(tok, res, "launcher")
+        self._fire(tok, res, "launcher", False)
+
+    def _v_phaser(self, tok: _Tokens, res: ParseResult) -> None:
+        self._fire(tok, res, "phaser", False)
+
+    def _v_torp(self, tok: _Tokens, res: ParseResult) -> None:
+        self._fire(tok, res, "tube", False)
+
+    def _v_probe(self, tok: _Tokens, res: ParseResult) -> None:
+        self._fire(tok, res, "launcher", False)
 
     def _v_fire(self, tok: _Tokens, res: ParseResult) -> None:
-        self._fire(tok, res, self._weapon(tok, "phaser"))
+        w, all_given = self._weapon(tok, "phaser")
+        self._fire(tok, res, w, all_given)
 
-    def _fire(self, tok: _Tokens, res: ParseResult, weapon: str) -> None:
-        mounts = tok.mount_list()
+    def _fire(self, tok: _Tokens, res: ParseResult, weapon: str, all_given: bool) -> None:
+        tok.skip_filler()
+        all_given = all_given or tok.peek() in ("all", "al", "every")
+        mounts = self._mounts(tok, all_given)
         spread = None
         target = None
         course = None
@@ -453,6 +584,16 @@ class Parser:
             elif tok.peek() in ("at", "on"):
                 tok.next()
                 target = self.resolve_ship(tok)
+            elif _is_num(tok.peek()):
+                v = float(tok.next() or 0)
+                if weapon == "phaser":
+                    spread = v           # 'fire all phasers 45', 'phaser all 45'
+                elif weapon == "launcher":
+                    course = v
+                else:
+                    raise ParseError(f"Torpedo tube {v:g} does not exist.")
+            elif tok.peek() in FILLER:
+                tok.next()
             elif _match(tok.peek() or "", {g: (g,) for g in TARGETABLE_GROUPS}) is not None:
                 sub = _match(tok.next() or "", {g: (g,) for g in TARGETABLE_GROUPS})
             else:
@@ -466,35 +607,47 @@ class Parser:
                 target = self.ship.target
             if target is None and course is None:
                 raise ParseError("Fire probes at a ship or on a course: 'fire probes at <ship>' or 'course <c>'.")
-            res.commands.append(self._cmd(LaunchProbe, launchers=mounts, target=target, course=course))
+            res.commands.append(self._cmd(LaunchProbe, launchers=mounts, target=target, course=course,
+                                          count=len(mounts) if mounts else (99 if all_given else 1)))
 
     # loading -------------------------------------------------------------
     def _v_load(self, tok: _Tokens, res: ParseResult) -> None:
-        w = self._weapon(tok, "tube")
-        mounts = tok.mount_list()
+        w, all_given = self._weapon(tok, "tube")
+        if w == "phaser":
+            raise ParseError("Phaser banks charge by themselves; load applies to tubes and launchers.")
+        mounts = self._mounts(tok, all_given)
         prox = None
         tm = None
         ordnance = None
+        nums: list[float] = []
         while not tok.done():
             if tok.take_word("proximity", "prox"):
                 prox = tok.number("proximity")
-            elif tok.take_word("time"):
+            elif tok.take_word("time", "fuse"):
                 tm = tok.number("time")
-            elif _is_num(tok.peek() or ""):
-                prox = tok.number("proximity")
+            elif _is_num(tok.peek()):
+                nums.append(tok.number("value"))
+            elif tok.peek() in FILLER:
+                tok.next()
             else:
                 ordnance = self._ordnance(tok, w)
+        # Begin: 'load launchers <list> <prox> <time>' and 'load tubes <list> <prox>'
+        if nums and prox is None:
+            prox = nums.pop(0)
+        if nums and w == "launcher" and tm is None:
+            tm = nums.pop(0)
+        if nums:
+            raise ParseError("Too many numbers: load takes a proximity (and for probes a time).")
         if prox is not None or ordnance is not None or tm is not None:
             res.commands.append(self._cmd(ConfigureAutoload, weapon=w, mounts=mounts, prox=prox, time=tm,
-                                          ordnance=ordnance))
-        if w == "tube":
-            res.commands.append(self._cmd(LoadTubes, tubes=mounts))
-        else:
-            res.commands.append(self._cmd(ConfigureAutoload, weapon=w, mounts=mounts, enabled=True))
+                                          ordnance=ordnance, enabled=True))
+        res.commands.append(self._cmd(LoadTubes, tubes=mounts, weapon=w))
 
     def _v_unload(self, tok: _Tokens, res: ParseResult) -> None:
-        self._weapon(tok, "tube")
-        res.commands.append(self._cmd(LoadTubes, tubes=tok.mount_list(), unload=True))
+        w, all_given = self._weapon(tok, "tube")
+        if w == "phaser":
+            raise ParseError("Phaser banks can't be unloaded; use 'disable banks'.")
+        res.commands.append(self._cmd(LoadTubes, tubes=self._mounts(tok, all_given), unload=True, weapon=w))
 
     def _ordnance(self, tok: _Tokens, weapon: str) -> str:
         t = tok.next() or ""
@@ -503,20 +656,20 @@ class Parser:
         if t2 in pool:
             return t2
         # "mkvii" / "mk-7" style
-        roman = {"vii": "7", "viii": "8", "ii": "2"}
+        roman = {"viii": "8", "vii": "7", "ii": "2"}
         for r, d in roman.items():
             if t2.endswith(r) and t2[: -len(r)] + d in pool:
                 return t2[: -len(r)] + d
         hits = [k for k in pool if k.startswith(t2)] if len(t2) >= 2 else []
         if len(hits) == 1:
             return hits[0]
-        raise ParseError(f"Unknown {'torpedo' if weapon == 'tube' else 'probe'} type '{t}'.")
+        raise ParseError(f"Didn't understand '{t}'.")
 
     def _v_autoload(self, tok: _Tokens, res: ParseResult) -> None:
-        w = self._weapon(tok, "tube")
+        w, all_given = self._weapon(tok, "tube")
         if w == "phaser":
             raise ParseError("Phaser banks charge automatically; autoload applies to tubes and launchers.")
-        mounts = tok.mount_list()
+        mounts = self._mounts(tok, all_given)
         enabled: bool | None = True
         prox = None
         tm = None
@@ -534,8 +687,10 @@ class Parser:
                 tm = tok.number("time")
             elif tok.take_word("now", "reload"):
                 reload = True
-            elif _is_num(tok.peek() or ""):
+            elif _is_num(tok.peek()):
                 nums.append(tok.number("value"))
+            elif tok.peek() in FILLER:
+                tok.next()
             else:
                 ordnance = self._ordnance(tok, w)
         if nums:
@@ -550,21 +705,29 @@ class Parser:
 
     # phaser settings -------------------------------------------------------------
     def _v_spread(self, tok: _Tokens, res: ParseResult) -> None:
-        tok.take_word("banks", "phasers")
-        mounts = tok.mount_list() if tok.peek() in ("all", "al") else None
+        _, all_given = self._weapon(tok, "phaser")
+        mounts = self._mounts(tok, all_given)
         res.commands.append(self._cmd(SetPhaserSpread, spread=tok.number("spread"), banks=mounts))
 
+    def _enable(self, tok: _Tokens, res: ParseResult, on: bool) -> None:
+        w, all_given = self._weapon(tok)
+        mounts = self._mounts(tok, all_given)
+        if w == "phaser":
+            res.commands.append(self._cmd(SetBanks, banks=mounts, enabled=on))
+        elif w == "tube":
+            res.commands.append(self._cmd(SetTubes, tubes=mounts, enabled=on))
+        else:
+            raise ParseError("Probe launchers need no charging; use 'load' or 'unload launchers'.")
+
     def _v_enable(self, tok: _Tokens, res: ParseResult) -> None:
-        self._weapon(tok, "phaser")
-        res.commands.append(self._cmd(SetBanks, banks=tok.mount_list(), enabled=True))
+        self._enable(tok, res, True)
 
     def _v_disable(self, tok: _Tokens, res: ParseResult) -> None:
-        self._weapon(tok, "phaser")
-        res.commands.append(self._cmd(SetBanks, banks=tok.mount_list(), enabled=False))
+        self._enable(tok, res, False)
 
     def _v_role(self, tok: _Tokens, res: ParseResult) -> None:
-        self._weapon(tok, "phaser")
-        mounts = tok.mount_list()
+        _, all_given = self._weapon(tok, "phaser")
+        mounts = self._mounts(tok, all_given)
         roles = {"offense": ("offense", "offence", "attack"), "flex": ("flex", "both"),
                  "defense": ("defense", "defence", "pd", "reserve")}
         r = _match(tok.next() or "", roles)
@@ -573,10 +736,10 @@ class Parser:
         res.commands.append(self._cmd(SetBanks, banks=mounts, role=BankRole(r)))
 
     def _v_mode(self, tok: _Tokens, res: ParseResult) -> None:
-        w = self._weapon(tok)
+        w, all_given = self._weapon(tok)
         if w == "launcher":
             raise ParseError("Probes are always launched by order.")
-        mounts = tok.mount_list()
+        mounts = self._mounts(tok, all_given)
         modes = {"manual": ("manual", "man", "hold"), "assisted": ("assisted", "assist", "as"),
                  "automatic": ("automatic", "auto", "free")}
         m = _match(tok.next() or "", modes)
@@ -599,20 +762,137 @@ class Parser:
         res.commands.append(self._cmd(SetPointDefense, doctrine=PDDoctrine(d), reserve=reserve))
 
     # shields ---------------------------------------------------------------
+    def _shield_list(self, tok: _Tokens) -> tuple[int, ...] | None:
+        all_given = tok.take_word("all")
+        tok.take_word("shields", "shield")
+        mounts = tok.mount_list()
+        if tok.take_word("all"):
+            all_given = True
+        tok.take_word("shields", "shield")
+        return None if all_given else mounts
+
     def _v_raise(self, tok: _Tokens, res: ParseResult) -> None:
-        tok.take_word("shields")
-        res.commands.append(self._cmd(SetShields, sectors=tok.mount_list(), up=True))
+        res.commands.append(self._cmd(SetShields, sectors=self._shield_list(tok), up=True))
 
     def _v_lower(self, tok: _Tokens, res: ParseResult) -> None:
-        tok.take_word("shields")
-        res.commands.append(self._cmd(SetShields, sectors=tok.mount_list(), up=False))
+        res.commands.append(self._cmd(SetShields, sectors=self._shield_list(tok), up=False))
 
     def _v_reinforce(self, tok: _Tokens, res: ParseResult) -> None:
         tok.take_word("shield")
         if tok.take_word("off", "none", "clear"):
             res.commands.append(self._cmd(ReinforceShield, sector=None))
             return
-        res.commands.append(self._cmd(ReinforceShield, sector=int(tok.number("shield")) - 1))
+        n = int(tok.number("shield"))
+        if not 1 <= n <= max(1, len(self.ship.shields)):
+            raise ParseError(f"Shields are numbered 1 to {len(self.ship.shields)}.")
+        res.commands.append(self._cmd(ReinforceShield, sector=n - 1))
+
+    # status displays -------------------------------------------------------
+    def _v_status(self, tok: _Tokens, res: ParseResult) -> None:
+        what = {"damage": ("damage", "ship"), "banks": ("banks", "phasers", "bank"), "tubes": ("tubes", "torpedoes", "tube"),
+                "launchers": ("launchers", "launcher"), "probes": ("probes", "probe"), "shields": ("shields", "shield"),
+                "fleet": ("fleet", "allies"), "report": ("report",), "group": ("group", "groups")}
+        t = tok.next()
+        k = _match(t, what) if t else "damage"
+        if k is None:
+            raise ParseError("status damage, banks, tubes, launchers, probes, shields or fleet.")
+        if k == "probes":
+            res.display.extend(reports.probes_lines(self.obs, self.ship))
+        else:
+            getattr(self, f"_v_{k}")(tok, res)
+
+    def _v_report(self, tok: _Tokens, res: ParseResult) -> None:
+        res.display.extend(reports.report_lines(self.obs, self.ship))
+
+    def _v_damage(self, tok: _Tokens, res: ParseResult) -> None:
+        res.display.extend(reports.damage_lines(self.obs, self.ship))
+
+    def _v_banks(self, tok: _Tokens, res: ParseResult) -> None:
+        res.display.extend(reports.banks_lines(self.obs, self.ship))
+
+    def _v_tubes(self, tok: _Tokens, res: ParseResult) -> None:
+        res.display.extend(reports.tubes_lines(self.obs, self.ship))
+
+    def _v_launchers(self, tok: _Tokens, res: ParseResult) -> None:
+        res.display.extend(reports.launchers_lines(self.obs, self.ship))
+
+    def _v_shields(self, tok: _Tokens, res: ParseResult) -> None:
+        if tok.take_word("up", "raise", "on"):
+            res.commands.append(self._cmd(SetShields, sectors=self._shield_list(tok), up=True))
+        elif tok.take_word("down", "lower", "drop", "off"):
+            res.commands.append(self._cmd(SetShields, sectors=self._shield_list(tok), up=False))
+        else:
+            res.display.extend(reports.shields_lines(self.obs, self.ship))
+
+    def _v_fleet(self, tok: _Tokens, res: ParseResult) -> None:
+        tok.rest()  # Begin accepts (and ignores) display options here
+        res.display.extend(reports.fleet_lines(self.obs, self.ship.id))
+
+    def _v_group(self, tok: _Tokens, res: ParseResult) -> None:
+        res.display.extend(reports.group_lines(self.obs))
+
+    def _v_chart(self, tok: _Tokens, res: ParseResult) -> None:
+        opts: dict[str, object] = {}
+        word = tok.peek()  # "on" and "by" are filler elsewhere, so look at the raw token
+        if word is None:
+            opts["show"] = True
+        elif word == "on":
+            tok.next()
+            opts["auto"] = True
+        elif tok.is_word("off"):
+            tok.next()
+            opts["auto"] = False
+        elif tok.is_word("all"):
+            tok.next()
+            opts["all"] = True
+        elif word == "by":
+            tok.next()
+            sort = _match(tok.next() or "", {"name": ("name",), "distance": ("distance", "range"), "nation": ("nation", "side")})
+            if sort is None:
+                raise ParseError("chart by name, distance or nation.")
+            opts["sort"] = sort
+        else:
+            tok.take_word("from")
+            sid = self.resolve_ship(tok)
+            assert sid is not None
+            if tok.peek() == "on":
+                tok.next()
+                opts["include"] = sid
+            elif tok.is_word("off"):
+                tok.next()
+                opts["exclude"] = sid
+            else:
+                opts["origin"] = sid
+        res.actions.append(("chart", opts))
+
+    def _v_range(self, tok: _Tokens, res: ParseResult) -> None:
+        """Begin's `range <r>` / `display <r>` / `scan <r>`: set the position display range; bare `range` reports it."""
+        v = tok.opt_number()
+        if v is not None and not (200 <= v <= 500000):
+            raise ParseError("Display range must be between 200 and 500,000 units.")
+        res.actions.append(("range", v))
+
+    def _v_scan(self, tok: _Tokens, res: ParseResult) -> None:
+        tok.take_word("range")
+        if _is_num(tok.peek()) or (tok.peek() in FILLER and _is_num(tok.peek(1))):
+            self._v_range(tok, res)
+            return
+        if tok.take_word("ship"):
+            pass
+        target = self.resolve_ship(tok, allow_none=True) or self.ship.target
+        if target is None:
+            raise ParseError("Scan which ship (or 'scan <range>')?")
+        own = self.obs.own(target)
+        if own is not None:
+            res.display.extend(reports.damage_lines(self.obs, own))
+            return
+        c = self.obs.contact(target)
+        if c is not None and c.scan is not None:
+            res.display.extend(reports.scan_lines(self.obs, c))
+        res.commands.append(self._cmd(Scan, target=target))
+
+    def _v_computer(self, tok: _Tokens, res: ParseResult) -> None:
+        res.display.extend(reports.library_lines(self.obs.content, tok.rest()))
 
     # engineering and specials ----------------------------------------------------
     def _v_repair(self, tok: _Tokens, res: ParseResult) -> None:
@@ -621,12 +901,6 @@ class Parser:
         if k is None:
             raise ParseError(f"Unknown system '{w}'.")
         res.commands.append(self._cmd(SetRepairPriority, kind=REPAIR_KINDS[k]))
-
-    def _v_scan(self, tok: _Tokens, res: ParseResult) -> None:
-        target = self.resolve_ship(tok, allow_none=True) or self.ship.target
-        if target is None:
-            raise ParseError("Scan which ship?")
-        res.commands.append(self._cmd(Scan, target=target))
 
     def _v_tractor(self, tok: _Tokens, res: ParseResult) -> None:
         if tok.take_word("off", "release"):
@@ -642,6 +916,9 @@ class Parser:
             res.commands.append(self._cmd(Dock, host=None))
             return
         host = self.resolve_ship(tok)
+        if tok.take_word("off"):
+            res.commands.append(self._cmd(Dock, host=None))
+            return
         tok.take_word("on")
         res.commands.append(self._cmd(Dock, host=host))
 
@@ -657,11 +934,14 @@ class Parser:
         res.commands.append(self._cmd(SetCloak, on=False))
 
     def _v_destruct(self, tok: _Tokens, res: ParseResult) -> None:
+        tok.take_word("destruct")
         if tok.take_word("abort", "off", "cancel"):
             res.commands.append(self._cmd(SelfDestruct, cycles=None))
             return
         n = tok.opt_number()
-        res.commands.append(self._cmd(SelfDestruct, cycles=n if n is not None else 5.0))
+        if n is None:
+            raise ParseError("Self destruct in how many cycles? e.g. 'self destruct 10'.")
+        res.commands.append(self._cmd(SelfDestruct, cycles=n))
 
     def _v_abort(self, tok: _Tokens, res: ParseResult) -> None:
         tok.take_word("destruct")
@@ -671,9 +951,16 @@ class Parser:
         res.commands.append(self._cmd(Surrender))
 
     def _v_transport(self, tok: _Tokens, res: ParseResult) -> None:
+        """`beam <ally>` trades ships (manual p. 20); `beam <ship> <crew>` moves crew or a boarding party."""
         target = self.resolve_ship(tok)
+        assert target is not None
         n = tok.opt_number()
-        res.commands.append(self._cmd(Transport, target=target, count=int(n if n is not None else 10)))
+        if n is None and self.obs.own(target) is not None:
+            res.actions.append(("transfer", target))
+            return
+        if n is None:
+            raise ParseError("How many crew? e.g. 'beam <ship> 20', or 'board <ship>'.")
+        res.commands.append(self._cmd(Transport, target=target, count=int(n)))
 
     def _v_board(self, tok: _Tokens, res: ParseResult) -> None:
         target = self.resolve_ship(tok)
@@ -685,19 +972,68 @@ class Parser:
     def _v_detonate(self, tok: _Tokens, res: ParseResult) -> None:
         tok.take_word("probe", "probes")
         if tok.take_word("all") or tok.done():
+            tok.take_word("probes", "probe")
             res.commands.append(self._cmd(ControlProbe, code=None, detonate=True))
         else:
             res.commands.append(self._cmd(ControlProbe, code=tok.next(), detonate=True))
 
+    # allies ----------------------------------------------------------------
+    def _ally_targets(self, tok: _Tokens) -> list[int]:
+        tok.skip_filler()
+        t = tok.peek()
+        if t is not None and t.isdigit():
+            g = int(t)
+            members = [s.id for s in self.obs.own_ships()
+                       if s.id != self.ship.id and (st := self.obs.ally_order(s.id)) is not None and st.group == g]
+            tok.next()
+            if not members:
+                raise ParseError(f"Group {g} has no ships. Use 'tell <ally> join {g}'.")
+            return members
+        sid = self.resolve_ship(tok)
+        assert sid is not None
+        if self.obs.own(sid) is None:
+            raise ParseError(f"{self._ship_name(sid)} is not under your command.")
+        if sid == self.ship.id:
+            raise ParseError("Give your own ship orders directly.")
+        return [sid]
+
     def _v_tell(self, tok: _Tokens, res: ParseResult) -> None:
-        ally = self.resolve_ship(tok)
-        assert ally is not None
-        order = tok.next()
-        if order is None:
+        allies = self._ally_targets(tok)
+        tok.skip_filler()
+        word = tok.next()
+        if word is None:
             raise ParseError("Tell them what? e.g. 'tell <ally> attack <ship>'.")
-        target = self.resolve_ship(tok, allow_none=True)
-        value = tok.opt_number()
-        res.commands.append(self._cmd(AllyOrder, ally=ally, order=order, target=target, value=value))
+        # two-word forms: hold fire / hold course / open fire / cease fire
+        if word in ("hold", "cease") and tok.is_word("course"):
+            tok.next()
+            order = "course"
+        else:
+            order = _match(word, ORDER_WORDS) or ""
+            if not order:
+                cands = _candidates(word, ORDER_WORDS)
+                raise ParseError(f"'{word}' is ambiguous: {', '.join(cands)}." if len(cands) > 1
+                                 else f"Unknown order '{word}'. Try 'help'.")
+            if order in ("hold", "open"):
+                tok.take_word("fire")
+        target = None
+        value = None
+        dest = None
+        if order == "report":
+            for a in allies:
+                ally = self.obs.own(a)
+                if ally is not None:
+                    res.display.extend(reports.report_lines(self.obs, ally, self.obs.ally_order(a) or AllyStanding()))
+            return
+        if order in SHIP_ORDERS:
+            target = self.resolve_ship(tok)
+        if order in ("escort", "approach", "course", "join", "board"):
+            tok.take_word("at", "range", "distance", "with")
+            value = tok.opt_number()
+        if order == "tow":
+            tok.take_word("to")
+            dest = self.resolve_ship(tok)
+        for a in allies:
+            res.commands.append(self._cmd(AllyOrder, ally=a, order=order, target=target, value=value, destination=dest))
 
     # UI ------------------------------------------------------------------
     def _v_pause(self, tok: _Tokens, res: ParseResult) -> None:
@@ -712,22 +1048,31 @@ class Parser:
             raise ParseError("Time scale must be 0.25, 0.5, 1, 2 or 4.")
         res.actions.append(("speed", v))
 
-    def _v_range(self, tok: _Tokens, res: ParseResult) -> None:
-        """Begin's `range <r>`: set the tactical display radius (world units); bare `range` reports it."""
-        v = tok.opt_number()
-        if v is not None and not (200 <= v <= 500000):
-            raise ParseError("Display range must be between 200 and 500,000 units.")
-        res.actions.append(("range", v))
-
     def _v_help(self, tok: _Tokens, res: ParseResult) -> None:
-        tok.toks = tok.toks[: tok.i]
+        tok.rest()
         res.info.extend(HELP)
 
-    def _v_status(self, tok: _Tokens, res: ParseResult) -> None:
-        res.actions.append(("status", None))
+    def _v_quit(self, tok: _Tokens, res: ParseResult) -> None:
+        res.actions.append(("quit", None))
 
-    def _v_damage(self, tok: _Tokens, res: ParseResult) -> None:
-        res.actions.append(("damage", None))
+    def _v_text(self, tok: _Tokens, res: ParseResult) -> None:
+        res.info.append("This remake has no text mode: the tactical display is always on. "
+                        "Status commands print Begin's text displays here in the console.")
+
+    def _v_key(self, tok: _Tokens, res: ParseResult) -> None:
+        """Begin 2.0's `key <F#|^x> <string>`: bind a key to console commands (';' separates commands)."""
+        name = tok.next()
+        if name is None:
+            res.actions.append(("key", None))
+            return
+        name = name.upper() if name.startswith("f") else name
+        if not re.fullmatch(r"(F([2-8]|1[0-2])|\^[a-z])", name):
+            raise ParseError("Keys are F2-F8, F10-F12 or ^a-^z (F1 is help, F9 the debug view).")
+        raw = tok.raw.strip()
+        parts = raw.split(None, 2)
+        text = parts[2].strip() if len(parts) > 2 else ""
+        tok.rest()
+        res.actions.append(("key", (name, text)))
 
 
 def parse(text: str, ctx: ParseContext) -> ParseResult:
@@ -737,4 +1082,4 @@ def parse(text: str, ctx: ParseContext) -> ParseResult:
         return ParseResult(error=str(e), echo=text)
 
 
-__all__ = ["HELP", "ParseContext", "ParseError", "ParseResult", "Parser", "parse"]
+__all__ = ["HELP", "ParseContext", "ParseError", "ParseResult", "Parser", "VERBS", "parse"]

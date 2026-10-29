@@ -15,13 +15,14 @@ from typing import Callable
 import pygame
 
 from ..battle import Battle
+from ..console import reports
 from ..console.parser import ParseContext, parse
 from ..core.angles import bearing, norm360
 from ..sim.commands import (
     Command, FirePhasers, FireTorpedoes, LaunchProbe, Pursue, Scan, SelectTarget, SetBanks, SetHelm,
     SetPointDefense, SetShields,
 )
-from ..sim.events import CommandRejected, Message, Tone
+from ..sim.events import CommandRejected, Message, ScanCompleted, Tone
 from ..sim.observation import Observation
 from ..sim.scoring import Assessment
 from ..sim.ship import BankRole, Kind, Ship
@@ -56,6 +57,8 @@ CONTROLS = [
     ("Drag, arrows", "Pan the map"),
     ("C", "Centre and follow own ship"),
     ("Enter or /", "Open the command console (type 'help')"),
+    ("F2-F8, F10-F12, Ctrl+key", "Run a 'key' macro you defined in the console"),
+    ("Wheel over the log", "Scroll the console log"),
     ("I", "Damage assessment (inspect own ship)"),
     ("F1 or H", "This reference"),
     ("Esc", "Close overlay / battle menu"),
@@ -67,10 +70,15 @@ class LogLine:
     tick: int
     text: str
     color: theme.Color
+    mono: bool = False
+
+
+FKEYS = {getattr(pygame, f"K_F{n}"): f"F{n}" for n in (2, 3, 4, 5, 6, 7, 8, 10, 11, 12)}
 
 
 class BattleScene:
-    def __init__(self, battle: Battle, size: tuple[int, int], on_exit: Callable[[], None]) -> None:
+    def __init__(self, battle: Battle, size: tuple[int, int], on_exit: Callable[[], None],
+                 keys: dict[str, str] | None = None) -> None:
         self.battle = battle
         self.world = battle.world
         self.player_id = battle.player_ship_id
@@ -97,6 +105,17 @@ class BattleScene:
         self.assessment = Assessment.begin(self.world)
         self.drag: tuple[int, int] | None = None
         self.dragged = False
+        # Begin's text displays: the latest one stays on the map, refreshed live, until dismissed
+        self.printout: list[str] | None = None
+        self.printout_cmd: str | None = None
+        self.printout_tick = -1
+        self.log_scroll = 0
+        self.chart_auto = False
+        self.chart_sort = "name"
+        self.chart_hidden: set[int] = set()
+        self.chart_all = False
+        self.chart_origin: int | None = None
+        self.keys: dict[str, str] = keys if keys is not None else {}
         self.layout(size)
         self._frame_all()
         self._log("Battle stations. The simulation is paused: press Space to begin.", theme.CAUTION)
@@ -186,8 +205,9 @@ class BattleScene:
             self.cam.follow = None
             self.cam.cx, self.cam.cy = pose[0], pose[1]
 
-    def _log(self, text: str, color: theme.Color = theme.TEXT) -> None:
-        self.log.append(LogLine(self.world.tick, text, color))
+    def _log(self, text: str, color: theme.Color = theme.TEXT, mono: bool = False) -> None:
+        self.log.append(LogLine(self.world.tick, text, color, mono))
+        self.log_scroll = 0
         if len(self.log) > 400:
             del self.log[:100]
 
@@ -203,8 +223,10 @@ class BattleScene:
                     continue
                 who = f"{ev.speaker}: " if ev.speaker and ev.speaker not in ev.text else ""
                 self._log(who + ev.text, TONE_COLOR.get(ev.tone, theme.TEXT))
-            elif isinstance(ev, CommandRejected) and ev.ship_id == self.player_id and ev.issuer != "captain":
-                pass
+            elif isinstance(ev, ScanCompleted) and ev.ship_id == self.player_id:
+                c = self.obs.contact(ev.target_id)
+                if c is not None and c.scan is not None:
+                    self._show(reports.scan_lines(self.obs, c), None)
 
     def update(self, dt: float) -> None:
         self.ui.mouse = pygame.mouse.get_pos()
@@ -212,6 +234,10 @@ class BattleScene:
             msg, col, t = self.toast
             self.toast = (msg, col, t - dt) if t - dt > 0 else None
         self.view.update(dt)
+        if self.chart_auto and self.printout is None:
+            self._show(self._chart_lines(), None)
+            self.printout_cmd = "\0chart"
+        self._refresh_printout()
         if self.paused or self.world.outcome.over:
             self.acc = 0.0
             self.obs = self.world.observe(self.side)
@@ -258,7 +284,9 @@ class BattleScene:
                 self.cam.pan_pixels(dx, dy)
                 self.drag = ev.pos
         elif ev.type == pygame.MOUSEWHEEL:
-            if self.map_rect.collidepoint(self.ui.mouse):
+            if self.bottom_rect.collidepoint(self.ui.mouse):
+                self.log_scroll = max(0, min(len(self.log) - 1, self.log_scroll + ev.y * 3))
+            elif self.map_rect.collidepoint(self.ui.mouse):
                 self.cam.zoom_at(1.15 ** ev.y, *self.ui.mouse)
 
     def _mouse_down(self, ev: pygame.event.Event) -> None:
@@ -320,8 +348,15 @@ class BattleScene:
         k = ev.key
         p = self.player
         shift = ev.mod & pygame.KMOD_SHIFT
+        if k in FKEYS and self.run_key(FKEYS[k]):
+            return
+        if ev.mod & pygame.KMOD_CTRL and pygame.K_a <= k <= pygame.K_z and self.run_key("^" + chr(k)):
+            return
         if k == pygame.K_ESCAPE:
-            if self.overlay in (None, "help_brief"):
+            if self.overlay is None and self.printout is not None:
+                self.printout = None
+                self.chart_auto = False
+            elif self.overlay in (None, "help_brief"):
                 self.overlay = "menu"
             elif self.overlay == "debrief":
                 self.on_exit()
@@ -434,6 +469,15 @@ class BattleScene:
         self.run_console(text)
 
     def run_console(self, text: str) -> None:
+        """Run a console line; ';' separates several commands (as in key macros)."""
+        if text.strip().lower().split(None, 1)[:1] == ["key"]:
+            self._run_one(text.strip())  # the macro itself may hold several commands
+            return
+        for part in [t.strip() for t in text.split(";")]:
+            if part:
+                self._run_one(part)
+
+    def _run_one(self, text: str) -> None:
         self._log(f"> {text}", theme.FRIEND)
         if self.player_id is None:
             self._log("No ship under command.", theme.CAUTION)
@@ -445,27 +489,130 @@ class BattleScene:
             return
         for line in res.info:
             self._log(line, theme.TEXT_DIM)
+        if res.display:
+            # a pure display (no orders) stays on the map and refreshes live
+            self._show(res.display, text if not res.commands and not res.actions else None)
         for name, val in res.actions:
-            if name == "pause":
-                self.paused = True
-            elif name == "resume":
-                self.paused = False
-            elif name == "speed":
-                self.speed = float(val)  # type: ignore[arg-type]
-            elif name == "status":
-                self._status_report()
-            elif name == "damage":
-                self.overlay = "damage"
-            elif name == "range":
-                if val is None:
-                    self._log(f"Display range {self.display_range():,.0f} units.", theme.TEXT_DIM)
-                else:
-                    self.set_display_range(float(val))  # type: ignore[arg-type]
-                    self._log(f"Display range set to {float(val):,.0f} units.", theme.TEXT_DIM)
+            self._action(name, val)
         for cmd in res.commands:
             reason = self.issue(cmd)
             if reason is None:
                 self._log(f"  {cmd.describe()}: acknowledged", theme.TEXT_DIM)
+
+    def _show(self, lines: list[str], live_cmd: str | None) -> None:
+        for line in lines:
+            self._log(line, theme.TEXT, mono=True)
+        self.printout = list(lines)
+        self.printout_cmd = live_cmd
+        self.printout_tick = self.world.tick
+
+    def _refresh_printout(self) -> None:
+        if self.printout is None or self.world.tick - self.printout_tick < 5:
+            return
+        self.printout_tick = self.world.tick
+        if self.printout_cmd == "\0chart":
+            self.printout = self._chart_lines()
+        elif self.printout_cmd and self.player_id is not None:
+            res = parse(self.printout_cmd, ParseContext(self.player_id, self.world.observe(self.side)))
+            if res.display and not res.error:
+                self.printout = res.display
+
+    def _chart_lines(self) -> list[str]:
+        obs = self.world.observe(self.side)
+        origin = None
+        if self.chart_origin is not None:
+            origin = obs.own(self.chart_origin) or obs.contact(self.chart_origin)
+        if origin is None:
+            origin = self.player
+        if origin is None:
+            return ["No ship to chart from."]
+        return reports.chart_lines(obs, origin, self.player_id or -1, self.chart_sort,
+                                   frozenset(self.chart_hidden), self.chart_all)
+
+    def _action(self, name: str, val: object) -> None:
+        if name == "pause":
+            self.paused = True
+        elif name == "resume":
+            self.paused = False
+        elif name == "speed":
+            self.speed = float(val)  # type: ignore[arg-type]
+        elif name == "range":
+            if val is None:
+                self._log(f"Display range {self.display_range():,.0f} units.", theme.TEXT_DIM)
+            else:
+                self.set_display_range(float(val))  # type: ignore[arg-type]
+                self._log(f"Display range set to {float(val):,.0f} units.", theme.TEXT_DIM)
+        elif name == "chart":
+            self._chart(val)  # type: ignore[arg-type]
+        elif name == "quit":
+            self.world.end_simulation()
+            self._drain_events()
+            self.overlay = "debrief"
+        elif name == "transfer":
+            self._transfer(int(val))  # type: ignore[call-overload]
+        elif name == "key":
+            self._key_binding(val)  # type: ignore[arg-type]
+
+    def _chart(self, opts: dict[str, object]) -> None:
+        show = True
+        if "auto" in opts:
+            self.chart_auto = bool(opts["auto"])
+            if not self.chart_auto:
+                if self.printout_cmd == "\0chart":
+                    self.printout = None
+                self._log("Chart display off.", theme.TEXT_DIM)
+                return
+        if "sort" in opts:
+            self.chart_sort = str(opts["sort"])
+        if "all" in opts:
+            self.chart_all = True
+            self.chart_hidden.clear()
+        if "include" in opts:
+            self.chart_hidden.discard(int(opts["include"]))  # type: ignore[call-overload]
+        if "exclude" in opts:
+            self.chart_hidden.add(int(opts["exclude"]))  # type: ignore[call-overload]
+            self.chart_all = False
+        if "origin" in opts:
+            self.chart_origin = int(opts["origin"])  # type: ignore[call-overload]
+        elif "show" in opts:
+            self.chart_origin = None
+        if show:
+            self._show(self._chart_lines(), None)
+            self.printout_cmd = "\0chart"
+
+    def _transfer(self, sid: int) -> None:
+        reason = self.battle.transfer_command(sid)
+        if reason is not None:
+            self._log(reason, theme.CAUTION)
+            self.toast = (reason, theme.CAUTION, 3.0)
+            return
+        self.player_id = sid
+        self.cam.follow = sid
+        self.obs = self.world.observe(self.side)
+        p = self.player
+        self._log(f"You beam aboard the {p.name if p else 'ship'} and take command.", theme.GOOD)
+
+    def _key_binding(self, val: tuple[str, str] | None) -> None:
+        if val is None:
+            if not self.keys:
+                self._log("No keys defined. e.g. 'key F5 fire all phasers 10'.", theme.TEXT_DIM)
+            for k, v in sorted(self.keys.items()):
+                self._log(f"{k:<4} {v}", theme.TEXT, mono=True)
+            return
+        name, text = val
+        if text:
+            self.keys[name] = text
+            self._log(f"{name} = {text}", theme.TEXT_DIM)
+        else:
+            self.keys.pop(name, None)
+            self._log(f"{name} cleared.", theme.TEXT_DIM)
+
+    def run_key(self, name: str) -> bool:
+        text = self.keys.get(name)
+        if not text:
+            return False
+        self.run_console(text)
+        return True
 
     def _status_report(self) -> None:
         p = self.player
@@ -488,6 +635,7 @@ class BattleScene:
                        p.target if p else None, p.target_subsystem if p else None)
         self.ui.add(self.map_rect, lambda: None)
         self._map_overlay_text(surf)
+        self._draw_printout(surf)
         self._bottom(surf)
         self._column(surf)
         if self.overlay:
@@ -513,6 +661,27 @@ class BattleScene:
         theme.text(surf, f"range {self.display_range():,.0f}  ·  F1 controls", (r.right - 14, r.y + 28), theme.TEXT_FAINT,
                    11, anchor="topright")
 
+    def _draw_printout(self, surf: pygame.Surface) -> None:
+        """The latest Begin text display, in the map's lower-left corner."""
+        if not self.printout:
+            return
+        lines = self.printout[:30]
+        size = 12
+        lh = 15
+        w = min(self.map_rect.width - 24, max(theme.text_width(t, size, "mono") for t in lines) + 24)
+        h = lh * len(lines) + 30
+        r = pygame.Rect(self.map_rect.x + 12, self.map_rect.bottom - h - 12, w, h)
+        panel = pygame.Surface(r.size, pygame.SRCALPHA)
+        panel.fill((*theme.BG_PANEL, 228))
+        surf.blit(panel, r)
+        pygame.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=4)
+        y = r.y + 8
+        for t in lines:
+            theme.text(surf, t, (r.x + 12, y), theme.TEXT, size, "mono")
+            y += lh
+        theme.text(surf, "Esc closes" + (" · live" if self.printout_cmd else ""), (r.right - 10, r.bottom - 17),
+                   theme.TEXT_FAINT, 10, anchor="topright")
+
     def _bottom(self, surf: pygame.Surface) -> None:
         r = self.bottom_rect
         pygame.draw.rect(surf, theme.BG_PANEL, r, border_radius=4)
@@ -532,8 +701,13 @@ class BattleScene:
         # log
         lines_area = pygame.Rect(r.x + 10, r.y + 40, r.width - 20, r.height - 76)
         n = lines_area.height // 16
-        for i, line in enumerate(self.log[-n:]):
-            theme.text(surf, line.text[:160], (lines_area.x, lines_area.y + i * 16), line.color, 12)
+        end = len(self.log) - self.log_scroll
+        for i, line in enumerate(self.log[max(0, end - n):end]):
+            theme.text(surf, line.text[:160], (lines_area.x, lines_area.y + i * 16), line.color, 12,
+                       "mono" if line.mono else "ui")
+        if self.log_scroll:
+            theme.text(surf, f"↑ {self.log_scroll} older · wheel to scroll", (lines_area.right, lines_area.y),
+                       theme.TEXT_FAINT, 11, anchor="topright")
         # console
         self.console_rect = pygame.Rect(r.x + 8, r.bottom - 32, r.width - 16, 26)
         pygame.draw.rect(surf, theme.BG_INPUT, self.console_rect, border_radius=3)

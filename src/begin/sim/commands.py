@@ -505,13 +505,28 @@ class ConfigureAutoload(Command):
 
 @dataclass(kw_only=True)
 class LoadTubes(Command):
-    """Manually start loading (used when autoload is off) or unload."""
+    """Manually start loading (used when autoload is off) or unload tubes; `weapon="launcher"` for probe launchers."""
 
     tubes: tuple[int, ...] | None = None
     unload: bool = False
+    weapon: str = "tube"
     name: ClassVar[str] = "load tubes"
 
     def apply(self, world: World, ship: Ship) -> None:
+        if self.weapon == "launcher":
+            for i in _indices(ship.launchers, self.tubes):
+                lch = ship.launchers[i]
+                if self.unload:
+                    if lch.loaded is not None:
+                        ship.probes_remaining += 1
+                    lch.loaded = None
+                    lch.prep = 0.0
+                    lch.autoload = False  # launchers stay empty until loaded again (manual p. 18)
+                    lch.manual_load_pending = False
+                else:
+                    lch.autoload = True
+                    lch.manual_load_pending = True
+            return
         for i in _indices(ship.tubes, self.tubes):
             t = ship.tubes[i]
             if self.unload:
@@ -522,6 +537,31 @@ class LoadTubes(Command):
                 t.manual_load_pending = False
             else:
                 t.manual_load_pending = True
+
+    def describe(self) -> str:
+        what = "launchers" if self.weapon == "launcher" else "tubes"
+        return f"{'unload' if self.unload else 'load'} {what}"
+
+
+@dataclass(kw_only=True)
+class SetTubes(Command):
+    """Enable or disable torpedo tube charging (manual p. 16)."""
+
+    tubes: tuple[int, ...] | None = None
+    enabled: bool = True
+    name: ClassVar[str] = "tubes"
+    needs_crew: ClassVar[bool] = False
+
+    def validate(self, world: World, ship: Ship) -> None:
+        if not ship.tubes:
+            raise Rejected(f"The {ship.cls.name} has no torpedo tubes.")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        for i in _indices(ship.tubes, self.tubes):
+            ship.tubes[i].enabled = self.enabled
+
+    def describe(self) -> str:
+        return f"{'enable' if self.enabled else 'disable'} tubes"
 
 
 # ------------------------------------------------------------------ probes
@@ -872,27 +912,74 @@ class Transport(Command):
 
 @dataclass(kw_only=True)
 class AllyOrder(Command):
-    """Captain's order to an ally ship (Begin's `tell <ally> ...`)."""
+    """Captain's order to an ally ship (Begin's `tell <ally> ...`); see `allies.py` for the vocabulary."""
 
     ally: int
     order: str
     target: int | None = None
     value: float | None = None
-    args: dict[str, float] = field(default_factory=dict)
+    destination: int | None = None
     name: ClassVar[str] = "tell"
     needs_crew: ClassVar[bool] = False
 
     def validate(self, world: World, ship: Ship) -> None:
+        from .allies import ORDER_WORDS, SHIP_ORDERS
+
         a = world.ships.get(self.ally)
         if a is None or not a.alive:
             raise Rejected("That ally is not available.")
         if a.side != ship.side:
             raise Rejected(f"{a.name} is not under your command.")
+        if a.id == ship.id:
+            raise Rejected("Give your own ship orders directly.")
+        o = self.order
+        if o not in ORDER_WORDS:
+            raise Rejected(f"Unknown order '{o}'.")
+        need = SHIP_ORDERS.get(o, "none")
+        if need != "none" and self.target is None:
+            raise Rejected(f"'{o}' needs a ship.")
         if self.target is not None:
-            _require_target(world, ship, self.target)
+            t = world.ships.get(self.target)
+            if t is None or not t.exists:
+                raise Rejected("That ship no longer exists.")
+            if t.id == a.id:
+                raise Rejected(f"{a.name} cannot {o} itself.")
+            if need is True and t.side == a.side:
+                raise Rejected(f"{t.name} is one of ours.")
+            if need is False and t.side != a.side:
+                raise Rejected(f"{t.name} is not one of ours.")
+            if t.side != a.side and world.apparent_position(ship.side, t.id) is None:
+                raise Rejected("No sensor contact with that ship.")
+        if o == "phaser" and not any(b.intact for b in a.banks):
+            raise Rejected(f"{a.name}: we have no working phasers.")
+        if o == "torpedo" and not any(t.intact for t in a.tubes):
+            raise Rejected(f"{a.name}: we have no working torpedo tubes.")
+        if o == "probe" and not any(lch.intact for lch in a.launchers):
+            raise Rejected(f"{a.name}: we have no working probe launchers.")
+        if o in ("course",) and self.value is None:
+            raise Rejected("Hold which course?")
+        if o == "join" and (self.value is None or self.value < 1):
+            raise Rejected("Join which group (1 or more)?")
+        if o in ("recover", "eject") and a.cls.mass_capacity <= 0:
+            raise Rejected(f"{a.name} has no docking bays.")
+        if o == "dock" and self.target is not None and world.ships[self.target].cls.mass_capacity <= 0:
+            raise Rejected(f"{world.ships[self.target].name} has no docking bays.")
+        if o == "eject" and self.target is not None and world.ships[self.target].docked_to != a.id:
+            raise Rejected(f"{world.ships[self.target].name} is not docked with {a.name}.")
+        if o in ("tow", "tractor") and (a.tractor is None or not a.tractor.intact):
+            raise Rejected(f"{a.name}: our tractor beam is not working.")
+        if o == "tow" and self.destination is None:
+            raise Rejected("Tow it where? 'tell <ally> tow <ship> <destination ship>'.")
+        if o == "board" and not any(not x.destroyed for x in a.transporters):
+            raise Rejected(f"{a.name}: our transporters are down.")
+        if o == "undock" and a.docked_to is None:
+            raise Rejected(f"{a.name} is not docked.")
 
     def apply(self, world: World, ship: Ship) -> None:
         world.deliver_order(ship, self)
+
+    def describe(self) -> str:
+        return f"tell {self.order}"
 
 
 def in_mount_arc(ship: Ship, mount_center: float, mount_width: float, world_bearing: float) -> bool:

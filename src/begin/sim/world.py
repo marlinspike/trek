@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Iterable, Protocol
 
 from ..content.schema import ContentDB
 from ..core.rng import Rng
+from .allies import MOVEMENT_ORDERS, WEAPON_ORDERS, AllyStanding
 from .commands import AllyOrder, Authority, Command, Rejected
 from .events import CommandRejected, Event, Message, ShipStatusChanged, SubsystemDamaged, Tone
 from .factory import build_ship
@@ -99,7 +100,7 @@ class World:
     events: list[Event] = field(default_factory=list)          # since last take_events()
     step_events: list[Event] = field(default_factory=list)     # produced by the last step
     command_log: list[LoggedCommand] = field(default_factory=list)
-    ally_orders: dict[int, AllyOrder] = field(default_factory=dict)
+    ally_orders: dict[int, AllyStanding] = field(default_factory=dict)
     torpedo_pressure: dict[int, float] = field(default_factory=dict)
     side_names: dict[int, str] = field(default_factory=dict)
 
@@ -497,10 +498,92 @@ class World:
             target.boarder_side = ship.side
             self.say(ship, f"Boarding party of {n} beamed aboard {target.name}.", "alert", public=True)
 
+    def standing(self, ship_id: int) -> AllyStanding:
+        return self.ally_orders.setdefault(ship_id, AllyStanding())
+
     def deliver_order(self, ship: Ship, order: AllyOrder) -> None:
+        """Apply a `tell` order to the ally's standing orders and have the ally acknowledge it [R + E]."""
         ally = self.ships[order.ally]
-        self.ally_orders[ally.id] = order
-        self.say(ally, f"{ally.name} acknowledges: {order.order}.", "info", speaker=ally.captain or ally.name)
+        st = self.standing(ally.id)
+        st.issued = self.tick
+        o = order.order
+        tname = self.ships[order.target].name if order.target is not None else ""
+        reply = ""
+        if o in MOVEMENT_ORDERS:
+            st.movement = o
+            st.move_target = order.target
+            st.move_value = order.value
+            st.destination = order.destination
+            st.party = int(order.value) if o == "board" and order.value is not None else 0
+            if o == "board" and not st.party:
+                st.party = max(6, int(ally.crew * 0.25))
+            if o == "defend":
+                st.target = None
+            reply = {
+                "escort": f"Escorting {tname}" + (f" at {order.value:,.0f}" if order.value else "") + ".",
+                "course": f"Holding course {order.value:.0f}." if order.value is not None else "",
+                "run": "Running from the enemy.",
+                "withdraw": "Withdrawing out of torpedo range.",
+                "approach": f"Approaching {tname}" + (f" to {order.value:,.0f}" if order.value else "") + ".",
+                "defend": f"Defending {tname}.",
+                "dock": f"Docking with {tname}.",
+                "tractor": f"Moving to put a tractor beam on {tname}.",
+                "tow": f"Towing {tname} to {self.ships[order.destination].name if order.destination else '?'}.",
+                "board": f"Closing to board {tname} with {st.party} crew.",
+                "stop": "All stop.",
+            }[o]
+        elif o == "attack":
+            st.movement = None
+            st.move_target = None
+            st.target = order.target
+            reply = f"Attacking {tname}."
+        elif o == "target":
+            st.target = order.target
+            reply = f"Targeting {tname}."
+        elif o == "disengage":
+            st.target = None
+            reply = "Selecting our own targets."
+        elif o == "cancel":
+            st.movement = None
+            st.move_target = None
+            reply = "Movement orders cancelled."
+        elif o == "hold":
+            st.hold_fire = True
+            reply = "Holding fire."
+        elif o == "open":
+            st.hold_fire = False
+            reply = "Weapons free."
+        elif o in WEAPON_ORDERS:
+            st.weapon = o
+            if order.target is not None:
+                st.target = order.target
+            reply = f"Favouring {o}s" + (f" against {tname}" if tname else "") + "."
+        elif o == "release":
+            ally.tractor_target = None
+            if st.movement in ("tractor", "tow"):
+                st.movement = None
+            reply = "Tractor beam released."
+        elif o == "undock":
+            ally.docked_to = None
+            if st.movement == "dock":
+                st.movement = None
+            reply = "Undocking."
+        elif o == "join":
+            st.group = int(order.value or 0)
+            reply = f"Joining group {st.group}."
+        elif o == "leave":
+            st.group = None
+            reply = "Leaving the group."
+        elif o == "recover":
+            st.recover = order.target
+            reply = f"Standing by to recover {tname}."
+        elif o == "eject":
+            if order.target is not None:
+                self.ships[order.target].docked_to = None
+            reply = f"{tname} released from the docking bay."
+        elif o == "report":
+            reply = "Report transmitted."
+        self.say(ally, reply or f"Acknowledged: {o}.", "info", speaker=ally.name)
 
     # ------------------------------------------------------------ per-tick specials
 
@@ -578,7 +661,8 @@ class World:
     def _escapes(self, dt: float) -> None:
         r = self.rules
         for s in self.ships.values():
-            if not s.alive:
+            if not s.alive or s.cls.is_base or s.docked_to is not None:
+                s.escape_time = 0.0  # bases can't leave, and a docked ship goes where its base goes
                 continue
             enemies = [e for e in self.ships.values() if e.alive and e.side != s.side]
             if not enemies:
@@ -608,6 +692,17 @@ class World:
             o.winner = None
             o.reason = "No combatants remain."
         self.emit(Message(self.tick, f"Battle over: {o.reason}", Tone.INFO))
+
+    def end_simulation(self, reason: str = "Simulation ended by the captain.") -> None:
+        """Begin's `quit`: stop at the end of the current cycle and go to the evaluation."""
+        if self.outcome.over:
+            return
+        o = self.outcome
+        o.over = True
+        o.tick = self.tick
+        o.winner = None
+        o.reason = reason
+        self.emit(Message(self.tick, reason, Tone.INFO))
 
     # ------------------------------------------------------------ queries
 

@@ -21,6 +21,7 @@ class Settings:
     custom: dict[str, object] = field(default_factory=dict)
     llm: dict[str, object] = field(default_factory=dict)       # provider settings (no secrets: keys come from env)
     hidden: dict[str, object] = field(default_factory=dict)    # the game's own hidden state
+    keys: dict[str, str] = field(default_factory=dict)         # Begin 2.0 `key` macros: "F5" -> "fire all phasers 10"
 
     @staticmethod
     def path() -> Path:
@@ -36,6 +37,7 @@ class Settings:
         for k, v in data.items():
             if hasattr(s, k):
                 setattr(s, k, tuple(v) if k == "window" else v)
+        s.keys.update(read_key_file(settings_dir() / "begin2.key"))
         return s
 
     def save(self) -> None:
@@ -47,4 +49,19 @@ class Settings:
             pass
 
 
-__all__ = ["Settings", "settings_dir"]
+def read_key_file(path: Path) -> dict[str, str]:
+    """Begin 2.0 read Begin2.key at startup: one `<key> <string>` definition per line, without the word Key."""
+    out: dict[str, str] = {}
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        parts = line.strip().split(None, 1)
+        if len(parts) == 2 and not parts[0].startswith("#"):
+            name = parts[0].upper() if parts[0].lower().startswith("f") else parts[0].lower()
+            out[name] = parts[1]
+    return out
+
+
+__all__ = ["Settings", "read_key_file", "settings_dir"]

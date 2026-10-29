@@ -45,8 +45,11 @@ Press **F1** in battle for the full controls list. The essentials:
 - In the weapons panel, the **Mode** button switches a weapon group between Manual, Assisted and Automatic. The **PD** button sets the point-defense doctrine. Right-click a phaser bank to reserve it for point defense.
 
 **Console**
-- Press **Enter** to open a Begin-style console. It accepts long forms (`fire phasers 1 2 spread 10`), terse forms (`fp 1 2 s 10`, `al tor al mk7 400`) and readable variants (`autoload all torpedo tubes with mk8 prox 400`).
-- Type `help` for the full list.
+- Press **Enter** to open a Begin-style console. Every command in the Begin manual works in its documented forms, for example `fire phasers 1 2 3 spread 10`, `lock all tubes on bluefin with a dispersion of 45`, `load launchers 1 prox 500 time 20`, `tell the agena to attack the zantha` and `order terra escort altair at 5000`.
+- As in Begin, any word can be shortened to a unique prefix, so `fir tor al` fires all torpedoes and `fir tor 1,2,3` fires tubes 1 to 3. Filler words such as "the", "to", "at" and "on" are ignored.
+- The status commands (`report`, `damage`, `banks`, `tubes`, `launchers`, `status probes`, `shields`, `fleet`, `chart`, `computer ...`) print Begin's text displays. The latest one stays in the map's lower-left corner and refreshes live until you press **Esc**.
+- `beam <ally>` moves you to an ally ship within 3,000 units, `quit` ends the simulation, and `key F5 <commands>` binds a key to one or more commands separated by `;`.
+- The remake adds `autoload`, `mode`, `pd`, `role`, `target <ship> <subsystem>`, `pause`, `resume` and `time`. Type `help` for the full list.
 
 ## Project layout
 

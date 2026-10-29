@@ -73,27 +73,57 @@ def dim(c: Color, f: float) -> Color:
     return (int(c[0] * f), int(c[1] * f), int(c[2] * f))
 
 
+_FONT_FILES = {
+    ("ui", "regular"): "Inter-Regular.ttf",
+    ("ui", "medium"): "Inter-Medium.ttf",
+    ("ui", "semibold"): "Inter-SemiBold.ttf",
+    ("mono", "regular"): "JetBrainsMono-Regular.ttf",
+    ("mono", "medium"): "JetBrainsMono-Medium.ttf",
+}
+
+
+def _usable(f: pygame.font.Font) -> bool:
+    """Some SDL_ttf/FreeType builds load a font but measure every glyph as zero width."""
+    try:
+        return f.size("Ag")[0] > 0 and f.render("Ag", True, TEXT).get_width() > 0
+    except pygame.error:
+        return False
+
+
+@lru_cache(maxsize=64)
+def _fallback(size: int) -> pygame.font.Font:
+    return pygame.font.Font(None, int(size * 1.3))
+
+
 @lru_cache(maxsize=64)
 def font(size: int, family: str = "ui", weight: str = "regular") -> pygame.font.Font:
     """Bundled fonts (Inter for UI, JetBrains Mono for figures), falling back to pygame's default."""
-    files = {
-        ("ui", "regular"): "Inter-Regular.otf",
-        ("ui", "medium"): "Inter-Medium.otf",
-        ("ui", "semibold"): "Inter-SemiBold.otf",
-        ("mono", "regular"): "JetBrainsMono-Regular.ttf",
-        ("mono", "medium"): "JetBrainsMono-Medium.ttf",
-    }
-    name = files.get((family, weight)) or files[(family, "regular")]
-    path = FONT_DIR / name
+    name = _FONT_FILES.get((family, weight)) or _FONT_FILES[(family, "regular")]
     try:
-        return pygame.font.Font(str(path), size)
-    except (OSError, FileNotFoundError):
-        return pygame.font.Font(None, int(size * 1.3))
+        f = pygame.font.Font(str(FONT_DIR / name), size)
+        if _usable(f):
+            return f
+    except (OSError, pygame.error):
+        pass
+    return _fallback(size)
+
+
+def render(s: str, color: Color, size: int = 14, family: str = "ui", weight: str = "regular") -> pygame.Surface:
+    """Render a line of text, never raising: a string the font can't measure falls back to the default font."""
+    f = font(size, family, weight)
+    try:
+        return f.render(s, True, color)
+    except pygame.error:
+        pass
+    try:
+        return _fallback(size).render(s, True, color)
+    except pygame.error:
+        return pygame.Surface((0, f.get_height()), pygame.SRCALPHA)
 
 
 def text(surf: pygame.Surface, s: str, pos: tuple[float, float], color: Color = TEXT, size: int = 14,
          family: str = "ui", weight: str = "regular", anchor: str = "topleft") -> pygame.Rect:
-    img = font(size, family, weight).render(s, True, color)
+    img = render(s, color, size, family, weight)
     r = img.get_rect()
     setattr(r, anchor, (int(pos[0]), int(pos[1])))
     surf.blit(img, r)
@@ -101,7 +131,10 @@ def text(surf: pygame.Surface, s: str, pos: tuple[float, float], color: Color = 
 
 
 def text_width(s: str, size: int = 14, family: str = "ui", weight: str = "regular") -> int:
-    return font(size, family, weight).size(s)[0]
+    try:
+        return font(size, family, weight).size(s)[0]
+    except pygame.error:
+        return _fallback(size).size(s)[0]
 
 
 def bar(surf: pygame.Surface, rect: pygame.Rect, frac: float, color: Color, bg: Color = (24, 36, 60)) -> None:
@@ -124,4 +157,4 @@ def panel(surf: pygame.Surface, rect: pygame.Rect, title: str | None = None, acc
     return rect.y + 8
 
 
-__all__ = [n for n in dir() if n.isupper()] + ["bar", "dim", "font", "health_color", "mix", "panel", "text", "text_width"]
+__all__ = [n for n in dir() if n.isupper()] + ["bar", "dim", "font", "health_color", "mix", "panel", "render", "text", "text_width"]

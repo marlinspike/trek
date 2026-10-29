@@ -63,6 +63,40 @@ class Battle:
     captains: dict[int, AICaptain]
     computers: dict[int, ShipComputer]
 
+    def transfer_command(self, new_id: int) -> str | None:
+        """Begin's `beam <ally>`: the player moves to a functional ally within transporter range.
+
+        The ally's captain steps aside and a captain takes over the ship the player left.
+        Returns a reason when the transfer is not possible.
+        """
+        w = self.world
+        old = w.ships.get(self.player_ship_id) if self.player_ship_id is not None else None
+        new = w.ships.get(new_id)
+        if new is None or not new.alive or new.crew <= 0:
+            return "That ship cannot take you aboard."
+        if old is not None and new.side != old.side:
+            return f"{new.name} is not one of ours."
+        if old is not None and new.id == old.id:
+            return "You are already aboard."
+        if old is not None and old.exists:
+            d = math.hypot(new.x - old.x, new.y - old.y)
+            if d > w.rules.beam_range:
+                return f"{new.name} is out of transporter range ({d:,.0f} > {w.rules.beam_range:,.0f})."
+            if not any(not t.destroyed for t in old.transporters) and not any(not t.destroyed for t in new.transporters):
+                return "No working transporters."
+        cap = self.captains.pop(new.id, None)
+        if cap is not None and cap in w.controllers:
+            w.controllers.remove(cap)
+        w.ally_orders.pop(new.id, None)
+        if old is not None and old.alive and old.crew > 0:
+            faction = w.content.factions[old.faction]
+            prng = w.rng.derive(f"captain:{old.id}:{w.tick}")
+            c = AICaptain(old.id, old.side, Personality.roll(faction, prng), prng, phase=old.id % 2)
+            self.captains[old.id] = c
+            w.add_controller(c)
+        self.player_ship_id = new.id
+        return None
+
 
 def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
     total = sum(len(f.ships) for f in setup.fleets)

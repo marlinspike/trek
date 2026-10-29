@@ -21,7 +21,7 @@ from .ship import Ship
 from .systems.sensors import ScanRecord
 
 if TYPE_CHECKING:
-    from .commands import AllyOrder
+    from .allies import AllyStanding
     from .world import World
 
 
@@ -62,6 +62,7 @@ class OrdnanceView:
     prox: float                 # own ordnance exact, hostile estimated from type
     target: int | None          # own ordnance only
     code: str = ""
+    fuse: float = 0.0           # own ordnance: cycles until the time fuse expires
 
 
 class Observation:
@@ -87,8 +88,12 @@ class Observation:
         s = self._w.ships.get(ship_id)
         return s if s is not None and s.side == self.side else None
 
-    def ally_order(self, ship_id: int) -> AllyOrder | None:
+    def ally_order(self, ship_id: int) -> AllyStanding | None:
+        """Standing orders the flagship has given one of our ships."""
         return self._w.ally_orders.get(ship_id)
+
+    def side_name(self, side: int | None) -> str:
+        return self._w.side_names.get(side, "?") if side is not None else "?"
 
     def holds(self, ship_id: int) -> dict[str, float]:
         return self._w.holds(ship_id)
@@ -158,7 +163,7 @@ class Observation:
                 out.append(OrdnanceView(
                     p.id, "probe", mine, p.owner if mine else None, p.x, p.y, p.course, p.spec.velocity * upw,
                     p.armed, p.spec.damage, p.prox if mine else p.spec.max_prox, p.target if mine else None,
-                    p.code if mine else "",
+                    p.code if mine else "", p.fuse if mine else 0.0,
                 ))
             self._ordnance = out
         return self._ordnance

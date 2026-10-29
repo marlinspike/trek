@@ -21,6 +21,7 @@ def scene(content):  # type: ignore[no-untyped-def]
     from begin.ui import theme
 
     theme.font.cache_clear()  # fonts must belong to the live pygame session
+    theme._fallback.cache_clear()
     surf = pygame.display.set_mode((1400, 860))
     b = build_battle(content, load_presets()[0].setup())
     sc = BattleScene(b, surf.get_size(), lambda: None)
@@ -45,3 +46,38 @@ def test_console_orders_reach_the_ship(scene) -> None:  # type: ignore[no-untype
         sc.update(1 / 60)
     sc.draw(surf)
     assert sc.world.tick > 0
+
+
+def test_text_never_raises_on_unrenderable_strings(scene):
+    _, surf = scene
+    from begin.ui import theme
+
+    for s in ("", "Orders also work while paused.", "​", "▶ Run ❚❚"):
+        r = theme.text(surf, s, (10, 10), theme.TEXT_FAINT, 11)
+        assert r.height >= 0
+
+
+def test_bundled_fonts_render():
+    import pygame
+    from begin.ui import theme
+
+    pygame.font.init()
+    theme.font.cache_clear()
+    for (family, weight) in theme._FONT_FILES:
+        assert (theme.FONT_DIR / theme._FONT_FILES[(family, weight)]).exists()
+        assert theme.text_width("Orders also work while paused.", 11, family, weight) > 0
+
+
+def test_console_displays_chart_keys_and_quit(scene):  # type: ignore[no-untyped-def]
+    sc, surf = scene
+    sc.run_console("status banks")
+    assert sc.printout is not None and sc.printout[0] == "BANK STATUS:"
+    sc.run_console("chart by distance")
+    assert sc.printout is not None and "WARP COURSE" in sc.printout[0]
+    sc.run_console("key F5 fire all phasers 10; status tubes")
+    assert sc.keys["F5"] == "fire all phasers 10; status tubes"
+    assert sc.run_key("F5")
+    assert sc.printout is not None and sc.printout[0] == "TUBE STATUS:"
+    sc.draw(surf)  # the printout renders
+    sc.run_console("quit")
+    assert sc.world.outcome.over and sc.overlay == "debrief"

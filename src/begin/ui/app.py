@@ -40,7 +40,7 @@ class App:
 
     def start_battle(self, setup: BattleSetup) -> BattleScene:
         battle = build_battle(self.content, setup)
-        scene = BattleScene(battle, self.screen.get_size(), self.back_to_menu)
+        scene = BattleScene(battle, self.screen.get_size(), self.back_to_menu, keys=self.settings.keys)
         scene.speed = float(self.settings.speed) if float(self.settings.speed) in (0.25, 0.5, 1.0, 2.0, 4.0) else 1.0
         self.scene = scene
         return scene
