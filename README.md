@@ -12,6 +12,8 @@ begin                      # or: python -m begin
 
 You need Python 3.10 or newer. macOS's system `python3` is 3.9, which is too old, so install a newer Python first (for example from python.org or with `brew install python`) and create the venv with it. On 3.10, `tomli` is installed automatically. Any Python version with a pygame-ce wheel works.
 
+If `begin` works but `python -m begin` says `No module named begin`, the venv's `python` link points at a different Python from the one the game was installed into. That happens when a venv first made with macOS's Python 3.9 is upgraded in place. Check with `ls -l .venv/bin/python*`, then rebuild the venv with the newer Python (`python3.15 -m venv --clear .venv`, then reinstall), or just use the `begin` command.
+
 Useful shortcuts:
 
 | Command | What it does |
@@ -20,6 +22,9 @@ Useful shortcuts:
 | `begin --quick 42` | Starts seeded quick battle number 42. |
 | `begin --preset fleet-action --cycles 30 --screenshot shot.png` | Simulates 30 cycles headlessly and saves a screenshot. |
 | `begin --tournament 20` | Runs 20 headless AI-versus-AI battles and prints a balance summary. |
+| `begin --balance 8` | Fights every preset 8 times with AI captains on both sides and prints win rates. |
+| `begin --llm provider=ollama model=lfm3 think=off` | Saves the officers' language model settings. |
+| `begin --llm-test` | Asks Spock one question through that model and prints the answer and timing. |
 | `pytest` | Runs the test suite. |
 
 ## Playing
@@ -67,7 +72,7 @@ Press **F1** in battle for the full controls list, or **H** for the manual. The 
 **Bridge officers**
 - Four officers can run stations for you: Spock (helm), Worf (tactical), Scott (engineering) and Seven of Nine (science). `delegate tactical` (or `delegate all`) hands a station over, `assume tactical` takes it back, and the Crew tab has a toggle for each. Your own orders always override an officer for a few seconds, and officers never pick a different target from yours, retreat, surrender or self-destruct.
 - Talk to them by name: `spock, what do you recommend?`, `worf, fire all torpedoes`, `scotty, take engineering`, `ask seven status`. Each officer only acts for their own stations. They comment on the battle as it happens (`crew chatter off` quiets them), and they remember how you treat them.
-- Officers answer offline from the battle state. To have them answer in their own words, set an LLM provider (Anthropic, OpenAI, OpenRouter or a local Ollama), for example `python -m begin --llm provider=ollama model=lfm3 think=off`, then check it with `python -m begin --llm-test`. `think` turns a local model's thinking on or off. See the manual's "Officers and language models" page. API keys come only from environment variables.
+- Officers answer offline from the battle state. To have them answer in their own words, set an LLM provider (Anthropic, OpenAI, OpenRouter or a local Ollama), for example `begin --llm provider=ollama model=lfm3 think=off`, then check it with `begin --llm-test`. `think` turns a local model's thinking on or off. See the manual's "Officers and language models" page. API keys come only from environment variables.
 
 ## Project layout
 

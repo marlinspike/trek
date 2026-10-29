@@ -15,8 +15,8 @@ Requests run in the background, so a slow or failing model never stalls the batt
 The quickest way is from a terminal, which saves the `llm` section of `~/.begin-remake/settings.json` for you and then asks Spock one question to prove it works:
 
 ```
-python -m begin --llm provider=ollama model=lfm3 think=off
-python -m begin --llm-test
+begin --llm provider=ollama model=lfm3 think=off
+begin --llm-test
 ```
 
 `--llm-test` prints the provider, the model, whether thinking is on, how long the answer took, the raw reply, and what Spock would say. `--llm provider=off` switches the model off again, and `--llm think=` (nothing after the `=`) removes a setting.
