@@ -159,3 +159,25 @@ def test_boarding_party_default(starbase) -> None:  # type: ignore[no-untyped-de
     assert 6 <= n <= max(6, p.cls.beam_cap * max(1, len(p.transporters)))
     p.crew = 10
     assert p.boarding_party() == 6
+
+
+def test_target_panel_lists_every_contact_on_sensors(starbase) -> None:  # type: ignore[no-untyped-def]
+    """With no target the Target box lists each visible contact; a click targets it, and the rest stay one click away."""
+    sc, surf = starbase
+    p = sc.player
+    assert p is not None
+    sc.world.run(1)
+    sc.obs = sc.world.observe(sc.side)
+    seen = [c for c in sc.obs.contacts().values() if c.visible]
+    assert len(seen) >= 2 and p.target is None
+    sc.draw(surf)
+    rows = [h for h in sc.ui.hotspots if h.tooltip.startswith("Target ")]
+    assert len(rows) >= min(len(seen), 5)   # as many as fit, nearest first; the rest are a Tab away
+    names = {c.label for c in seen}
+    assert all(h.tooltip.removeprefix("Target ") in names for h in rows)
+    rows[0].action()
+    sc.obs = sc.world.observe(sc.side)
+    assert p.target is not None
+    sc.draw(surf)
+    switch = [h for h in sc.ui.hotspots if h.tooltip.startswith("Switch target to")]
+    assert len(switch) >= 1

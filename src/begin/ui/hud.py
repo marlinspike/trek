@@ -27,6 +27,7 @@ from .hulls import draw_hull, transform
 
 if TYPE_CHECKING:
     from .battle_scene import BattleScene
+    from ..sim.observation import ContactView
 
 MODE_LETTER = {FireMode.MANUAL: "M", FireMode.ASSISTED: "A", FireMode.AUTOMATIC: "★"}
 MODE_CYCLE = [FireMode.MANUAL, FireMode.ASSISTED, FireMode.AUTOMATIC]
@@ -179,7 +180,7 @@ class TargetPanel(Panel):
         tid = ship.target if ship else None
         c = obs.contact(tid) if tid is not None else None
         if ship is None or c is None:
-            theme.text(surf, "No target. Click a contact, or press Tab.", (rect.x + 12, y), theme.TEXT_DIM, 13)
+            self._contact_list(surf, rect, y, hud)
             return
         col = theme.HOSTILE if c.identified else theme.UNKNOWN
         theme.text(surf, c.label if c.identified else f"Unidentified contact #{c.id}", (rect.x + 12, y - 2), col, 16,
@@ -226,6 +227,7 @@ class TargetPanel(Panel):
         hud.ui.button(surf, pygame.Rect(rect.x + 12, yy, 92, 22), label,
                       lambda: hud.issue(Scan(ship_id=ship.id, target=c.id)), "Detailed sensor scan", enabled=pend is None)
         self._close_actions(surf, rect, yy + 50, hud, ship, c.id, d)
+        self._switch_row(surf, rect, hud, c.id, y - 4)
         sc = c.scan
         if sc is None:
             theme.text(surf, "No scan data.", (rect.x + 114, yy + 4), theme.TEXT_FAINT, 12)
@@ -240,6 +242,58 @@ class TargetPanel(Panel):
                          f"tubes {sc.loaded_tubes}  ({age:.0f}s old, {sc.confidence * 100:.0f}% conf.)",
                    (rect.x + 12, yy + 28), theme.TEXT_DIM, 11)
         hud.ui.add(pygame.Rect(rect.x, yy - 2, rect.width, 44), lambda: hud.toggle_overlay("scan"), "Open scan view")
+
+    @staticmethod
+    def _sensed(hud: BattleScene) -> list[ContactView]:
+        """Every contact the sensors can see now, nearest first."""
+        p = hud.player
+        if p is None:
+            return []
+        return sorted((c for c in hud.obs.contacts().values() if c.visible), key=lambda c: c.distance_to(p.x, p.y))
+
+    def _contact_list(self, surf: pygame.Surface, rect: pygame.Rect, y: int, hud: BattleScene) -> None:
+        """No target yet: list everything on sensors, each row selects it."""
+        p = hud.player
+        cs = self._sensed(hud)
+        if p is None or not cs:
+            theme.text(surf, "No target, and nothing on sensors.", (rect.x + 12, y), theme.TEXT_DIM, 13)
+            return
+        theme.text(surf, "No target. Choose one (or click it on the map, or press Tab):", (rect.x + 12, y),
+                   theme.TEXT_DIM, 12)
+        yy = y + 20
+        for c in cs:
+            if yy + 24 > rect.bottom - 6:
+                theme.text(surf, f"… and {len(cs) - cs.index(c)} more (Tab cycles through all)", (rect.x + 12, yy),
+                           theme.TEXT_FAINT, 11)
+                break
+            name = c.label if c.identified else f"Unidentified #{c.id}"
+            d = c.distance_to(p.x, p.y)
+            brg = bearing(c.x - p.x, c.y - p.y)
+            what = c.cls.name if c.cls is not None else "unknown class"
+            text = f"{name}  ·  {what}  ·  {d:,.0f}  ·  bearing {brg:03.0f}" + ("  ·  hazy" if c.haze > 0 else "")
+            hud.ui.button(surf, pygame.Rect(rect.x + 12, yy, rect.width - 24, 22), text,
+                          partial(hud.issue, SelectTarget(ship_id=p.id, target=c.id, subsystem=p.target_subsystem)),
+                          f"Target {name}", accent=theme.HOSTILE if c.identified else theme.UNKNOWN, size=12)
+            yy += 26
+
+    def _switch_row(self, surf: pygame.Surface, rect: pygame.Rect, hud: BattleScene, current: int, yy: int) -> None:
+        """With a target: the other contacts on sensors as small buttons, top right beside the target's name."""
+        p = hud.player
+        others = [c for c in self._sensed(hud) if c.id != current]
+        if p is None or not others:
+            return
+        x = rect.right - 12
+        for c in others:
+            name = c.label if c.identified else f"#{c.id}"
+            w = theme.text_width(name, 11) + 14
+            if x - w < rect.centerx:
+                break
+            x -= w
+            hud.ui.button(surf, pygame.Rect(x, yy, w, 20), name,
+                          partial(hud.issue, SelectTarget(ship_id=p.id, target=c.id, subsystem=p.target_subsystem)),
+                          f"Switch target to {name} ({c.distance_to(p.x, p.y):,.0f} units)",
+                          accent=theme.HOSTILE if c.identified else theme.UNKNOWN, size=11)
+            x -= 4
 
     @staticmethod
     def _close_actions(surf: pygame.Surface, rect: pygame.Rect, yy: int, hud: BattleScene, ship: Ship, tid: int,

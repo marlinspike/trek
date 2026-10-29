@@ -59,6 +59,7 @@ class TacticalView:
     show_arcs: bool = False
     hover_world: tuple[float, float] | None = None
     _overlay: pygame.Surface | None = None
+    _label_rects: list[pygame.Rect] = field(default_factory=list)   # labels drawn this frame
 
     def ingest(self, events: list[Event], obs: Observation) -> None:
         visible = {s.id for s in obs.own_ships(alive_only=False)} | {c.id for c in obs.contacts().values() if c.visible}
@@ -90,6 +91,7 @@ class TacticalView:
             self._overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
         overlay = self._overlay
         overlay.fill((0, 0, 0, 0))
+        self._label_rects = []
         clip = surf.get_clip()
         surf.set_clip(r)
         pygame.draw.rect(surf, theme.BG, r)
@@ -303,8 +305,9 @@ class TacticalView:
         if s.alive and s.docked_to is not None:
             label += " · docked"
         lx = sx + 34 * k + 6
-        theme.text(surf, label, (lx, sy - 8), color, 12, weight="medium")
-        ly = sy + 6
+        top = self._free_label_y(lx, sy - 8, theme.text_width(label, 12, weight="medium"), 14)
+        theme.text(surf, label, (lx, top), color, 12, weight="medium")
+        ly = top + 14
         if is_player:
             theme.text(surf, f"w{s.warp:.1f}", (lx, ly), theme.TEXT_DIM, 10, "mono")
             ly += 12
@@ -354,9 +357,11 @@ class TacticalView:
         label = c.label if c.identified else f"#{c.id}"
         if c.visible and c.haze > 0:
             label = "~" + label
-        theme.text(surf, label, (sx + rad + 8, sy - 8), color, 12, weight="medium")
-        if not c.visible:
-            theme.text(surf, f"lost {c.age:.0f}s", (sx + rad + 8, sy + 6), theme.TEXT_FAINT, 10)
+        lost = not c.visible
+        top = self._free_label_y(sx + rad + 8, sy - 8, theme.text_width(label, 12, weight="medium"), 26 if lost else 14)
+        theme.text(surf, label, (sx + rad + 8, top), color, 12, weight="medium")
+        if lost:
+            theme.text(surf, f"lost {c.age:.0f}s", (sx + rad + 8, top + 14), theme.TEXT_FAINT, 10)
         if targeted:
             b = rad + 10
             col = theme.CAUTION
@@ -399,6 +404,17 @@ class TacticalView:
             e = min(L, d + on)
             pygame.draw.line(surf, col, (a[0] + ux * d, a[1] + uy * d), (a[0] + ux * e, a[1] + uy * e))
             d = e + off
+
+    def _free_label_y(self, x: float, y: float, w: int, h: int) -> float:
+        """Push a label down until it clears the labels already drawn this frame, so close ships stay legible."""
+        r = pygame.Rect(int(x), int(y), w, h)
+        for _ in range(12):
+            hit = r.collidelist(self._label_rects)
+            if hit < 0:
+                break
+            r.top = self._label_rects[hit].bottom + 1
+        self._label_rects.append(r)
+        return r.top
 
     @staticmethod
     def _dashed_circle(surf: pygame.Surface, col: theme.Color, c: tuple[float, float], r: float, seg: int | None = None) -> None:
