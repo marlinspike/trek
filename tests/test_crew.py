@@ -248,9 +248,11 @@ def test_talking_to_officers_offline(scene) -> None:  # type: ignore[no-untyped-
     assert any("not my station" in t for t in _said(sc, "Worf"))
     sc.run_console("scotty, raise all")
     assert all(sh.up for sh in sc.player.shields)
-    before = sc.bridge.relationships.get("seven").rapport
+    before = sc.bridge.relationships.get("worf").rapport
+    sc.run_console("worf, you are useless")
+    assert sc.bridge.relationships.get("worf").rapport < before
     sc.run_console("seven, you are useless")
-    assert sc.bridge.relationships.get("seven").rapport < before
+    assert sc.bridge.relationships.get("seven").rapport == 1.0
     sc.run_console("ask seven of nine status")
     assert any("contacts" in t for t in _said(sc, "Seven of Nine"))
     sc.run_console("crew")
@@ -407,3 +409,16 @@ def test_science_officer_gives_last_fix_on_lost_contact(content) -> None:  # typ
     ctx = HelpContext(content, w.observe(me.side), me)
     said = [u.text for u in bridge.react(events, ctx)]
     assert any(enemy.name in t and "bearing" in t for t in said), said
+
+
+def test_seven_rapport_floor_holds(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.crew.conversation import Bridge
+    from begin.presets import load_presets
+
+    b = build_battle(content, load_presets()[0].setup())
+    assert b.crew is not None
+    rel = bridge.relationships.get("seven")
+    assert rel.rapport == 1.0 and rel.mood == "devoted"
+    rel.nudge(-0.5)
+    assert rel.rapport == 1.0
+    assert bridge.relationships.get("spock").floor == -1.0

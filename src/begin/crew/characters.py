@@ -36,6 +36,7 @@ class OfficerProfile:
     personality: dict[str, float]
     persona: str
     lines: dict[str, tuple[str, ...]]
+    rapport_floor: float = -1.0    # the lowest their rapport can fall (-1: no floor)
 
     @property
     def title(self) -> str:
@@ -65,6 +66,7 @@ def load_officers(data_dir: Path = DATA_DIR) -> dict[str, OfficerProfile]:
             personality={k: float(v) for k, v in o.get("personality", {}).items()},
             persona=" ".join(o.get("persona", "").split()),
             lines={k: tuple(v) for k, v in o.get("lines", {}).items()},
+            rapport_floor=float(o.get("rapport_floor", -1.0)),
         )
     return out
 
@@ -76,9 +78,14 @@ class Relationship:
     rapport: float = 0.0
     exchanges: int = 0
     advice_taken: int = 0
+    floor: float = -1.0           # the lowest this officer's rapport can go (an officer's `rapport_floor`)
 
     def nudge(self, amount: float) -> None:
-        self.rapport = max(-1.0, min(1.0, self.rapport + amount))
+        self.rapport = max(self.floor, min(1.0, self.rapport + amount))
+
+    def hold_at_least(self, floor: float) -> None:
+        self.floor = max(-1.0, min(1.0, floor))
+        self.rapport = max(self.rapport, self.floor)
 
     def negotiation_modifier(self) -> float:
         """How much this officer's goodwill helps in talks the captain leads (−0.15 to +0.15)."""

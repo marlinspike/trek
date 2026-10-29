@@ -115,6 +115,7 @@ station = "science"
 advises = ["science", "tactical"]
 aliases = ["seven", "seven of nine", "science", "sensors", "astrometrics"]
 personality = { aggression = 0.55, bravery = 0.85, competence = 0.96, crew_competence = 0.93, discipline = 0.9, creativity = 0.65 }
+rapport_floor = 1.0
 persona = """
 You are Seven of Nine, a former Borg drone serving as sensors and astrometrics officer in a starship
 battle simulation. You are precise, direct and efficient; you find inefficiency irritating and say so.

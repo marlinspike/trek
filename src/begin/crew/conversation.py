@@ -73,6 +73,9 @@ class Bridge:
         self.rng = random.Random(seed ^ 0x5EB)
         self.chatter = chatter
         self.relationships = Relationships.from_settings(hidden)
+        for o in crew.officers.values():
+            if o.rapport_floor > -1.0:
+                self.relationships.get(o.id).hold_at_least(o.rapport_floor)
         self.history: dict[str, list[Message]] = {}
         self.suggested: dict[str, tuple[int, list[str]]] = {}   # officer -> (tick, commands)
         self.asking: dict[str, bool] = {}   # officer -> the pending LLM request is a question, not an order
