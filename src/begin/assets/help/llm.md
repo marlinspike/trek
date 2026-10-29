@@ -6,7 +6,7 @@ aliases: llm, language model, ai, anthropic, claude, openai, openrouter, ollama,
 summary: Let your officers answer in their own words through Anthropic, OpenAI, OpenRouter or a local Ollama model.
 see: talking, crew
 ---
-The game is complete without a language model: officers answer offline. If you connect one, every question you put to an officer goes to the model with that officer's personality and a summary of what your ship knows. Their answer can include orders, which go through the console like anything you type and are only carried out for that officer's stations.
+The game is complete without a language model: officers answer offline. If you connect one, every question you put to an officer goes to the model with that officer's personality and a summary of what your ship knows. When you give an order, their answer can include commands, which go through the console like anything you type and are only carried out for that officer's stations. When you ask a question, any commands in the answer are only suggestions: they appear under the reply for you to type, and nothing is carried out.
 
 Requests run in the background, so a slow or failing model never stalls the battle. If a request fails, the officer answers offline and says why.
 

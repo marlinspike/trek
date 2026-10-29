@@ -74,6 +74,7 @@ class Bridge:
         self.relationships = Relationships.from_settings(hidden)
         self.history: dict[str, list[Message]] = {}
         self.suggested: dict[str, tuple[int, list[str]]] = {}   # officer -> (tick, commands)
+        self.asking: dict[str, bool] = {}   # officer -> the pending LLM request is a question, not an order
         self._last_line: dict[str, int] = {}
         self._last_any = -999
         self._hull_band = 4
@@ -116,6 +117,7 @@ class Bridge:
             hist.append({"role": "user", "content": text or "Report."})
             del hist[:-16]
             self.llm.submit(officer.id, system, hist)
+            self.asking[officer.id] = is_question(low)
             return [self._say(officer, "…", "dim")]
         return self.offline(officer, low, ctx, run)
 
@@ -139,7 +141,14 @@ class Bridge:
                 continue
             say, commands = parse_reply(r.text)
             hist.append({"role": "assistant", "content": json.dumps({"say": say, "commands": commands})})
-            out.append(self._say(officer, say or "…"))
+            u = self._say(officer, say or "…")
+            out.append(u)
+            if self.asking.pop(officer.id, False):
+                # a question gets advice: the commands are suggestions the captain can type or click
+                if commands:
+                    u.commands = commands
+                    self.suggested[officer.id] = (ctx.obs.tick if ctx.obs else 0, list(commands))
+                continue
             for line in commands:
                 err = run(line, officer)
                 if err:
@@ -223,7 +232,8 @@ class Bridge:
             f"Your relationship with the captain: {rel.mood}.",
             "Answer with ONE JSON object and nothing else:",
             '{"say": "<what you say aloud, at most three short sentences>", "commands": ["<console command>", ...]}',
-            "Put commands in the list only when the captain asks you to act. Use only commands for your stations, "
+            "Put commands in the list only when the captain orders you to act; when the captain asks a question, "
+            "the list holds what you recommend, and the captain decides. Use only commands for your stations, "
             "written exactly in this console syntax:",
             COMMAND_SYNTAX,
             "",
@@ -312,6 +322,8 @@ class Bridge:
 
 
 COMMAND_SYNTAX = """\
+  (In this list <...> is a value to fill in, [...] is optional and a|b means one of them; never type the
+  brackets themselves. Example commands: "target derango weapons", "fire all phasers spread 20", "helm 90 warp 6".)
   helm <course> warp <w> | warp <w> | stop | pursue <ship> [warp <w>] | elude <ship> [warp <w>]
   target <ship> [propulsion|weapons|shields|power|sensors] | fire all phasers [spread <10-45>]
   fire all torpedoes | fire probes at <ship> | autoload tor <torpedo id> | load all tubes <proximity>
@@ -319,6 +331,19 @@ COMMAND_SYNTAX = """\
   raise all | lower <shield numbers> | reinforce <1-6> | repair <system>|all | cloak on|off
   scan <ship>
   delegate <helm|tactical|engineering|science> | assume <station>   (hand a station to its officer, or take it back)"""
+
+
+def clean_command(line: str) -> str:
+    """Small models copy the syntax notation literally: 'target derango[weapons]', 'fire all phasers [spread 45]'."""
+    line = re.sub(r"[\[\]<>`]", " ", line)
+    return " ".join(line.split()).strip(" .;")
+
+
+def is_question(low: str) -> bool:
+    """Asking for advice or information, rather than giving an order."""
+    low = low.strip()
+    return low.endswith("?") or bool(_ADVICE.search(low)) or bool(re.match(
+        r"(what|why|how|which|where|when|who|should|can|could|would|is|are|do|does|did)\b", low))
 
 
 def parse_reply(text: str) -> tuple[str, list[str]]:
@@ -334,7 +359,7 @@ def parse_reply(text: str) -> tuple[str, list[str]]:
             cmds = data.get("commands") or []
             if not isinstance(cmds, list):
                 cmds = [cmds]
-            return say, [str(c).strip() for c in cmds if str(c).strip()][:4]
+            return say, [c for c in (clean_command(str(x)) for x in cmds) if c][:4]
     return text.strip().strip('"'), []
 
 

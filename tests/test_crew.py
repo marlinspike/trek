@@ -277,6 +277,25 @@ def test_llm_answers_carry_out_orders_for_the_right_station(scene) -> None:  # t
     sc.close()
 
 
+def test_llm_answer_to_a_question_only_suggests(scene) -> None:  # type: ignore[no-untyped-def]
+    sc, _ = scene
+    fake = _Fake('{"say": "Close and fire.", "commands": ["target derango[weapons]", "fire all phasers [spread 45]"]}')
+    sc.bridge.llm = LLMService(fake)
+    fired = sc.player.stats.phaser_shots
+    sc.run_console("spock, what do you recommend?")
+    end = time.time() + 5
+    while sc.bridge.llm.busy("spock") and time.time() < end:
+        sc.update(0.0)
+        time.sleep(0.01)
+    sc.update(0.0)
+    texts = [line.text for line in sc.log]
+    assert any("› target derango weapons" in t for t in texts)
+    assert sc.player.stats.phaser_shots == fired and sc.player.target is None
+    sc.run_console("target derango weapons")
+    assert sc.bridge.relationships.get("spock").advice_taken == 1
+    sc.close()
+
+
 def test_delegation_from_the_console_and_panel(scene) -> None:  # type: ignore[no-untyped-def]
     sc, surf = scene
     sc.run_console("delegate all")
@@ -334,3 +353,14 @@ def test_llm_cli_configures_settings(tmp_path, monkeypatch: pytest.MonkeyPatch) 
         configure(["colour=blue"])
     configure(["provider=off"])
     assert Settings.load().llm == {"provider": "off"}
+
+
+def test_llm_commands_are_cleaned_and_questions_only_suggest() -> None:
+    from begin.crew.conversation import clean_command, is_question
+
+    assert clean_command("target derango[weapons]") == "target derango weapons"
+    assert clean_command("fire all phasers [spread 45]") == "fire all phasers spread 45"
+    say, cmds = parse_reply('{"say": "Aye.", "commands": ["helm <90> warp 6", " "]}')
+    assert cmds == ["helm 90 warp 6"]
+    assert is_question("what do you recommend?") and is_question("should we close in")
+    assert not is_question("fire all torpedoes") and not is_question("take tactical")
