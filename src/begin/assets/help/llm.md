@@ -2,7 +2,7 @@
 title: Officers and language models
 category: Crew
 order: 2
-aliases: llm, language model, ai, anthropic, claude, openai, openrouter, ollama, provider, api key
+aliases: llm, language model, ai, anthropic, claude, openai, openrouter, ollama, provider, api key, think, nothink, local model
 summary: Let your officers answer in their own words through Anthropic, OpenAI, OpenRouter or a local Ollama model.
 see: talking, crew
 ---
@@ -12,10 +12,20 @@ Requests run in the background, so a slow or failing model never stalls the batt
 
 ## Setting it up
 
-Add an `llm` section to `~/.begin-remake/settings.json`, or use environment variables. Keys are read only from the environment and are never saved.
+The quickest way is from a terminal, which saves the `llm` section of `~/.begin-remake/settings.json` for you and then asks Spock one question to prove it works:
+
+```
+python -m begin --llm provider=ollama model=lfm3 think=off
+python -m begin --llm-test
+```
+
+`--llm-test` prints the provider, the model, whether thinking is on, how long the answer took, the raw reply, and what Spock would say. `--llm provider=off` switches the model off again, and `--llm think=` (nothing after the `=`) removes a setting.
+
+You can also edit the file by hand, or use environment variables. Keys are read only from the environment and are never saved.
 
 ```
 "llm": {"provider": "anthropic", "model": "<model id>"}
+"llm": {"provider": "ollama", "model": "lfm3", "think": false}
 ```
 
 | Provider | `provider` | Key (environment variable) | Notes |
@@ -28,7 +38,9 @@ Add an `llm` section to `~/.begin-remake/settings.json`, or use environment vari
 - `model` is required: use any model id your provider offers.
 - `base_url` points at a different endpoint, such as Ollama on another machine.
 - `effort` (Anthropic only) sets how hard the model thinks: `low` is quick and suits conversation.
-- The environment variables `BEGIN_LLM_PROVIDER`, `BEGIN_LLM_MODEL` and `BEGIN_LLM_BASE_URL` override the file. Set `BEGIN_LLM_PROVIDER=off` to turn it off for one session.
+- `think` (Ollama) turns a local reasoning model's thinking on or off: `true` or `think`, `false` or `nothink`, or a level such as `low`, `medium` or `high` for models that offer levels. Leave it out to use the model's own default. Thinking makes answers slower but sometimes better; for chat during a battle, off is usually the better choice. The model's reasoning is never shown, only its answer. If a model cannot think, Ollama refuses `think: true`, and the officer's error message says so.
+- `timeout` is how many seconds to wait for an answer: 120 by default for Ollama, since a local model may need loading first, and 45 for the others. `max_tokens` caps the length of an answer.
+- The environment variables `BEGIN_LLM_PROVIDER`, `BEGIN_LLM_MODEL`, `BEGIN_LLM_BASE_URL` and `BEGIN_LLM_THINK` override the file. Set `BEGIN_LLM_PROVIDER=off` to turn it off for one session.
 
 The console log says which provider the officers are using when a battle starts.
 

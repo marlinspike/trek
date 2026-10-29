@@ -67,7 +67,7 @@ Press **F1** in battle for the full controls list, or **H** for the manual. The 
 **Bridge officers**
 - Four officers can run stations for you: Spock (helm), Worf (tactical), Scott (engineering) and Seven of Nine (science). `delegate tactical` (or `delegate all`) hands a station over, `assume tactical` takes it back, and the Crew tab has a toggle for each. Your own orders always override an officer for a few seconds, and officers never pick a different target from yours, retreat, surrender or self-destruct.
 - Talk to them by name: `spock, what do you recommend?`, `worf, fire all torpedoes`, `scotty, take engineering`, `ask seven status`. Each officer only acts for their own stations. They comment on the battle as it happens (`crew chatter off` quiets them), and they remember how you treat them.
-- Officers answer offline from the battle state. To have them answer in their own words, set an LLM provider (Anthropic, OpenAI, OpenRouter or a local Ollama) in `settings.json`; see the manual's "Officers and language models" page. API keys come only from environment variables.
+- Officers answer offline from the battle state. To have them answer in their own words, set an LLM provider (Anthropic, OpenAI, OpenRouter or a local Ollama), for example `python -m begin --llm provider=ollama model=lfm3 think=off`, then check it with `python -m begin --llm-test`. `think` turns a local model's thinking on or off. See the manual's "Officers and language models" page. API keys come only from environment variables.
 
 ## Project layout
 

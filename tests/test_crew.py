@@ -164,7 +164,7 @@ def test_provider_configuration() -> None:
     with pytest.raises(LLMError):
         config_from_settings({"provider": "nonsense", "model": "m"}, env={})
     cfg = config_from_settings({"provider": "ollama", "model": "m"}, env={"BEGIN_LLM_MODEL": "other"})
-    assert cfg == LLMConfig("ollama", "other")
+    assert cfg == LLMConfig("ollama", "other", timeout=120.0)
     assert config_from_settings({"provider": "openai", "model": "m"}, env={"BEGIN_LLM_PROVIDER": "off"}) is None
     with pytest.raises(LLMError):
         make_provider(LLMConfig("openai", "m"), env={})  # no key
@@ -287,3 +287,50 @@ def test_delegation_from_the_console_and_panel(scene) -> None:  # type: ignore[n
     for _ in range(120):
         sc.update(1 / 30)
     sc.draw(surf)
+
+
+def test_ollama_think_switch(monkeypatch: pytest.MonkeyPatch) -> None:
+    from begin.llm.providers import ollama
+    from begin.llm.providers.base import parse_think
+
+    assert parse_think("nothink") is False and parse_think("think") is True and parse_think(None) is None
+    assert parse_think("High") == "high" and parse_think(False) is False and parse_think("default") is None
+    cfg = config_from_settings({"provider": "ollama", "model": "lfm3", "think": False}, env={})
+    assert cfg is not None and cfg.think is False
+    cfg = config_from_settings({"provider": "ollama", "model": "lfm3", "think": False}, env={"BEGIN_LLM_THINK": "think"})
+    assert cfg is not None and cfg.think is True
+    bodies: list[dict[str, object]] = []
+
+    def fake_post(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        bodies.append(body)
+        return {"message": {"thinking": "hmm", "content": "<think>inline</think> Aye, Captain."}}
+
+    monkeypatch.setattr(ollama, "post_json", fake_post)
+    assert make_provider(LLMConfig("ollama", "lfm3", think=False), env={}).complete("s", []) == "Aye, Captain."
+    assert bodies[-1]["think"] is False
+    make_provider(LLMConfig("ollama", "lfm3"), env={}).complete("s", [])
+    assert "think" not in bodies[-1]  # unset: the model's own default
+
+    def refuse(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        raise LLMError('400 from the provider: {"error":"\\"lfm3\\" does not support thinking"}')
+
+    monkeypatch.setattr(ollama, "post_json", refuse)
+    with pytest.raises(LLMError, match="think\": false"):
+        make_provider(LLMConfig("ollama", "lfm3", think=True), env={}).complete("s", [])
+
+
+def test_llm_cli_configures_settings(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    from begin.llm.cli import configure
+    from begin.ui.settings import Settings
+
+    monkeypatch.setenv("BEGIN_HOME", str(tmp_path))
+    configure(["provider=ollama", "model=lfm3", "think=nothink"])
+    assert Settings.load().llm == {"provider": "ollama", "model": "lfm3", "think": False}
+    configure(["think=think", "timeout=200"])
+    assert Settings.load().llm["think"] is True and Settings.load().llm["timeout"] == 200.0
+    configure(["think="])
+    assert "think" not in Settings.load().llm
+    with pytest.raises(LLMError):
+        configure(["colour=blue"])
+    configure(["provider=off"])
+    assert Settings.load().llm == {"provider": "off"}

@@ -141,7 +141,8 @@ class BattleScene:
                 cfg = config_from_settings(llm or {})
                 if cfg is not None:
                     service = LLMService(make_provider(cfg))
-                    llm_note = f"Officers are talking through {cfg.provider} ({cfg.model})."
+                    think = "" if cfg.think is None else f", thinking {'on' if cfg.think is True else 'off' if cfg.think is False else cfg.think}"
+                    llm_note = f"Officers are talking through {cfg.provider} ({cfg.model}{think})."
             except Exception as e:  # noqa: BLE001 - a bad LLM setup must never stop a battle
                 llm_note = f"LLM not available ({e}); officers will answer offline."
             self.bridge = Bridge(battle.crew, self.hidden, service, seed=battle.setup.seed, chatter=chatter)

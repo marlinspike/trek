@@ -5,6 +5,9 @@ Extra options exist for development and testing:
   --quick SEED           jump into a seeded quick battle
   --screenshot PATH      render headlessly after --cycles of simulated time and save a PNG
   --tournament N         run N headless AI-vs-AI quick battles and print a summary
+  --balance N            fight every preset N times, AI on both sides, and print win rates
+  --llm KEY=VALUE ...    save the officers' language model settings (e.g. provider=ollama model=lfm3 think=off)
+  --llm-test             ask Spock one question through the configured model and print the answer
 """
 
 from __future__ import annotations
@@ -24,7 +27,28 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--console", default=None, help="for screenshots: console commands separated by ';' ('@5' runs 5 cycles)")
     ap.add_argument("--zoom", type=float, default=None, help="for screenshots: map zoom (pixels per unit)")
     ap.add_argument("--tournament", type=int)
+    ap.add_argument("--balance", type=int)
+    ap.add_argument("--llm", nargs="+", metavar="KEY=VALUE")
+    ap.add_argument("--llm-test", nargs="?", const="Spock, what do you recommend?", metavar="QUESTION")
     args = ap.parse_args(argv)
+
+    if args.llm or args.llm_test:
+        from .llm.cli import configure, test
+        from .llm.providers.base import LLMError
+
+        try:
+            if args.llm:
+                configure(args.llm)
+            return test(args.llm_test) if args.llm_test else 0
+        except LLMError as e:
+            print(e, file=sys.stderr)
+            return 2
+
+    if args.balance:
+        from .tools.balance import run_balance
+
+        run_balance(args.balance)
+        return 0
 
     if args.tournament:
         from .tools.tournament import run_tournament

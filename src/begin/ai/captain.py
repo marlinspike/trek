@@ -603,7 +603,8 @@ class AICaptain:
         p = self.personality
         bias = p.doctrine.weapon_bias
         my_ph = strength(sum(1 for b in ship.banks if b.intact), ship.cls.banks_range, 0) - 1.0
-        my_tp = sum(1 for t in ship.tubes if t.intact) * 6.0
+        armed = ship.torps_remaining > 0 or any(t.loaded is not None for t in ship.tubes)
+        my_tp = sum(1 for t in ship.tubes if t.intact) * 6.0 if armed else 0.0  # out of torpedoes: close for phasers
         if c.cls is not None:
             their_ph = c.cls.banks * c.cls.banks_range / STRENGTH_DIVISOR
             their_tp = c.cls.tubes * 6.0
