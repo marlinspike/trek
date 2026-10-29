@@ -33,6 +33,8 @@ disable off
 - **Two ships close together** get a salvo burst between them, so one volley hits both.
 - **Bait.** Against a trigger-happy defense she fires one torpedo first. Their point defense pours several phaser banks onto it, and the rest of the salvo arrives a second later while those banks are still recharging. Klingon and Orion crews fall for it, and so does any crew that has lost a lot of people (a scan tells her). Disciplined Romulan and Federation crews send one bank per torpedo and keep the rest charged, so against them she uses the ring burst instead.
 
+- **She says what she is doing** as she goes, the activity panel at the top left of the map shows her current step and the scan results, and when the job is done she sums up what it took: "That took 8 bait volleys, 2 salvos, 80 torpedoes in all, 3 phaser volleys and 8 scans, in 66 seconds." See [[conn]] for how an officer at the helm flies to give her the shots.
+
 ## Baiting yourself
 
 ```console

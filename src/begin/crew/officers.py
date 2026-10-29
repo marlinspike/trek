@@ -22,10 +22,10 @@ their tachyon detector. The captain's orders still win, as above.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Iterable
 
-from ..ai.captain import AICaptain
+from ..ai.captain import AI_KNIFE_FIGHT_RANGE, AICaptain
 from ..ai.personality import Personality
 from ..content.schema import ContentDB
 from ..core.rng import Rng
@@ -35,10 +35,12 @@ from ..sim.commands import (
     SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, StartProject, TurnMounts,
     FireSpecialRound, DeflectorPulse, SetObjective, EndObjective, FireAtPoint,
 )
-from ..sim.observation import Observation
+from ..sim.allies import AllyStanding
+from ..sim.observation import ContactView, Observation
 from ..sim.ship import Kind, Ship
 from .characters import STATIONS, OfficerProfile
 from ..sim.systems.ordnance import suggested_prox
+from .helm import HelmPlan, incoming, plan_helm, support_range, threatened
 from .objectives import Planner
 
 STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
@@ -49,6 +51,8 @@ STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
     "engineering": (SetShields, ReinforceShield, SetRepairPriority, SetCloak),
     "science": (Scan, StartProject, DeflectorPulse, SetObjective, EndObjective),
 }
+
+APPROACH_SLACK = 3000.0   # beyond the supporting range by more than this, the helm just closes
 
 STATION_NAMES = {"helm": "Helm", "tactical": "Tactical", "engineering": "Engineering", "science": "Science"}
 
@@ -70,6 +74,22 @@ class OfficerBrain(AICaptain):
     officer_id: str = ""
     last_scan: dict[int, int] = field(default_factory=dict)
     last_repair_check: int = -999
+    helm_plan: HelmPlan | None = None      # what the officer at the helm is doing, for reports and the display
+    seen_threats: frozenset[int] = frozenset()
+
+    def think(self, obs: Observation) -> Iterable[Command]:
+        out = list(super().think(obs))
+        if self.station in ("helm", "bridge") and obs.tick != self.last_tactics:
+            # a fresh torpedo launch can't wait for the next tactical beat: the helm answers it at once
+            ship = obs.own(self.ship_id)
+            now = frozenset(t.id for t in incoming(obs, ship)) if ship is not None else frozenset()
+            if now - self.seen_threats and ship is not None and ship.alive:
+                c = obs.contact(self.target) if self.target is not None else None
+                helm = self._maneuver(obs, ship, c, obs.ally_order(ship.id))
+                if helm is not None:
+                    out.append(helm)
+            self.seen_threats = now
+        return out
 
     def _cmd(self, cls: type[Command], ship: Ship, **kw: object) -> Command:
         return cls(ship_id=ship.id, issuer=Authority.OFFICER, source=self.title or self.station, **kw)  # type: ignore[arg-type]
@@ -98,6 +118,47 @@ class OfficerBrain(AICaptain):
                 out.append(self._cmd(ConfigureAutoload, ship, weapon="tube", prox=prox))
                 self.autoload_set_for = best.id
         return out
+
+    def _maneuver(self, obs: Observation, ship: Ship, c: ContactView | None,
+                  st: AllyStanding | None = None) -> Command | None:
+        """Fly for the captain [E]: dodge torpedoes, and when a shipmate is working an objective, set up their
+        torpedo shot. Otherwise the captain's usual helm. Remembers what it is doing, for reports."""
+        if self.station not in ("helm", "bridge"):
+            return super()._maneuver(obs, ship, c, st)
+        before = self.helm_plan
+        cmd, plan = self._fly(obs, ship, c, st)
+        if plan is None:
+            d = c.distance_to(ship.x, ship.y) if c is not None else 0.0
+            reason = ("hold" if c is None else "fight" if d < ship.cls.banks_range * AI_KNIFE_FIGHT_RANGE
+                      else "approach")
+            plan = HelmPlan(ship.desired_course, ship.desired_warp, reason, 0, 0, 0.0, d)
+            if isinstance(cmd, SetHelm):
+                plan = replace(plan, course=plan.course if cmd.course is None else cmd.course,
+                               warp=plan.warp if cmd.warp is None else cmd.warp)
+        keep = before is not None and before.reason == plan.reason
+        self.helm_plan = replace(plan, since=before.since if keep and before is not None else obs.tick)
+        return cmd
+
+    def _fly(self, obs: Observation, ship: Ship, c: ContactView | None,
+             st: AllyStanding | None) -> tuple[Command | None, HelmPlan | None]:
+        if ship.cls.is_base or not ship.can_move() or ship.docked_to is not None or self.last_stand or self.retreating:
+            return super()._maneuver(obs, ship, c, st), None
+        want = None
+        if ship.objectives and c is not None and c.visible:
+            want = support_range(obs, ship, c)
+            if want is not None and c.distance_to(ship.x, ship.y) > want + APPROACH_SLACK:
+                want = None   # still on the way in: the captain's approach (weaving at combat speed) is fine
+        threats = incoming(obs, ship)
+        if want is None:
+            # the captain's usual helm, unless it would fly into a torpedo
+            if not threatened(obs, ship, threats):
+                return super()._maneuver(obs, ship, c, st), None
+            if c is not None:
+                want = c.distance_to(ship.x, ship.y)   # dodge, and keep the fight where it is
+        plan = plan_helm(obs, ship, c, want, self.combat_speed(ship, obs))
+        if plan is None:
+            return super()._maneuver(obs, ship, c, st), None
+        return self._helm(obs, ship, plan.course, plan.warp), plan
 
     def _tactics(self, obs: Observation, ship: Ship) -> list[Command]:
         out = super()._tactics(obs, ship)
@@ -209,6 +270,21 @@ def repair_priority(ship: Ship, obs: Observation) -> Kind | None:
 
 
 @dataclass
+class Activity:
+    """What one officer is doing right now, for the activity panel, the map and their callouts."""
+
+    officer_id: str
+    role: str                     # "conn", "helm", or the objective ("disable shields on Wraith")
+    doing: str                    # the current step, in plain words
+    kind: str = ""                # a short key for the step: evade, close, hold, salvo, bait, phasers...
+    since: int = 0                # tick the step started
+    progress: str = ""            # how the job stands
+    plan: HelmPlan | None = None  # the helm's chosen course, for the map
+    target: int | None = None
+    aim: tuple[float, float, float, int] | None = None   # the last salvo's burst point and spread
+
+
+@dataclass
 class Crew:
     """The player's bridge officers, run as one controller."""
 
@@ -221,6 +297,7 @@ class Crew:
     phase: int = 0
     brains: dict[str, OfficerBrain] = field(default_factory=dict)
     planners: dict[str, Planner] = field(default_factory=dict)
+    names: dict[int, str] = field(default_factory=dict)     # ships we have known, by name, for reports
 
     def officer(self, station: str) -> OfficerProfile | None:
         return self.officers.get(station)
@@ -249,6 +326,38 @@ class Crew:
                 pl = self.planners[prof.id] = Planner(prof.id, prof.title)
             out.extend(pl.think(obs, ship, self._brain("bridge", ship, prof)))
             break  # one officer's plan at a time keeps the orders coherent
+        return out
+
+    def activity(self, obs: Observation) -> list[Activity]:
+        """Every officer doing something the captain asked for: flying the ship, or working an objective."""
+        from .objectives import label, progress
+
+        ship = obs.own(self.ship_id)
+        if ship is None or not ship.alive:
+            return []
+        out: list[Activity] = []
+        commander = self.find(ship.conn) if ship.conn else None
+        helm_brain = None
+        if commander is not None and "helm" in ship.delegated:
+            helm_brain, role, who = self.brains.get(f"bridge:{commander.id}"), "conn", commander.id
+        elif "helm" in ship.delegated and "helm" in self.officers:
+            helm_brain, role, who = self.brains.get("helm"), "helm", self.officers["helm"].id
+        if helm_brain is not None and helm_brain.helm_plan is not None:
+            plan = helm_brain.helm_plan
+            name = label(obs, helm_brain.target, self.names) if helm_brain.target is not None else "the enemy"
+            out.append(Activity(who, role, plan.describe(name), plan.reason, plan.since, plan=plan,
+                                target=helm_brain.target))
+        for o in ship.objectives:
+            prof = self.find(o.officer) if o.officer else self.officer("science")
+            pl = self.planners.get(prof.id) if prof is not None else None
+            if prof is None:
+                continue
+            role = o.describe({t: label(obs, t, self.names) for t in o.targets})
+            out.append(Activity(prof.id, role[:1].upper() + role[1:],
+                                pl.step if pl is not None and pl.step else "Planning",
+                                pl.step_kind if pl is not None else "", pl.step_tick if pl is not None else 0,
+                                progress(obs, o, self.names), target=ship.target,
+                                aim=pl.aim if pl is not None else None))
         return out
 
     def move_to(self, ship_id: int) -> None:

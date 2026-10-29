@@ -83,6 +83,22 @@ class Planner:
     title: str
     last_scan: dict[int, int] = field(default_factory=dict)
     last_volley: int = -10 ** 9
+    # what the officer is doing, for the activity panel, the map and her callouts
+    step: str = ""                 # "Salvo of 6 on a ring around the Wraith"
+    step_kind: str = ""            # scan | phasers | bait | salvo | between | load | range | hunt | confirm
+    step_tick: int = 0
+    aim: tuple[float, float, float, int] | None = None   # where the last salvo was sent: x, y, spread, tick
+    tally: dict[str, int] = field(default_factory=dict)  # baits, salvos, rounds, phasers, scans for this objective
+    tally_for: tuple[object, ...] = ()
+    tally_since: int = 0
+
+    def note(self, obs: Observation, kind: str, text: str) -> None:
+        if kind != self.step_kind or text != self.step:
+            self.step_tick = obs.tick
+        self.step, self.step_kind = text, kind
+
+    def count(self, what: str, n: int = 1) -> None:
+        self.tally[what] = self.tally.get(what, 0) + n
 
     def _cmd(self, cls: type[Command], ship: Ship, **kw: object) -> Command:
         return cls(ship_id=ship.id, issuer=Authority.OFFICER, source=self.title, **kw)  # type: ignore[arg-type]
@@ -92,6 +108,9 @@ class Planner:
         for o in list(ship.objectives):
             if (o.officer or "") not in ("", self.officer_id):
                 continue
+            key = (o.goal, o.group, tuple(o.targets))
+            if key != self.tally_for:
+                self.tally_for, self.tally, self.tally_since = key, {}, obs.tick
             plan = PLANNERS.get(o.goal)
             if plan is not None:
                 out.extend(plan(self, obs, ship, o, brain))
@@ -138,15 +157,20 @@ def plan_disable(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: 
         if stale:
             _, t = min(stale)
             p.last_scan[t] = obs.tick
+            p.count("scans")
             out.append(p._cmd(Scan, ship, target=t))
+            if t in remaining or not remaining:
+                p.note(obs, "scan", f"Scanning {label(obs, t)} to see what is left")
 
     if not remaining:
+        p.note(obs, "confirm", "Confirming with a fresh scan")
         return out   # waiting on a confirming scan
     visible = [t for t in remaining if contacts[t] is not None and contacts[t].visible]  # type: ignore[union-attr]
     if not visible:
         # every target out of sight: if they cloaked, Spock and Seven know how to find them
         if brain is not None:
             out.extend(brain._collaborate(obs, ship))
+        p.note(obs, "hunt", "Searching for " + ", ".join(label(obs, t) for t in remaining[:2]))
         return out
     primary = min(visible, key=lambda t: contacts[t].distance_to(ship.x, ship.y))  # type: ignore[union-attr]
     c = contacts[primary]
@@ -164,11 +188,100 @@ def plan_disable(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: 
                       and bank_bears_point(ship, b, c.x, c.y))
         if ready:
             out.append(p._cmd(FirePhasers, ship, banks=ready, target=primary, subsystem=aim, spread=10.0))
+            p.count("phasers")
+            p.note(obs, "phasers", f"Phasers on {label(obs, primary)}'s {aim or 'hull'}")
     # torpedoes, burst where point defense won't expect them
     shot = _torpedo_shot(p, obs, ship, o, primary, [t for t in visible if t != primary])
     if shot is not None:
         out.append(shot)
+    elif obs.tick - p.step_tick > 2 * obs.rules.ticks_per_cycle or p.step_kind in ("", "scan", "confirm", "hunt"):
+        p.note(obs, *_waiting(obs, ship, d, label(obs, primary)))
     return out
+
+
+def _waiting(obs: Observation, ship: Ship, d: float, name: str) -> tuple[str, str]:
+    """What she is waiting for between shots."""
+    loaded = sum(1 for t in ship.tubes if t.loaded is not None and t.intact and t.enabled)
+    usable = sum(1 for t in ship.tubes if t.intact and t.enabled)
+    if usable and loaded < max(1, usable // 2):
+        return "load", f"Reloading torpedoes ({loaded} of {usable} ready)"
+    spec = obs.content.torpedoes.get(ship.tubes[0].load_ordnance or ship.cls.torpedo) if ship.tubes else None
+    if spec is not None:
+        speed = spec.velocity * obs.rules.units_per_warp
+        if d > speed * (spec.arm_time + 1.5):
+            return "range", f"{name} at {d:,.0f}: waiting for torpedo range"
+        if d < speed * spec.arm_time * 1.15:
+            return "range", f"{name} at {d:,.0f}: too close for torpedoes to arm"
+    return "load", f"Watching {name} for an opening"
+
+
+def progress(obs: Observation, o: Objective, names: dict[int, str] | None = None) -> str:
+    """How the job stands, from our latest scans: "Wraith 2/6 shields out (weakest up 40%)"."""
+    from ..sim.objectives import DISABLE_GROUPS
+
+    parts = []
+    for t in o.targets:
+        name = label(obs, t, names)
+        if t in obs.gone():
+            parts.append(f"{name} gone")
+            continue
+        c = obs.contact(t)
+        if c is None or c.scan is None:
+            parts.append(f"{name} not scanned yet")
+            continue
+        age = (obs.tick - c.scan.tick) / obs.rules.ticks_per_cycle
+        stale = f", scan {age:.0f}s old" if age > SCAN_STALE else ""
+        if o.goal == "destroy":
+            parts.append(f"{name} hull {c.scan.structure_frac * 100:.0f}%{stale}")
+            continue
+        st = group_state(c, o.group)
+        what = DISABLE_GROUPS.get(o.group, o.group)
+        if st is None or st[0] == 0:
+            parts.append(f"{name} has no {what}")
+            continue
+        text = f"{name} {st[1]}/{st[0]} {what} out"
+        if o.group == "shields":
+            up = [x for x in c.scan.shields if x > 0]
+            if up:
+                text += f" (weakest up {min(up):.0f}%)"
+        if disabled(c, o.group):
+            text += ", done"
+        parts.append(text + stale)
+    return "; ".join(parts)
+
+
+def summary(p: Planner, tick: int, tpc: int) -> str:
+    """What the job took, for the officer's closing report."""
+    t = p.tally
+    bits = []
+    if t.get("baits"):
+        bits.append(f"{t['baits']} bait volley{'s' * (t['baits'] != 1)}")
+    if t.get("salvos"):
+        bits.append(f"{t['salvos']} salvo{'s' * (t['salvos'] != 1)}")
+    if t.get("rounds"):
+        bits.append(f"{t['rounds']} torpedoes in all")
+    if t.get("phasers"):
+        bits.append(f"{t['phasers']} phaser volley{'s' * (t['phasers'] != 1)}")
+    if t.get("scans"):
+        bits.append(f"{t['scans']} scan{'s' * (t['scans'] != 1)}")
+    took = (tick - p.tally_since) / tpc
+    if not bits:
+        return f"{took:.0f} seconds."
+    return (", ".join(bits[:-1]) + " and " + bits[-1] if len(bits) > 1 else bits[0]) + f", in {took:.0f} seconds."
+
+
+def label(obs: Observation, sid: int, names: dict[int, str] | None = None) -> str:
+    """A ship's name as the captain knows it; `names` remembers it once the ship is gone."""
+    own = obs.own(sid)
+    if own is not None:
+        return own.name
+    c = obs.contact(sid)
+    if c is None or not c.identified:
+        return (names or {}).get(sid, f"#{sid}")
+    name = c.label.split(" (")[0]
+    if names is not None:
+        names[sid] = name
+    return name
 
 
 def _torpedo_shot(p: Planner, obs: Observation, ship: Ship, o: Objective, primary: int,
@@ -225,6 +338,10 @@ def _torpedo_shot(p: Planner, obs: Observation, ship: Ship, o: Objective, primar
     # a lone, trigger-happy target: one torpedo to draw its point defense, the rest while its banks recharge
     if not paired and len(loaded) >= 3 and speed * spec.arm_time * 1.3 < d_now < reach * 0.8 and baitable(obs, c):
         p.last_volley = obs.tick
+        p.count("baits")
+        p.count("rounds", len(loaded))
+        p.aim = (px, py, 0.0, obs.tick)
+        p.note(obs, "bait", f"One torpedo to draw {label(obs, primary)}'s point defense, then {len(loaded) - 1} more")
         return p._cmd(FireBait, ship, target=primary, subsystem=None if destroy else o.group)
     d = math.hypot(point[0] - ship.x, point[1] - ship.y)
     if d > reach or d < speed * spec.arm_time * 1.1:
@@ -234,6 +351,13 @@ def _torpedo_shot(p: Planner, obs: Observation, ship: Ship, o: Objective, primar
         if math.hypot(s.x - point[0], s.y - point[1]) < blast_r + spread + 100:
             return None
     p.last_volley = obs.tick
+    p.count("salvos")
+    p.count("rounds", len(loaded))
+    p.aim = (point[0], point[1], spread, obs.tick)
+    if paired:
+        p.note(obs, "between", f"Salvo of {len(loaded)} bursting between two ships to hit both")
+    else:
+        p.note(obs, "salvo", f"Salvo of {len(loaded)} on a ring around {label(obs, primary)}")
     return p._cmd(FireAtPoint, ship, x=point[0], y=point[1], prox=prox, target=primary,
                   subsystem=None if destroy else o.group, spread=spread)
 
@@ -242,4 +366,4 @@ Plan = Callable[[Planner, Observation, Ship, Objective, "OfficerBrain | None"], 
 PLANNERS: dict[str, Plan] = {"disable": plan_disable, "destroy": plan_disable}
 
 
-__all__ = ["PLANNERS", "Planner", "baitable", "disabled", "group_state", "plan_disable"]
+__all__ = ["PLANNERS", "Planner", "baitable", "disabled", "group_state", "label", "plan_disable", "progress", "summary"]

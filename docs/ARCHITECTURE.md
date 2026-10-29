@@ -67,7 +67,7 @@ A controller has a `side`, a `period` (ticks between decisions) and a `phase` (a
 
 - **AICaptain** (`ai/captain.py`) thinks every 2 ticks. Each decision covers strategy (target choice, retreat, last stand), then shields and cloak, weapons, and manoeuvre. Begin's decoded scoring is the baseline. Personalities (`ai/personality.py`) and doctrines change the weights. Each decision is written to a short trace (`ai/trace.py`) for debugging.
 - **ShipComputer** (`ai/computer.py`) runs every tick for every ship. It handles autoload, point defense against ordnance in flight, and Assisted or Automatic fire, all at computer authority.
-- **Crew** (`crew/officers.py`) runs an `OfficerBrain`, an AICaptain limited to one station, for each station the player has delegated. It keeps only the commands that belong to that station.
+- **Crew** (`crew/officers.py`) runs an `OfficerBrain`, an AICaptain limited to one station, for each station the player has delegated. It keeps only the commands that belong to that station. An officer at the helm flies with `crew/helm.py`: `plan_helm` predicts the ship's path under a spread of helm orders with its real turn and acceleration limits and scores each against incoming torpedoes, the range the weapons officer wants and the shield facing the enemy. `Crew.activity` reports what each officer is doing (helm plan, objective step and progress); `ui/officer_view.py` draws it as the activity panel and the map overlays, and `Bridge._callouts` turns new steps into spoken lines.
 
 ## Officers and language models
 

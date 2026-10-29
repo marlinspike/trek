@@ -30,10 +30,10 @@ from ..sim.events import CommandRejected, Event, Message, ScanCompleted, Tone
 from ..sim.observation import Observation
 from ..sim.scoring import Assessment
 from ..sim.ship import BankRole, Kind, Ship
-from . import theme
+from . import officer_view, theme
 from .camera import Camera
 from ..crew.conversation import Bridge, Utterance
-from ..crew.officers import STATION_COMMANDS, station_of
+from ..crew.officers import STATION_COMMANDS, Activity, station_of
 from ..help.coach import HelpContext
 from .manual import ManualView
 from .hud import (
@@ -701,6 +701,16 @@ class BattleScene:
 
     # ------------------------------------------------------------ plain English
 
+    def _activity(self, obs: Observation) -> list[Activity]:
+        crew = self.battle.crew
+        if crew is None or self.player_id is None or crew.ship_id != self.player_id:
+            return []
+        return crew.activity(obs)
+
+    def _officer_name(self, oid: str) -> str:
+        o = self.bridge.find(oid) if self.bridge is not None else None
+        return o.name if o is not None else oid
+
     def _translation_brief(self) -> str:
         """What the translating model may know: the situation, the officers, and the names the console accepts."""
         from ..crew.conversation import situation
@@ -987,7 +997,11 @@ class BattleScene:
         self.view.draw(surf, obs, self.prev, self.now, alpha, self.player_id,
                        p.target if p else None, p.target_subsystem if p else None, self.selected_ally)
         self.ui.add(self.map_rect, lambda: None)
+        acts = self._activity(obs)
+        officer_view.draw_intent(surf, self.cam, obs, p, acts, self._officer_name)
         self._map_overlay_text(surf)
+        officer_view.draw_panel(surf, (self.map_rect.x + 14, self.map_rect.y + 36), acts, self._officer_name,
+                                self.world.tick, self.world.rules.ticks_per_cycle)
         self._draw_printout(surf)
         self._bottom(surf)
         self._column(surf)
