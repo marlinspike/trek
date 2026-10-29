@@ -322,6 +322,7 @@ class World:
             update_repair(self, s, dt)
             update_projects(self, s, dt)
             s.reveal_time = max(0.0, s.reveal_time - dt)
+            s.deflector_cooldown = max(0.0, s.deflector_cooldown - dt)
             self._self_destruct(s, dt)
             if cycle_edge and s.boarders > 0:
                 self._boarding(s)

@@ -33,7 +33,7 @@ from ..sim.commands import (
     Authority, Command, ConfigureAutoload, ControlProbe, FirePhasers, FireTorpedoes, LaunchProbe, LoadTubes,
     LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak, SetFireMode, SetHelm,
     SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, StartProject, TurnMounts,
-    FireSpecialRound,
+    FireSpecialRound, DeflectorPulse,
 )
 from ..sim.observation import Observation
 from ..sim.ship import Kind, Ship
@@ -45,7 +45,7 @@ STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
                  ConfigureAutoload, LoadTubes, SetTubes, LaunchProbe, ControlProbe, SetFireMode, SetPointDefense,
                  FireSpecialRound),
     "engineering": (SetShields, ReinforceShield, SetRepairPriority, SetCloak),
-    "science": (Scan, StartProject),
+    "science": (Scan, StartProject, DeflectorPulse),
 }
 
 STATION_NAMES = {"helm": "Helm", "tactical": "Tactical", "engineering": "Engineering", "science": "Science"}
@@ -108,7 +108,9 @@ class OfficerBrain(AICaptain):
         return out
 
     def _collaborate(self, obs: Observation, ship: Ship) -> list[Command]:
-        """In command, an officer uses the projects they know: Spock and Seven hunt cloaked ships with a detector."""
+        """In command, an officer uses the projects they know: Spock and Seven hunt cloaked ships with
+        the deflector pulse when one is ahead and close, else with the tachyon detector torpedo."""
+        from ..core.angles import ang_dist, bearing
         from ..sim.projects import PROJECTS, project_loaded
         from .collaborations import COLLABORATIONS
 
@@ -116,20 +118,34 @@ class OfficerBrain(AICaptain):
         if not cloaked:
             return []
         c = min(cloaked, key=lambda c: c.distance_to(ship.x, ship.y))
+        d = c.distance_to(ship.x, ship.y)
+        rules = obs.rules
+        out: list[Command] = []
         for collab in COLLABORATIONS:
             proj = PROJECTS.get(collab.project)
-            spec = obs.content.torpedoes.get(proj.ordnance) if proj is not None and proj.ordnance else None
-            if self.officer_id not in collab.officers or spec is None or spec.reveal_radius <= 0:
+            if proj is None or self.officer_id not in collab.officers:
+                continue
+            if proj.id == "deflector":
+                if not ship.deflector_ready:
+                    if proj.id not in ship.projects:
+                        out.append(self._cmd(StartProject, ship, project=proj.id))
+                    continue
+                ahead = ang_dist(bearing(c.x - ship.x, c.y - ship.y), ship.course) <= rules.deflector_pulse_arc / 2
+                if (ahead and d <= rules.deflector_pulse_range * 0.9 and ship.deflector_cooldown <= 0
+                        and ship.battery_charge() >= rules.deflector_pulse_energy):
+                    return [self._cmd(DeflectorPulse, ship)]
+                continue
+            spec = obs.content.torpedoes.get(proj.ordnance) if proj.ordnance else None
+            if spec is None or spec.reveal_radius <= 0:
                 continue
             if project_loaded(ship, proj) is not None:
-                reach = spec.velocity * obs.rules.units_per_warp * (spec.arm_time + spec.max_time_fuse)
-                if c.distance_to(ship.x, ship.y) > reach * 0.9:
-                    return []
-                # the contact's position is already dead-reckoned along its last heading where the computer can
-                return [self._cmd(FireSpecialRound, ship, ordnance=proj.ordnance, x=c.x, y=c.y)]
-            if proj.id not in ship.projects:
-                return [self._cmd(StartProject, ship, project=proj.id)]
-        return []
+                reach = spec.velocity * rules.units_per_warp * (spec.arm_time + spec.max_time_fuse)
+                if d <= reach * 0.9:
+                    # the contact's position is already dead-reckoned along its last heading where the computer can
+                    return [self._cmd(FireSpecialRound, ship, ordnance=proj.ordnance, x=c.x, y=c.y)]
+            elif proj.id not in ship.projects:
+                out.append(self._cmd(StartProject, ship, project=proj.id))
+        return out
 
     def _science(self, obs: Observation, ship: Ship) -> list[Command]:
         """Keep a fresh scan of the target, then work through the other contacts, nearest first."""

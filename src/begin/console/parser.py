@@ -28,7 +28,7 @@ from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, Surrender,
-    FireSpecialRound, StartProject, Tractor, Transport, TurnMounts,
+    DeflectorPulse, FireSpecialRound, StartProject, Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
 from ..sim.ship import TARGETABLE_GROUPS, BankRole, FireMode, Kind, PDDoctrine
@@ -127,6 +127,7 @@ VERBS: dict[str, tuple[str, ...]] = {
     "delegate": ("delegate", "dg"),
     "assume": ("assume", "takeback"),
     "conn": ("conn",),
+    "pulse": ("pulse", "deflector"),
     "crew": ("crew", "bridge", "officers"),
     "ask": ("ask", "say"),
 }
@@ -1120,6 +1121,11 @@ class Parser:
     def _v_assume(self, tok: _Tokens, res: ParseResult) -> None:
         for st in _stations(tok):
             res.commands.append(self._cmd(DelegateStation, station=st, on=False))
+
+    def _v_pulse(self, tok: _Tokens, res: ParseResult) -> None:
+        """`pulse`: sweep the cone ahead with the deflector's tachyon pulse [E]."""
+        tok.rest()
+        res.commands.append(self._cmd(DeflectorPulse))
 
     def _v_conn(self, tok: _Tokens, res: ParseResult) -> None:
         """`conn <officer>` gives an officer the whole bridge; `conn captain` (or bare `conn`) takes it back [E]."""

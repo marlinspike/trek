@@ -183,7 +183,13 @@ class Bridge:
     def collaborate(self, officer: OfficerProfile, collab: collaborations.Collaboration,
                     run: RunCommand) -> list[Utterance]:
         """Officers set to work together on a project; each says their part."""
+        from ..sim.projects import PROJECTS
+
         err = run(f"design {collab.project}", officer)
+        proj = PROJECTS.get(collab.project)
+        if err and proj is not None and proj.use and "already set up" in err:
+            err = run(proj.use, officer)     # it's built: use it
+            return [self._say(officer, err, "caution")] if err else [self._line(officer, "ack") or self._say(officer, "Aye.")]
         if err:
             return [self._say(officer, err, "caution")]
         return self._chorus(collab.start)
@@ -334,8 +340,8 @@ class Bridge:
         for ev in events:
             if isinstance(ev, ProjectCompleted) and ev.ship_id == s.id:
                 collab = collaborations.for_project(ev.project)
-                if collab is not None and ev.tube is not None:
-                    out.extend(self._chorus(collab.done, tube=ev.tube + 1))
+                if collab is not None and (ev.tube is not None or "{tube}" not in str(collab.done)):
+                    out.extend(self._chorus(collab.done, tube=(ev.tube or 0) + 1))
                     self._last_any = obs.tick
             elif isinstance(ev, TorpedoLaunched) and ev.ship_id == s.id and commander is not None:
                 self._maybe(out, obs, "", "bridge_torpedoes", 0.5, officer=commander)
@@ -427,6 +433,7 @@ COMMAND_SYNTAX = """\
   raise all | lower <shield numbers> | reinforce <1-6> | repair <system>|all | cloak on|off
   scan <ship> | design tachyon (Spock and Seven build a detector round for cloaked ships)
   tachyon <bearing> <range> | tachyon <ship> (burst the loaded detector round there)
+  design deflector (set the dish up for tachyon pulses) | pulse (expose cloaked ships ahead of the bow)
   delegate <helm|tactical|engineering|science> | assume <station>   (hand a station to its officer, or take it back)"""
 
 

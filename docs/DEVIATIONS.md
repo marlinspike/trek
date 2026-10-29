@@ -32,13 +32,15 @@ Begin detects a ship at its rated sensor range multiplied by the ship's reflecti
 - **From 100% to 150% of rated range,** a contact is hazy. Its reported position wanders by up to 8% of the rated range at the outer edge, shown on the map as a dashed ring. A ship first seen this far out isn't identified.
 - **Beyond 150%,** nothing is seen. The last fix is kept, and Starfleet computers extrapolate it. The science officer reports where a lost contact was last seen and where it was heading.
 - **Sensor ranges differ by faction** (`sensors.range` in `factions.toml`): Federation 1.0, Romulan 0.85, Orion 0.8 and Klingon 0.7. The Federation and Klingon figures follow the player's direction that Starfleet sensors are the best and Klingon sensors notably worse; the Romulan and Orion figures are our guesses.
-- **Cloaked ships are not detected at all** until they fire, which reveals them briefly, or until a tachyon burst lights them up (below).
+- **Cloaked ships are not detected at all** until they fire, which reveals them briefly, or until a tachyon burst or deflector pulse lights them up (below).
 
 `Rules.sensor_haze_limit` and `Rules.sensor_haze_error` set the band and the error.
 
 ## Crew projects: the tachyon detector
 
 Begin has no way to find a cloaked ship except waiting for it to fire. In the remake, Spock and Seven of Nine can design a tachyon detector torpedo when you ask them about cloaked ships (or with `design tachyon`). It takes 20 cycles with a full crew, goes into one tube for a single shot, and the tube then goes back to ordinary torpedoes. Fired with `tachyon <bearing> <range>` or `tachyon <ship>`, it bursts at that point and shows every cloaked ship within 6,000 units for 30 cycles. It does no damage. The design is ours, inspired by the tachyon detection grids of the films and series.
+
+They can also set the main deflector dish up to emit tachyons (`design deflector`, about 12 cycles, once per battle). After that, `pulse` sweeps a 60° cone ahead of the bow out to 15,000 units and shows cloaked ships there for 20 cycles. Each pulse costs 40 battery energy and the dish recharges for 30 cycles (`Rules.deflector_pulse_*`). The pulse is quick and reusable but short-range and forward-only; the torpedo reaches further in every direction but uses a tube and is built for each shot.
 
 ## The ship computer
 

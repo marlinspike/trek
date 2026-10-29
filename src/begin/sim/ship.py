@@ -356,6 +356,8 @@ class Ship:
     self_destruct: float = -1.0        # cycles remaining, -1 = off
     repair_priority: Kind | None = None
     delegated: set[str] = field(default_factory=set)  # bridge stations run by officers (crew/stations.py)
+    deflector_ready: bool = False      # the dish is set up for tachyon pulses [E]
+    deflector_cooldown: float = 0.0    # cycles until the next pulse
     conn: str = ""                     # officer id in command of the whole bridge; "" = the captain [E]
     conn_saved: set[str] = field(default_factory=set)  # stations delegated before the officer took the bridge
     escape_time: float = 0.0

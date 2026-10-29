@@ -60,6 +60,12 @@ class Rules:
     sensor_haze_error: float = 0.08    # [E] × rated range: position error at the haze limit
     probe_reflect: float = 0.5
     cloak_reveal_cycles: float = 1.0
+    # [E] the deflector tachyon pulse (Spock and Seven reconfigure the dish; sim/projects.py)
+    deflector_pulse_range: float = 15000.0
+    deflector_pulse_arc: float = 60.0      # full width of the cone ahead of the ship, degrees
+    deflector_pulse_energy: float = 40.0   # from the batteries, per pulse
+    deflector_pulse_cooldown: float = 30.0
+    deflector_pulse_reveal: float = 20.0   # cycles a cloaked ship stays visible
 
     # tractor / docking / transport [R]
     tractor_range: float = 1000.0

@@ -435,3 +435,39 @@ def test_tachyon_round_needs_a_design_and_reach(content) -> None:  # type: ignor
     w.run(0.2)
     reasons = [e.reason for e in w.take_events() if isinstance(e, CommandRejected)]
     assert any("design tachyon" in r for r in reasons) and any("Nothing called" in r for r in reasons)
+
+
+def test_deflector_pulse_lights_up_cloaked_ships_ahead_only(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.commands import DeflectorPulse, StartProject
+    from begin.sim.events import DeflectorPulsed
+
+    w = make_world(content)
+    hc = w.add_ship("federation.hc", 0, 0, 0, course=0)
+    ahead = w.add_ship("romulan.bp", 1, 0, 9000)
+    behind = w.add_ship("romulan.bp", 1, 0, -9000)
+    far = w.add_ship("romulan.bp", 1, 500, 30000)
+    for s in (ahead, behind, far):
+        s.cloaked = True
+    w.submit(DeflectorPulse(ship_id=hc.id, issuer=Authority.CAPTAIN))
+    w.run(0.2)
+    assert any(isinstance(e, CommandRejected) and "design deflector" in e.reason for e in w.take_events())
+    w.submit(StartProject(ship_id=hc.id, project="deflector", issuer=Authority.CAPTAIN))
+    w.run(14)
+    assert hc.deflector_ready
+    stored = hc.battery_charge()
+    assert w.execute(DeflectorPulse(ship_id=hc.id, issuer=Authority.CAPTAIN)) is None
+    assert hc.battery_charge() == stored - w.rules.deflector_pulse_energy
+    w.run(0.2)
+    pulses = [e for e in w.take_events() if isinstance(e, DeflectorPulsed)]
+    assert pulses and pulses[0].found == 1
+    obs = w.observe(0)
+    assert obs.contact(ahead.id) is not None and obs.contact(ahead.id).visible
+    for s in (behind, far):
+        c = obs.contact(s.id)
+        assert c is None or not c.visible
+    w.submit(DeflectorPulse(ship_id=hc.id, issuer=Authority.CAPTAIN))   # still recharging
+    w.run(0.2)
+    assert any(isinstance(e, CommandRejected) and "recharging" in e.reason for e in w.take_events())
+    w.submit(StartProject(ship_id=hc.id, project="deflector", issuer=Authority.CAPTAIN))
+    w.run(0.2)
+    assert any(isinstance(e, CommandRejected) and "already set up" in e.reason for e in w.take_events())

@@ -520,3 +520,35 @@ def test_officers_can_be_addressed_without_a_comma(scene) -> None:  # type: igno
     assert sc.player.conn == "seven"
     sc.run_console("i have the bridge")
     assert sc.player.conn == ""
+
+
+def test_seven_sets_up_and_fires_the_deflector_pulse(scene) -> None:  # type: ignore[no-untyped-def]
+    sc, surf = scene
+    sc.run_console("seven use the deflector to find them")
+    assert "deflector" in sc.player.projects and _said(sc, "Spock")
+    for _ in range(15 * sc.world.rules.ticks_per_cycle):
+        sc.world.step()
+        sc._drain_events()
+    assert sc.player.deflector_ready
+    assert any("deflector is ready" in t for t in _said(sc, "Seven of Nine"))
+    sc.run_console("seven, pulse")
+    assert sc.player.deflector_cooldown > 0
+    sc.draw(surf)
+
+
+def test_seven_in_command_pulses_at_a_cloaked_ship_ahead(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.core.rng import Rng
+    from begin.crew.officers import Crew, default_crew
+    from begin.sim.commands import DeflectorPulse, TakeConn
+    from begin.sim.world import World
+
+    w = World(content, seed=3)
+    hc = w.add_ship("federation.hc", 0, 0, 0)
+    bp = w.add_ship("romulan.bp", 1, 0, 9000, course=180)
+    hc.deflector_ready = True
+    w.run(1)
+    bp.cloaked = True
+    w.run(0.5)
+    crew = Crew(hc.id, 0, content, default_crew(load_officers()), Rng(1))
+    w.execute(TakeConn(ship_id=hc.id, officer="seven"))
+    assert any(isinstance(c, DeflectorPulse) for c in crew.think(w.observe(0)))

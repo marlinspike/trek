@@ -26,6 +26,22 @@ class Collaboration:
 
 
 COLLABORATIONS: tuple[Collaboration, ...] = (
+    # checked in order: a request that mentions the dish is about the dish, even if it mentions cloaks too
+    Collaboration(
+        id="deflector",
+        project="deflector",
+        officers=("spock", "seven"),
+        trigger=re.compile(r"\b(deflector|dish|graviton|pulse)\b"),
+        start=(
+            ("seven", "I can modulate the deflector to emit a tachyon field ahead of us. Commander, the phase "
+                      "variance?"),
+            ("spock", "I will compensate. Twelve seconds, Captain. Point the bow where you believe they are."),
+        ),
+        done=(
+            ("seven", "The deflector is ready. Say 'pulse' and anything cloaked ahead of us will be exposed."),
+            ("spock", "Each pulse drains the batteries and needs half a minute to recharge. Use it judiciously."),
+        ),
+    ),
     Collaboration(
         id="tachyon",
         project="tachyon",

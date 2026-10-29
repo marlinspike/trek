@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 import pygame
 
-from ..sim.events import Detonation, Event, OrdnanceDestroyed, PhaserFired, ShieldHit, ShipStatusChanged
+from ..sim.events import DeflectorPulsed, Detonation, Event, OrdnanceDestroyed, PhaserFired, ShieldHit, ShipStatusChanged
 from . import theme
 from .camera import Camera
 
@@ -77,6 +77,10 @@ class Effects:
                     sp = self.rng.uniform(0.3, 1.0) * max(ev.radius, 200.0) * 1.2
                     self.sparks.append(Spark(ev.x, ev.y, math.sin(a) * sp, math.cos(a) * sp, col,
                                              self.rng.uniform(0.4, 1.2)))
+            elif isinstance(ev, DeflectorPulsed):
+                a = math.radians(ev.facing)
+                self.beams.append(Beam(ev.x, ev.y, ev.x + math.sin(a) * ev.range, ev.y + math.cos(a) * ev.range,
+                                       ev.arc, theme.CREW, life=1.4, width=1.0, cone=(ev.facing, ev.arc, ev.range)))
             elif isinstance(ev, OrdnanceDestroyed):
                 self.rings.append(Ring(ev.x, ev.y, 120.0, theme.CAUTION, life=0.45, core=False))
             elif isinstance(ev, ShipStatusChanged) and ev.status == "destroyed":

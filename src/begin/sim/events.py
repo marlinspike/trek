@@ -144,6 +144,17 @@ class ScanCompleted(Event):
 
 
 @dataclass(slots=True)
+class DeflectorPulsed(Event):
+    ship_id: int
+    x: float
+    y: float
+    facing: float          # compass bearing of the cone's centre
+    arc: float             # full width, degrees
+    range: float
+    found: int             # cloaked ships lit up
+
+
+@dataclass(slots=True)
 class ProjectCompleted(Event):
     ship_id: int
     project: str

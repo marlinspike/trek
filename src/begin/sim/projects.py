@@ -31,6 +31,8 @@ class ProjectDef:
     ordnance: str = ""                                     # the special round it produces, if any
     needs_tubes: bool = False
     hint: str = ""                                         # how to use the result, told when it is done
+    use: str = ""                                          # console command that uses a lasting result
+    is_ready: Callable[[Ship], bool] | None = None         # a lasting result is already in place
 
 
 def _free_tube(ship: Ship, ordnance: str) -> Tube | None:
@@ -67,7 +69,16 @@ def load_special_round(world: World, ship: Ship, proj: ProjectDef) -> int | None
     return tube.index
 
 
+def configure_deflector(world: World, ship: Ship, proj: ProjectDef) -> int | None:
+    """Set the deflector dish up for tachyon pulses; it stays set up for the rest of the battle."""
+    ship.deflector_ready = True
+    return None
+
+
 PROJECTS: dict[str, ProjectDef] = {
+    "deflector": ProjectDef("deflector", "deflector tachyon pulse", 12.0, configure_deflector,
+                            hint="Sweep ahead of the ship with 'pulse'.", use="pulse",
+                            is_ready=lambda ship: ship.deflector_ready),
     "tachyon": ProjectDef("tachyon", "tachyon detector torpedo", 20.0, load_special_round,
                           ordnance="tachyon", needs_tubes=True,
                           hint="Fire it with 'tachyon <bearing> <range>' or 'tachyon <ship>'."),
@@ -96,7 +107,7 @@ def update_projects(world: World, ship: Ship, dt: float) -> None:
         elif tube is not None:
             text = f"The {proj.title} is loaded in tube {tube + 1}. {proj.hint}".strip()
         else:
-            text = f"The {proj.title} is complete."
+            text = f"The {proj.title} is ready. {proj.hint}".strip()
         world.emit(Message(world.tick, text, Tone.GOOD, ship_id=ship.id, visible_to=frozenset({ship.side})))
 
 

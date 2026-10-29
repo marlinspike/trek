@@ -139,7 +139,7 @@ TIP_STATIONS = {
     "Switch torpedoes": "tactical", "Heavier torpedo available": "tactical", "Proximity fuse": "tactical",
     "Phasers in range": "tactical", "Closing to phaser range": "helm", "Probe it": "tactical",
     "Scan the target": "science", "Their shields": "science", "Turn a fresh shield toward them": "helm",
-    "Cloaked ship nearby": "science", "Tachyon round ready": "tactical",
+    "Cloaked ship nearby": "science", "Tachyon round ready": "tactical", "Deflector pulse ready": "science",
     "Engines running hot": "engineering", "Power is running out": "engineering", "Badly damaged": "engineering",
 }
 
@@ -282,14 +282,18 @@ def tips(ctx: HelpContext) -> list[Tip]:
     if cloaked and s.tubes:
         h = min(cloaked, key=lambda h: h.distance_to(s.x, s.y))
         name = _contact_name(h)
-        if any(t.loaded is not None and t.loaded.ordnance == "tachyon" for t in s.tubes):
+        brg = bearing(h.x - s.x, h.y - s.y)
+        if s.deflector_ready and s.deflector_cooldown <= 0 and h.distance_to(s.x, s.y) < obs.rules.deflector_pulse_range:
+            tip(1, "Deflector pulse ready", f"Turn toward where **{name}** vanished (bearing {brg:.0f}) and pulse the "
+                "deflector to expose it.", f"helm {brg:.0f}", "pulse")
+        elif any(t.loaded is not None and t.loaded.ordnance == "tachyon" for t in s.tubes):
             tip(1, "Tachyon round ready", f"Burst the tachyon detector where **{name}** vanished to light it up.",
                 f"tachyon {name.lower()}")
         elif "tachyon" in s.projects:
             pass  # Spock and Seven are on it
         else:
             tip(2, "Cloaked ship nearby", f"**{name}** has probably cloaked. Spock and Seven can build a tachyon "
-                "detector torpedo to find it.", "design tachyon", "help tachyon")
+                "detector torpedo, or set the deflector up for tachyon pulses.", "design tachyon", "design deflector")
     live = [dv for dv in s.drives if not dv.destroyed]
     temp = max((dv.temp for dv in live), default=0.0)
     if temp > obs.rules.temp_limit * 0.8:

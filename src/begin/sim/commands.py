@@ -509,6 +509,8 @@ class StartProject(Command):
             raise Rejected(f"The {proj.title} is already being designed ({ship.projects[self.project]:.0f} cycles left).")
         if proj.needs_tubes and not any(t.intact for t in ship.tubes):
             raise Rejected(f"The {proj.title} needs a working torpedo tube.")
+        if proj.is_ready is not None and proj.is_ready(ship):
+            raise Rejected(f"The {proj.title} is already set up. {proj.hint}".strip())
         loaded_in = project_loaded(ship, proj) if proj.ordnance else None
         if loaded_in is not None:
             raise Rejected(f"A {proj.title} is already loaded in tube {loaded_in + 1}.")
@@ -927,6 +929,57 @@ class DelegateStation(Command):
             ship.delegated.discard(self.station)
             if not ship.delegated:
                 ship.conn, ship.conn_saved = "", set()   # every station taken back: the captain has the bridge again
+
+
+@dataclass(kw_only=True)
+class DeflectorPulse(Command):
+    """Sweep a cone ahead of the ship with tachyons from the deflector dish, lighting up cloaked ships [E]."""
+
+    name: ClassVar[str] = "pulse"
+
+    def channels(self) -> tuple[str, ...]:
+        return ("deflector",)
+
+    def validate(self, world: World, ship: Ship) -> None:
+        if ship.cls.is_base:
+            raise Rejected("Bases have no deflector dish.")
+        if not ship.deflector_ready:
+            raise Rejected("The deflector isn't set up for tachyon pulses. Ask Spock or Seven ('design deflector').")
+        if ship.deflector_cooldown > 0:
+            raise Rejected(f"The deflector is recharging ({ship.deflector_cooldown:.0f} cycles).")
+        cost = world.rules.deflector_pulse_energy
+        if ship.battery_charge() < cost:
+            raise Rejected(f"A pulse needs {cost:.0f} energy in the batteries ({ship.battery_charge():.0f} stored).")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        from ..core.angles import ang_dist, bearing
+        from .events import DeflectorPulsed, Message, Tone
+
+        rules = world.rules
+        need = rules.deflector_pulse_energy
+        for b in ship.batteries:
+            if b.online and need > 0:
+                take = min(b.charge, need)
+                b.charge -= take
+                need -= take
+        ship.deflector_cooldown = rules.deflector_pulse_cooldown
+        found = 0
+        for s in world.ships.values():
+            if s is ship or not s.alive or not s.cloaked:
+                continue
+            d = math.hypot(s.x - ship.x, s.y - ship.y)
+            if d <= rules.deflector_pulse_range and ang_dist(bearing(s.x - ship.x, s.y - ship.y), ship.course) <= rules.deflector_pulse_arc / 2:
+                s.reveal_time = max(s.reveal_time, rules.deflector_pulse_reveal)
+                found += 1
+        world.emit(DeflectorPulsed(world.tick, ship.id, ship.x, ship.y, ship.course, rules.deflector_pulse_arc,
+                                   rules.deflector_pulse_range, found))
+        text = (f"Deflector pulse: {found} cloaked ship{'s' if found != 1 else ''} lit up for "
+                f"{rules.deflector_pulse_reveal:.0f} cycles." if found else "Deflector pulse: nothing cloaked ahead.")
+        world.emit(Message(world.tick, text, Tone.GOOD if found else Tone.CAUTION, ship_id=ship.id,
+                           visible_to=frozenset({ship.side})))
+
+    def describe(self) -> str:
+        return "deflector pulse"
 
 
 @dataclass(kw_only=True)

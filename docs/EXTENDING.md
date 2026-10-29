@@ -112,7 +112,7 @@ All the lines are original writing; keep it that way (see [LICENSING.md](../LICE
 
 Spock and Seven's tachyon detector is the first of these, and the pattern is meant for more. It has two halves:
 
-- **The project** (`sim/projects.py`): a `ProjectDef` in `PROJECTS` says how long the work takes with a full crew and what finishing it does, for example `load_special_round`, which puts one round of a `special` design into a tube. The simulation knows nothing about officers, so the console command `design <project>` works with or without them.
+- **The project** (`sim/projects.py`): a `ProjectDef` in `PROJECTS` says how long the work takes with a full crew and what finishing it does, for example `load_special_round`, which puts one round of a `special` design into a tube, or `configure_deflector`, which leaves the dish set up for the rest of the battle. A lasting result like the deflector sets `is_ready` (so it isn't built twice) and `use` (the command an officer runs when asked again). The simulation knows nothing about officers, so the console command `design <project>` works with or without them.
 - **The collaboration** (`crew/collaborations.py`): a `Collaboration` in `COLLABORATIONS` names the officers, the phrases that set it off when the captain talks to one of them, and the lines each says when work starts and when it is done (`{tube}` is filled in). The Bridge checks these before anything else, so they work offline and with a language model.
 
 Add a help page for each new project, and a coach tip in `help/coach.py` if there is a situation that calls for it.
