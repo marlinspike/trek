@@ -158,8 +158,11 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
 
 
 def quick_battle(content: ContentDB, seed: int, player_faction: str = "federation",
-                 enemy_faction: str | None = None, size: int = 1) -> BattleSetup:
-    """A seeded random engagement: the player's ship (plus wingmen) against a balanced enemy group."""
+                 enemy_faction: str | None = None, size: int = 1, enemies: int = 2) -> BattleSetup:
+    """A seeded random engagement: the player's ship (plus wingmen) against `enemies` ships per player ship.
+
+    The enemy group is sized to roughly the player's mass, split evenly across its ships.
+    """
     rng = Rng(seed).derive("quick")
     factions = [f for f in content.factions if f != player_faction]
     enemy = enemy_faction or rng.choice(factions)
@@ -173,8 +176,11 @@ def quick_battle(content: ContentDB, seed: int, player_faction: str = "federatio
         player.ships.append(ShipSpec(rng.choice(mine).id))
     enemy_ships: list[ShipSpec] = []
     spent = 0.0
-    while spent < budget * 0.8 and len(enemy_ships) < 12:
-        options = [c for c in theirs if spent + c.mass <= budget * 1.15] or [min(theirs, key=lambda c: c.mass)]
+    count = max(1, enemies * size)
+    for slot in range(count):
+        share = (budget - spent) / (count - slot)
+        options = [c for c in theirs if 0.65 * share <= c.mass <= 1.35 * share] or \
+            [min(theirs, key=lambda c: abs(c.mass - share))]
         c = rng.choice(options)
         enemy_ships.append(ShipSpec(c.id))
         spent += c.mass

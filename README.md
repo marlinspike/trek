@@ -21,7 +21,7 @@ Useful shortcuts:
 | Command | What it does |
 |---|---|
 | `begin --preset border-incident` | Jumps straight into a preset battle (ids are in `src/begin/content/data/presets.toml`). |
-| `begin --quick 42` | Starts seeded quick battle number 42. |
+| `begin --quick 42` | Starts seeded quick battle number 42: your ship against two enemies. |
 | `begin --preset fleet-action --cycles 30 --screenshot shot.png` | Simulates 30 cycles headlessly and saves a screenshot. |
 | `begin --tournament 20` | Runs 20 headless AI-versus-AI battles and prints a balance summary. |
 | `begin --balance 8` | Fights every preset 8 times with AI captains on both sides and prints win rates. |

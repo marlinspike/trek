@@ -71,3 +71,9 @@ def test_assessment_scores_a_win(content) -> None:  # type: ignore[no-untyped-de
     w.step()
     assert a.score(w, 0) > 5
     assert "victory" in a.verdict(a.score(w, 0))
+
+
+def test_quick_battle_has_two_enemies(content) -> None:  # type: ignore[no-untyped-def]
+    for seed in range(1, 30):
+        setup = quick_battle(content, seed)
+        assert [len(f.ships) for f in setup.fleets] == [1, 2]
