@@ -24,6 +24,18 @@ The remake follows Begin's rules wherever the manual ([M]) or the decoded binary
 
 **Probe launchers** need a one-cycle preparation instead of being instantly ready.
 
+## Sensors
+
+Begin detects a ship at its rated sensor range multiplied by the ship's reflectivity, so small ships can close unseen, and a cloaked ship shows as a faint return at very short range. The remake does it differently:
+
+- **Inside rated range,** every uncloaked ship is seen exactly and identified, whatever its size.
+- **From 100% to 150% of rated range,** a contact is hazy. Its reported position wanders by up to 8% of the rated range at the outer edge, shown on the map as a dashed ring. A ship first seen this far out isn't identified.
+- **Beyond 150%,** nothing is seen. The last fix is kept, and Starfleet computers extrapolate it. The science officer reports where a lost contact was last seen and where it was heading.
+- **Sensor ranges differ by faction** (`sensors.range` in `factions.toml`): Federation 1.0, Romulan 0.85, Orion 0.8 and Klingon 0.7. The Federation and Klingon figures follow the player's direction that Starfleet sensors are the best and Klingon sensors notably worse; the Romulan and Orion figures are our guesses.
+- **Cloaked ships are not detected at all** until they fire, which reveals them briefly. Planned for a later version: letting Spock design a detector torpedo or probe to find cloaked ships.
+
+`Rules.sensor_haze_limit` and `Rules.sensor_haze_error` set the band and the error.
+
 ## The ship computer
 
 Begin has no automation. The remake adds a ship computer that can:

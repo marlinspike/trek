@@ -428,7 +428,7 @@ class Ship:
     def sensor_range(self) -> float:
         if self.sensors is None or self.sensors.destroyed:
             return 0.0
-        return self.cls.scanner_range * (0.5 + 0.5 * self.sensors.health)
+        return self.cls.rated_sensor_range * (0.5 + 0.5 * self.sensors.health)
 
     def battery_charge(self) -> float:
         return sum(b.charge for b in self.batteries if b.online)

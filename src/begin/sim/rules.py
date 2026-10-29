@@ -56,6 +56,8 @@ class Rules:
 
     # sensors [R]
     cloak_reflect: float = 0.005
+    sensor_haze_limit: float = 1.5     # [E] × rated range: beyond 1.0 contacts are hazy, beyond this they fade
+    sensor_haze_error: float = 0.08    # [E] × rated range: position error at the haze limit
     probe_reflect: float = 0.5
     cloak_reveal_cycles: float = 1.0
 

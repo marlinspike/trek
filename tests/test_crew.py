@@ -386,3 +386,24 @@ def test_old_home_folder_is_copied_into_config(tmp_path) -> None:  # type: ignor
     assert merged["llm"] == {"provider": "off", "model": "x"}  # the project's own values win
     root = project_root()
     assert root is not None and (root / "config" / "README.md").is_file()
+
+
+def test_science_officer_gives_last_fix_on_lost_contact(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.crew.conversation import Bridge
+    from begin.help.coach import HelpContext
+    from begin.presets import load_presets
+
+    b = build_battle(content, load_presets()[0].setup())
+    assert b.crew is not None and b.player_ship_id is not None
+    bridge = Bridge(b.crew, {})
+    w = b.world
+    me = w.ships[b.player_ship_id]
+    enemy = next(s for s in w.ships.values() if s.side != me.side)
+    w.run(1)
+    w.take_events()
+    enemy.x, enemy.y = me.x, me.y + me.sensor_range() * 2   # far beyond the haze band
+    w.run(0.2)
+    events = w.take_events()
+    ctx = HelpContext(content, w.observe(me.side), me)
+    said = [u.text for u in bridge.react(events, ctx)]
+    assert any(enemy.name in t and "bearing" in t for t in said), said

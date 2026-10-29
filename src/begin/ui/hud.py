@@ -460,7 +460,7 @@ class ContactsPanel(Panel):
                 col = theme.dim(col, 0.55)
             what = c.cls.abbrev if c.cls else "?"
             rows.append((d, c.label if c.identified else f"Contact #{c.id}", col, c.id,
-                         f"{what} · {'tracking' if c.visible else 'lost'}"))
+                         f"{what} · {('hazy' if c.haze > 0 else 'tracking') if c.visible else 'lost'}"))
         rows.sort()
         rh = 20
         for k, (d, name, col, sid, note) in enumerate(rows):

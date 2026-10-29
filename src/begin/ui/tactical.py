@@ -347,7 +347,13 @@ class TacticalView:
             theme.text(surf, "?", (sx, sy), color, 12, anchor="center")
         if not c.visible:
             self._dashed_circle(surf, theme.dim(color, 0.8), (sx, sy), rad + 6, seg=8)
+        elif c.haze > 0:
+            # beyond rated sensor range: the ring shows how far off the reported position may be
+            ring = max(rad + 6, c.uncertainty * cam.zoom)
+            self._dashed_circle(surf, theme.dim(color, 0.6), (sx, sy), int(ring), seg=12)
         label = c.label if c.identified else f"#{c.id}"
+        if c.visible and c.haze > 0:
+            label = "~" + label
         theme.text(surf, label, (sx + rad + 8, sy - 8), color, 12, weight="medium")
         if not c.visible:
             theme.text(surf, f"lost {c.age:.0f}s", (sx + rad + 8, sy + 6), theme.TEXT_FAINT, 10)

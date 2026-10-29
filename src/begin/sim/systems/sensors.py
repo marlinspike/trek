@@ -8,6 +8,7 @@ state; computers sophisticated enough (Starfleet) dead-reckon them.
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -44,6 +45,8 @@ class Contact:
     warp: float = 0.0
     last_tick: int = 0
     identified: bool = False
+    haze: float = 0.0            # 0 = exact (inside rated range) .. 1 = at the edge of what sensors can make out
+    uncertainty: float = 0.0     # how far off the reported position may be, in world units
     scan: ScanRecord | None = None
 
 
@@ -78,22 +81,26 @@ def update_sensors(world: World) -> None:
             c = intel.contacts.get(s.id)
             if c is None:
                 c = intel.contacts[s.id] = Contact(s.id)
-            refl = s.cls.scanner_reflect
-            if s.cloaked and s.reveal_time <= 0:
-                refl *= rules.cloak_reflect
-            seen = False
-            for px, py, r in platforms:
-                reach = r * refl
-                if (s.x - px) ** 2 + (s.y - py) ** 2 <= reach * reach:
-                    seen = True
-                    break
-            # [M] in Begin a ship on sensors is a known ship: class, side and name come with the contact.
-            # A cloaked ship's faint return still only shows as an unknown blip.
-            ident = seen and not (s.cloaked and s.reveal_time <= 0)
+            # [E] Starfleet-rated sensors: inside rated range any uncloaked ship is seen exactly and identified;
+            # beyond it the return grows hazier until sensor_haze_limit × range, where it fades out. A cloaked
+            # ship is not detected at all (until it gives itself away by firing).
+            hidden = s.cloaked and s.reveal_time <= 0
+            ratio = math.inf if hidden else min(
+                (math.hypot(s.x - px, s.y - py) / r for px, py, r in platforms), default=math.inf)
+            seen = ratio <= rules.sensor_haze_limit
+            exact = ratio <= 1.0
             if seen:
                 vx, vy = s.velocity(rules.units_per_warp)
                 c.x, c.y, c.vx, c.vy = s.x, s.y, vx, vy
+                c.haze = c.uncertainty = 0.0
+                if not exact:
+                    c.haze = (ratio - 1.0) / max(1e-6, rules.sensor_haze_limit - 1.0)
+                    ex, ey = _haze_offset(world, side, s.id)
+                    err = c.haze * rules.sensor_haze_error * _rated_range(platforms)
+                    c.x, c.y = s.x + ex * err, s.y + ey * err
+                    c.uncertainty = err
                 c.course, c.warp, c.last_tick = s.course, s.warp, world.tick
+                ident = exact
                 c.identified = c.identified or ident
                 if not c.visible:
                     c.visible = True
@@ -122,6 +129,19 @@ def update_sensors(world: World) -> None:
                     vis.add(o.id)
                     break
         intel.visible_ordnance = vis
+
+
+def _rated_range(platforms: list[tuple[float, float, float]]) -> float:
+    return max((r for _, _, r in platforms), default=0.0)
+
+
+def _haze_offset(world: World, side: int, ship_id: int) -> tuple[float, float]:
+    """A unit-scale position error for a hazy contact, redrawn once a cycle (deterministic per battle)."""
+    cycle = world.tick // world.rules.ticks_per_cycle
+    rng = random.Random(((world.seed * 1_000_003 + side) * 7_919 + ship_id) * 104_729 + cycle)
+    a = rng.uniform(0.0, 2.0 * math.pi)
+    m = math.sqrt(rng.random())
+    return math.sin(a) * m, math.cos(a) * m
 
 
 def apparent_position(world: World, side: int, ship_id: int) -> tuple[float, float] | None:

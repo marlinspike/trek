@@ -122,6 +122,7 @@ def load_content(data_dir: Path = DATA_DIR) -> ContentDB:
             officer_names=tuple(f["officer_names"]), captain_names=tuple(f["captain_names"]),
             dogma=Dogma(**{k: float(v) for k, v in dg.items()}),
             computer_sophistication=float(f["computer"]["sophistication"]),
+            sensor_scale=float(f.get("sensors", {}).get("range", 1.0)),
             captains=CaptainModel(**{k: float(v) for k, v in cm.items()}),
         )
 
@@ -152,6 +153,7 @@ def load_content(data_dir: Path = DATA_DIR) -> ContentDB:
             ship_names=tuple(c["ship_names"]),
             repair=RepairRates(**{k: float(v) for k, v in c["repair"].items()}),
             hull=hull,
+            sensor_scale=db.factions[c["faction"]].sensor_scale,
         )
         _validate_class(cls, db)
         db.classes[cid] = cls

@@ -42,6 +42,8 @@ class ContactView:
     age: float                  # cycles since last sensor update
     scan: ScanRecord | None
     cloaked_hint: bool          # we lost it at close range: probably cloaked
+    haze: float = 0.0           # 0 = exact; up to 1 beyond rated sensor range
+    uncertainty: float = 0.0    # possible position error, world units
 
     def distance_to(self, x: float, y: float) -> float:
         return math.hypot(self.x - x, self.y - y)
@@ -120,6 +122,7 @@ class Observation:
                         side=s.side if c.identified else None, cls=s.cls if c.identified else None,
                         x=pos[0], y=pos[1], vx=vx, vy=vy, course=c.course, warp=c.warp, age=age,
                         scan=c.scan, cloaked_hint=(not c.visible and s.cls.can_cloak and c.identified),
+                        haze=c.haze if c.visible else 0.0, uncertainty=c.uncertainty if c.visible else 0.0,
                     )
             self._contacts = out
         return self._contacts

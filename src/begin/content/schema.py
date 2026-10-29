@@ -123,6 +123,11 @@ class ShipClass:
     ship_names: tuple[str, ...]
     repair: RepairRates
     hull: HullDef
+    sensor_scale: float = 1.0   # [E] the faction's sensor technology: × scanner_range
+
+    @property
+    def rated_sensor_range(self) -> float:
+        return self.scanner_range * self.sensor_scale
 
     @property
     def is_base(self) -> bool:
@@ -230,6 +235,7 @@ class Faction:
     dogma: Dogma
     computer_sophistication: float
     captains: CaptainModel
+    sensor_scale: float = 1.0
 
 
 @dataclass(slots=True)

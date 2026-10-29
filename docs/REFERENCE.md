@@ -87,7 +87,7 @@ Ship, torpedo, probe and faction numbers live in `src/begin/content/data/*.toml`
 
 ## 11. Sensors and cloaking (2.0)
 
-- [M][R] Objects beyond sensor range vanish; the last known position is kept and used by AI and display. Range = scanner range × target reflectivity (ship `scanner_reflect`, probes 0.5). Data probes extend a side's coverage.
+- [M][R] Objects beyond sensor range vanish; the last known position is kept and used by AI and display. Range = scanner range × target reflectivity (ship `scanner_reflect`, probes 0.5). Data probes extend a side's coverage. [E] The remake replaces reflectivity for ships with faction sensor ranges and a haze band; see DEVIATIONS.md.
 - [M][R] Cloaked Romulans have reflectivity × 0.005 and reappear for a cycle when hit or firing. Cloak upkeep is `cloak_energy` per cycle. Phasers and blasts still hit cloaked ships.
 
 ## 12. Tractor, docking, transport, boarding (2.0)

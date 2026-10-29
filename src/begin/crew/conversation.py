@@ -28,6 +28,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable, Iterable
 
+from ..core.angles import bearing
 from ..help.coach import HelpContext, tips
 from ..llm.providers.base import Message
 from ..llm.service import LLMService
@@ -269,6 +270,14 @@ class Bridge:
                 c = obs.contact(ev.ship_id)
                 if c is not None and c.visible:
                     self._maybe(out, obs, "science", "contact", 0.5, target=_name(obs, ev.ship_id))
+            elif isinstance(ev, ContactChanged) and ev.side == s.side and not ev.acquired:
+                # the science officer gives the last fix, so the captain knows where to look
+                c = obs.contact(ev.ship_id)
+                if c is not None and not c.visible and not c.cloaked_hint:
+                    self._maybe(out, obs, "science", "lost", 1.0, gap=4.0, target=_name(obs, ev.ship_id),
+                                bearing=f"{bearing(c.x - s.x, c.y - s.y):.0f}",
+                                range=f"{math.hypot(c.x - s.x, c.y - s.y):,.0f}",
+                                heading=f"{c.course:.0f}", warp=f"{c.warp:.1f}")
             elif isinstance(ev, ScanCompleted) and ev.ship_id == s.id:
                 self._maybe(out, obs, "science", "scan", 0.7, target=_name(obs, ev.target_id))
             elif isinstance(ev, SubsystemRepaired) and ev.ship_id == s.id:

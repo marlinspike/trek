@@ -128,6 +128,8 @@ greeting = ["Sensors are operational, Captain.", "Astrometrics ready. Try to be 
 delegated = ["Science station acknowledged. I will scan every contact.", "I will manage the sensors. You are welcome."]
 released = ["Sensors are yours, Captain.", "Relinquishing the science station."]
 contact = ["New contact: {target}.", "Sensors detect {target}."]
+lost = ["{target} has left sensor range. Last fix: bearing {bearing}, {range} units, heading {heading} at warp {warp}. I will extrapolate its position.",
+        "We have lost {target}. It was {range} units out at bearing {bearing}, on course {heading}, warp {warp}. It cannot hide for long."]
 scan = ["Scan of {target} complete.", "{target} analysed. Their weaknesses are now apparent."]
 target = ["{target} is the most efficient target.", "I recommend {target}."]
 victory = ["The enemy has been neutralised. Adequate.", "A satisfactory outcome."]

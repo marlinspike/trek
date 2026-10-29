@@ -333,13 +333,43 @@ def test_tubes_fire_in_any_direction_by_default(content) -> None:  # type: ignor
     assert all(t.loaded is None for t in dn.tubes)
 
 
-def test_detected_ships_are_identified_at_once(content) -> None:  # type: ignore[no-untyped-def]
-    """As in Begin, a ship on sensors shows its class and name, even at the edge of sensor range."""
+def test_sensors_rated_range_then_haze_then_nothing(content) -> None:  # type: ignore[no-untyped-def]
+    """Inside rated range: exact and identified, whatever the size. To 1.5×: hazy and unknown. Beyond: nothing."""
+    from .conftest import make_world
+
+    for frac, visible, identified in ((0.95, True, True), (1.3, True, False), (1.6, False, False)):
+        w = make_world(content)
+        me = w.add_ship("federation.dn", 0, 0, 0)
+        raider = w.add_ship("orion.as", 1, 0, me.sensor_range() * frac)
+        w.run(1)
+        c = w.observe(0).contact(raider.id)
+        assert (c is not None and c.visible) == visible
+        if c is not None and visible:
+            assert c.identified == identified
+            assert (c.haze > 0) == (not identified)
+            assert math.hypot(c.x - raider.x, c.y - raider.y) <= c.uncertainty + 1e-6
+
+
+def test_klingon_sensors_are_shorter_than_starfleet(content) -> None:  # type: ignore[no-untyped-def]
     from .conftest import make_world
 
     w = make_world(content)
-    me = w.add_ship("federation.dn", 0, 0, 0)
-    far = w.add_ship("klingon.bc", 1, 0, me.sensor_range() * w.content.classes["klingon.bc"].scanner_reflect * 0.95)
+    hc = w.add_ship("federation.hc", 0, 0, 0)
+    bc = w.add_ship("klingon.bc", 1, 0, 40000)
     w.run(1)
-    c = w.observe(0).contact(far.id)
-    assert c is not None and c.visible and c.identified and c.cls is not None
+    assert hc.sensor_range() > bc.sensor_range()
+    c_fed, c_kl = w.observe(0).contact(bc.id), w.observe(1).contact(hc.id)
+    assert c_fed is not None and c_fed.identified          # 40,000 is inside Starfleet's 50,000
+    assert c_kl is not None and c_kl.haze > 0 and not c_kl.identified  # but beyond the Klingons' 35,000
+
+
+def test_cloaked_ships_are_not_detected(content) -> None:  # type: ignore[no-untyped-def]
+    from .conftest import make_world
+
+    w = make_world(content)
+    w.add_ship("federation.hc", 0, 0, 0)
+    bp = w.add_ship("romulan.bp", 1, 0, 300)
+    bp.cloaked = True
+    w.run(1)
+    c = w.observe(0).contact(bp.id)
+    assert c is None or not c.visible
