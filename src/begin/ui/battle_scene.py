@@ -18,7 +18,8 @@ import pygame
 from ..battle import Battle
 from ..console import reports
 from .hit_report import HitReport
-from ..console.parser import ParseContext, parse
+from ..console.parser import VERBS, ParseContext, ParseResult, parse
+from ..console.translator import Translation, Translator
 from ..core.angles import bearing, norm360
 from ..sim.allies import AllyStanding
 from ..sim.commands import (
@@ -133,20 +134,34 @@ class BattleScene:
         self.manual = ManualView(self._help_context, self._try_command, self._close_manual)
         self.hidden: dict[str, object] = hidden if hidden is not None else {}
         self.bridge: Bridge | None = None
+        self.translator: Translator | None = None
+        self.llm_settings: dict[str, object] = llm if llm is not None else {}
         llm_note: str | None = None
+        provider = None
+        try:
+            from ..llm.providers import config_from_settings, make_provider
+
+            cfg = config_from_settings(self.llm_settings)
+            if cfg is not None:
+                provider = make_provider(cfg)
+                think = "" if cfg.think is None else f", thinking {'on' if cfg.think is True else 'off' if cfg.think is False else cfg.think}"
+                who = "Officers are talking" if battle.crew is not None else "The console understands plain English"
+                llm_note = f"{who} through {cfg.provider} ({cfg.model}{think})."
+        except Exception as e:  # noqa: BLE001 - a bad LLM setup must never stop a battle
+            llm_note = f"LLM not available ({e}); officers will answer offline."
+        if provider is not None:
+            from ..llm.service import LLMService
+
+            # its own worker, so console translations never queue behind an officer's answer
+            self.translator = Translator(LLMService(provider, workers=1), self.llm_settings.get("console"))
+            if self.translator.mode != "off":
+                llm_note = (llm_note or "") + " You can type orders in plain English."
         if battle.crew is not None:
             service = None
-            try:
-                from ..llm.providers import config_from_settings, make_provider
+            if provider is not None:
                 from ..llm.service import LLMService
 
-                cfg = config_from_settings(llm or {})
-                if cfg is not None:
-                    service = LLMService(make_provider(cfg))
-                    think = "" if cfg.think is None else f", thinking {'on' if cfg.think is True else 'off' if cfg.think is False else cfg.think}"
-                    llm_note = f"Officers are talking through {cfg.provider} ({cfg.model}{think})."
-            except Exception as e:  # noqa: BLE001 - a bad LLM setup must never stop a battle
-                llm_note = f"LLM not available ({e}); officers will answer offline."
+                service = LLMService(provider)
             self.bridge = Bridge(battle.crew, self.hidden, service, seed=battle.setup.seed, chatter=chatter)
         self.layout(size)
         self._frame_all()
@@ -305,6 +320,9 @@ class BattleScene:
         self.ui.mouse = pygame.mouse.get_pos()
         if self.bridge is not None and self.bridge.llm is not None:
             self._speak(self.bridge.poll(self._help_context(), self._officer_run))
+        if self.translator is not None and self.translator.busy():
+            for answer in self.translator.poll(self._would_run):
+                self._translated(answer)
         if self.toast:
             msg, col, t = self.toast
             self.toast = (msg, col, t - dt) if t - dt > 0 else None
@@ -567,8 +585,8 @@ class BattleScene:
             if part:
                 self._run_one(part)
 
-    def _run_one(self, text: str) -> None:
-        self._log(f"> {text}", theme.FRIEND)
+    def _run_one(self, text: str, translate: bool = True, echo: str = "> ") -> None:
+        self._log(f"{echo}{text}", theme.FRIEND)
         if self.player_id is None:
             self._log("No ship under command.", theme.CAUTION)
             return
@@ -582,6 +600,15 @@ class BattleScene:
                 self._ask(holder, text)   # "I have the bridge", said to whoever has it
                 return
         res = parse(text, ParseContext(self.player_id, self.world.observe(self.side)))
+        tr = self.translator
+        if (translate and tr is not None and not any(n == "translate" for n, _ in res.actions)
+                and tr.wants(res.error is None, _exact_verb(text))):
+            tr.submit(text, self._translation_brief(), res.error)
+            self._log("  … interpreting", theme.TEXT_DIM)
+            return
+        self._execute(text, res)
+
+    def _execute(self, text: str, res: ParseResult) -> None:
         if res.error:
             self._log(res.error, theme.CAUTION)
             self.toast = (res.error, theme.CAUTION, 3.0)
@@ -669,6 +696,62 @@ class BattleScene:
             self._crew_command(val)
         elif name == "conn":
             self._conn_command(val)
+        elif name == "translate":
+            self._translate_mode(val)
+
+    # ------------------------------------------------------------ plain English
+
+    def _translation_brief(self) -> str:
+        """What the translating model may know: the situation, the officers, and the names the console accepts."""
+        from ..crew.conversation import situation
+
+        ctx = self._help_context()
+        lines = [situation(ctx)]
+        if self.bridge is not None:
+            lines.append("Bridge officers (address them with ask <officer> <words>): " + ", ".join(
+                f"{o.id} ({o.name}, {o.station})" for o in self.bridge.officers()) + ".")
+        allies = [a.name for a in self.allies()]
+        if allies:
+            lines.append("Our other ships: " + ", ".join(allies) + ".")
+        return "\n".join(lines)
+
+    def _would_run(self, line: str) -> str | None:
+        """Why a translated line would be rejected, or None: checked before anything runs."""
+        if self.player_id is None:
+            return "No ship under command."
+        if self.bridge is not None and self.bridge.addressed(line) is not None:
+            return None
+        return parse(line, ParseContext(self.player_id, self.world.observe(self.side))).error
+
+    def _translated(self, t: Translation) -> None:
+        if t.say:
+            self._log(f"Computer: {t.say}", theme.TEXT)
+        if t.error:
+            self._log(f"Not understood ({t.error}). Type 'help' for the commands.", theme.CAUTION)
+            self.toast = (f"Couldn't work out '{t.text}'", theme.CAUTION, 3.0)
+            return
+        if t.clarify:
+            self._log(f"Computer: {t.clarify}", theme.CAUTION)
+            self.toast = (t.clarify, theme.CAUTION, 5.0)
+            self.console_focus = True
+        for c in t.held:
+            self._log(f"≈ {c}   (not run: type it yourself if you mean it)", theme.CAUTION)
+        for c in t.commands:
+            self._run_one(c, translate=False, echo="≈ ")
+
+    def _translate_mode(self, mode: object) -> None:
+        tr = self.translator
+        if tr is None:
+            self._log("No language model is set up, so commands must be typed exactly. See 'help llm'.", theme.CAUTION)
+            return
+        if mode is not None:
+            tr.mode = str(mode)
+            tr.awaiting = False
+            self.llm_settings["console"] = tr.mode    # saved with the settings when the battle ends
+        self._log({"off": "Plain English is off: commands must be typed exactly.",
+                   "fallback": "Plain English is on: anything the console doesn't recognise goes to the model.",
+                   "always": "Plain English for everything: every line goes to the model first."}[tr.mode],
+                  theme.TEXT_DIM)
 
     # ------------------------------------------------------------ bridge officers
 
@@ -797,6 +880,8 @@ class BattleScene:
         if self.bridge is not None:
             self.bridge.save(self.hidden)
             self.bridge.close()
+        if self.translator is not None:
+            self.translator.close()
 
     def _chart(self, opts: dict[str, object]) -> None:
         show = True
@@ -1160,6 +1245,13 @@ class BattleScene:
         self.ui.button(surf, pygame.Rect(r.right - 184, r.bottom - 46, 160, 30), "Return to menu", self.on_exit, size=13)
         self.ui.button(surf, pygame.Rect(r.right - 352, r.bottom - 46, 160, 30), "Review the field",
                        lambda: setattr(self, "overlay", None), size=13)
+
+
+
+def _exact_verb(text: str) -> bool:
+    """The line starts with a console verb spelled in full (not a number, prefix or ordinary word)."""
+    first = text.strip().lower().split(None, 1)[:1]
+    return bool(first) and any(first[0] in spellings for spellings in VERBS.values())
 
 
 __all__ = ["BattleScene", "CONTROLS", "SPEEDS"]

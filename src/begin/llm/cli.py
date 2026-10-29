@@ -4,7 +4,8 @@
     begin --llm provider=off                           officers answer offline again
     begin --llm-test                                   ask Spock one question and print the answer
 
-Keys accepted by --llm: provider, model, base_url, think, effort, timeout, max_tokens.
+Keys accepted by --llm: provider, model, base_url, think, effort, timeout, max_tokens, console
+(console = on | off | always: plain-English orders at the console).
 API keys are never written; they come from the environment.
 """
 
@@ -15,7 +16,7 @@ import time
 from ..ui.settings import Settings
 from .providers.base import LLMError, config_from_settings, make_provider, parse_think
 
-KEYS = ("provider", "model", "base_url", "think", "effort", "timeout", "max_tokens")
+KEYS = ("provider", "model", "base_url", "think", "effort", "timeout", "max_tokens", "console")
 
 
 def configure(pairs: list[str], settings: Settings | None = None) -> Settings:
@@ -34,6 +35,10 @@ def configure(pairs: list[str], settings: Settings | None = None) -> Settings:
             llm[key] = parse_think(value)
         elif key == "timeout":
             llm[key] = float(value)
+        elif key == "console":
+            from ..console.translator import normalize_mode
+
+            llm[key] = normalize_mode(value)
         elif key == "max_tokens":
             llm[key] = int(value)
         else:

@@ -75,6 +75,8 @@ A controller has a `side`, a `period` (ticks between decisions) and a `phase` (a
 
 The providers (`llm/providers/`) share one `complete(system, messages) -> str` method. Anthropic uses the official SDK. OpenAI and OpenRouter share an OpenAI-compatible client, and Ollama talks to the local server's `/api/chat`. The commands in a reply go through the same console parser as typed ones.
 
+`console/translator.py` (`Translator`) turns plain English typed at the console into commands. `BattleScene._run_one` parses every line first, and only a line the parser rejects (or every line, in `always` mode, or the answer to a clarifying question) goes to the model, on its own `LLMService` worker. The reply's commands are validated with the parser (`BattleScene._would_run`) before any runs; a rejected one is sent back once with the parser's error.
+
 ## The front end
 
 `ui/app.py` opens the window and runs the loop at 60 FPS. It swaps between `MenuScene` (presets, Quick and Custom setup) and `BattleScene`.

@@ -99,6 +99,8 @@ They use the AI captain's judgement for one station each, but they never pick a 
 
 **Giving an officer the bridge.** "Seven, take the bridge" (or `conn seven`) puts one officer in command of every station. A single AI captain's judgement with that officer's personality runs the ship, under the same limits: your orders hold their channels against theirs, they keep your target, and they never retreat, surrender or self-destruct. Spock and Seven also build and fire the tachyon detector when an enemy cloaks. "I have the bridge" hands command back and restores the stations that were delegated before. In 8-seed test runs of three presets, Spock, Scott and Seven in command won about as often as the plain AI captain or better, and Seven and Spock did much better against Romulans. Worf, true to form, closes recklessly and won only about a third of the time.
 
+**Orders in plain English.** With a language model set up, the console accepts plain English. The exact parser still reads every line first, so Begin's syntax runs instantly; a line it rejects goes to the model with the command list and what the ship knows. The model replies with console commands, an answer, or a clarifying question. Each command is checked by the parser before it runs and echoed with a ≈, so the player learns the syntax. Quit, self-destruct, surrender and changing ships are only ever suggested. `translate always` sends every line to the model, and `translate off` turns it off. Begin's console only took its own syntax.
+
 ## The manual and coach
 
 The in-game manual is our own writing, organised by station, with clickable examples. The coach reads the live battle and suggests next steps. Begin's manual is copyrighted and isn't reproduced; see [LICENSING.md](../LICENSING.md).

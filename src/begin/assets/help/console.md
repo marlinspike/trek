@@ -4,7 +4,7 @@ category: Getting started
 order: 2
 aliases: console, syntax, abbreviations, commands, typing
 summary: How commands are typed, shortened and combined.
-see: fire, controls, keys
+see: fire, controls, keys, plain-english
 ---
 Press **Enter** to open the console, type an order and press **Enter** again. Commands follow Begin's own wording, so a Begin captain can type what they always typed.
 

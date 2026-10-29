@@ -132,6 +132,7 @@ VERBS: dict[str, tuple[str, ...]] = {
     "pulse": ("pulse", "deflector"),
     "crew": ("crew", "bridge", "officers"),
     "ask": ("ask", "say"),
+    "translate": ("translate", "interpret", "english"),
 }
 
 WEAPONS = {
@@ -173,7 +174,10 @@ HELP = [
     "          pd off|conservative|balanced|aggressive [reserve <banks>] · target <ship> [subsystem] · pause · resume · time <x>",
     "Crew:     delegate|assume helm|tactical|engineering|science|all · crew [chatter on|off] · ask <officer> <words>",
     "          <officer>, <words>   e.g. 'worf, fire all torpedoes' · 'spock, what do you recommend?'",
-    "Other:    key F<n>|^<x> <commands; separated; by semicolons> · help · quit",
+    "Special:  design tachyon|deflector · tachyon <ship>|<bearing> <range> · pulse · conn <officer>|captain",
+    "          disable|cripple <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> · disable off",
+    "          destroy <ships> · bait <ship>   (standing objectives and tricks for Seven)",
+    "Other:    key F<n>|^<x> <commands; separated; by semicolons> · translate on|off|always · help · quit",
 ]
 
 _NUM = re.compile(r"^[+-]?\d+(\.\d+)?$")
@@ -1124,6 +1128,17 @@ class Parser:
 
     def _v_quit(self, tok: _Tokens, res: ParseResult) -> None:
         res.actions.append(("quit", None))
+
+    def _v_translate(self, tok: _Tokens, res: ParseResult) -> None:
+        """`translate on|off|always`: plain-English console input through the language model [E]."""
+        w = tok.next()
+        if w is None:
+            res.actions.append(("translate", None))
+            return
+        mode = _match(w, {"fallback": ("on", "fallback", "auto"), "off": ("off", "never"), "always": ("always", "all")})
+        if mode is None:
+            raise ParseError("translate on, translate off or translate always.")
+        res.actions.append(("translate", mode))
 
     def _v_text(self, tok: _Tokens, res: ParseResult) -> None:
         res.info.append("This remake has no text mode: the tactical display is always on. "
