@@ -26,7 +26,13 @@ def starbase(content):  # type: ignore[no-untyped-def]
     theme._fallback.cache_clear()
     surf = pygame.display.set_mode((1600, 900))
     preset = next(p for p in load_presets() if p.id == "starbase-defense")
-    sc = BattleScene(build_battle(content, preset.setup()), surf.get_size(), lambda: None, hidden={}, llm={})
+    b = build_battle(content, preset.setup())
+    for s in b.world.ships.values():  # fixed names, whatever the random draw gives
+        if s.side == 0 and s.cls.id == "federation.de":
+            s.name = "Polaris"
+        elif s.side == 0 and s.cls.id == "federation.sb":
+            s.name = "Tau"
+    sc = BattleScene(b, surf.get_size(), lambda: None, hidden={}, llm={})
     sc.overlay = None
     return sc, surf
 

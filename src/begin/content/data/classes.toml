@@ -386,7 +386,7 @@ has_impulse = true
 has_tractor = true
 tractor_strength = 1000
 tractor_energy = 135.0
-torps_carried = 1000   # the player's flagship: a deep magazine so eight tubes can keep firing
+torps_carried = 10000   # the player's flagship: a deep magazine so eight tubes can keep firing
 probes_carried = 9
 ship_names = ["Cochrane", "Nimitz", "Armstrong", "Washington", "Nelson", "Higgins", "Gagarin", "Franklen", "Roddenberry"]
 [class.repair]

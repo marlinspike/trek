@@ -77,3 +77,14 @@ def test_quick_battle_has_two_enemies(content) -> None:  # type: ignore[no-untyp
     for seed in range(1, 30):
         setup = quick_battle(content, seed)
         assert [len(f.ships) for f in setup.fleets] == [1, 2]
+
+
+def test_federation_player_ship_is_always_enterprise(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.presets import load_presets
+
+    for setup in [p.setup() for p in load_presets()] + [quick_battle(content, s) for s in range(1, 6)]:
+        b = build_battle(content, setup)
+        me = b.world.ships[b.player_ship_id]
+        names = [s.name for s in b.world.ships.values()]
+        if me.faction == "federation":
+            assert me.name == "Enterprise" and names.count("Enterprise") == 1

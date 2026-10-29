@@ -96,6 +96,7 @@ class World:
     intel: dict[int, sensors_sys.SideIntel] = field(default_factory=dict)
     controllers: list[Controller] = field(default_factory=list)
     outcome: Outcome = field(default_factory=Outcome)
+    reserved_names: set[str] = field(default_factory=set)      # never drawn at random (the player's flagship)
 
     events: list[Event] = field(default_factory=list)          # since last take_events()
     step_events: list[Event] = field(default_factory=list)     # produced by the last step
@@ -141,7 +142,7 @@ class World:
         cls = self.content.classes[class_id]
         faction = self.content.factions[cls.faction]
         if name is None:
-            used = {s.name for s in self.ships.values()}
+            used = {s.name for s in self.ships.values()} | self.reserved_names
             free = [n for n in cls.ship_names if n not in used]
             name = self._names_rng.choice(free) if free else f"{cls.abbrev}-{self._next_id}"
         if captain is None:

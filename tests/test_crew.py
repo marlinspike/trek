@@ -224,7 +224,11 @@ def scene(content):  # type: ignore[no-untyped-def]
     theme.font.cache_clear()
     theme._fallback.cache_clear()
     surf = pygame.display.set_mode((1400, 860))
-    sc = BattleScene(_battle(content), surf.get_size(), lambda: None, hidden={}, llm={})
+    b = _battle(content)
+    for ship in b.world.ships.values():
+        if ship.side != b.world.ships[b.player_ship_id].side:
+            ship.name = "Derango"  # a fixed enemy name for the tests that talk about it
+    sc = BattleScene(b, surf.get_size(), lambda: None, hidden={}, llm={})
     return sc, surf
 
 

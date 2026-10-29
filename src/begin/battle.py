@@ -110,6 +110,9 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
     if total > MAX_OBJECTS:
         raise ValueError(f"Too many ships ({total}); Begin's limit is {MAX_OBJECTS}.")
     world = World(content, rules=setup.rules, seed=setup.seed, player_side=setup.player_side)
+    flagship_name = _player_flagship_name(content, setup)
+    if flagship_name:
+        world.reserved_names.add(flagship_name)  # no other ship draws the flagship's name
     rng = Rng(setup.seed).derive("setup")
     n = len(setup.fleets)
     player_ship: int | None = None
@@ -135,7 +138,8 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
             course = spec.course if spec.course is not None else face
             cls = content.classes[spec.class_id]
             warp = 0.0 if cls.is_base else min(cls.cruise_warp, 3.0)
-            ship = world.add_ship(spec.class_id, fleet.side, x, y, course=course, warp=warp, name=spec.name)
+            name = spec.name or (flagship_name if fleet.player and si == 0 else None)
+            ship = world.add_ship(spec.class_id, fleet.side, x, y, course=course, warp=warp, name=name)
             faction = content.factions[cls.faction]
             ship.pd_doctrine = PDDoctrine(faction.doctrine.point_defense)
             comp = ShipComputer(ship.id, fleet.side, world.rng.derive(f"computer:{ship.id}"), phase=ship.id % 2)
@@ -155,6 +159,17 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
                     phase=1)
         world.add_controller(crew)
     return Battle(world, setup, player_ship, captains, computers, crew)
+
+
+# The player's own ship always carries this name when it belongs to the faction (the player's wish).
+PLAYER_FLAGSHIP_NAMES: dict[str, str] = {"federation": "Enterprise"}
+
+
+def _player_flagship_name(content: ContentDB, setup: BattleSetup) -> str | None:
+    for f in setup.fleets:
+        if f.player and f.ships and not f.ships[0].name:
+            return PLAYER_FLAGSHIP_NAMES.get(content.classes[f.ships[0].class_id].faction)
+    return None
 
 
 def quick_battle(content: ContentDB, seed: int, player_faction: str = "federation",
@@ -191,4 +206,4 @@ def quick_battle(content: ContentDB, seed: int, player_faction: str = "federatio
     )
 
 
-__all__ = ["Battle", "BattleSetup", "FleetSpec", "MAX_OBJECTS", "ShipSpec", "build_battle", "quick_battle"]
+__all__ = ["Battle", "BattleSetup", "FleetSpec", "MAX_OBJECTS", "PLAYER_FLAGSHIP_NAMES", "ShipSpec", "build_battle", "quick_battle"]
