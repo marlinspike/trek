@@ -82,15 +82,14 @@ def update_sensors(world: World) -> None:
             if s.cloaked and s.reveal_time <= 0:
                 refl *= rules.cloak_reflect
             seen = False
-            ident = False
             for px, py, r in platforms:
                 reach = r * refl
-                d2 = (s.x - px) ** 2 + (s.y - py) ** 2
-                if d2 <= reach * reach:
+                if (s.x - px) ** 2 + (s.y - py) ** 2 <= reach * reach:
                     seen = True
-                    if d2 <= (reach * 0.6) ** 2:
-                        ident = True
-                        break
+                    break
+            # [M] in Begin a ship on sensors is a known ship: class, side and name come with the contact.
+            # A cloaked ship's faint return still only shows as an unknown blip.
+            ident = seen and not (s.cloaked and s.reveal_time <= 0)
             if seen:
                 vx, vy = s.velocity(rules.units_per_warp)
                 c.x, c.y, c.vx, c.vy = s.x, s.y, vx, vy

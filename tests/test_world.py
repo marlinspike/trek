@@ -331,3 +331,15 @@ def test_tubes_fire_in_any_direction_by_default(content) -> None:  # type: ignor
     charge_all(w, 12)
     assert w.execute(FireTorpedoes(ship_id=dn.id, target=enemy.id)) is None
     assert all(t.loaded is None for t in dn.tubes)
+
+
+def test_detected_ships_are_identified_at_once(content) -> None:  # type: ignore[no-untyped-def]
+    """As in Begin, a ship on sensors shows its class and name, even at the edge of sensor range."""
+    from .conftest import make_world
+
+    w = make_world(content)
+    me = w.add_ship("federation.dn", 0, 0, 0)
+    far = w.add_ship("klingon.bc", 1, 0, me.sensor_range() * w.content.classes["klingon.bc"].scanner_reflect * 0.95)
+    w.run(1)
+    c = w.observe(0).contact(far.id)
+    assert c is not None and c.visible and c.identified and c.cls is not None
