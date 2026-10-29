@@ -126,6 +126,7 @@ VERBS: dict[str, tuple[str, ...]] = {
     "text": ("text",),
     "delegate": ("delegate", "dg"),
     "assume": ("assume", "takeback"),
+    "conn": ("conn",),
     "crew": ("crew", "bridge", "officers"),
     "ask": ("ask", "say"),
 }
@@ -1119,6 +1120,13 @@ class Parser:
     def _v_assume(self, tok: _Tokens, res: ParseResult) -> None:
         for st in _stations(tok):
             res.commands.append(self._cmd(DelegateStation, station=st, on=False))
+
+    def _v_conn(self, tok: _Tokens, res: ParseResult) -> None:
+        """`conn <officer>` gives an officer the whole bridge; `conn captain` (or bare `conn`) takes it back [E]."""
+        tok.take_word("to")
+        words = [w for w in tok.rest() if w.lower() not in ("the",)]
+        who = " ".join(words).strip().lower()
+        res.actions.append(("conn", None if who in ("", "captain", "me", "back", "off", "mine", "return") else who))
 
     def _v_crew(self, tok: _Tokens, res: ParseResult) -> None:
         w = tok.next()

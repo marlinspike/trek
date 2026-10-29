@@ -450,3 +450,56 @@ def test_spock_and_seven_design_a_tachyon_detector(scene) -> None:  # type: igno
     sc.run_console("worf, tachyon 90 8000")
     assert tube.loaded is None or tube.loaded.ordnance != "tachyon"
     sc.draw(surf)
+
+
+def test_an_officer_takes_the_bridge_and_hands_it_back(scene) -> None:  # type: ignore[no-untyped-def]
+    sc, surf = scene
+    sc.run_console("delegate engineering")
+    sc.run_console("seven, take the bridge")
+    assert sc.player.conn == "seven" and sc.player.delegated == set(STATION_COMMANDS)
+    assert any("bridge" in t.lower() or "command" in t.lower() for t in _said(sc, "Seven of Nine"))
+    sc.player.target = None
+    for _ in range(10 * sc.world.rules.ticks_per_cycle):
+        sc.world.step()
+        sc._drain_events()
+    assert sc.player.target is not None          # she picked one herself
+    sc.draw(surf)                                 # with the conn banner
+    sc.run_console("helm 45 warp 2")              # the captain steps in; she leaves it alone for a while
+    for _ in range(2 * sc.world.rules.ticks_per_cycle):
+        sc.world.step()
+    assert sc.player.desired_course == 45
+    sc.run_console("I have the bridge")
+    assert sc.player.conn == "" and sc.player.delegated == {"engineering"}   # back to how it was
+    sc.run_console("conn worf")
+    assert sc.player.conn == "worf" and _said(sc, "Worf")
+    sc.run_console("spock, you have the conn")
+    assert sc.player.conn == "spock"
+    sc.run_console("conn captain")
+    assert sc.player.conn == ""
+    sc.run_console("worf, take tactical")
+    sc.run_console("worf, I relieve you")         # with nobody in command, this is about his station
+    assert "tactical" not in sc.player.delegated
+
+
+def test_spock_in_command_hunts_cloaked_ships(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.core.rng import Rng
+    from begin.crew.officers import Crew, default_crew
+    from begin.sim.commands import FireSpecialRound, StartProject, TakeConn
+    from begin.sim.world import World
+
+    w = World(content, seed=3)
+    hc = w.add_ship("federation.hc", 0, 0, 0)
+    bp = w.add_ship("romulan.bp", 1, 0, 9000, course=180)
+    w.run(1)
+    bp.cloaked = True
+    w.run(0.5)
+    assert w.observe(0).contact(bp.id).cloaked_hint
+    crew = Crew(hc.id, 0, content, default_crew(load_officers()), Rng(1))
+    w.execute(TakeConn(ship_id=hc.id, officer="spock"))
+    cmds = crew.think(w.observe(0))
+    assert any(isinstance(c, StartProject) and c.project == "tachyon" for c in cmds)
+    for c in cmds:
+        w.execute(c)
+    w.run(22)
+    cmds = crew.think(w.observe(0))
+    assert any(isinstance(c, FireSpecialRound) for c in cmds)

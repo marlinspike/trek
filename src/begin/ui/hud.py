@@ -455,11 +455,14 @@ class CrewPanel(Panel):
     """The bridge officers: who runs each station, with a toggle to hand it over or take it back."""
 
     title = "Bridge crew"
-    min_height = 128
+    min_height = 150
     weight = 0.0
 
     def tab_label(self, hud: BattleScene) -> str:
         ship = hud.player
+        holder = hud.bridge.find(ship.conn) if ship is not None and ship.conn and hud.bridge is not None else None
+        if holder is not None:
+            return f"Crew · {holder.name.split()[0]} in command"
         n = len(ship.delegated) if ship is not None else 0
         return f"Crew · {n} on duty" if n else "Crew"
 
@@ -470,6 +473,15 @@ class CrewPanel(Panel):
             theme.text(surf, "No officers aboard.", (rect.x + 12, y), theme.TEXT_FAINT, 12)
             return
         rh = 22
+        holder = bridge.find(ship.conn) if ship.conn else None
+        theme.text(surf, "Command", (rect.x + 12, y + 3), theme.TEXT_DIM, 12)
+        theme.text(surf, holder.title if holder else "Captain", (rect.x + 100, y + 3),
+                   theme.CREW if holder else theme.TEXT, 12, weight="medium")
+        if holder is not None:
+            btn = pygame.Rect(rect.right - 106, y, 94, rh - 3)
+            hud.ui.button(surf, btn, "Take bridge", lambda: hud.run_console("I have the bridge"),
+                          f"Take the bridge back from {holder.name}", active=True, accent=theme.CREW, size=11)
+        y += rh
         for k, (station, o) in enumerate(bridge.crew.officers.items()):
             ry = y + k * rh
             if ry + rh > rect.bottom - 2:
@@ -478,7 +490,8 @@ class CrewPanel(Panel):
             theme.text(surf, station.title(), (rect.x + 12, ry + 3), theme.TEXT_DIM, 12)
             name_r = pygame.Rect(rect.x + 100, ry, rect.width - 214, rh - 2)
             hover = name_r.collidepoint(hud.ui.mouse)
-            theme.text(surf, o.title, (name_r.x, ry + 3), theme.CREW if on or hover else theme.TEXT, 12)
+            shown = holder if holder is not None and on else o   # the commander runs every station they hold
+            theme.text(surf, shown.title, (name_r.x, ry + 3), theme.CREW if on or hover else theme.TEXT, 12)
             hud.ui.add(name_r, partial(hud.address, o.aliases[0] if o.aliases else o.id),
                        f"Talk to {o.name} (type after the comma)")
             btn = pygame.Rect(rect.right - 106, ry, 94, rh - 3)

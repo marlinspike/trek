@@ -104,7 +104,7 @@ To change a page without touching the bundled ones, put your version in `config/
 - the aliases you can address them by;
 - personality overrides;
 - the persona sent to a language model;
-- offline lines for each event, with `{target}`, `{ship}`, `{captain}` and `{n}` filled in.
+- offline lines for each event, with `{target}`, `{ship}`, `{captain}` and `{n}` filled in. The `bridge`, `bridge_released`, `bridge_target` and `bridge_torpedoes` lines are used when the officer has command of the whole bridge (`conn <officer>`).
 
 All the lines are original writing; keep it that way (see [LICENSING.md](../LICENSING.md)).
 

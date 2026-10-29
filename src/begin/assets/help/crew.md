@@ -4,7 +4,7 @@ category: Crew
 order: 0
 aliases: crew, bridge, officers, delegate, dg, assume, takeback, station, stations, spock, worf, scotty, scott, seven, seven of nine, chatter
 summary: Hand a station to its officer, take it back, and hear what your crew thinks.
-see: talking, llm, controls
+see: conn, talking, llm, controls
 ---
 Four officers stand by on your bridge. Each one can run a **station** for you, so you can concentrate on the decisions that matter.
 
@@ -27,6 +27,7 @@ crew
 - `delegate <station>` hands a station to its officer. `assume <station>` takes it back. `all` covers every station.
 - The **Crew** tab, beside **Contacts** and **Fleet** under the weapons, shows who runs each station. Click **Captain** / **Officer** to switch, or click an officer's name to speak to them.
 - `crew` lists your officers, who is running what, and how each of them feels about you.
+- To let one officer command the whole ship, say "Seven, take the bridge". See [[conn|Giving an officer the bridge]].
 
 ## You stay in command
 

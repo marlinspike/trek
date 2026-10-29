@@ -13,6 +13,11 @@ against the officer for a while, then the officer carries on.
 Officers never retreat, surrender or self-destruct on their own, and they
 never change the captain's chosen target: they pick one only when the
 captain has none.
+
+`conn <officer>` (or "Seven, take the bridge") gives one officer the whole
+bridge [E]: a single brain with that officer's personality runs every
+delegated station, and Spock or Seven will also hunt cloaked ships with
+their tachyon detector. The captain's orders still win, as above.
 """
 
 from __future__ import annotations
@@ -58,8 +63,9 @@ def station_of(cmd: Command) -> str | None:
 class OfficerBrain(AICaptain):
     """The AI captain's judgement, working one station on the captain's behalf."""
 
-    station: str = "helm"
+    station: str = "helm"              # or "bridge": every station, for the officer with the conn
     title: str = ""
+    officer_id: str = ""
     last_scan: dict[int, int] = field(default_factory=dict)
     last_repair_check: int = -999
 
@@ -79,10 +85,10 @@ class OfficerBrain(AICaptain):
                 s = self._score(obs, ship, c)
                 if s > best_score:
                     best, best_score = c, s
-            if best is not None and self.station == "tactical":
+            if best is not None and self.station in ("tactical", "bridge"):
                 out.append(self._cmd(SelectTarget, ship, target=best.id, subsystem=self._subsystem_choice(obs, ship, best)))
         self.target = best.id if best is not None else None
-        if (self.station == "tactical" and best is not None and best.cls is not None and ship.tubes
+        if (self.station in ("tactical", "bridge") and best is not None and best.cls is not None and ship.tubes
                 and self.autoload_set_for != best.id):
             spec = obs.content.torpedoes.get(ship.tubes[0].load_ordnance or ship.cls.torpedo)
             if spec is not None:
@@ -93,11 +99,37 @@ class OfficerBrain(AICaptain):
 
     def _tactics(self, obs: Observation, ship: Ship) -> list[Command]:
         out = super()._tactics(obs, ship)
-        if self.station == "science":
+        if self.station in ("science", "bridge"):
             out.extend(self._science(obs, ship))
-        elif self.station == "engineering":
+        if self.station in ("engineering", "bridge"):
             out.extend(self._engineering(obs, ship))
+        if self.station == "bridge":
+            out.extend(self._collaborate(obs, ship))
         return out
+
+    def _collaborate(self, obs: Observation, ship: Ship) -> list[Command]:
+        """In command, an officer uses the projects they know: Spock and Seven hunt cloaked ships with a detector."""
+        from ..sim.projects import PROJECTS, project_loaded
+        from .collaborations import COLLABORATIONS
+
+        cloaked = [c for c in obs.hostile_contacts() if c.cloaked_hint]
+        if not cloaked:
+            return []
+        c = min(cloaked, key=lambda c: c.distance_to(ship.x, ship.y))
+        for collab in COLLABORATIONS:
+            proj = PROJECTS.get(collab.project)
+            spec = obs.content.torpedoes.get(proj.ordnance) if proj is not None and proj.ordnance else None
+            if self.officer_id not in collab.officers or spec is None or spec.reveal_radius <= 0:
+                continue
+            if project_loaded(ship, proj) is not None:
+                reach = spec.velocity * obs.rules.units_per_warp * (spec.arm_time + spec.max_time_fuse)
+                if c.distance_to(ship.x, ship.y) > reach * 0.9:
+                    return []
+                # the contact's position is already dead-reckoned along its last heading where the computer can
+                return [self._cmd(FireSpecialRound, ship, ordnance=proj.ordnance, x=c.x, y=c.y)]
+            if proj.id not in ship.projects:
+                return [self._cmd(StartProject, ship, project=proj.id)]
+        return []
 
     def _science(self, obs: Observation, ship: Ship) -> list[Command]:
         """Keep a fresh scan of the target, then work through the other contacts, nearest first."""
@@ -191,15 +223,16 @@ class Crew:
         self.ship_id = ship_id
         self.brains.clear()
 
-    def _brain(self, station: str, ship: Ship) -> OfficerBrain:
-        b = self.brains.get(station)
+    def _brain(self, station: str, ship: Ship, prof: OfficerProfile | None = None) -> OfficerBrain:
+        prof = prof or self.officers[station]
+        key = f"bridge:{prof.id}" if station == "bridge" else station
+        b = self.brains.get(key)
         if b is None:
-            prof = self.officers[station]
             faction = self.content.factions[ship.faction]
-            prng = self.rng.derive(f"{station}:{ship.id}")
+            prng = self.rng.derive(f"{key}:{ship.id}")
             pers = Personality.roll(faction, prng, prof.personality)
-            b = OfficerBrain(ship.id, ship.side, pers, prng, station=station, title=prof.title)
-            self.brains[station] = b
+            b = OfficerBrain(ship.id, ship.side, pers, prng, station=station, title=prof.title, officer_id=prof.id)
+            self.brains[key] = b
         return b
 
     def think(self, obs: Observation) -> list[Command]:
@@ -207,6 +240,13 @@ class Crew:
         if ship is None or not ship.alive or ship.crew <= 0 or not ship.delegated:
             return []
         out: list[Command] = []
+        commander = self.find(ship.conn) if ship.conn else None
+        if commander is not None:
+            # one mind runs the ship; stations the captain took back stay the captain's
+            for cmd in self._brain("bridge", ship, commander).think(obs):
+                if station_of(cmd) in ship.delegated:
+                    out.append(cmd)
+            return out
         for station in STATIONS:
             if station not in ship.delegated or station not in self.officers:
                 continue

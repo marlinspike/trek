@@ -58,8 +58,14 @@ RunCommand = Callable[[str, OfficerProfile], "str | None"]
 _PRAISE = re.compile(r"\b(thanks?|thank you|well done|good (job|work|shooting)|nice|great|excellent|bravo)\b")
 _RUDE = re.compile(r"\b(stupid|idiot|useless|incompetent|shut up|moron|fool)\b")
 _GREET = re.compile(r"^(hello|hi|hey|greetings|report in)\b")
-_TAKE = re.compile(r"\b(take over|take (the |your )?(conn|helm|station|tactical|weapons|engineering|science|sensors)"
-                   r"|you have the (conn|helm|station)|your station|take charge|you'?re in charge|handle it)\b")
+_TAKE = re.compile(r"\b(take over|take (the |your )?(helm|station|tactical|weapons|engineering|science|sensors)"
+                   r"|you have the (helm|station)|your station|take charge|you'?re in charge|handle it)\b")
+# the whole bridge, not one station [E]
+_BRIDGE_TAKE = re.compile(r"\b(take (the )?(bridge|conn|ship)|you have the (bridge|conn|ship)|take command|"
+                          r"you'?re in command|you have command|command the ship|fight the ship)\b")
+_BRIDGE_RELEASE = re.compile(r"\b(i have the (bridge|conn|ship)|i'?ll take (the bridge|the conn|command)|"
+                             r"i'?m taking (the bridge|the conn|command)|i have command|i relieve you|"
+                             r"(the )?captain'?s? on the bridge|give me (the bridge|the conn|command))\b")
 _RELEASE = re.compile(r"\b(stand down|i have (the|it)|i'?ll (take|handle) (it|the)|i relieve you|belay)\b")
 _FIRING = re.compile(r"^\s*(fire\b|tachyon\s+\S)")  # an order to fire the round, not to design one
 _STATUS = re.compile(r"\b(status|report|sitrep|situation|how are|how's|condition)\b")
@@ -86,6 +92,7 @@ class Bridge:
         self._hull_band = 4
         self._threats = 0
         self._llm_note_given = False
+        self._conn_target: int | None = None
 
     # ------------------------------------------------------------ who
 
@@ -115,6 +122,14 @@ class Bridge:
             rel.nudge(0.03)
         if _RUDE.search(low):
             rel.nudge(-0.08)
+        turn = self.handover(low)
+        if turn == "release" and not (ctx.ship is not None and ctx.ship.conn):
+            turn = None   # nobody has the bridge: "I relieve you" means this officer's station
+        if turn is not None:
+            err = run(f"conn {officer.id}" if turn == "take" else "conn captain", officer)
+            if err:
+                return [self._say(officer, err, "caution")]
+            return self.handover_lines(officer, turn == "take")
         collab = None if _FIRING.match(low) else collaborations.matching(officer.id, low)
         if collab is not None:
             return self.collaborate(officer, collab, run)
@@ -129,6 +144,21 @@ class Bridge:
             self.asking[officer.id] = is_question(low)
             return [self._say(officer, "…", "dim")]
         return self.offline(officer, low, ctx, run)
+
+    @staticmethod
+    def handover(text: str) -> str | None:
+        """'take' when the captain gives an officer the bridge, 'release' when taking it back, else None."""
+        low = text.lower()
+        if _BRIDGE_RELEASE.search(low):
+            return "release"
+        if _BRIDGE_TAKE.search(low):
+            return "take"
+        return None
+
+    def handover_lines(self, officer: OfficerProfile, taking: bool) -> list[Utterance]:
+        if taking:
+            return [self._line(officer, "bridge") or self._say(officer, "Aye, Captain. I have the bridge.")]
+        return [self._line(officer, "bridge_released") or self._say(officer, "The bridge is yours, Captain.")]
 
     def collaborate(self, officer: OfficerProfile, collab: collaborations.Collaboration,
                     run: RunCommand) -> list[Utterance]:
@@ -253,8 +283,10 @@ class Bridge:
             "Setting: the captain is speaking to you on the bridge during a real-time battle in a 2D tactical "
             "starship game. Courses are compass bearings (0 = up the map, 90 = right). Distances are in units; "
             "warp 1 = 100 units per second.",
-            f"You run the {STATION_NAMES[o.station]} station and advise on: {stations}. "
-            f"Your relationship with the captain: {rel.mood}.",
+            (f"The captain has given you command of the bridge: you run every station and may use any command "
+             "below, but the captain's orders come first. " if ctx.ship is not None and ctx.ship.conn == o.id else
+             f"You run the {STATION_NAMES[o.station]} station and advise on: {stations}. ")
+            + f"Your relationship with the captain: {rel.mood}.",
             "Answer with ONE JSON object and nothing else:",
             '{"say": "<what you say aloud, at most three short sentences>", "commands": ["<console command>", ...]}',
             "Put commands in the list only when the captain orders you to act; when the captain asks a question, "
@@ -275,12 +307,18 @@ class Bridge:
             return []
         out: list[Utterance] = []
         delegated = s.delegated
+        commander = self.find(s.conn) if s.conn else None
+        if commander is not None and s.target is not None and s.target != self._conn_target:
+            self._maybe(out, obs, "", "bridge_target", 1.0, gap=4.0, officer=commander, target=_name(obs, s.target))
+        self._conn_target = s.target if commander is not None else None
         for ev in events:
             if isinstance(ev, ProjectCompleted) and ev.ship_id == s.id:
                 collab = collaborations.for_project(ev.project)
                 if collab is not None and ev.tube is not None:
                     out.extend(self._chorus(collab.done, tube=ev.tube + 1))
                     self._last_any = obs.tick
+            elif isinstance(ev, TorpedoLaunched) and ev.ship_id == s.id and commander is not None:
+                self._maybe(out, obs, "", "bridge_torpedoes", 0.5, officer=commander)
             elif isinstance(ev, TorpedoLaunched) and ev.ship_id == s.id and "tactical" in delegated:
                 self._maybe(out, obs, "tactical", "torpedoes", 0.6)
             elif isinstance(ev, PhaserFired) and ev.ship_id == s.id and "tactical" in delegated:
@@ -328,8 +366,8 @@ class Bridge:
         return [u] if u else []
 
     def _maybe(self, out: list[Utterance], obs: Observation, station: str, event: str, p: float,
-               gap: float = 8.0, **fill: object) -> None:
-        o = self.crew.officer(station)
+               gap: float = 8.0, officer: OfficerProfile | None = None, **fill: object) -> None:
+        o = officer or self.crew.officer(station)
         if o is None or event not in o.lines:
             return
         tpc = obs.rules.ticks_per_cycle

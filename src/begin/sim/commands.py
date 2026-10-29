@@ -925,6 +925,39 @@ class DelegateStation(Command):
                 world.release_holds(ship.id, prefix)
         else:
             ship.delegated.discard(self.station)
+            if not ship.delegated:
+                ship.conn, ship.conn_saved = "", set()   # every station taken back: the captain has the bridge again
+
+
+@dataclass(kw_only=True)
+class TakeConn(Command):
+    """Give one officer command of the whole bridge, or take it back (remake extension).
+
+    The officer runs every station; the captain's own orders still hold their
+    channels against the officer, and `assume <station>` takes one station back.
+    Handing the conn back to the captain restores whatever was delegated before.
+    """
+
+    officer: str = ""      # officer id; "" = the captain has the conn
+    name: ClassVar[str] = "conn"
+    needs_crew: ClassVar[bool] = False
+
+    def apply(self, world: World, ship: Ship) -> None:
+        if self.officer:
+            if not ship.conn:
+                ship.conn_saved = set(ship.delegated)
+            ship.conn = self.officer
+            ship.delegated = set(STATION_CHANNELS)
+            for prefixes in STATION_CHANNELS.values():
+                for prefix in prefixes:
+                    world.release_holds(ship.id, prefix)
+        elif ship.conn:
+            ship.conn = ""
+            ship.delegated = set(ship.conn_saved)
+            ship.conn_saved = set()
+
+    def describe(self) -> str:
+        return f"conn {self.officer or 'captain'}"
 
 
 @dataclass(kw_only=True)

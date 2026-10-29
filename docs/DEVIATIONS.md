@@ -82,6 +82,8 @@ Spock, Worf, Scott and Seven of Nine can run stations (helm, tactical, engineeri
 
 They use the AI captain's judgement for one station each, but they never pick a target other than yours, retreat, surrender or self-destruct. Commands in an answer to an order are carried out only for the officer's own stations. Commands in an answer to a question are only suggested. None of this exists in Begin.
 
+**Giving an officer the bridge.** "Seven, take the bridge" (or `conn seven`) puts one officer in command of every station. A single AI captain's judgement with that officer's personality runs the ship, under the same limits: your orders hold their channels against theirs, they keep your target, and they never retreat, surrender or self-destruct. Spock and Seven also build and fire the tachyon detector when an enemy cloaks. "I have the bridge" hands command back and restores the stations that were delegated before. In 8-seed test runs of three presets, Spock, Scott and Seven in command won about as often as the plain AI captain or better, and Seven and Spock did much better against Romulans. Worf, true to form, closes recklessly and won only about a third of the time.
+
 ## The manual and coach
 
 The in-game manual is our own writing, organised by station, with clickable examples. The coach reads the live battle and suggests next steps. Begin's manual is copyrighted and isn't reproduced; see [LICENSING.md](../LICENSING.md).

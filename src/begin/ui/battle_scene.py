@@ -31,7 +31,7 @@ from ..sim.ship import BankRole, Kind, Ship
 from . import theme
 from .camera import Camera
 from ..crew.conversation import Bridge, Utterance
-from ..crew.officers import station_of
+from ..crew.officers import STATION_COMMANDS, station_of
 from ..help.coach import HelpContext
 from .manual import ManualView
 from .hud import (
@@ -570,6 +570,10 @@ class BattleScene:
             if hit is not None:
                 self._ask(*hit)
                 return
+            holder = self.bridge.find(self.player.conn) if self.player is not None and self.player.conn else None
+            if holder is not None and self.bridge.handover(text) == "release":
+                self._ask(holder, text)   # "I have the bridge", said to whoever has it
+                return
         res = parse(text, ParseContext(self.player_id, self.world.observe(self.side)))
         if res.error:
             self._log(res.error, theme.CAUTION)
@@ -656,6 +660,8 @@ class BattleScene:
                 self._ask(o, words)
         elif name == "crew":
             self._crew_command(val)
+        elif name == "conn":
+            self._conn_command(val)
 
     # ------------------------------------------------------------ bridge officers
 
@@ -666,6 +672,37 @@ class BattleScene:
 
         assert isinstance(officer, OfficerProfile)
         self._speak(self.bridge.ask(officer, words, self._help_context(), self._officer_run))
+
+    def _conn(self, who: str | None) -> str | None:
+        """Hand the bridge to an officer, or take it back. Returns why not, or None."""
+        from ..sim.commands import TakeConn
+
+        ship, b = self.player, self.bridge
+        if ship is None or b is None:
+            return "No bridge crew aboard."
+        if who is None:
+            if not ship.conn:
+                return "You already have the bridge, Captain."
+            return self.issue(TakeConn(ship_id=ship.id, officer=""))
+        o = b.find(who)
+        if o is None:
+            return f"No officer called '{who}'. Type 'crew' to see who is on the bridge."
+        if ship.conn == o.id:
+            return f"{o.name} already has the bridge."
+        return self.issue(TakeConn(ship_id=ship.id, officer=o.id))
+
+    def _conn_command(self, who: object) -> None:
+        """`conn <officer>` / `conn captain` typed at the console: the officer answers as if told aloud."""
+        ship, b = self.player, self.bridge
+        before = ship.conn if ship is not None else ""
+        err = self._conn(None if who is None else str(who))
+        if err:
+            self._log(err, theme.CAUTION)
+            return
+        if b is not None and ship is not None:
+            o = b.find(ship.conn or before)
+            if o is not None:
+                self._speak(b.handover_lines(o, bool(ship.conn)))
 
     def _officer_run(self, line: str, officer: object) -> str | None:
         """Carry out a console line an officer was told (or decided) to run; only their own stations."""
@@ -679,8 +716,13 @@ class BattleScene:
         if res.error:
             return res.error
         if res.actions and not res.commands:
+            conn = [v for n, v in res.actions if n == "conn"]
+            if conn:   # the captain told this officer to take (or hand back) the bridge
+                return self._conn(None if conn[0] is None else str(conn[0]))
             return "That is for the captain to do."
         allowed = set(officer.advises) | {officer.station}
+        if self.player is not None and self.player.conn == officer.id:
+            allowed |= set(STATION_COMMANDS)   # in command of the bridge
         for cmd in res.commands:
             st = cmd.station if isinstance(cmd, DelegateStation) else station_of(cmd)
             if st is None or st not in allowed:
@@ -729,12 +771,14 @@ class BattleScene:
             self._log(f"Officer chatter {'on' if b.chatter else 'off'}.", theme.TEXT_DIM)
             return
         ship = self.player
-        lines = ["BRIDGE CREW:", "Station      Officer                     Running   Rapport"]
+        holder = b.find(ship.conn) if ship is not None and ship.conn else None
+        lines = ["BRIDGE CREW:", f"Command: {holder.title + ' has the bridge' if holder else 'the captain has the bridge'}",
+                 "Station      Officer                     Running   Rapport"]
         for st, o in b.crew.officers.items():
             on = ship is not None and st in ship.delegated
             mood = b.relationships.get(o.id).mood
             lines.append(f"{st.title():<12} {o.title:<27} {'officer' if on else 'captain':<9} {mood}")
-        lines.append("delegate <station>|all · assume <station>|all · ask <officer> <words> · <officer>, <words>")
+        lines.append("delegate <station>|all · assume <station>|all · conn <officer>|captain · <officer>, <words>")
         self._show(lines, None)
 
     def close(self) -> None:
@@ -878,9 +922,24 @@ class BattleScene:
             pygame.draw.rect(surf, theme.BG_PANEL_HI, b, border_radius=4)
             pygame.draw.rect(surf, theme.CAUTION, b, 1, border_radius=4)
             theme.text(surf, msg, b.center, theme.CAUTION, 14, weight="semibold", anchor="center")
+        self._draw_conn_banner(surf, r.y + (46 if self.paused and not self.world.outcome.over else 10))
         theme.text(surf, self.battle.setup.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
         theme.text(surf, f"range {self.display_range():,.0f}  ·  F1 controls", (r.right - 14, r.y + 28), theme.TEXT_FAINT,
                    11, anchor="topright")
+
+    def _draw_conn_banner(self, surf: pygame.Surface, top: int) -> None:
+        """Who has the conn, when it isn't the captain; click it to take the bridge back."""
+        ship, b = self.player, self.bridge
+        o = b.find(ship.conn) if ship is not None and ship.conn and b is not None else None
+        if o is None:
+            return
+        msg = f"{o.name.upper()} HAS THE CONN  ·  say \"I have the bridge\" to take it back"
+        box = pygame.Rect(0, 0, theme.text_width(msg, 13, weight="semibold") + 32, 28)
+        box.midtop = (self.map_rect.centerx, top)
+        pygame.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
+        pygame.draw.rect(surf, theme.CREW, box, 2, border_radius=4)
+        theme.text(surf, msg, box.center, theme.CREW, 13, weight="semibold", anchor="center")
+        self.ui.add(box, lambda: self.run_console("I have the bridge"), "Take the bridge back")
 
     def _draw_printout(self, surf: pygame.Surface) -> None:
         """The latest Begin text display, in the map's lower-left corner."""
