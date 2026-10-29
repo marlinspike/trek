@@ -6,7 +6,7 @@ aliases: ask, say, talk, conversation, question, rapport, relationship
 summary: Ask an officer for a report or advice, or give an order in plain words.
 see: crew, llm, coach
 ---
-Start a line with an officer's name and a comma, or use `ask`:
+Start a line with an officer's name (a comma after it is optional, and the first few letters will do, as in `sev status`), or use `ask`:
 
 ```console
 spock, what do you recommend?

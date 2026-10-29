@@ -72,6 +72,15 @@ _STATUS = re.compile(r"\b(status|report|sitrep|situation|how are|how's|condition
 _ADVICE = re.compile(r"\b(advice|advise|recommend|suggest|what (should|do you|now|next)|ideas?|options?|thoughts?|opinion)\b")
 
 
+def _could_be_officer(word: str) -> bool:
+    """A lone first word names an officer only if it can't also be a console command ('sc' is scan, not Scott)."""
+    from ..console.parser import VERBS
+
+    if len(word) < 3:
+        return False
+    return not any(sp.startswith(word) for spellings in VERBS.values() for sp in spellings)
+
+
 class Bridge:
     def __init__(self, crew: Crew, hidden: dict[str, object], llm: LLMService | None = None,
                  seed: int = 0, chatter: bool = True) -> None:
@@ -109,6 +118,17 @@ class Bridge:
             o = self.find(m.group(1))
             if o is not None:
                 return o, m.group(2).strip()
+        # no comma: "seven take the bridge", "sev status", "Seven of Nine report"
+        words = text.strip().split()
+        for n in (3, 2, 1):
+            if len(words) < n:
+                continue
+            name = " ".join(words[:n]).lower()
+            if n == 1 and not _could_be_officer(name):
+                continue
+            o = self.find(name)
+            if o is not None:
+                return o, " ".join(words[n:])
         return None
 
     # ------------------------------------------------------------ talking

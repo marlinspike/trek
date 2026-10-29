@@ -503,3 +503,20 @@ def test_spock_in_command_hunts_cloaked_ships(content) -> None:  # type: ignore[
     w.run(22)
     cmds = crew.think(w.observe(0))
     assert any(isinstance(c, FireSpecialRound) for c in cmds)
+
+
+def test_officers_can_be_addressed_without_a_comma(scene) -> None:  # type: ignore[no-untyped-def]
+    sc, surf = scene
+    b = sc.bridge
+    for text, who, rest in [("seven take the bridge", "seven", "take the bridge"), ("Sev status", "seven", "status"),
+                            ("SPOCK you have the conn", "spock", "you have the conn"),
+                            ("seven of nine report", "seven", "report"), ("worf, fire", "worf", "fire"),
+                            ("scotty raise all", "scotty", "raise all")]:
+        hit = b.addressed(text)
+        assert hit is not None and hit[0].id == who and hit[1] == rest, text
+    for command in ("scan derango", "sc derango", "status", "fire all torpedoes", "seven"[:2] + " 90"):
+        assert b.addressed(command) is None, command
+    sc.run_console("seven take the bridge")
+    assert sc.player.conn == "seven"
+    sc.run_console("i have the bridge")
+    assert sc.player.conn == ""
