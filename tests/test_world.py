@@ -292,3 +292,27 @@ def test_phasers_destroy_torpedoes_in_cone(content) -> None:  # type: ignore[no-
     brg = math.degrees(math.atan2(t.x - a.x, t.y - a.y)) % 360
     assert w.execute(FirePhasers(ship_id=a.id, at_bearing=brg, spread=20, defensive=True, max_banks=1)) is None
     assert a.stats.ordnance_intercepted >= 1
+
+
+def test_torpedo_fire_explains_tubes_that_cannot_bear(content) -> None:  # type: ignore[no-untyped-def]
+    """Dreadnought: tubes 1-6 face forward, 7 and 8 aft. A target astern gets only 7 and 8, and says why."""
+    from begin.sim.commands import FireTorpedoes, SelectTarget
+    from begin.sim.events import Message
+
+    from .conftest import charge_all, make_world
+
+    w = make_world(content)
+    dn = w.add_ship("federation.dn", 0, 0, 0, course=0)
+    enemy = w.add_ship("klingon.bc", 1, 0, -2500)
+    charge_all(w, 12)
+    assert all(t.loaded is not None for t in dn.tubes)
+    assert w.execute(SelectTarget(ship_id=dn.id, target=enemy.id)) is None
+    reason = w.execute(FireTorpedoes(ship_id=dn.id, tubes=(0, 1)))
+    assert reason is not None and reason.startswith("Tubes 1 and 2 can't bear")
+    assert "astern" in reason and "75° either side of the bow" in reason
+    w.take_events()
+    assert w.execute(FireTorpedoes(ship_id=dn.id, target=enemy.id)) is None
+    fired = [t for t in dn.tubes if t.loaded is None]
+    assert [dn.tubes.index(t) for t in fired] == [6, 7]
+    msgs = [e.text for e in w.take_events() if isinstance(e, Message)]
+    assert any(m.startswith("Firing tubes 7 and 8. Tubes 1-6 can't bear") for m in msgs)

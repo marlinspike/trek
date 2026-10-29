@@ -76,6 +76,57 @@ def _indices(items: list, wanted: tuple[int, ...] | None) -> list[int]:  # type:
     return [i for i in wanted if 0 <= i < len(items)]
 
 
+def _tube_list(idx: list[int]) -> str:
+    """'tube 3', 'tubes 7 and 8', 'tubes 1-6' (1-based, runs collapsed)."""
+    nums = sorted(i + 1 for i in idx)
+    if len(nums) == 1:
+        return f"tube {nums[0]}"
+    runs: list[str] = []
+    start = prev = nums[0]
+    for n in [*nums[1:], None]:
+        if n is not None and n == prev + 1:
+            prev = n
+            continue
+        runs.append(str(start) if start == prev else f"{start} and {prev}" if prev == start + 1 else f"{start}-{prev}")
+        if n is not None:
+            start = prev = n
+    return "tubes " + (", ".join(runs[:-1]) + " and " + runs[-1] if len(runs) > 1 else runs[0])
+
+
+def _arc_advice(world: World, ship: Ship, idx: list[int], target: int | None) -> str:
+    """Why these tubes can't bear, and which way to turn."""
+    cover = _arc_words([(ship.tubes[i].mount.arc_center, ship.tubes[i].mount.arc_width) for i in idx])
+    pos = world.apparent_position(ship.side, target) if target is not None else None
+    if pos is None:
+        return f"with no target they launch along their mark, which is outside their arc ({cover})."
+    rel = norm360(bearing(pos[0] - ship.x, pos[1] - ship.y) - ship.course)
+    rel180 = rel - 360.0 if rel > 180.0 else rel
+    where = ("dead ahead" if abs(rel180) < 10 else "astern" if abs(rel180) > 150 else
+             f"{abs(rel180):.0f}° to {'starboard' if rel180 > 0 else 'port'}")
+    return f"the target is {where} (mark {rel:.0f}) and they cover {cover}. Turn to bring it into their arc."
+
+
+def _arc_words(arcs: list[tuple[float, float]]) -> str:
+    """The span a set of firing arcs covers, in words: 'from 95° port to 95° starboard'."""
+    if any(w >= 360.0 for _, w in arcs):
+        return "every bearing"
+    for ref, name in ((0.0, "bow"), (180.0, "stern")):
+        offs = [((c - ref + 180.0) % 360.0) - 180.0 for c, _ in arcs]
+        if all(abs(o) <= 90.0 for o in offs):
+            lo = min(o - w / 2.0 for o, (_, w) in zip(offs, arcs))
+            hi = max(o + w / 2.0 for o, (_, w) in zip(offs, arcs))
+            if lo < -180.0 or hi > 180.0:
+                break
+            if ref == 180.0:  # seen from the stern, port and starboard swap
+                lo, hi = -hi, -lo
+            if abs(lo + hi) < 1.0:
+                return f"{hi:.0f}° either side of the {name}"
+            side = (lambda a: f"{abs(a):.0f}° {'starboard' if a > 0 else 'port'}") if name == "bow" else \
+                (lambda a: f"{abs(a):.0f}° {'port' if a > 0 else 'starboard'}")
+            return f"from {side(lo)} to {side(hi)} of the {name}"
+    return "; ".join(f"{w / 2.0:.0f}° either side of mark {norm360(c):.0f}" for c, w in arcs)
+
+
 # ------------------------------------------------------------------ helm
 
 @dataclass(kw_only=True)
@@ -372,30 +423,41 @@ class FireTorpedoes(Command):
 
     def _plan(self, world: World, ship: Ship) -> list[tuple[int, int | None]]:
         """(tube index, target id) for each tube that will fire (command target, else the tube's lock)."""
+        return self._survey(world, ship)[0]
+
+    def _survey(self, world: World, ship: Ship) -> tuple[list[tuple[int, int | None]], list[int], list[int]]:
+        """The tubes that will fire, the loaded tubes that can't bear, and the selected tubes not loaded."""
         from .systems.ordnance import tube_solution
 
         if not ship.tubes:
             raise Rejected(f"The {ship.cls.name} has no torpedo tubes.")
         idx = _indices(ship.tubes, self.tubes)
         loaded = [i for i in idx if ship.tubes[i].loaded is not None and ship.tubes[i].intact]
+        unloaded = [i for i in idx if i not in loaded]
         if not loaded:
             if any(not ship.tubes[i].intact for i in idx) and all(not ship.tubes[i].intact for i in idx):
                 raise Rejected("All selected tubes are damaged.")
             if ship.torps_remaining <= 0 and not any(ship.tubes[i].loaded for i in idx):
                 raise Rejected("Torpedo magazine is empty.")
-            raise Rejected("No torpedoes are loaded.")
+            raise Rejected(f"{_tube_list(idx).capitalize()} {'is' if len(idx) == 1 else 'are'} not loaded."
+                           if self.tubes is not None else "No torpedoes are loaded.")
         ok: list[tuple[int, int | None]] = []
+        blind: list[int] = []
+        aim_at: int | None = None
         for i in loaded:
             tgt = self.target if self.target is not None else ship.tubes[i].lock
             if tgt is not None and world.apparent_position(ship.side, tgt) is None:
                 tgt = None
             if tube_solution(world, ship, ship.tubes[i], tgt) is not None:
                 ok.append((i, tgt))
+            else:
+                blind.append(i)
+                aim_at = tgt if aim_at is None else aim_at
         if not ok:
-            raise Rejected("No loaded tube has a firing solution inside its arc.")
+            raise Rejected(f"{_tube_list(blind).capitalize()} can't bear: {_arc_advice(world, ship, blind, aim_at)}")
         if self.count is not None:
             ok = ok[: max(0, self.count)]
-        return ok
+        return ok, blind, unloaded
 
     def validate(self, world: World, ship: Ship) -> None:
         if self.target is not None:
@@ -405,8 +467,20 @@ class FireTorpedoes(Command):
     def apply(self, world: World, ship: Ship) -> None:
         from .systems.ordnance import launch_torpedoes
 
+        plan, blind, unloaded = self._survey(world, ship)
+        if self.issuer >= Authority.CAPTAIN and (blind or (unloaded and self.tubes is not None)):
+            from .events import Message, Tone
+
+            bits = [f"Firing {_tube_list([i for i, _ in plan])}."]
+            if blind:
+                aim_at = next((t for t in (self.target, *(ship.tubes[i].lock for i in blind)) if t is not None), None)
+                bits.append(f"{_tube_list(blind).capitalize()} can't bear: {_arc_advice(world, ship, blind, aim_at)}")
+            if unloaded and self.tubes is not None:
+                bits.append(f"{_tube_list(unloaded).capitalize()} {'is' if len(unloaded) == 1 else 'are'} not loaded.")
+            world.emit(Message(world.tick, " ".join(bits), Tone.CAUTION, speaker=self.source, ship_id=ship.id,
+                               visible_to=frozenset({ship.side})))
         groups: dict[int | None, list[int]] = {}
-        for i, tgt in self._plan(world, ship):
+        for i, tgt in plan:
             groups.setdefault(tgt, []).append(i)
         for tgt, idx in groups.items():
             sub = self.subsystem

@@ -330,6 +330,7 @@ class WeaponsPanel(Panel):
         # tubes
         yy += 32
         theme.text(surf, "Tubes", (x0, yy + 6), theme.TEXT_DIM, 12, weight="medium")
+        n_bear = 0
         for i, t in enumerate(ship.tubes):
             r = pygame.Rect(x0 + 64 + i * (bw + 4), yy, bw, 30)
             bears = False
@@ -340,7 +341,8 @@ class WeaponsPanel(Panel):
             pygame.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
             pygame.draw.rect(surf, theme.GOOD if bears and t.loaded else theme.BORDER, r, 1, border_radius=3)
             if t.loaded:
-                lab, col = t.loaded.ordnance.upper(), theme.GOOD
+                # loaded but the target is outside this tube's arc: dimmed, so it's clear why it won't fire
+                lab, col = t.loaded.ordnance.upper(), theme.GOOD if bears or tgt is None else theme.TEXT_DIM
             elif not t.intact:
                 lab, col = "DMG", theme.ALERT
             elif not t.autoload and not t.manual_load_pending:
@@ -352,10 +354,14 @@ class WeaponsPanel(Panel):
             prox = t.loaded.prox if t.loaded else t.load_prox
             hud.ui.add(r, partial(hud.fire_torpedoes, (i,)),
                        f"Tube {i + 1}: {('loaded ' + t.loaded.ordnance.upper() + f' prox {prox:.0f}') if t.loaded else lab} · "
-                       f"autoload {'on' if t.autoload else 'off'} {t.load_ordnance.upper()} · arc {t.mount.arc_width:.0f}°")
+                       f"autoload {'on' if t.autoload else 'off'} {t.load_ordnance.upper()} · arc {t.mount.arc_width:.0f}°"
+                       + (" · target outside its arc" if tgt is not None and not bears else ""))
+            n_bear += bool(t.loaded and bears)
+        if tgt is not None and ship.tubes:
+            theme.text(surf, f"{n_bear} bear", (x0, yy + 20), theme.GOOD if n_bear else theme.TEXT_FAINT, 10)
         yy += 34
         hud.ui.button(surf, pygame.Rect(x0, yy, 110, 22), "Fire torps (T)", lambda: hud.fire_torpedoes(None),
-                      "Fire every loaded tube with a solution", accent=theme.TORPEDO, enabled=bool(ship.tubes))
+                      "Fire every loaded tube whose arc covers the target", accent=theme.TORPEDO, enabled=bool(ship.tubes))
         if ship.tubes:
             t0 = ship.tubes[0]
             on = t0.autoload
