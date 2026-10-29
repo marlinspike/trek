@@ -505,3 +505,32 @@ def test_seven_bursts_torpedoes_between_two_close_targets(content) -> None:  # t
     crew = Crew(hc.id, 0, content, default_crew(load_officers()), Rng(1))
     shots = [c for c in crew.think(w.observe(0)) if isinstance(c, FireAtPoint)]
     assert shots and abs(shots[0].x) < 60 and abs(shots[0].y - 5000) < 200   # between them
+
+
+def test_point_defense_depends_on_race_and_crew(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.ai.computer import pd_profile
+
+    w = make_world(content)
+    kl = w.add_ship("klingon.bc", 1, 0, 0)
+    ro = w.add_ship("romulan.bp", 1, 0, 9000)
+    obs = w.observe(1)
+    k, r = pd_profile(kl, obs), pd_profile(ro, obs)
+    assert k.banks_per_threat >= 3 and r.banks_per_threat == 1      # Klingons pour fire onto one round
+    ro.crew = ro.cls.crew // 4
+    hurt = pd_profile(ro, w.observe(1))
+    assert hurt.react_ticks > r.react_ticks and hurt.aim_noise > r.aim_noise and hurt.banks_per_threat > 1
+
+
+def test_bait_fires_one_round_then_the_rest(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.commands import FireBait
+
+    w = make_world(content)
+    dn = w.add_ship("federation.dn", 0, 0, 0)
+    bc = w.add_ship("klingon.bc", 1, 0, 6000)
+    charge_all(w, 6)
+    loaded = sum(1 for t in dn.tubes if t.loaded is not None)
+    assert w.execute(FireBait(ship_id=dn.id, target=bc.id)) is None
+    assert sum(1 for t in dn.tubes if t.loaded is not None) == loaded - 1 and dn.pending_volley is not None
+    assert w.execute(FireBait(ship_id=dn.id, target=bc.id)) is not None   # one bait at a time
+    w.run(1.1)
+    assert dn.pending_volley is None and sum(1 for t in dn.tubes if t.loaded is not None) <= 1

@@ -932,6 +932,35 @@ class DelegateStation(Command):
 
 
 @dataclass(kw_only=True)
+class FireBait(FireTorpedoes):
+    """Fire one torpedo to draw the enemy's point defense, then the rest a moment later [E].
+
+    A trigger-happy defense spends several banks on the first round it sees;
+    the volley behind it arrives while those banks are still recharging.
+    """
+
+    delay: float = 1.0           # cycles between the bait and the volley
+    name: ClassVar[str] = "fire bait"
+
+    def validate(self, world: World, ship: Ship) -> None:
+        super().validate(world, ship)
+        if ship.pending_volley is not None:
+            raise Rejected("A bait volley is already under way.")
+        if sum(1 for t in ship.tubes if t.loaded is not None and t.intact) < 2:
+            raise Rejected("Bait needs at least two loaded tubes: one to draw their fire, the rest to follow.")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        self.count = 1
+        super().apply(world, ship)
+        target = self.target if self.target is not None else ship.target
+        due = world.tick + max(1, int(round(self.delay * world.rules.ticks_per_cycle)))
+        ship.pending_volley = (due, target, self.subsystem, int(self.issuer))
+
+    def describe(self) -> str:
+        return "fire one torpedo as bait, the rest to follow"
+
+
+@dataclass(kw_only=True)
 class SetObjective(Command):
     """Give an officer a standing objective, e.g. disable the shields of one or more ships [E]."""
 
@@ -950,7 +979,7 @@ class SetObjective(Command):
 
         if self.goal not in GOALS:
             raise Rejected(f"Unknown objective '{self.goal}'.")
-        if self.group not in DISABLE_GROUPS:
+        if self.goal == "disable" and self.group not in DISABLE_GROUPS:
             raise Rejected(f"Can't disable '{self.group}'. Choose from: {', '.join(DISABLE_GROUPS)}.")
         if not self.targets:
             raise Rejected("Disable it on which ships?")

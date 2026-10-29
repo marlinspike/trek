@@ -9,6 +9,13 @@ concrete capabilities rather than combat bonuses:
 * how precisely it lays a defensive beam on a small target,
 * how well it judges a good offensive shot for assisted/automatic mounts.
 
+Point defense also depends on who is manning it [E]: the faction's discipline
+(Klingons pour several banks onto the first torpedo they see; Romulans send
+one bank per threat and hold the rest), crew losses (fewer hands react later,
+aim worse and lose discipline) and damage (a hurt sensor array reacts late).
+An undisciplined defense can be baited: one torpedo draws its fire, and the
+salvo behind it arrives while the banks recharge.
+
 Everything it knows comes from the side's `Observation`.
 """
 
@@ -30,7 +37,32 @@ from .trace import Trace
 @dataclass
 class ThreatTrack:
     first_seen: int
-    engaged: int = 0
+    engaged: int = 0      # banks fired at it in the current pass
+    last_shot: int = -10 ** 9
+
+
+@dataclass(frozen=True)
+class PDProfile:
+    """How well this crew runs point defense right now [E]."""
+
+    react_ticks: int      # before a new threat is engaged
+    aim_noise: float      # degrees of beam-laying error
+    banks_per_threat: int # how many banks it will spend on one torpedo
+
+
+def pd_profile(ship: Ship, obs: Observation) -> PDProfile:
+    tpc = obs.rules.ticks_per_cycle
+    soph = ship.sophistication
+    crew = max(0.0, min(1.0, ship.crew / max(1, ship.cls.crew)))
+    eyes = ship.sensors.health if ship.sensors is not None else 0.5
+    faction = obs.content.factions.get(ship.faction)
+    discipline = (faction.pd_discipline if faction is not None else 0.7) * (0.5 + 0.5 * crew)
+    react = (0.15 + (1.0 - soph) * 1.2) * (1.0 + 1.5 * (1.0 - crew)) * (1.0 + (1.0 - eyes))
+    return PDProfile(
+        react_ticks=int(round(react * tpc)),
+        aim_noise=(1.0 - soph) * 4.0 * (1.0 + 2.0 * (1.0 - crew)),
+        banks_per_threat=1 + int((1.0 - discipline) * 4 + 0.25),
+    )
 
 
 @dataclass
@@ -55,10 +87,6 @@ class ShipComputer:
         return out
 
     # ---------------------------------------------------------------- defense
-
-    def _reaction_ticks(self, ship: Ship, obs: Observation) -> int:
-        soph = ship.sophistication
-        return int(round((0.15 + (1.0 - soph) * 1.2) * obs.rules.ticks_per_cycle))
 
     def _horizon(self, ship: Ship) -> float:
         """Cycles of look-ahead for closest-approach prediction."""
@@ -92,7 +120,8 @@ class ShipComputer:
         live = {o.id for o in threats}
         for k in [k for k in self.tracks if k not in live]:
             del self.tracks[k]
-        react = self._reaction_ticks(ship, obs)
+        prof = pd_profile(ship, obs)
+        react = prof.react_ticks
         rng_ = ship.cls.banks_range
         cands: list[tuple[float, OrdnanceView]] = []
         for o in threats:
@@ -124,6 +153,14 @@ class ShipComputer:
         used: set[int] = set()
         for t, o in cands:
             soph = ship.sophistication
+            tr = self.tracks[o.id]
+            if obs.tick - tr.last_shot >= 2:
+                tr.engaged = 0   # it survived the last pass: engage it afresh
+            # a disciplined crew gives each round in a group one bank; a trigger-happy one pours a fixed
+            # handful of banks onto whatever it sees first, one round or eight, and has fewer left after
+            want = (o.count if prof.banks_per_threat <= 1 else prof.banks_per_threat) - tr.engaged
+            if want <= 0:
+                continue
             brg_true = bearing(o.x - ship.x, o.y - ship.y)
             for i, b in enumerate(ship.banks):
                 if i in used or not bank_ready(ship, b) or b.role not in allowed_roles:
@@ -138,7 +175,7 @@ class ShipComputer:
                     continue
                 if math.hypot(o.x - ox, o.y - oy) >= rng_ * 0.97:
                     continue
-                aim = norm360(brg + self.rng.gauss(0.0, (1.0 - soph) * 4.0))
+                aim = norm360(brg + self.rng.gauss(0.0, prof.aim_noise))
                 spread = 10.0 + (1.0 - soph) * 12.0
                 if ang_dist(aim, brg) > spread / 2:
                     spread = min(45.0, ang_dist(aim, brg) * 2 + 4)
@@ -148,9 +185,13 @@ class ShipComputer:
                 out.append(FirePhasers(ship_id=ship.id, banks=(i,), at_bearing=aim, spread=spread, defensive=True,
                                        issuer=Authority.COMPUTER, source="point defense"))
                 self.trace.add(obs.tick, f"PD: bank {i + 1} at {o.kind} {o.id} (t={t:.1f}c)")
+                tr.engaged += 1
+                tr.last_shot = obs.tick
+                want -= 1
                 if doctrine == PDDoctrine.CONSERVATIVE and not reserved_exist:
                     return out
-                break
+                if want <= 0:
+                    break
         return out
 
     @staticmethod

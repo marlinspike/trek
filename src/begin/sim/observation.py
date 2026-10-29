@@ -65,6 +65,7 @@ class OrdnanceView:
     target: int | None          # own ordnance only
     code: str = ""
     fuse: float = 0.0           # own ordnance: cycles until the time fuse expires
+    count: int = 1              # rounds flying together in this group (a salvo), which anyone can count
 
 
 class Observation:
@@ -159,7 +160,7 @@ class Observation:
                 out.append(OrdnanceView(
                     t.id, "torpedo", mine, t.owner if mine else None, t.x, t.y, t.course, t.velocity * upw,
                     t.armed, t.yield_ if mine else t.spec.damage, t.prox if mine else t.spec.max_prox,
-                    t.target if mine else None,
+                    t.target if mine else None, count=t.salvo,
                 ))
             for p in w.probes:
                 if p.detonate:

@@ -140,7 +140,7 @@ TIP_STATIONS = {
     "Switch torpedoes": "tactical", "Heavier torpedo available": "tactical", "Proximity fuse": "tactical",
     "Phasers in range": "tactical", "Closing to phaser range": "helm", "Probe it": "tactical",
     "Scan the target": "science", "Their shields": "science", "Turn a fresh shield toward them": "helm",
-    "Cloaked ship nearby": "science", "Tachyon round ready": "tactical", "Deflector pulse ready": "science", "Seven's objective": "science", "Let Seven disable it": "science",
+    "Cloaked ship nearby": "science", "Tachyon round ready": "tactical", "Deflector pulse ready": "science", "Seven's objective": "science", "Bait their point defense": "tactical", "Let Seven disable it": "science",
     "Engines running hot": "engineering", "Power is running out": "engineering", "Badly damaged": "engineering",
 }
 
@@ -285,6 +285,13 @@ def tips(ctx: HelpContext) -> list[Tip]:
                     f"{best.effective:.0f}%: steer {turn:.0f} to put it toward them, or reinforce the weak one.",
                     f"helm {turn:.0f}", f"reenforce {sh.index + 1}")
     # engines and power
+    if (c is not None and c.visible and not s.objectives and s.pending_volley is None
+            and sum(1 for t in s.tubes if t.loaded is not None) >= 3):
+        from ..crew.objectives import baitable
+
+        if baitable(obs, c) and 3000 < c.distance_to(s.x, s.y) < 8000:
+            tip(3, "Bait their point defense", f"**{_contact_name(c)}**'s crew fires everything at the first torpedo it "
+                "sees. Send one, and the rest a second later while its phasers recharge.", "bait")
     if s.objectives:
         o = s.objectives[0]
         known = {t: _contact_name(ct) for t in o.targets if (ct := obs.contact(t)) is not None}

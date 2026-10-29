@@ -147,6 +147,7 @@ bridge_torpedoes = ["Torpedoes launched. Adjust your expectations accordingly.",
 objective = ["Understood. I will target the relevant systems and detonate our torpedoes just outside their point-defence threshold. They will not see it coming.", "Acknowledged. Aimed phasers, and torpedoes fused to burst beside them where their defences will not react. Keep us in range, Captain."]
 objective_progress = ["{target}'s {systems} are off line. {left}", "Confirmed: {target} has lost its {systems}. {left}"]
 objective_done = ["Objective complete. {targets}: {systems} disabled.", "It is done, Captain. {targets} no longer have working {systems}."]
+objective_destroyed = ["{targets} will trouble us no further.", "Target eliminated: {targets}. Their defences were predictable."]
 objective_failed = ["I must abandon the objective: {reason}.", "The objective cannot be completed: {reason}."]
 contact = ["New contact: {target}.", "Sensors detect {target}."]
 lost = ["{target} has left sensor range. Last fix: bearing {bearing}, {range} units, heading {heading} at warp {warp}. I will extrapolate its position.",

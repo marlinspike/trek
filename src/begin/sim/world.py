@@ -323,6 +323,8 @@ class World:
             update_projects(self, s, dt)
             s.reveal_time = max(0.0, s.reveal_time - dt)
             s.deflector_cooldown = max(0.0, s.deflector_cooldown - dt)
+            if s.pending_volley is not None and self.tick >= s.pending_volley[0]:
+                self._follow_up(s)
             self._self_destruct(s, dt)
             if cycle_edge and s.boarders > 0:
                 self._boarding(s)
@@ -339,6 +341,17 @@ class World:
         self._escapes(dt)
         self.tick += 1
         self._check_outcome()
+
+    def _follow_up(self, ship: Ship) -> None:
+        """The volley behind a bait torpedo [E]: every loaded tube, at the same target."""
+        from .commands import Authority, FireTorpedoes
+
+        _, target, sub, issuer = ship.pending_volley  # type: ignore[misc]
+        ship.pending_volley = None
+        if not ship.alive or (target is not None and (target not in self.ships or not self.ships[target].alive)):
+            return
+        self.execute(FireTorpedoes(ship_id=ship.id, target=target, subsystem=sub, issuer=Authority(issuer),
+                                   source="bait follow-up"))
 
     def run(self, cycles: float) -> None:
         for _ in range(int(round(cycles * self.rules.ticks_per_cycle))):

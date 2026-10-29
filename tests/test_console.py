@@ -123,3 +123,13 @@ def test_disable_enemy_systems_parses_in_any_word_order(setup) -> None:  # type:
     assert isinstance(c, SetObjective) and c.group == "propulsion" and set(c.targets) == {foe.id, other.id}
     assert isinstance(p(w, me, "disable off").commands[0], EndObjective)
     assert isinstance(p(w, me, "disable tubes 1 2").commands[0], SetTubes)   # still your own tubes
+
+
+def test_destroy_and_bait_commands(setup) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.commands import FireBait, SetObjective
+
+    w, me, foe = setup
+    c = p(w, me, "destroy gorkon").commands[0]
+    assert isinstance(c, SetObjective) and c.goal == "destroy" and c.targets == (foe.id,)
+    c = p(w, me, "bait gorkon").commands[0]
+    assert isinstance(c, FireBait) and c.target == foe.id

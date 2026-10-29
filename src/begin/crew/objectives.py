@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ..sim.commands import (
-    Authority, Command, EndObjective, FireAtPoint, FirePhasers, Scan, SelectTarget,
+    Authority, Command, EndObjective, FireAtPoint, FireBait, FirePhasers, Scan, SelectTarget,
 )
 from ..sim.objectives import Objective
 from ..sim.observation import ContactView, Observation
@@ -56,6 +56,18 @@ def group_state(c: ContactView | None, group: str) -> tuple[int, int] | None:
     if not hits:
         return (0, 0)
     return len(hits), sum(1 for d in hits if d > 0)   # a damaged system is off line until repaired
+
+
+def baitable(obs: Observation, c: ContactView) -> bool:
+    """Will this ship's point defense spend several banks on a lone torpedo? Judged from what Seven
+    knows: its race's habits, and from a scan, how many of its crew are left [E]."""
+    if c.cls is None:
+        return False
+    faction = obs.content.factions.get(c.cls.faction)
+    discipline = faction.pd_discipline if faction is not None else 0.7
+    if c.scan is not None:
+        discipline *= 0.5 + 0.5 * max(0.0, min(1.0, c.scan.crew / max(1, c.cls.crew)))
+    return discipline < 0.6
 
 
 def disabled(c: ContactView | None, group: str) -> bool:
@@ -96,12 +108,16 @@ def plan_disable(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: 
     tpc = rules.ticks_per_cycle
     contacts = {t: obs.contact(t) for t in o.targets}
     alive = [t for t in o.targets if _alive(obs, t)]
+    destroy = o.goal == "destroy"
+    aim = None if destroy else o.group
     if not alive:
+        if destroy:
+            return [p._cmd(EndObjective, ship, group=o.group, outcome="done")]
         return [p._cmd(EndObjective, ship, group=o.group, outcome="impossible",
                        reason="none of them are left to disable")]
     if not ship.weapons_operational():
         return [p._cmd(EndObjective, ship, group=o.group, outcome="impossible", reason="we have no working weapons")]
-    remaining = [t for t in alive if not disabled(contacts[t], o.group)]
+    remaining = alive if destroy else [t for t in alive if not disabled(contacts[t], o.group)]
     fresh = all(contacts[t] is not None and contacts[t].scan is not None  # type: ignore[union-attr]
                 and obs.tick - contacts[t].scan.tick <= DONE_SCAN_AGE * tpc for t in alive)  # type: ignore[union-attr]
     if not remaining and fresh:
@@ -138,8 +154,8 @@ def plan_disable(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: 
     d = c.distance_to(ship.x, ship.y)
 
     # tactical: the chosen systems on the nearest target
-    if ship.target != primary or ship.target_subsystem != o.group:
-        out.append(p._cmd(SelectTarget, ship, target=primary, subsystem=o.group))
+    if ship.target != primary or ship.target_subsystem != aim:
+        out.append(p._cmd(SelectTarget, ship, target=primary, subsystem=aim))
     # she leaves the helm to whoever has it: the captain, or the helm officer
     bank_range = ship.cls.banks_range
     # phasers, tightly focused for accuracy
@@ -147,7 +163,7 @@ def plan_disable(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: 
         ready = tuple(i for i, b in enumerate(ship.banks) if bank_ready(ship, b) and b.role.value != "defense"
                       and bank_bears_point(ship, b, c.x, c.y))
         if ready:
-            out.append(p._cmd(FirePhasers, ship, banks=ready, target=primary, subsystem=o.group, spread=10.0))
+            out.append(p._cmd(FirePhasers, ship, banks=ready, target=primary, subsystem=aim, spread=10.0))
     # torpedoes, burst where point defense won't expect them
     shot = _torpedo_shot(p, obs, ship, o, primary, [t for t in visible if t != primary])
     if shot is not None:
@@ -172,14 +188,17 @@ def _torpedo_shot(p: Planner, obs: Observation, ship: Ship, o: Objective, primar
     c = obs.contact(primary)
     if c is None or blast_r <= 0:
         return None
-    if c.scan is not None and c.scan.structure_frac < 0.3:
+    destroy = o.goal == "destroy"
+    if not destroy and c.scan is not None and c.scan.structure_frac < 0.3:
         return None   # the asked-for job is to disable it, not to finish it off: phasers only from here
+    if ship.pending_volley is not None:
+        return None   # a bait volley is under way
 
     def lead(cv: ContactView, t: float) -> tuple[float, float]:
         return cv.x + cv.vx * t, cv.y + cv.vy * t
 
-    # close enough that the target can't wander far while the salvo flies, far enough for it to arm
     d_now = c.distance_to(ship.x, ship.y)
+    # close enough that the target can't wander far while the salvo flies, far enough for it to arm
     if d_now > min(reach, speed * (spec.arm_time + 1.5)) or d_now < speed * spec.arm_time * 1.15:
         return None
     tof = d_now / speed
@@ -202,6 +221,11 @@ def _torpedo_shot(p: Planner, obs: Observation, ship: Ship, o: Objective, primar
         if 2 * ring < gap < blast_r * 1.6:
             point, spread = ((px + ox) / 2, (py + oy) / 2), min(ring, gap / 4)
             break
+    paired = point != (px, py)
+    # a lone, trigger-happy target: one torpedo to draw its point defense, the rest while its banks recharge
+    if not paired and len(loaded) >= 3 and speed * spec.arm_time * 1.3 < d_now < reach * 0.8 and baitable(obs, c):
+        p.last_volley = obs.tick
+        return p._cmd(FireBait, ship, target=primary, subsystem=None if destroy else o.group)
     d = math.hypot(point[0] - ship.x, point[1] - ship.y)
     if d > reach or d < speed * spec.arm_time * 1.1:
         return None
@@ -210,12 +234,12 @@ def _torpedo_shot(p: Planner, obs: Observation, ship: Ship, o: Objective, primar
         if math.hypot(s.x - point[0], s.y - point[1]) < blast_r + spread + 100:
             return None
     p.last_volley = obs.tick
-    return p._cmd(FireAtPoint, ship, x=point[0], y=point[1], prox=prox, target=primary, subsystem=o.group,
-                  spread=spread)
+    return p._cmd(FireAtPoint, ship, x=point[0], y=point[1], prox=prox, target=primary,
+                  subsystem=None if destroy else o.group, spread=spread)
 
 
 Plan = Callable[[Planner, Observation, Ship, Objective, "OfficerBrain | None"], list[Command]]
-PLANNERS: dict[str, Plan] = {"disable": plan_disable}
+PLANNERS: dict[str, Plan] = {"disable": plan_disable, "destroy": plan_disable}
 
 
-__all__ = ["PLANNERS", "Planner", "disabled", "group_state", "plan_disable"]
+__all__ = ["PLANNERS", "Planner", "baitable", "disabled", "group_state", "plan_disable"]

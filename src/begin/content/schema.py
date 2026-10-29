@@ -240,6 +240,7 @@ class Faction:
     computer_sophistication: float
     captains: CaptainModel
     sensor_scale: float = 1.0
+    pd_discipline: float = 0.7
 
 
 @dataclass(slots=True)

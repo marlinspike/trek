@@ -13,13 +13,14 @@ from dataclasses import dataclass
 
 from .ship import TARGETABLE_GROUPS
 
-GOALS = ("disable",)
+GOALS = ("disable", "destroy")
 
 # what the captain can ask to have disabled, and how each is spoken of
 DISABLE_GROUPS: dict[str, str] = {
     "shields": "shields", "phasers": "phasers", "torpedoes": "torpedo tubes", "weapons": "weapons",
     "propulsion": "engines", "sensors": "sensors", "cloak": "cloaking device",
 }
+DESTROY_GROUP = "hull"   # the group a destroy objective is filed under
 assert set(DISABLE_GROUPS) <= set(TARGETABLE_GROUPS)
 
 
@@ -33,7 +34,9 @@ class Objective:
 
     def describe(self, names: dict[int, str] | None = None) -> str:
         who = ", ".join((names or {}).get(t, f"#{t}") for t in self.targets)
+        if self.goal == "destroy":
+            return f"destroy {who}"
         return f"{self.goal} {DISABLE_GROUPS.get(self.group, self.group)} on {who}"
 
 
-__all__ = ["DISABLE_GROUPS", "GOALS", "Objective"]
+__all__ = ["DESTROY_GROUP", "DISABLE_GROUPS", "GOALS", "Objective"]

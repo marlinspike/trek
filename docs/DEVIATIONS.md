@@ -20,7 +20,7 @@ The remake follows Begin's rules wherever the manual ([M]) or the decoded binary
 
 **Subsystem targeting.** `target <ship> <subsystem>` aims phasers at propulsion, weapons, shields, power or sensors. Accuracy depends on the computer, the sensors, range, beam width and how recently the target was scanned. Begin had no aimed fire.
 
-**Phasers against ordnance.** Begin's phasers detonate every torpedo in the cone. We give each torpedo a chance instead: 10% plus 5% per point of damage, up to 85%. Balance runs showed that certain interception made torpedoes nearly useless once ships had automatic point defense. Shots aimed at ordnance by point defense get only 40% of that chance (`Rules.pd_kill_scale`). At full strength, a Klingon Dreadnought's point defense stopped about 85% of a Federation Dreadnought's torpedoes, and the duel took over 100 volleys.
+**Phasers against ordnance.** Begin's phasers detonate every torpedo in the cone. We give each torpedo a chance instead: 10% plus 5% per point of damage, up to 85%. Balance runs showed that certain interception made torpedoes nearly useless once ships had automatic point defense. Shots aimed at ordnance by point defense get only 40% of that chance (`Rules.pd_kill_scale`). Point defense also depends on its crew: each faction has a `pd_discipline` (Klingons 0.3 and Orions 0.2 pour four banks onto the first round they see; Romulans and Starfleet, 0.85, send one bank per round), and crew losses and sensor damage slow reactions, spoil aim and erode discipline. A trigger-happy defense can be baited with one torpedo and the rest a cycle later (`bait`, which Seven also uses). At full strength, a Klingon Dreadnought's point defense stopped about 85% of a Federation Dreadnought's torpedoes, and the duel took over 100 volleys.
 
 **Probe launchers** need a one-cycle preparation instead of being instantly ready.
 
@@ -52,7 +52,7 @@ Begin has no standing orders. In the remake, "Seven, disable the Klingons' shiel
 - when two targets are close together, she bursts the salvo between them;
 - she hunts cloaked targets with the deflector or tachyon detector.
 
-She never steers, and the captain's orders still override hers. Weapons count as disabled when all of them are off line, and shields when two thirds of the generators are. In 8-seed test runs with Spock at the helm, a Seven objective won the Border Incident 7 of 8 in about half the time (Spock alone won 6 of 8), and was about even in quick battles. Targets were often destroyed before she could confirm them disabled, because blast and phaser damage also reaches the hull.
+She baits trigger-happy point defenses (one torpedo, then the rest while their banks recharge), and "take out the Wraith" (`destroy`) keeps her at it until the ship is gone. She never steers, and the captain's orders still override hers. Weapons count as disabled when all of them are off line, and shields when two thirds of the generators are. In 8-seed test runs with Spock at the helm, a Seven objective won the Border Incident 7 of 8 in about half the time (Spock alone won 6 of 8), and was about even in quick battles. Targets were often destroyed before she could confirm them disabled, because blast and phaser damage also reaches the hull.
 
 ## The ship computer
 

@@ -28,7 +28,7 @@ from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, Surrender,
-    DeflectorPulse, EndObjective, FireAtPoint, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
+    DeflectorPulse, EndObjective, FireAtPoint, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
 from ..sim.ship import TARGETABLE_GROUPS, BankRole, FireMode, Kind, PDDoctrine
@@ -81,6 +81,8 @@ VERBS: dict[str, tuple[str, ...]] = {
     "spread": ("spread", "sp"),
     "enable": ("enable",),
     "disable": ("disable", "disarm", "cripple"),
+    "destroy": ("destroy", "eliminate", "annihilate"),
+    "bait": ("bait",),
     "role": ("role",),
     "raise": ("raise", "up"),
     "lower": ("lower", "drop", "down"),
@@ -1150,23 +1152,9 @@ class Parser:
     _FACTIONS = {"klingon": "klingon", "romulan": "romulan", "orion": "orion", "federation": "federation",
                  "pirate": "orion", "pirates": "orion"}
 
-    def _disable_enemy(self, tok: _Tokens, res: ParseResult) -> None:
-        """`disable <shields|phasers|torpedoes|weapons|engines|sensors> [on] <ships|all|klingons>` [E].
-
-        Words can come in any order ("disable the Klingons' shields"); `disable off` cancels.
-        With no ship named: the current target, or every enemy if there is none.
-        """
-        verb = (tok.toks[tok.i - 1] if tok.i > 0 else "disable")
-        words = [w.strip(".!?;'\"").removesuffix("'s").removesuffix("s'") for w in tok.rest()]
-        words = [w for w in words if w]
-        if any(w in ("off", "cancel", "stop", "belay", "abort", "nevermind") for w in words):
-            res.commands.append(self._cmd(EndObjective, outcome="cancelled"))
-            return
-        group = next((self._DISABLE_WORDS[w] for w in words if w in self._DISABLE_WORDS), None)
-        if group is None:
-            group = "weapons" if verb.startswith("disarm") else None
-        if group is None:
-            raise ParseError("Disable what? shields, phasers, torpedoes, weapons, engines, sensors or cloak.")
+    def _enemy_targets(self, words: list[str]) -> tuple[int, ...]:
+        """Enemy ships named in free text: names, '#id', races ('the Klingons') or 'all'/'them'.
+        Nothing named: the current target, or every enemy in sight."""
         hostile = [c for c in self.obs.hostile_contacts() if c.id not in self.obs.gone()]
         targets: list[int] = []
         table = self._ship_table()
@@ -1200,8 +1188,43 @@ class Parser:
             else:
                 targets = [c.id for c in hostile]
         if not targets:
-            raise ParseError("There's no enemy in sight to disable.")
-        res.commands.append(self._cmd(SetObjective, goal="disable", group=group, targets=tuple(dict.fromkeys(targets))))
+            raise ParseError("There's no enemy in sight.")
+        return tuple(dict.fromkeys(targets))
+
+    def _v_destroy(self, tok: _Tokens, res: ParseResult) -> None:
+        """`destroy <ships|all|klingons>`: an officer's standing order to take the ships out [E]."""
+        words = [w.strip(".!?;'\"").removesuffix("'s").removesuffix("s'") for w in tok.rest()]
+        words = [w for w in words if w]
+        if any(w in ("off", "cancel", "stop", "belay", "abort") for w in words):
+            res.commands.append(self._cmd(EndObjective, group="hull", outcome="cancelled"))
+            return
+        res.commands.append(self._cmd(SetObjective, goal="destroy", group="hull", targets=self._enemy_targets(words)))
+
+    def _v_bait(self, tok: _Tokens, res: ParseResult) -> None:
+        """`bait [ship]`: one torpedo to draw their point defense, the rest a cycle later [E]."""
+        tok.take_word("at")
+        sid = self.resolve_ship(tok, allow_none=True)
+        res.commands.append(self._cmd(FireBait, target=sid if sid is not None else self.ship.target))
+
+    def _disable_enemy(self, tok: _Tokens, res: ParseResult) -> None:
+        """`disable <shields|phasers|torpedoes|weapons|engines|sensors> [on] <ships|all|klingons>` [E].
+
+        Words can come in any order ("disable the Klingons' shields"); `disable off` cancels.
+        With no ship named: the current target, or every enemy if there is none.
+        """
+        verb = (tok.toks[tok.i - 1] if tok.i > 0 else "disable")
+        words = [w.strip(".!?;'\"").removesuffix("'s").removesuffix("s'") for w in tok.rest()]
+        words = [w for w in words if w]
+        if any(w in ("off", "cancel", "stop", "belay", "abort", "nevermind") for w in words):
+            res.commands.append(self._cmd(EndObjective, outcome="cancelled"))
+            return
+        group = next((self._DISABLE_WORDS[w] for w in words if w in self._DISABLE_WORDS), None)
+        if group is None:
+            group = "weapons" if verb.startswith("disarm") else None
+        if group is None:
+            raise ParseError("Disable what? shields, phasers, torpedoes, weapons, engines, sensors or cloak.")
+        targets = self._enemy_targets(words)
+        res.commands.append(self._cmd(SetObjective, goal="disable", group=group, targets=targets))
 
     def _v_pulse(self, tok: _Tokens, res: ParseResult) -> None:
         """`pulse`: sweep the cone ahead with the deflector's tachyon pulse [E]."""

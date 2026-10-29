@@ -69,7 +69,9 @@ _BRIDGE_RELEASE = re.compile(r"\b(i have the (bridge|conn|ship)|i'?ll take (the 
                              r"(the )?captain'?s? on the bridge|give me (the bridge|the conn|command))\b")
 _RELEASE = re.compile(r"\b(stand down|i have (the|it)|i'?ll (take|handle) (it|the)|i relieve you|belay)\b")
 # "disable the Klingons' shields", "knock out Gorkon's torpedoes", "cancel that objective"
-_DISABLE = re.compile(r"\b(disable|disarm|cripple|knock out|take out|neutrali[sz]e|shut down)\b")
+_DISABLE = re.compile(r"\b(disable|disarm|cripple|knock out|take out|neutrali[sz]e|shut down|destroy|eliminate|"
+                      r"finish off|kill|sink|blow up)\b")
+_KILL_VERBS = ("take out", "destroy", "eliminate", "finish off", "kill", "sink", "blow up", "knock out")
 _FIRING = re.compile(r"^\s*(fire\b|tachyon\s+\S)")  # an order to fire the round, not to design one
 _STATUS = re.compile(r"\b(status|report|sitrep|situation|how are|how's|condition)\b")
 _ADVICE = re.compile(r"\b(advice|advise|recommend|suggest|what (should|do you|now|next)|ideas?|options?|thoughts?|opinion)\b")
@@ -157,8 +159,15 @@ class Bridge:
             return self.handover_lines(officer, turn == "take")
         m = _DISABLE.search(low)
         if m is not None:
-            verb = "disarm" if m.group(1) == "disarm" else "cripple"   # both always mean the enemy's systems
-            return self.objective(officer, f"{verb} {low[m.end():]}", run)
+            rest = low[m.end():]
+            from ..console.parser import Parser
+
+            names_systems = any(w.strip(".,!?'\"").removesuffix("'s") in Parser._DISABLE_WORDS for w in rest.split())
+            if m.group(1) in _KILL_VERBS and not names_systems:
+                verb = "destroy"     # "take out the Wraith": the whole ship
+            else:
+                verb = "disarm" if m.group(1) == "disarm" else "cripple"   # both always mean the enemy's systems
+            return self.objective(officer, f"{verb} {rest}", run)
         collab = None if _FIRING.match(low) else collaborations.matching(officer.id, low)
         if collab is not None:
             return self.collaborate(officer, collab, run)
@@ -417,7 +426,10 @@ class Bridge:
                 continue
             systems = DISABLE_GROUPS.get(ev.group, ev.group)
             names = ", ".join(self._names.get(t, f"#{t}") for t in ev.targets)
-            if ev.outcome == "done":
+            if ev.outcome == "done" and ev.goal == "destroy":
+                out.append(self._line(o, "objective_destroyed", targets=names)
+                           or self._say(o, f"{names}: destroyed, Captain."))
+            elif ev.outcome == "done":
                 out.append(self._line(o, "objective_done", targets=names, systems=systems)
                            or self._say(o, f"Done, Captain: {names} have lost their {systems}."))
             else:
@@ -432,6 +444,8 @@ class Bridge:
 
         out: list[Utterance] = []
         for o in s.objectives:
+            if o.goal != "disable":
+                continue   # a ship taken out is reported as it goes
             officer = (self.find(o.officer) if o.officer else None) or self.crew.officer("science")
             if officer is None:
                 continue

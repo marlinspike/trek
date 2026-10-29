@@ -129,6 +129,7 @@ def load_content(data_dir: Path = DATA_DIR) -> ContentDB:
             dogma=Dogma(**{k: float(v) for k, v in dg.items()}),
             computer_sophistication=float(f["computer"]["sophistication"]),
             sensor_scale=float(f.get("sensors", {}).get("range", 1.0)),
+            pd_discipline=float(f["computer"].get("pd_discipline", 0.7)),
             captains=CaptainModel(**{k: float(v) for k, v in cm.items()}),
         )
 

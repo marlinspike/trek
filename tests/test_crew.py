@@ -579,3 +579,18 @@ def test_seven_takes_on_a_disable_objective_and_reports_success(scene) -> None: 
     sc.run_console("disable off")
     assert not sc.player.objectives
     sc.draw(surf)
+
+
+def test_seven_takes_out_a_ship_and_baits_klingons(scene) -> None:  # type: ignore[no-untyped-def]
+    from begin.crew.objectives import baitable
+
+    sc, surf = scene
+    foe = next(s for s in sc.world.ships.values() if s.side != sc.player.side)
+    sc.run_console("seven, take out derango")
+    o = sc.player.objectives[0]
+    assert o.goal == "destroy" and o.targets == (foe.id,)
+    c = sc.world.observe(sc.side).contact(foe.id)
+    assert c is not None and baitable(sc.world.observe(sc.side), c) == (foe.faction in ("klingon", "orion"))
+    sc.run_console("seven, take out derango's shields")    # naming systems means disable
+    assert any(x.goal == "disable" and x.group == "shields" for x in sc.player.objectives)
+    sc.draw(surf)
