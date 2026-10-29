@@ -33,19 +33,20 @@ from ..sim.commands import (
     Authority, Command, ConfigureAutoload, ControlProbe, FirePhasers, FireTorpedoes, LaunchProbe, LoadTubes,
     LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak, SetFireMode, SetHelm,
     SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, StartProject, TurnMounts,
-    FireSpecialRound, DeflectorPulse,
+    FireSpecialRound, DeflectorPulse, SetObjective, EndObjective, FireAtPoint,
 )
 from ..sim.observation import Observation
 from ..sim.ship import Kind, Ship
 from .characters import STATIONS, OfficerProfile
+from .objectives import Planner
 
 STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
     "helm": (SetHelm, Pursue),
-    "tactical": (SelectTarget, LockWeapons, TurnMounts, FirePhasers, SetPhaserSpread, SetBanks, FireTorpedoes,
+    "tactical": (SelectTarget, LockWeapons, TurnMounts, FirePhasers, SetPhaserSpread, SetBanks, FireTorpedoes, FireAtPoint,
                  ConfigureAutoload, LoadTubes, SetTubes, LaunchProbe, ControlProbe, SetFireMode, SetPointDefense,
                  FireSpecialRound),
     "engineering": (SetShields, ReinforceShield, SetRepairPriority, SetCloak),
-    "science": (Scan, StartProject, DeflectorPulse),
+    "science": (Scan, StartProject, DeflectorPulse, SetObjective, EndObjective),
 }
 
 STATION_NAMES = {"helm": "Helm", "tactical": "Tactical", "engineering": "Engineering", "science": "Science"}
@@ -218,6 +219,7 @@ class Crew:
     period: int = 1
     phase: int = 0
     brains: dict[str, OfficerBrain] = field(default_factory=dict)
+    planners: dict[str, Planner] = field(default_factory=dict)
 
     def officer(self, station: str) -> OfficerProfile | None:
         return self.officers.get(station)
@@ -234,10 +236,25 @@ class Crew:
         hits = [o for o in everyone if any(a.startswith(q) for a in (o.id, o.name.lower(), *o.aliases))]
         return hits[0] if len(hits) == 1 else None
 
+    def _objectives(self, obs: Observation, ship: Ship) -> list[Command]:
+        """Officers working on what the captain asked of them, whether or not they run a station."""
+        out: list[Command] = []
+        for o in ship.objectives:
+            prof = self.find(o.officer) if o.officer else self.officer("science")
+            if prof is None:
+                continue
+            pl = self.planners.get(prof.id)
+            if pl is None:
+                pl = self.planners[prof.id] = Planner(prof.id, prof.title)
+            out.extend(pl.think(obs, ship, self._brain("bridge", ship, prof)))
+            break  # one officer's plan at a time keeps the orders coherent
+        return out
+
     def move_to(self, ship_id: int) -> None:
         """The captain changed ships (`beam <ally>`): the officers come along and start fresh."""
         self.ship_id = ship_id
         self.brains.clear()
+        self.planners.clear()
 
     def _brain(self, station: str, ship: Ship, prof: OfficerProfile | None = None) -> OfficerBrain:
         prof = prof or self.officers[station]
@@ -253,23 +270,29 @@ class Crew:
 
     def think(self, obs: Observation) -> list[Command]:
         ship = obs.own(self.ship_id)
-        if ship is None or not ship.alive or ship.crew <= 0 or not ship.delegated:
+        if ship is None or not ship.alive or ship.crew <= 0:
             return []
-        out: list[Command] = []
+        out = self._objectives(obs, ship)
+        if not ship.delegated:
+            return out
         commander = self.find(ship.conn) if ship.conn else None
+        routine: list[Command] = []
         if commander is not None:
             # one mind runs the ship; stations the captain took back stay the captain's
-            for cmd in self._brain("bridge", ship, commander).think(obs):
-                if station_of(cmd) in ship.delegated:
-                    out.append(cmd)
-            return out
-        for station in STATIONS:
-            if station not in ship.delegated or station not in self.officers:
-                continue
-            for cmd in self._brain(station, ship).think(obs):
-                if station_of(cmd) == station:
-                    out.append(cmd)
-        return out
+            routine = [c for c in self._brain("bridge", ship, commander).think(obs) if station_of(c) in ship.delegated]
+        else:
+            for station in STATIONS:
+                if station not in ship.delegated or station not in self.officers:
+                    continue
+                routine.extend(c for c in self._brain(station, ship).think(obs) if station_of(c) == station)
+        if ship.objectives:
+            # an objective decides targets and offensive fire; it steers only when it has to
+            steering = any(isinstance(c, (SetHelm, Pursue)) for c in out)
+            routine = [c for c in routine
+                       if not isinstance(c, (SelectTarget, LockWeapons, FireTorpedoes, FireAtPoint, ConfigureAutoload))
+                       and not (isinstance(c, FirePhasers) and not c.defensive)
+                       and not (steering and isinstance(c, (SetHelm, Pursue)))]
+        return out + routine
 
 
 def default_crew(officers: dict[str, OfficerProfile]) -> dict[str, OfficerProfile]:

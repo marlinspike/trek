@@ -28,6 +28,7 @@ crew
 - The **Crew** tab, beside **Contacts** and **Fleet** under the weapons, shows who runs each station. Click **Captain** / **Officer** to switch, or click an officer's name to speak to them.
 - `crew` lists your officers, who is running what, and how each of them feels about you.
 - To let one officer command the whole ship, say "Seven, take the bridge". See [[conn|Giving an officer the bridge]].
+- To have Seven knock out an enemy's shields, phasers or torpedoes, say "Seven, disable the Klingons' shields". See [[disable|Disabling enemy systems]].
 
 ## You stay in command
 

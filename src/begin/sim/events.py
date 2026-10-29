@@ -155,6 +155,17 @@ class DeflectorPulsed(Event):
 
 
 @dataclass(slots=True)
+class ObjectiveEnded(Event):
+    ship_id: int
+    officer: str
+    goal: str
+    group: str
+    targets: tuple[int, ...]
+    outcome: str           # "done" | "impossible" | "cancelled"
+    reason: str = ""
+
+
+@dataclass(slots=True)
 class ProjectCompleted(Event):
     ship_id: int
     project: str

@@ -42,6 +42,18 @@ Begin has no way to find a cloaked ship except waiting for it to fire. In the re
 
 They can also set the main deflector dish up to emit tachyons (`design deflector`, about 12 cycles, once per battle). After that, `pulse` sweeps a 60° cone ahead of the bow out to 15,000 units and shows cloaked ships there for 20 cycles. Each pulse costs 40 battery energy and the dish recharges for 30 cycles (`Rules.deflector_pulse_*`). The pulse is quick and reusable but short-range and forward-only; the torpedo reaches further in every direction but uses a tube and is built for each shot.
 
+## Officer objectives
+
+Begin has no standing orders. In the remake, "Seven, disable the Klingons' shields" (or `disable <systems> <ships>`) gives the science officer an objective covering shields, phasers, torpedoes, weapons, engines, sensors or the cloak, on one ship or several. She plans it herself:
+
+- she scans each target to judge progress;
+- she aims phasers at the chosen systems;
+- she fires full torpedo salvos from just outside arming range, fused to burst on a ring around the target's predicted position (`FireAtPoint`);
+- when two targets are close together, she bursts the salvo between them;
+- she hunts cloaked targets with the deflector or tachyon detector.
+
+She never steers, and the captain's orders still override hers. Weapons count as disabled when all of them are off line, and shields when two thirds of the generators are. In 8-seed test runs with Spock at the helm, a Seven objective won the Border Incident 7 of 8 in about half the time (Spock alone won 6 of 8), and was about even in quick battles. Targets were often destroyed before she could confirm them disabled, because blast and phaser damage also reaches the hull.
+
 ## The ship computer
 
 Begin has no automation. The remake adds a ship computer that can:

@@ -139,7 +139,7 @@ TIP_STATIONS = {
     "Switch torpedoes": "tactical", "Heavier torpedo available": "tactical", "Proximity fuse": "tactical",
     "Phasers in range": "tactical", "Closing to phaser range": "helm", "Probe it": "tactical",
     "Scan the target": "science", "Their shields": "science", "Turn a fresh shield toward them": "helm",
-    "Cloaked ship nearby": "science", "Tachyon round ready": "tactical", "Deflector pulse ready": "science",
+    "Cloaked ship nearby": "science", "Tachyon round ready": "tactical", "Deflector pulse ready": "science", "Seven's objective": "science", "Let Seven disable it": "science",
     "Engines running hot": "engineering", "Power is running out": "engineering", "Badly damaged": "engineering",
 }
 
@@ -278,6 +278,14 @@ def tips(ctx: HelpContext) -> list[Tip]:
                     f"{best.effective:.0f}%: steer {turn:.0f} to put it toward them, or reinforce the weak one.",
                     f"helm {turn:.0f}", f"reenforce {sh.index + 1}")
     # engines and power
+    if s.objectives:
+        o = s.objectives[0]
+        known = {t: _contact_name(ct) for t in o.targets if (ct := obs.contact(t)) is not None}
+        tip(3, "Seven's objective", f"Seven is working to {o.describe(known)}. "
+            "Keep the target within torpedo range (3,500 to 7,500) and she does the rest.", "disable off")
+    elif c is not None and c.scan is not None and c.visible and s.tubes:
+        tip(5, "Let Seven disable it", f"Seven can knock out **{_contact_name(c)}**'s weapons or shields for you, bursting "
+            "torpedoes where its point defense won't react.", f"seven, disable {_contact_name(c).lower()} weapons")
     cloaked = [h for h in obs.hostile_contacts() if h.cloaked_hint]
     if cloaked and s.tubes:
         h = min(cloaked, key=lambda h: h.distance_to(s.x, s.y))

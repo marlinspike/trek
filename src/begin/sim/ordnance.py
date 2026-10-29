@@ -26,6 +26,8 @@ class Torpedo:
     target_subsystem: str | None = None
     detonate: bool = False   # set when a fuse or a hit triggers it
     fizzle: bool = False     # time fuse expired: removed quietly
+    aim_ship: int | None = None  # [E] whose systems a point-fused blast is aimed at (no homing)
+    burst_at_fuse: bool = False  # [E] fused to burst at a chosen point instead of expiring
     trail: list[tuple[float, float]] = field(default_factory=list)
 
     @property

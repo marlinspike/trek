@@ -932,6 +932,136 @@ class DelegateStation(Command):
 
 
 @dataclass(kw_only=True)
+class SetObjective(Command):
+    """Give an officer a standing objective, e.g. disable the shields of one or more ships [E]."""
+
+    goal: str = "disable"
+    group: str = "weapons"
+    targets: tuple[int, ...] = ()
+    officer: str = ""
+    name: ClassVar[str] = "objective"
+    needs_crew: ClassVar[bool] = False
+
+    def channels(self) -> tuple[str, ...]:
+        return ("objective",)
+
+    def validate(self, world: World, ship: Ship) -> None:
+        from .objectives import DISABLE_GROUPS, GOALS
+
+        if self.goal not in GOALS:
+            raise Rejected(f"Unknown objective '{self.goal}'.")
+        if self.group not in DISABLE_GROUPS:
+            raise Rejected(f"Can't disable '{self.group}'. Choose from: {', '.join(DISABLE_GROUPS)}.")
+        if not self.targets:
+            raise Rejected("Disable it on which ships?")
+        for t in self.targets:
+            s = world.ships.get(t)
+            if s is None or not s.exists or s.side == ship.side:
+                raise Rejected(f"#{t} isn't an enemy ship in this battle.")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        from .objectives import Objective
+
+        # a new order about the same systems replaces the old one
+        ship.objectives = [o for o in ship.objectives if not (o.goal == self.goal and o.group == self.group)]
+        ship.objectives.append(Objective(self.goal, self.group, tuple(self.targets), self.officer, world.tick))
+
+    def describe(self) -> str:
+        return f"{self.goal} {self.group} on {len(self.targets)} ship{'s' if len(self.targets) != 1 else ''}"
+
+
+@dataclass(kw_only=True)
+class EndObjective(Command):
+    """Finish, give up or cancel objectives: one group, or all of them when `group` is empty [E]."""
+
+    group: str = ""
+    outcome: str = "cancelled"   # "done" | "impossible" | "cancelled"
+    reason: str = ""
+    name: ClassVar[str] = "end objective"
+    needs_crew: ClassVar[bool] = False
+
+    def channels(self) -> tuple[str, ...]:
+        return ("objective",)
+
+    def validate(self, world: World, ship: Ship) -> None:
+        if not ship.objectives:
+            raise Rejected("No objectives to end.")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        from .events import ObjectiveEnded
+
+        ending = [o for o in ship.objectives if not self.group or o.group == self.group]
+        ship.objectives = [o for o in ship.objectives if o not in ending]
+        for o in ending:
+            world.emit(ObjectiveEnded(world.tick, ship.id, o.officer, o.goal, o.group, o.targets, self.outcome,
+                                      self.reason))
+
+    def describe(self) -> str:
+        return f"objective {self.group or 'all'} {self.outcome}"
+
+
+@dataclass(kw_only=True)
+class FireAtPoint(Command):
+    """Fire ordinary torpedoes fused to burst at a point: beside a ship, or between several [E].
+
+    A low proximity setting with a time fuse means the round looks, to the
+    enemy's point defense, like a miss until it bursts.
+    """
+
+    x: float
+    y: float
+    tubes: tuple[int, ...] | None = None
+    prox: float | None = None
+    target: int | None = None        # whose systems the blast is aimed at
+    spread: float = 0.0              # tubes burst on a ring this wide around the point, covering aim error
+    subsystem: str | None = None
+    name: ClassVar[str] = "fire torpedoes at point"
+
+    def channels(self) -> tuple[str, ...]:
+        return ("torpedoes",)
+
+    def _ready(self, world: World, ship: Ship) -> list[Tube]:
+        out = []
+        for t in ship.tubes:
+            if self.tubes is not None and t.index not in self.tubes:
+                continue
+            if t.loaded is None or not t.intact or not t.enabled:
+                continue
+            spec = world.content.torpedoes[t.loaded.ordnance]
+            if spec.special:
+                continue
+            out.append(t)
+        return out
+
+    def validate(self, world: World, ship: Ship) -> None:
+        tubes = self._ready(world, ship)
+        if not tubes:
+            raise Rejected("No tube is loaded with an ordinary torpedo.")
+        spec = world.content.torpedoes[tubes[0].loaded.ordnance]  # type: ignore[union-attr]
+        reach = spec.velocity * world.rules.units_per_warp * (spec.arm_time + spec.max_time_fuse)
+        d = math.hypot(self.x - ship.x, self.y - ship.y)
+        if d > reach:
+            raise Rejected(f"That point is {d:,.0f} away; torpedoes reach {reach:,.0f}.")
+        if d < spec.velocity * world.rules.units_per_warp * spec.arm_time:
+            raise Rejected("Too close: the torpedoes wouldn't be armed by then.")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        from .systems.ordnance import launch_at_point
+
+        prox = None if self.prox is None else max(world.rules.prox_floor, self.prox)
+        tubes = self._ready(world, ship)
+        for k, t in enumerate(tubes):
+            x, y = self.x, self.y
+            if self.spread > 0 and len(tubes) > 1:
+                a = math.tau * k / len(tubes)
+                x, y = x + math.sin(a) * self.spread, y + math.cos(a) * self.spread
+            launch_at_point(world, ship, t, x, y, prox=prox, target=self.target, subsystem=self.subsystem)
+
+    def describe(self) -> str:
+        return f"torpedoes to burst at ({self.x:,.0f}, {self.y:,.0f})"
+
+
+@dataclass(kw_only=True)
 class DeflectorPulse(Command):
     """Sweep a cone ahead of the ship with tachyons from the deflector dish, lighting up cloaked ships [E]."""
 

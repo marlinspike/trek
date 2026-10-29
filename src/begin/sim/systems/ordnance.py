@@ -199,8 +199,8 @@ def fly_ordnance(world: World, dt: float, prev: dict[int, tuple[float, float]]) 
                 t.detonate = True
                 continue
             if t.fuse <= 0.0:
-                if t.spec.reveal_radius > 0:
-                    t.detonate = True  # [E] a detector round bursts where its fuse runs out
+                if t.spec.reveal_radius > 0 or t.burst_at_fuse:
+                    t.detonate = True  # [E] a round fused for a point bursts where its fuse runs out
                 else:
                     t.fizzle = True  # torpedoes expire quietly [R]
         if len(t.trail) == 0 or math.hypot(t.x - t.trail[-1][0], t.y - t.trail[-1][1]) > 120:
@@ -305,7 +305,8 @@ def resolve_detonations(world: World) -> None:
                 continue
             kind = DamageKind.SHIELD_BORE if t.spec.is_shield_bore else (
                 DamageKind.PLASMA if t.spec.is_plasma else DamageKind.BLAST)
-            blast(world, t.x, t.y, t.yield_, "torpedo", t.owner, t.salvo, kind, t.target, t.target_subsystem)
+            blast(world, t.x, t.y, t.yield_, "torpedo", t.owner, t.salvo, kind,
+                  t.target if t.target is not None else t.aim_ship, t.target_subsystem)
         for p in boom_p:
             blast(world, p.x, p.y, p.yield_, "probe", p.owner, 1, DamageKind.BLAST, p.target, None)
 
@@ -327,8 +328,14 @@ def reveal_burst(world: World, t: Torpedo) -> None:
                            visible_to=frozenset({owner.side})))
 
 
-def launch_at_point(world: World, ship: Ship, tube: Tube, x: float, y: float) -> Torpedo | None:
-    """Fire one tube's round straight at a point, fused to burst there (detector rounds) [E]."""
+def launch_at_point(world: World, ship: Ship, tube: Tube, x: float, y: float, prox: float | None = None,
+                    target: int | None = None, subsystem: str | None = None) -> Torpedo | None:
+    """Fire one tube's round straight at a point, fused to burst there [E].
+
+    Used for detector rounds, and for ordinary torpedoes burst beside or between
+    ships (`prox` overrides the round's proximity setting; `target` and
+    `subsystem` aim the blast at one ship's systems, as an aimed torpedo would).
+    """
     loaded = tube.loaded
     if loaded is None:
         return None
@@ -342,8 +349,9 @@ def launch_at_point(world: World, ship: Ship, tube: Tube, x: float, y: float) ->
     tube.mark = norm360(aim - ship.course)
     torp = Torpedo(
         id=world.new_id(), owner=ship.id, side=ship.side, spec=spec, x=ox, y=oy, course=aim,
-        velocity=spec.velocity, prox=loaded.prox, arm=min(spec.arm_time, travel),
-        fuse=max(0.05, travel - spec.arm_time), strength=spec.max_time_fuse,
+        velocity=spec.velocity, prox=loaded.prox if prox is None else prox, arm=min(spec.arm_time, travel),
+        fuse=max(0.05, travel - spec.arm_time), strength=spec.max_time_fuse, aim_ship=target,
+        target_subsystem=subsystem, burst_at_fuse=True,
     )
     torp.trail.append((ox, oy))
     world.torpedoes.append(torp)

@@ -358,6 +358,7 @@ class Ship:
     delegated: set[str] = field(default_factory=set)  # bridge stations run by officers (crew/stations.py)
     deflector_ready: bool = False      # the dish is set up for tachyon pulses [E]
     deflector_cooldown: float = 0.0    # cycles until the next pulse
+    objectives: list = field(default_factory=list)  # sim.objectives.Objective: standing orders to officers [E]
     conn: str = ""                     # officer id in command of the whole bridge; "" = the captain [E]
     conn_saved: set[str] = field(default_factory=set)  # stations delegated before the officer took the bridge
     escape_time: float = 0.0

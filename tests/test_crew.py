@@ -552,3 +552,27 @@ def test_seven_in_command_pulses_at_a_cloaked_ship_ahead(content) -> None:  # ty
     crew = Crew(hc.id, 0, content, default_crew(load_officers()), Rng(1))
     w.execute(TakeConn(ship_id=hc.id, officer="seven"))
     assert any(isinstance(c, DeflectorPulse) for c in crew.think(w.observe(0)))
+
+
+def test_seven_takes_on_a_disable_objective_and_reports_success(scene) -> None:  # type: ignore[no-untyped-def]
+    sc, surf = scene
+    foe = next(s for s in sc.world.ships.values() if s.side != sc.player.side)
+    sc.run_console("seven, disable the klingons' shields")
+    assert sc.player.objectives and sc.player.objectives[0].officer == "seven"
+    assert sc.player.objectives[0].group == "shields" and foe.id in sc.player.objectives[0].targets
+    assert any("point" in t or "torpedoes" in t for t in _said(sc, "Seven of Nine"))
+    for sh in foe.shields:                     # as if her plan had already worked
+        sh.damage = 40
+    foe.x, foe.y = sc.player.x, sc.player.y + 3000
+    for _ in range(12 * sc.world.rules.ticks_per_cycle):
+        sc.world.step()
+        sc._drain_events()
+        if not sc.player.objectives:
+            break
+    assert not sc.player.objectives
+    assert any("disabled" in t or "no longer have" in t for t in _said(sc, "Seven of Nine"))
+    sc.run_console("seven, knock out derango's torpedoes")
+    assert sc.player.objectives[0].group == "torpedoes"
+    sc.run_console("disable off")
+    assert not sc.player.objectives
+    sc.draw(surf)

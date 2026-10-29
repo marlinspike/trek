@@ -117,6 +117,15 @@ Spock and Seven's tachyon detector is the first of these, and the pattern is mea
 
 Add a help page for each new project, and a coach tip in `help/coach.py` if there is a situation that calls for it.
 
+## Officer objectives
+
+A standing objective ("disable their shields") has two halves, like collaborations:
+
+- **The record** (`sim/objectives.py`): `SetObjective` and `EndObjective` store and end it on the ship, so it replays with the battle. Add the goal to `GOALS`.
+- **The plan** (`crew/objectives.py`): a planner function in `PLANNERS` turns the objective into ordinary commands each time the crew thinks, and issues `EndObjective` with `done` or `impossible` and a reason. While an objective runs, the crew's routine station work leaves targeting and offensive fire to it.
+
+The Bridge reports progress (`objective_progress`, `objective_done` and `objective_failed` lines in `officers.toml`) even when chatter is off.
+
 ## A language model provider
 
 Write a class with a `name` and `complete(system, messages) -> str` in `llm/providers/`. Raise `LLMError` with a readable message on failure. Then add a branch for it in `make_provider` in `llm/providers/base.py`. Read API keys from environment variables only, never from settings. `post_json` in `base.py` handles plain HTTP, including bypassing the proxy for local hosts. The officers, threading and command handling need no changes.

@@ -104,3 +104,22 @@ def test_range_command_parses(setup) -> None:  # type: ignore[no-untyped-def]
     assert p(w, me, "range 5000").actions == [("range", 5000.0)]
     assert p(w, me, "range").actions == [("range", None)]
     assert "between" in (p(w, me, "range 5").error or "")
+
+
+def test_disable_enemy_systems_parses_in_any_word_order(setup) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.commands import EndObjective, SetObjective, SetTubes
+
+    w, me, foe = setup
+    other = w.add_ship("romulan.bp", 1, 2000, 3000, name="Tal")
+    w.step()
+    w.step()
+    c = p(w, me, "disable the klingons' shields").commands[0]
+    assert isinstance(c, SetObjective) and c.group == "shields" and c.targets == (foe.id,)
+    c = p(w, me, "disable gorkon's torpedoes").commands[0]
+    assert isinstance(c, SetObjective) and c.group == "torpedoes" and c.targets == (foe.id,)
+    c = p(w, me, "disarm them").commands[0]
+    assert isinstance(c, SetObjective) and c.group == "weapons" and set(c.targets) == {foe.id, other.id}
+    c = p(w, me, "cripple tal and gorkon engines").commands[0]
+    assert isinstance(c, SetObjective) and c.group == "propulsion" and set(c.targets) == {foe.id, other.id}
+    assert isinstance(p(w, me, "disable off").commands[0], EndObjective)
+    assert isinstance(p(w, me, "disable tubes 1 2").commands[0], SetTubes)   # still your own tubes

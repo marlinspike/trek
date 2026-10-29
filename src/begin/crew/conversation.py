@@ -33,12 +33,13 @@ from ..help.coach import HelpContext, tips
 from ..llm.providers.base import Message
 from ..llm.service import LLMService
 from ..sim.events import (
-    ContactChanged, Event, HullHit, PhaserFired, ProjectCompleted, ScanCompleted, ShipStatusChanged, SubsystemRepaired, TorpedoLaunched,
+    ContactChanged, Event, HullHit, ObjectiveEnded, PhaserFired, ProjectCompleted, ScanCompleted, ShipStatusChanged, SubsystemRepaired, TorpedoLaunched,
 )
 from ..sim.observation import Observation
 from ..sim.ship import Ship
 from .characters import (
 )
+from ..sim.objectives import DISABLE_GROUPS
 from . import collaborations
 from .officers import STATION_NAMES, Crew
 
@@ -67,6 +68,8 @@ _BRIDGE_RELEASE = re.compile(r"\b(i have the (bridge|conn|ship)|i'?ll take (the 
                              r"i'?m taking (the bridge|the conn|command)|i have command|i relieve you|"
                              r"(the )?captain'?s? on the bridge|give me (the bridge|the conn|command))\b")
 _RELEASE = re.compile(r"\b(stand down|i have (the|it)|i'?ll (take|handle) (it|the)|i relieve you|belay)\b")
+# "disable the Klingons' shields", "knock out Gorkon's torpedoes", "cancel that objective"
+_DISABLE = re.compile(r"\b(disable|disarm|cripple|knock out|take out|neutrali[sz]e|shut down)\b")
 _FIRING = re.compile(r"^\s*(fire\b|tachyon\s+\S)")  # an order to fire the round, not to design one
 _STATUS = re.compile(r"\b(status|report|sitrep|situation|how are|how's|condition)\b")
 _ADVICE = re.compile(r"\b(advice|advise|recommend|suggest|what (should|do you|now|next)|ideas?|options?|thoughts?|opinion)\b")
@@ -102,6 +105,8 @@ class Bridge:
         self._threats = 0
         self._llm_note_given = False
         self._conn_target: int | None = None
+        self._disabled_seen: set[tuple[str, int]] = set()
+        self._names: dict[int, str] = {}                     # ship names we have known, for after they're gone   # (group, ship) already reported knocked out
 
     # ------------------------------------------------------------ who
 
@@ -150,6 +155,10 @@ class Bridge:
             if err:
                 return [self._say(officer, err, "caution")]
             return self.handover_lines(officer, turn == "take")
+        m = _DISABLE.search(low)
+        if m is not None:
+            verb = "disarm" if m.group(1) == "disarm" else "cripple"   # both always mean the enemy's systems
+            return self.objective(officer, f"{verb} {low[m.end():]}", run)
         collab = None if _FIRING.match(low) else collaborations.matching(officer.id, low)
         if collab is not None:
             return self.collaborate(officer, collab, run)
@@ -179,6 +188,15 @@ class Bridge:
         if taking:
             return [self._line(officer, "bridge") or self._say(officer, "Aye, Captain. I have the bridge.")]
         return [self._line(officer, "bridge_released") or self._say(officer, "The bridge is yours, Captain.")]
+
+    def objective(self, officer: OfficerProfile, line: str, run: RunCommand) -> list[Utterance]:
+        """The captain sets the officer a standing objective; they say how they'll go about it."""
+        err = run(line, officer)
+        if err:
+            return [self._say(officer, err, "caution")]
+        if any(w in line.split() for w in ("off", "cancel", "stop", "belay", "abort")):
+            return [self._line(officer, "ack") or self._say(officer, "Understood.")]
+        return [self._line(officer, "objective") or self._say(officer, "Understood. I will see to it, Captain.")]
 
     def collaborate(self, officer: OfficerProfile, collab: collaborations.Collaboration,
                     run: RunCommand) -> list[Utterance]:
@@ -329,9 +347,14 @@ class Bridge:
     def react(self, events: Iterable[Event], ctx: HelpContext) -> list[Utterance]:
         """Officers comment on what just happened (rate limited)."""
         s, obs = ctx.ship, ctx.obs
-        if not self.chatter or s is None or obs is None:
+        if s is None or obs is None:
             return []
-        out: list[Utterance] = []
+        for c in obs.contacts().values():
+            if c.identified:
+                self._names[c.id] = _name(obs, c.id)
+        out = self._objective_reports(events, s, obs)   # asked-for work is always reported
+        if not self.chatter:
+            return out
         delegated = s.delegated
         commander = self.find(s.conn) if s.conn else None
         if commander is not None and s.target is not None and s.target != self._conn_target:
@@ -384,6 +407,49 @@ class Bridge:
             self._maybe(out, obs, "engineering", "hot", 1.0, gap=20.0)
         return out
 
+    def _objective_reports(self, events: Iterable[Event], s: Ship, obs: Observation) -> list[Utterance]:
+        out = self._objective_progress(s, obs)
+        for ev in events:
+            if not (isinstance(ev, ObjectiveEnded) and ev.ship_id == s.id and ev.outcome != "cancelled"):
+                continue
+            o = (self.find(ev.officer) if ev.officer else None) or self.crew.officer("science")
+            if o is None:
+                continue
+            systems = DISABLE_GROUPS.get(ev.group, ev.group)
+            names = ", ".join(self._names.get(t, f"#{t}") for t in ev.targets)
+            if ev.outcome == "done":
+                out.append(self._line(o, "objective_done", targets=names, systems=systems)
+                           or self._say(o, f"Done, Captain: {names} have lost their {systems}."))
+            else:
+                out.append(self._line(o, "objective_failed", reason=ev.reason)
+                           or self._say(o, f"I can't finish that: {ev.reason}.", "caution"))
+            self._last_any = obs.tick
+        return out
+
+    def _objective_progress(self, s: Ship, obs: Observation) -> list[Utterance]:
+        """Report each enemy ship as its asked-for systems go down (judged, like the officer does, by scans)."""
+        from .objectives import disabled
+
+        out: list[Utterance] = []
+        for o in s.objectives:
+            officer = (self.find(o.officer) if o.officer else None) or self.crew.officer("science")
+            if officer is None:
+                continue
+            gone = obs.gone()
+            for t in o.targets:
+                key = (o.group, t)
+                if key in self._disabled_seen or not disabled(obs.contact(t), o.group):
+                    continue
+                self._disabled_seen.add(key)
+                left = [x for x in o.targets if x not in gone and not disabled(obs.contact(x), o.group)]
+                if not left:
+                    continue   # the closing report says it
+                more = f"{len(left)} to go."
+                systems = DISABLE_GROUPS.get(o.group, o.group)
+                out.append(self._line(officer, "objective_progress", target=_name(obs, t), systems=systems, left=more)
+                           or self._say(officer, f"{_name(obs, t)}'s {systems} are down. {more}"))
+        return out
+
     def outcome(self, won: bool | None) -> list[Utterance]:
         o = self.crew.officer("helm") or next(iter(self.crew.officers.values()), None)
         if o is None or won is None:
@@ -434,6 +500,7 @@ COMMAND_SYNTAX = """\
   scan <ship> | design tachyon (Spock and Seven build a detector round for cloaked ships)
   tachyon <bearing> <range> | tachyon <ship> (burst the loaded detector round there)
   design deflector (set the dish up for tachyon pulses) | pulse (expose cloaked ships ahead of the bow)
+  disable <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> | disable off   (a standing objective)
   delegate <helm|tactical|engineering|science> | assume <station>   (hand a station to its officer, or take it back)"""
 
 

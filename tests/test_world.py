@@ -471,3 +471,37 @@ def test_deflector_pulse_lights_up_cloaked_ships_ahead_only(content) -> None:  #
     w.submit(StartProject(ship_id=hc.id, project="deflector", issuer=Authority.CAPTAIN))
     w.run(0.2)
     assert any(isinstance(e, CommandRejected) and "already set up" in e.reason for e in w.take_events())
+
+
+def test_torpedo_salvo_bursts_on_a_ring_around_a_point(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.commands import FireAtPoint
+
+    w = make_world(content)
+    hc = w.add_ship("federation.hc", 0, 0, 0)
+    bc = w.add_ship("klingon.bc", 1, 0, 4000)
+    charge_all(w, 6)
+    shields = sum(sh.strength for sh in bc.shields)
+    n = sum(1 for t in hc.tubes if t.loaded is not None)
+    assert w.execute(FireAtPoint(ship_id=hc.id, x=bc.x, y=bc.y, prox=180, target=bc.id, subsystem="shields",
+                                 spread=225)) is None
+    fired = [t for t in w.torpedoes if t.owner == hc.id]
+    assert len(fired) == n and all(t.burst_at_fuse and t.aim_ship == bc.id and t.prox == 180 for t in fired)
+    w.run(3)
+    assert sum(sh.strength for sh in bc.shields) < shields - 30   # every burst landed on its shields
+
+
+def test_seven_bursts_torpedoes_between_two_close_targets(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.core.rng import Rng
+    from begin.crew.characters import load_officers
+    from begin.crew.officers import Crew, default_crew
+    from begin.sim.commands import FireAtPoint, SetObjective
+
+    w = make_world(content)
+    hc = w.add_ship("federation.hc", 0, 0, 0)
+    a = w.add_ship("klingon.bc", 1, -350, 5000)
+    b = w.add_ship("klingon.bc", 1, 350, 5000)
+    charge_all(w, 6)
+    w.execute(SetObjective(ship_id=hc.id, group="shields", targets=(a.id, b.id), officer="seven"))
+    crew = Crew(hc.id, 0, content, default_crew(load_officers()), Rng(1))
+    shots = [c for c in crew.think(w.observe(0)) if isinstance(c, FireAtPoint)]
+    assert shots and abs(shots[0].x) < 60 and abs(shots[0].y - 5000) < 200   # between them

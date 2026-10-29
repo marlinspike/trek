@@ -727,8 +727,12 @@ class BattleScene:
             st = cmd.station if isinstance(cmd, DelegateStation) else station_of(cmd)
             if st is None or st not in allowed:
                 return "That is not my station, Captain."
+        from ..sim.commands import SetObjective
+
         for cmd in res.commands:
             cmd.source = officer.title
+            if isinstance(cmd, SetObjective):
+                cmd.officer = officer.id   # the officer who was asked does the work
             reason = self.issue(cmd)
             if reason:
                 return reason

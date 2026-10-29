@@ -130,6 +130,10 @@ class Observation:
     def contact(self, ship_id: int) -> ContactView | None:
         return self.contacts().get(ship_id)
 
+    def gone(self) -> set[int]:
+        """Ships out of the fight, which everyone can tell: destroyed, escaped, surrendered or derelict."""
+        return {sid for sid, s in self._w.ships.items() if not s.alive}
+
     def hostile_contacts(self) -> list[ContactView]:
         """Contacts not known to be on our side (unidentified contacts count as hostile)."""
         return [c for c in self.contacts().values() if c.side is None or c.side != self.side]
