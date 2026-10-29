@@ -9,11 +9,12 @@ Everything the player sets lives next to the code, in `<project>/config/`:
 `BEGIN_HOME` names a different folder (the tests use it). When the game is
 installed without its project folder, it falls back to `~/.begin-remake`.
 Versions before this one kept everything in `~/.begin-remake`; the first
-run copies those files into `config/` (the old folder is left untouched).
+run brings those files into `config/` (the old folder is left untouched).
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from pathlib import Path
@@ -41,19 +42,29 @@ def config_dir() -> Path:
 
 
 def migrate_legacy(old: Path, new: Path) -> list[str]:
-    """Copy settings, key macros and help pages from the old home folder into `new`, once.
+    """Bring settings, key macros and help pages over from the old home folder, once.
 
-    Nothing is overwritten: a file already in `new` wins. Returns the names copied.
+    Nothing already in `new` is overwritten. If `new/settings.json` exists, the
+    old file's settings are merged in only where the new one has no value (so
+    rapport carries over beside settings written by hand). A `.migrated`
+    marker stops it running again. Returns the names brought across.
     """
-    if old == new or not old.is_dir() or (new / "settings.json").exists():
+    marker = new / ".migrated"
+    if old == new or not old.is_dir() or marker.exists():
         return []
     copied: list[str] = []
     try:
         new.mkdir(parents=True, exist_ok=True)
-        for name in _FILES:
-            if (old / name).is_file() and not (new / name).exists():
-                shutil.copy2(old / name, new / name)
-                copied.append(name)
+        if (old / "settings.json").is_file():
+            if (new / "settings.json").exists():
+                if _merge_settings(old / "settings.json", new / "settings.json"):
+                    copied.append("settings.json")
+            else:
+                shutil.copy2(old / "settings.json", new / "settings.json")
+                copied.append("settings.json")
+        if (old / "begin2.key").is_file() and not (new / "begin2.key").exists():
+            shutil.copy2(old / "begin2.key", new / "begin2.key")
+            copied.append("begin2.key")
         if (old / "help").is_dir():
             for f in (old / "help").iterdir():
                 dest = new / "help" / f.name
@@ -61,9 +72,32 @@ def migrate_legacy(old: Path, new: Path) -> list[str]:
                     dest.parent.mkdir(exist_ok=True)
                     shutil.copy2(f, dest)
                     copied.append(f"help/{f.name}")
+        marker.write_text("Settings from ~/.begin-remake were brought across. Delete this file to do it again.\n")
     except OSError:
         pass
     return copied
+
+
+def _merge_settings(old: Path, new: Path) -> bool:
+    """Fill gaps in `new` from `old`, one level deep for dict values. True if anything changed."""
+    try:
+        src = json.loads(old.read_text())
+        dst = json.loads(new.read_text())
+    except (OSError, ValueError):
+        return False
+    if not isinstance(src, dict) or not isinstance(dst, dict):
+        return False
+    changed = False
+    for k, v in src.items():
+        if k not in dst:
+            dst[k], changed = v, True
+        elif isinstance(v, dict) and isinstance(dst[k], dict):
+            for kk, vv in v.items():
+                if kk not in dst[k]:
+                    dst[k][kk], changed = vv, True
+    if changed:
+        new.write_text(json.dumps(dst, indent=2))
+    return changed
 
 
 __all__ = ["LEGACY_DIR", "config_dir", "migrate_legacy", "project_root"]

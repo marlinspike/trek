@@ -10,4 +10,4 @@ Everything you set for the game lives in this folder. Only this README and `sett
 
 API keys never go in here: they come only from environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`).
 
-Set `BEGIN_HOME` to use a different folder. Older versions kept these files in `~/.begin-remake`; the first run copies them here and leaves the old folder alone, so you can delete it once you're happy.
+Set `BEGIN_HOME` to use a different folder. Older versions kept these files in `~/.begin-remake`. The first run brings them here, once: anything already in this folder wins, and settings missing from your `settings.json` (such as officer rapport) are filled in from the old one. The old folder is left alone, so you can delete it once you're happy.

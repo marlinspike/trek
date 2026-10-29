@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 
@@ -376,7 +377,12 @@ def test_old_home_folder_is_copied_into_config(tmp_path) -> None:  # type: ignor
     (old / "help" / "mine.md").write_text("---\ntitle: Mine\n---\nHello")
     assert sorted(migrate_legacy(old, new)) == ["begin2.key", "help/mine.md", "settings.json"]
     assert "lfm3" in (new / "settings.json").read_text() and (old / "settings.json").exists()
-    (new / "settings.json").write_text("{}")
-    assert migrate_legacy(old, new) == []  # once only: the project's own file wins
+    assert migrate_legacy(old, new) == []  # once only
+    other = tmp_path / "config2"
+    other.mkdir()
+    (old / "settings.json").write_text('{"hidden": {"rapport": {"spock": {}}}, "llm": {"model": "x"}, "speed": 2}')
+    assert "settings.json" in migrate_legacy(old, other)
+    merged = json.loads((other / "settings.json").read_text())
+    assert merged["llm"] == {"provider": "off", "model": "x"}  # the project's own values win
     root = project_root()
     assert root is not None and (root / "config" / "README.md").is_file()
