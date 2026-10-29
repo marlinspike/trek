@@ -55,6 +55,7 @@ OVERRIDES: dict[str, dict[str, tuple[Any, str]]] = {
     "federation.dn": {
         "max_warp": (9.5, ""),
         "warp_power": (305.0, "three drives must supply 9.5 × warp_power_use (95) to reach warp 9.5"),
+        "torps_carried": (1000, "the player's flagship: a deep magazine so eight tubes can keep firing"),
     },
 }
 

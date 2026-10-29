@@ -64,6 +64,7 @@ Numbers come from begin2.exe through the importer (`tools/import_reference_data.
 | Class | Change | Why |
 |---|---|---|
 | Federation Dreadnought | top speed warp 9.5 (was 9.0), warp power 305 (was 285) | The player asked for the Federation flagship to have the edge. Raising the warp power keeps 9.5 reachable on the power budget. |
+| Federation Dreadnought | 1,000 torpedoes (was 55) | The player's request: with eight tubes, 55 ran out in about 20 seconds of full volleys. |
 
 ## Scenarios and setup
 
