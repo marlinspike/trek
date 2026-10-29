@@ -277,7 +277,9 @@ def test_torpedo_proximity_hits_moving_target(content) -> None:  # type: ignore[
 
 
 def test_phasers_destroy_torpedoes_in_cone(content) -> None:  # type: ignore[no-untyped-def]
-    w = make_world(content)
+    from begin.sim.rules import Rules
+
+    w = make_world(content, rules=Rules(beam_kill_base=1.0))  # a sure kill, to test the geometry
     a = w.add_ship("federation.hc", 0, 0, 0)
     b = w.add_ship("klingon.bc", 1, 0, 9000, course=180)
     charge_all(w, 8)

@@ -117,3 +117,33 @@ def test_heat_destroys_overdriven_drive(content) -> None:  # type: ignore[no-unt
     w.execute(SetHelm(ship_id=s.id, warp=s.cls.max_warp))
     w.run(120)
     assert any(d.destroyed for d in s.drives)
+
+
+def test_class_inherits_from_base(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    import shutil
+
+    from begin.content.loader import DATA_DIR, load_content
+
+    data = tmp_path / "data"
+    shutil.copytree(DATA_DIR, data)
+    with open(data / "classes.toml", "a") as f:
+        f.write('\n[[class]]\nid = "federation.dnx"\nbase = "federation.dn"\nname = "Refit"\nbanks = 6\nmax_warp = 9.2\n')
+    db = load_content(data)
+    x, dn = db.classes["federation.dnx"], db.classes["federation.dn"]
+    assert x.max_warp == 9.2 and x.name == "Refit"
+    assert (x.tubes, x.shield_strength, x.repair, x.ship_names) == (dn.tubes, dn.shield_strength, dn.repair, dn.ship_names)
+    assert x.hull.banks == dn.hull.banks
+
+
+def test_federation_dreadnought_reaches_warp_9_5(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.commands import SetHelm
+    from tests.conftest import make_world
+
+    w = make_world(content)
+    s = w.add_ship("federation.dn", 0, 0, 0)
+    w.execute(SetHelm(ship_id=s.id, course=0, warp=9.5))
+    top = 0.0
+    for _ in range(25):  # flank speed is a sprint: the drives burn out soon after
+        w.run(1)
+        top = max(top, s.warp)
+    assert top > 9.4

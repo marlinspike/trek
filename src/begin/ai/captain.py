@@ -57,6 +57,7 @@ AI_WEAVE_DIST_DIV = 833.33
 AI_WEAVE_AMP_MAX = 31.0
 AI_WEAVE_AGGR_BASE = 1.1
 AI_SIDESTEP = 90.0
+AI_STANDOFF_OPEN_ANGLE = 70.0     # [E] degrees off dead astern when opening to torpedo standoff
 AI_FANATIC_RAM = 0.9
 AI_BATTERY_CRAWL = 0.25
 STRENGTH_DIVISOR = 1000.0
@@ -305,7 +306,8 @@ class AICaptain:
                 else:
                     volley = op_tubes // 2
                 tol = (12.0 + (AI_JINK_LEAD_OFFSET if pressure > 80 else 0.0)) / 2.0
-                if 0 < volley <= len(loaded) and not self._friendly_blocks(obs, ship, brg, hi, tol):
+                volley = min(volley, len(loaded))  # fire what is loaded rather than wait for a full volley
+                if volley > 0 and not self._friendly_blocks(obs, ship, brg, hi, tol):
                     fan = AI_JINK_LEAD_OFFSET if (pressure > 80 and not spec.homing and volley > 1) else 0.0
                     out.append(self._cmd(FireTorpedoes, ship, tubes=tuple(loaded[:volley]), target=c.id, fan=fan))
                     self._log(obs, f"torpedoes x{volley} at {c.label} ({d:,.0f}, pressure {pressure:.0f})")
@@ -603,7 +605,7 @@ class AICaptain:
         p = self.personality
         bias = p.doctrine.weapon_bias
         my_ph = strength(sum(1 for b in ship.banks if b.intact), ship.cls.banks_range, 0) - 1.0
-        armed = ship.torps_remaining > 0 or any(t.loaded is not None for t in ship.tubes)
+        armed = ship.torps_remaining > 0  # magazine empty: the last loads go when they bear, but close for phasers
         my_tp = sum(1 for t in ship.tubes if t.intact) * 6.0 if armed else 0.0  # out of torpedoes: close for phasers
         if c.cls is not None:
             their_ph = c.cls.banks * c.cls.banks_range / STRENGTH_DIVISOR
@@ -641,7 +643,9 @@ class AICaptain:
                                           spec.max_time_fuse, obs.rules.units_per_warp)
                 standoff = lo + (1.0 - p.aggression) * (hi - lo) * 0.6
                 if d < standoff:
-                    return self._weave(obs, ship, brg + 180.0, d)
+                    # open the range obliquely, not straight away: running dead astern only invites a chase
+                    side = 1.0 if ship.id % 2 else -1.0
+                    return self._weave(obs, ship, brg + 180.0 - side * AI_STANDOFF_OPEN_ANGLE, d)
                 return self._weave(obs, ship, brg, d)
         return self._helm(obs, ship, ship.course, 0.0)  # helpless: full stop
 

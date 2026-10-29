@@ -64,6 +64,12 @@ class Rules:
     dock_range: float = 1000.0
     beam_range: float = 3000.0
 
+    # phasers against ordnance [E]: chance each torpedo in the cone is set off = base + damage × per, capped.
+    # Tuned in balance runs: higher values let automatic point defense stop ~95% of torpedoes.
+    beam_kill_base: float = 0.1
+    beam_kill_per_damage: float = 0.05
+    beam_kill_max: float = 0.85
+
     # remake damage model [E]
     hull_per_mass: float = 1.0
     hull_base: float = 40.0

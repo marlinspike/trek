@@ -123,14 +123,24 @@ def load_content(data_dir: Path = DATA_DIR) -> ContentDB:
         )
 
     hulls_raw = _read("hulls.toml", data_dir)["hull"]
+    raw_classes: dict[str, dict[str, Any]] = {}
     for c in _read("classes.toml", data_dir)["class"]:
+        # `base = "<class id>"` copies an earlier class; the entry then lists only what differs
+        if "base" in c:
+            if c["base"] not in raw_classes:
+                raise ContentError(f"class {c['id']}: base {c['base']!r} must be an earlier class")
+            base = raw_classes[c["base"]]
+            c = {**base, "repair": dict(base["repair"]), **{k: v for k, v in c.items() if k != "base"},
+                 "hull_of": base.get("hull_of", base["id"])}
+        raw_classes[c["id"]] = c
         cid = c["id"]
-        if cid not in hulls_raw:
+        hull_id = cid if cid in hulls_raw else c.get("hull_of", cid)
+        if hull_id not in hulls_raw:
             raise ContentError(f"class {cid} has no hull definition")
         if c["faction"] not in db.factions:
             raise ContentError(f"class {cid} references unknown faction {c['faction']}")
-        hull = _hull(cid, hulls_raw[cid])
-        fields = {k: v for k, v in c.items() if k not in ("repair", "ship_names")}
+        hull = _hull(hull_id, hulls_raw[hull_id])
+        fields = {k: v for k, v in c.items() if k not in ("repair", "ship_names", "hull_of")}
         cls = ShipClass(
             **fields,
             ship_names=tuple(c["ship_names"]),
