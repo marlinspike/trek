@@ -870,6 +870,14 @@ class BattleScene:
         col = theme.CAUTION if self.paused else theme.GOOD
         theme.text(surf, f"Cycle {t:7.1f}", (r.x + 14, r.y + 10), theme.TEXT, 14, "mono")
         theme.text(surf, state, (r.x + 130, r.y + 10), col, 14, "mono", weight="medium")
+        if self.paused and not self.world.outcome.over:
+            # hard to miss: nothing moves, charges or reloads while paused
+            msg = "PAUSED  ·  press Space to run"
+            b = pygame.Rect(0, 0, theme.text_width(msg, 14, weight="semibold") + 32, 30)
+            b.midtop = (r.centerx, r.y + 10)
+            pygame.draw.rect(surf, theme.BG_PANEL_HI, b, border_radius=4)
+            pygame.draw.rect(surf, theme.CAUTION, b, 1, border_radius=4)
+            theme.text(surf, msg, b.center, theme.CAUTION, 14, weight="semibold", anchor="center")
         theme.text(surf, self.battle.setup.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
         theme.text(surf, f"range {self.display_range():,.0f}  ·  F1 controls", (r.right - 14, r.y + 28), theme.TEXT_FAINT,
                    11, anchor="topright")

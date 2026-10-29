@@ -339,6 +339,7 @@ class Ship:
     power: PowerReport = field(default_factory=PowerReport)
     life_failure_time: float = 0.0
     torps_remaining: int = 0
+    magazine_empty_told: bool = False
     probes_remaining: int = 0
 
     # fire control state shared by every controller of this ship

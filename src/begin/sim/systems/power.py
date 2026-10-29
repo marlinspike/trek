@@ -183,7 +183,20 @@ def _charge_weapons(world: World, ship: Ship, pool: float, dt: float) -> tuple[f
             pool -= step
             spent += step
 
-    # torpedo tubes: charge over the ordnance's charge time, then load [R]
+    # torpedo tubes: charge over the ordnance's charge time, then load [R].
+    # [E] A tube claims its torpedo when it starts charging, so the last few in the magazine go to
+    # tubes that can finish instead of being spread over every empty tube.
+    charging = sorted((t for t in ship.tubes if t.loaded is None and t.charge > 0.0), key=lambda t: -t.charge)
+    for t in charging[max(0, ship.torps_remaining):]:
+        t.charge = 0.0  # no torpedo left for this tube: stand it down rather than leave it part-charged
+    free = ship.torps_remaining - min(len(charging), max(0, ship.torps_remaining))
+    if ship.torps_remaining > 0:
+        ship.magazine_empty_told = False
+    elif not ship.magazine_empty_told and ship.tubes:
+        ship.magazine_empty_told = True
+        if ship.side == world.player_side:
+            world.emit(Message(world.tick, f"{ship.name}: torpedo magazine empty.", Tone.CAUTION,
+                               ship_id=ship.id, visible_to=frozenset({ship.side})))
     for t in ship.tubes:
         if t.loaded is not None or not t.enabled:
             continue
@@ -193,6 +206,10 @@ def _charge_weapons(world: World, ship: Ship, pool: float, dt: float) -> tuple[f
             continue
         if ship.torps_remaining <= 0:
             continue
+        if t.charge <= 0.0:
+            if free <= 0:
+                continue
+            free -= 1
         spec = world.content.torpedoes.get(t.load_ordnance) or world.content.torpedoes.get(cls.torpedo)
         if spec is None:
             continue

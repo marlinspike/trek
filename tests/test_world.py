@@ -373,3 +373,20 @@ def test_cloaked_ships_are_not_detected(content) -> None:  # type: ignore[no-unt
     w.run(1)
     c = w.observe(0).contact(bp.id)
     assert c is None or not c.visible
+
+
+def test_last_torpedoes_go_to_tubes_that_can_finish(content) -> None:  # type: ignore[no-untyped-def]
+    """With fewer torpedoes than tubes, only that many tubes reload; none is left stuck part-way."""
+    from begin.sim.events import Message
+
+    from .conftest import make_world
+
+    w = make_world(content)
+    dn = w.add_ship("federation.dn", 0, 0, 0)
+    w.add_ship("federation.sb", 1, 0, 9000)
+    dn.torps_remaining = 3
+    w.run(12)
+    assert sum(1 for t in dn.tubes if t.loaded is not None) == 3
+    assert all(t.charge == 0.0 for t in dn.tubes if t.loaded is None)
+    assert dn.torps_remaining == 0
+    assert any(isinstance(e, Message) and "magazine empty" in e.text for e in w.take_events())

@@ -399,6 +399,8 @@ class WeaponsPanel(Panel):
                 lab, col = t.loaded.ordnance.upper(), theme.GOOD if bears or tgt is None else theme.TEXT_DIM
             elif not t.intact:
                 lab, col = "DMG", theme.ALERT
+            elif ship.torps_remaining <= 0:
+                lab, col = "no torp", theme.ALERT
             elif not t.autoload and not t.manual_load_pending:
                 lab, col = "empty", theme.TEXT_FAINT
             else:
