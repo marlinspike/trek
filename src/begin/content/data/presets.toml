@@ -29,7 +29,7 @@ description = "Run down an Orion raiding party before it scatters. Orions are fa
 seed = 7710
 fleets = [
   {side = 0, player = true, center = [-6000, -9000], ships = ["federation.de", "federation.in"]},
-  {side = 1, center = [5000, 9000], ships = ["orion.an", "orion.ra", "orion.ra", "orion.as"]},
+  {side = 1, center = [5000, 9000], ships = ["orion.an", "orion.ra"]},
 ]
 
 [[preset]]
@@ -48,7 +48,7 @@ title = "Outpost Assault"
 description = "Break a Klingon outpost's defensive screen. The outpost cannot move but carries eight phaser banks."
 seed = 4404
 fleets = [
-  {side = 0, player = true, center = [0, -14000], ships = ["federation.hc", "federation.de", "federation.de", "federation.in"]},
+  {side = 0, player = true, center = [0, -14000], ships = ["federation.dn", "federation.de", "federation.de", "federation.in"]},
   {side = 1, center = [0, 9000], ships = ["klingon.op", "klingon.fr", "klingon.fr", "klingon.es"]},
 ]
 
@@ -80,5 +80,5 @@ description = "Hold the line at the starbase. Damaged allies can dock to repair 
 seed = 5150
 fleets = [
   {side = 0, player = true, center = [0, -4000], ships = ["federation.hc", "federation.sb", "federation.de"]},
-  {side = 1, center = [0, 17000], ships = ["klingon.dr", "klingon.bc", "klingon.fr", "klingon.fr", "klingon.es"]},
+  {side = 1, center = [0, 17000], ships = ["klingon.dr", "klingon.dr", "klingon.bc", "klingon.bc", "klingon.fr", "klingon.fr", "klingon.es"]},
 ]

@@ -29,7 +29,7 @@ from ..sim.commands import (
 from ..sim.allies import DEFAULT_APPROACH_RANGE, DEFAULT_ESCORT_RANGE, DEFEND_RANGE, AllyStanding
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import Ship
-from ..sim.systems.phasers import bank_bears, bank_ready
+from ..sim.systems.phasers import bank_bears_point, bank_ready
 from .computer import torpedo_envelope
 from .personality import Personality
 from .trace import Trace
@@ -57,6 +57,8 @@ AI_WEAVE_DIST_DIV = 833.33
 AI_WEAVE_AMP_MAX = 31.0
 AI_WEAVE_AGGR_BASE = 1.1
 AI_SIDESTEP = 90.0
+AI_KNIFE_FIGHT_RANGE = 1.5       # [E] × phaser range: inside it, fight rather than reopen the range
+AI_BASE_STANDOFF = 0.6           # [E] × phaser range: the closest an attacker comes to a base
 AI_STANDOFF_OPEN_ANGLE = 70.0     # [E] degrees off dead astern when opening to torpedo standoff
 AI_FANATIC_RAM = 0.9
 AI_BATTERY_CRAWL = 0.25
@@ -268,9 +270,9 @@ class AICaptain:
         # phasers [R]: aggressive captains wait for an alpha strike, timid ones fire half now
         if ship.banks and d < ship.cls.banks_range:
             charged = [i for i, b in enumerate(ship.banks) if bank_ready(ship, b) and b.role.value != "defense"
-                       and bank_bears(ship, b, brg)]
+                       and bank_bears_point(ship, b, c.x, c.y)]
             op = [i for i, b in enumerate(ship.banks) if b.intact and b.enabled and b.role.value != "defense"
-                  and bank_bears(ship, b, brg)]
+                  and bank_bears_point(ship, b, c.x, c.y)]
             if charged and not self._friendly_blocks(obs, ship, brg, ship.cls.banks_range, AI_FF_TOLERANCE):
                 n = 0
                 if self.rng.unit() + AI_AGGR_FIRE_BIAS <= p.aggression:
@@ -585,6 +587,22 @@ class AICaptain:
             warp = max(1.0, min(warp, ship.cls.w1turn * 2.0 / turn))
         return self._helm(obs, ship, course, warp)
 
+    def _close_for_phasers(self, obs: Observation, ship: Ship, c: ContactView, d: float, brg: float) -> Command | None:
+        rng_ = ship.cls.banks_range
+        if c.cls is not None and c.cls.is_base and d < rng_ * AI_BASE_STANDOFF:
+            # [E] a base's banks cover every bearing, so sitting on top of one is suicide: stand off and shoot
+            side = 1.0 if ship.id % 2 else -1.0
+            return self._weave(obs, ship, brg + 180.0 - side * AI_STANDOFF_OPEN_ANGLE, d)
+        if d < rng_:
+            rel = norm360(brg - ship.course)
+            sh = ship.shield_for_bearing(rel)
+            if sh is None or sh.effective < AI_APPROACH_CONE:
+                return self._helm(obs, ship, self.rng.uniform(0, 360), self.combat_speed(ship, obs))  # jink
+            return self._helm(obs, ship, brg, c.warp + 1.0)
+        if d > rng_ * 2.0:
+            return self._weave(obs, ship, brg, d)
+        return self._helm(obs, ship, brg, c.warp + self.personality.aggression * AI_APPROACH_WARP_AGGR)
+
     def _maneuver(self, obs: Observation, ship: Ship, c: ContactView | None,
                   st: AllyStanding | None = None) -> Command | None:
         if ship.cls.is_base or not ship.can_move() or ship.docked_to is not None:
@@ -626,22 +644,18 @@ class AICaptain:
             ph_dom, tp_dom = ph_dom, max(tp_dom, 1.0) * 1000.0
 
         if ph_dom > 0 and ph_dom > tp_dom:
-            rng_ = ship.cls.banks_range
-            if d < rng_:
-                rel = norm360(brg - ship.course)
-                sh = ship.shield_for_bearing(rel)
-                if sh is None or sh.effective < AI_APPROACH_CONE:
-                    return self._helm(obs, ship, self.rng.uniform(0, 360), self.combat_speed(ship, obs))  # jink
-                return self._helm(obs, ship, brg, c.warp + 1.0)
-            if d > rng_ * 2.0:
-                return self._weave(obs, ship, brg, d)
-            return self._helm(obs, ship, brg, c.warp + p.aggression * AI_APPROACH_WARP_AGGR)
+            return self._close_for_phasers(obs, ship, c, d, brg)
         if tp_dom > 0:
             spec = obs.content.torpedoes.get(ship.tubes[0].load_ordnance or ship.cls.torpedo) if ship.tubes else None
             if spec is not None:
                 lo, hi = torpedo_envelope(ship, c.x, c.y, c.vx, c.vy, spec.velocity, spec.arm_time,
                                           spec.max_time_fuse, obs.rules.units_per_warp)
                 standoff = lo + (1.0 - p.aggression) * (hi - lo) * 0.6
+                # [E] a faster enemy cannot be held off, and one already inside phaser reach must be fought there:
+                # turning away only shows it the weaker shields and the tubes' blind arcs
+                faster = c.cls is not None and c.cls.max_warp >= ship.max_attainable_warp
+                if ph_dom > 0 and d < ship.cls.banks_range * AI_KNIFE_FIGHT_RANGE and (faster or d < lo):
+                    return self._close_for_phasers(obs, ship, c, d, brg)
                 if d < standoff:
                     # open the range obliquely, not straight away: running dead astern only invites a chase
                     side = 1.0 if ship.id % 2 else -1.0

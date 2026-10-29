@@ -242,7 +242,7 @@ class FirePhasers(Command):
         A bank fires at the command's target, else at the ship it is locked
         on, else along its current mark.
         """
-        from .systems.phasers import bank_bears, bank_origin, bank_ready
+        from .systems.phasers import bank_bears, bank_bears_point, bank_origin, bank_ready
 
         if not ship.banks:
             raise Rejected(f"The {ship.cls.name} has no phaser banks.")
@@ -276,6 +276,11 @@ class FirePhasers(Command):
                         out_of_range = target
                         continue
                     aim = bearing(pos[0] - ox, pos[1] - oy)
+                    if bank_bears_point(ship, b, pos[0], pos[1]):
+                        plan.append((i, aim, target))
+                        continue
+                    out_of_arc += 1
+                    continue
                 else:
                     aim = norm360(ship.course + b.mark)
             if not bank_bears(ship, b, aim):

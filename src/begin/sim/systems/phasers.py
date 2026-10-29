@@ -28,6 +28,20 @@ def bank_bears(ship: Ship, bank: PhaserBank, world_bearing: float) -> bool:
     return in_arc(rel, bank.mount.arc_center, bank.mount.arc_width)
 
 
+def bank_bears_point(ship: Ship, bank: PhaserBank, x: float, y: float) -> bool:
+    """Whether a bank can aim at a point, measured from its mount [E].
+
+    A point nearer the ship's centre than the mount itself is up against the
+    hull, where the mount's own arc means nothing: every bank reaches it.
+    Without this, a ship that closed to point blank could never be hit, and a
+    starbase could never fire at an enemy sitting inside its hull radius.
+    """
+    ox, oy = bank_origin(ship, bank)
+    if math.hypot(x - ship.x, y - ship.y) <= math.hypot(ox - ship.x, oy - ship.y):
+        return True
+    return bank_bears(ship, bank, bearing(x - ox, y - oy))
+
+
 def phaser_damage(world: World, charge: float, spread: float, dist: float, rng_: float) -> float:
     """[R] charge × (45 / spread) × sqrt(1 − d/range) × 0.5."""
     r = world.rules

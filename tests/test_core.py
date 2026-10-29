@@ -10,7 +10,7 @@ from begin.core.angles import bearing, in_arc, norm180, turn_delta
 from begin.sim.factory import SHIELD_FACINGS
 from begin.sim.systems.damage import DamageKind, apply_damage
 from begin.sim.systems.ordnance import intercept_bearing
-from begin.sim.systems.phasers import bank_bears, phaser_damage
+from begin.sim.systems.phasers import bank_bears, bank_bears_point, phaser_damage
 
 from .conftest import make_world
 
@@ -105,6 +105,21 @@ def test_bank_arcs_restrict_fire(content) -> None:  # type: ignore[no-untyped-de
         assert bank_bears(s, bank, c)
         if bank.mount.arc_width < 360:
             assert not bank_bears(s, bank, c + 180)
+
+
+def test_every_bank_reaches_a_ship_against_the_hull(content) -> None:  # type: ignore[no-untyped-def]
+    """A raider parked inside a starbase's mount ring used to be immune; now every bank can hit it."""
+    from begin.sim.commands import FirePhasers
+
+    w = make_world(content)
+    sb = w.add_ship("federation.sb", 0, 0, 0)
+    bc = w.add_ship("klingon.bc", 1, 0, 20)
+    assert all(bank_bears_point(sb, b, bc.x, bc.y) for b in sb.banks)
+    far = [b for b in sb.banks if b.mount.arc_width < 360 and not bank_bears(sb, b, 0.0)]
+    assert far and not any(bank_bears_point(sb, b, 0.0, 1500.0) for b in far)
+    w.run(5)
+    w.execute(FirePhasers(ship_id=sb.id, target=bc.id))
+    assert sb.stats.phaser_shots == len(sb.banks)
 
 
 def test_heat_destroys_overdriven_drive(content) -> None:  # type: ignore[no-untyped-def]
