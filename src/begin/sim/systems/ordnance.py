@@ -55,7 +55,7 @@ def tube_origin(ship: Ship, tube: Tube | Launcher) -> tuple[float, float]:
 
 
 def tube_solution(world: World, ship: Ship, tube: Tube, target_id: int | None) -> float | None:
-    """World bearing a tube would launch on, or None if the solution lies outside its arc."""
+    """World bearing a tube would launch on, or None if arcs are on (`Rules.tube_arcs`) and it lies outside."""
     loaded = tube.loaded
     if loaded is None:
         return None
@@ -74,7 +74,7 @@ def tube_solution(world: World, ship: Ship, tube: Tube, target_id: int | None) -
             aim = intercept_bearing(ox, oy, tx, ty, vx, vy, spec.velocity * world.rules.units_per_warp)
     aim = norm360(aim + tube.dispersion)
     rel = norm360(aim - ship.course)
-    if not in_arc(rel, tube.mount.arc_center, tube.mount.arc_width):
+    if world.rules.tube_arcs and not in_arc(rel, tube.mount.arc_center, tube.mount.arc_width):
         return None
     return aim
 

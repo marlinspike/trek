@@ -295,13 +295,14 @@ def test_phasers_destroy_torpedoes_in_cone(content) -> None:  # type: ignore[no-
 
 
 def test_torpedo_fire_explains_tubes_that_cannot_bear(content) -> None:  # type: ignore[no-untyped-def]
-    """Dreadnought: tubes 1-6 face forward, 7 and 8 aft. A target astern gets only 7 and 8, and says why."""
+    """With tube arcs on, the Dreadnought's tubes 1-6 face forward and 7-8 aft: a target astern gets only 7 and 8."""
     from begin.sim.commands import FireTorpedoes, SelectTarget
     from begin.sim.events import Message
+    from begin.sim.rules import Rules
 
     from .conftest import charge_all, make_world
 
-    w = make_world(content)
+    w = make_world(content, rules=Rules(tube_arcs=True))
     dn = w.add_ship("federation.dn", 0, 0, 0, course=0)
     enemy = w.add_ship("klingon.bc", 1, 0, -2500)
     charge_all(w, 12)
@@ -316,3 +317,17 @@ def test_torpedo_fire_explains_tubes_that_cannot_bear(content) -> None:  # type:
     assert [dn.tubes.index(t) for t in fired] == [6, 7]
     msgs = [e.text for e in w.take_events() if isinstance(e, Message)]
     assert any(m.startswith("Firing tubes 7 and 8. Tubes 1-6 can't bear") for m in msgs)
+
+
+def test_tubes_fire_in_any_direction_by_default(content) -> None:  # type: ignore[no-untyped-def]
+    """As in Begin: every loaded tube fires at a target astern."""
+    from begin.sim.commands import FireTorpedoes
+
+    from .conftest import charge_all, make_world
+
+    w = make_world(content)
+    dn = w.add_ship("federation.dn", 0, 0, 0, course=0)
+    enemy = w.add_ship("klingon.bc", 1, 0, -2500)
+    charge_all(w, 12)
+    assert w.execute(FireTorpedoes(ship_id=dn.id, target=enemy.id)) is None
+    assert all(t.loaded is None for t in dn.tubes)

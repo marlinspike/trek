@@ -12,7 +12,7 @@ The remake follows Begin's rules wherever the manual ([M]) or the decoded binary
 
 ## Ships and weapons
 
-**Hull shapes, mounts and arcs.** Begin treats ships as points whose banks can fire in any direction. Each class now has a silhouette, internal system positions and weapon mounts with firing arcs (`content/data/hulls.toml`). Phasers fire from their mount, and a target has to be inside the mount's arc. This makes facing matter for weapons as well as shields.
+**Hull shapes, mounts and arcs.** Begin treats ships as points whose banks can fire in any direction. Each class now has a silhouette, internal system positions and weapon mounts with firing arcs (`content/data/hulls.toml`). Phasers fire from their mount, and a target has to be inside the mount's arc. This makes facing matter for weapons as well as shields. Torpedo tubes also have mounts, but as in Begin they fire in any direction; setting `Rules.tube_arcs` limits each tube to its arc (forward and aft launchers, as in the shows).
 
 **Point-blank fire.** A target closer to the ship's centre than a bank's own mount is pressed against the hull, so every bank can reach it whatever its arc. Without this rule, a ship that parked inside a starbase's ring of mounts could neither hit the base nor be hit by it, and the Starbase Defense preset ended in stalemates.
 

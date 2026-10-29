@@ -337,7 +337,7 @@ class WeaponsPanel(Panel):
             if tgt is not None and brg is not None:
                 rel = norm360(brg - ship.course)
                 from ..core.angles import in_arc
-                bears = in_arc(rel, t.mount.arc_center, t.mount.arc_width)
+                bears = not hud.world.rules.tube_arcs or in_arc(rel, t.mount.arc_center, t.mount.arc_width)
             pygame.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
             pygame.draw.rect(surf, theme.GOOD if bears and t.loaded else theme.BORDER, r, 1, border_radius=3)
             if t.loaded:
@@ -354,7 +354,8 @@ class WeaponsPanel(Panel):
             prox = t.loaded.prox if t.loaded else t.load_prox
             hud.ui.add(r, partial(hud.fire_torpedoes, (i,)),
                        f"Tube {i + 1}: {('loaded ' + t.loaded.ordnance.upper() + f' prox {prox:.0f}') if t.loaded else lab} · "
-                       f"autoload {'on' if t.autoload else 'off'} {t.load_ordnance.upper()} · arc {t.mount.arc_width:.0f}°"
+                       f"autoload {'on' if t.autoload else 'off'} {t.load_ordnance.upper()}"
+                       + (f" · arc {t.mount.arc_width:.0f}°" if hud.world.rules.tube_arcs else "")
                        + (" · target outside its arc" if tgt is not None and not bears else ""))
             n_bear += bool(t.loaded and bears)
         if tgt is not None and ship.tubes:

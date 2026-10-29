@@ -10,7 +10,8 @@
 #   role "hull" is filled, "nacelle" is filled with the engine tint,
 #   "detail" is stroked only.
 # Mounts: pos in design units; arc = [center, width] in degrees relative to the
-#   bow (0 = ahead, 90 = starboard). A target must lie inside the arc to fire.
+#   bow (0 = ahead, 90 = starboard). A phaser target must lie inside the arc;
+#   tube arcs apply only when Rules.tube_arcs is on (Begin's tubes fire any way).
 # Anchors place internal systems: bridge, core (reactors, batteries,
 #   computer), nose (sensors), aft (impulse, tractor), nacelles (warp drives).
 

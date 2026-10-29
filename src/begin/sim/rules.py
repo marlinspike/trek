@@ -64,6 +64,9 @@ class Rules:
     dock_range: float = 1000.0
     beam_range: float = 3000.0
 
+    # torpedo tubes: Begin's tubes fire in any direction [M]. True limits each tube to its mount's arc [E].
+    tube_arcs: bool = False
+
     # phasers against ordnance [E]: chance each torpedo in the cone is set off = base + damage × per, capped.
     # Tuned in balance runs: higher values let automatic point defense stop ~95% of torpedoes.
     beam_kill_base: float = 0.1
