@@ -125,6 +125,8 @@ def fire_bank(
             # [E] a beam is not certain to catch every torpedo of a group: each
             # member is set off with a chance that grows with the energy delivered
             p_kill = min(rules.beam_kill_max, rules.beam_kill_base + dmg * rules.beam_kill_per_damage)
+            if defensive:
+                p_kill *= rules.pd_kill_scale
             killed = sum(1 for _ in range(t.salvo) if world.rng.unit() < p_kill)
             if killed >= t.salvo:
                 t.detonate = True

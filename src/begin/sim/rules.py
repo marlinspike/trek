@@ -80,6 +80,7 @@ class Rules:
     beam_kill_base: float = 0.1
     beam_kill_per_damage: float = 0.05
     beam_kill_max: float = 0.85
+    pd_kill_scale: float = 0.4       # [E] × the chance above for point-defense shots; at 1.0 PD stopped ~85% of torpedoes
 
     # remake damage model [E]
     hull_per_mass: float = 1.0

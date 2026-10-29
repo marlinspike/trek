@@ -20,7 +20,7 @@ The remake follows Begin's rules wherever the manual ([M]) or the decoded binary
 
 **Subsystem targeting.** `target <ship> <subsystem>` aims phasers at propulsion, weapons, shields, power or sensors. Accuracy depends on the computer, the sensors, range, beam width and how recently the target was scanned. Begin had no aimed fire.
 
-**Phasers against ordnance.** Begin's phasers detonate every torpedo in the cone. We give each torpedo a chance instead: 10% plus 5% per point of damage, up to 85%. Balance runs showed that certain interception made torpedoes nearly useless once ships had automatic point defense.
+**Phasers against ordnance.** Begin's phasers detonate every torpedo in the cone. We give each torpedo a chance instead: 10% plus 5% per point of damage, up to 85%. Balance runs showed that certain interception made torpedoes nearly useless once ships had automatic point defense. Shots aimed at ordnance by point defense get only 40% of that chance (`Rules.pd_kill_scale`). At full strength, a Klingon Dreadnought's point defense stopped about 85% of a Federation Dreadnought's torpedoes, and the duel took over 100 volleys.
 
 **Probe launchers** need a one-cycle preparation instead of being instantly ready.
 
@@ -82,6 +82,7 @@ Numbers come from begin2.exe through the importer (`tools/import_reference_data.
 | Class | Change | Why |
 |---|---|---|
 | Federation Dreadnought | top speed warp 9.5 (was 9.0), warp power 305 (was 285) | The player asked for the Federation flagship to have the edge. Raising the warp power keeps 9.5 reachable on the power budget. |
+| Klingon Dreadnought | shield absorption 0.6 (was 0.8) | With 0.8, each hit drained a shield by only a fifth of what it absorbed, and full Federation volleys couldn't wear it down. |
 | Federation Dreadnought | 10,000 torpedoes (was 55) | The player's request: with eight tubes, 55 ran out in about 20 seconds of full volleys. |
 
 ## Scenarios and setup

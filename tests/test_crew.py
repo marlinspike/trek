@@ -435,6 +435,9 @@ def test_spock_and_seven_design_a_tachyon_detector(scene) -> None:  # type: igno
     from begin.sim.commands import FireSpecialRound
 
     sc, surf = scene
+    for s in sc.world.ships.values():
+        if s.side != sc.player.side:
+            s.y += 30000   # out of the fight while they work
     sc.run_console("spock, I think there's a cloaked ship out there")
     assert "tachyon" in sc.player.projects
     assert _said(sc, "Spock") and any("Twenty seconds" in t for t in _said(sc, "Seven of Nine"))
