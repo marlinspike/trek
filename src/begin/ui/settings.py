@@ -32,7 +32,7 @@ class Settings:
         try:
             data = json.loads(Settings.path().read_text())
         except (OSError, ValueError):
-            return Settings()
+            data = {}
         s = Settings()
         for k, v in data.items():
             if hasattr(s, k):

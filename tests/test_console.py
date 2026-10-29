@@ -94,7 +94,8 @@ def test_misc(setup) -> None:  # type: ignore[no-untyped-def]
     assert isinstance(c, SetPointDefense) and c.doctrine == PDDoctrine.AGGRESSIVE and c.reserve == (4, 5)
     r = p(w, me, "time 4")
     assert r.actions == [("speed", 4.0)]
-    assert p(w, me, "help").info
+    assert p(w, me, "help").actions == [("manual", None)]
+    assert p(w, me, "man tor").actions == [("manual", "tor")]
     assert "Unknown command" in (p(w, me, "frobnicate").error or "")
 
 

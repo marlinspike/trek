@@ -116,7 +116,8 @@ VERBS: dict[str, tuple[str, ...]] = {
     "pause": ("pause", "p"),
     "resume": ("resume", "go", "unpause"),
     "time": ("time", "x"),
-    "help": ("help", "?", "commands"),
+    "help": ("help", "?", "man", "manual", "commands"),
+    "coach": ("coach", "advise", "advice", "hint"),
     "quit": ("quit", "exit"),
     "key": ("key",),
     "text": ("text",),
@@ -1049,8 +1050,13 @@ class Parser:
         res.actions.append(("speed", v))
 
     def _v_help(self, tok: _Tokens, res: ParseResult) -> None:
+        """`help` / `man` opens the manual; `help <command>` opens that command's page."""
+        query = " ".join(tok.rest())
+        res.actions.append(("manual", query or None))
+
+    def _v_coach(self, tok: _Tokens, res: ParseResult) -> None:
         tok.rest()
-        res.info.extend(HELP)
+        res.actions.append(("manual", "coach"))
 
     def _v_quit(self, tok: _Tokens, res: ParseResult) -> None:
         res.actions.append(("quit", None))

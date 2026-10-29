@@ -20,7 +20,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--size", default=None, help="window size, e.g. 1600x900")
     ap.add_argument("--screenshot")
     ap.add_argument("--cycles", type=float, default=0.0)
-    ap.add_argument("--overlay", default=None, help="for screenshots: help, damage, scan, debrief")
+    ap.add_argument("--overlay", default=None, help="for screenshots: help, damage, scan, debrief, manual[:<topic>]")
     ap.add_argument("--console", default=None, help="for screenshots: console commands separated by ';'")
     ap.add_argument("--zoom", type=float, default=None, help="for screenshots: map zoom (pixels per unit)")
     ap.add_argument("--tournament", type=int)
@@ -67,7 +67,9 @@ def main(argv: list[str] | None = None) -> int:
             for _ in range(steps):
                 scene.update(1 / 60)
             scene.paused = True if args.cycles <= 0 else scene.paused
-            if args.overlay:
+            if args.overlay and args.overlay.startswith("manual"):
+                scene.open_manual(args.overlay.partition(":")[2] or None)
+            elif args.overlay:
                 scene.overlay = args.overlay
             if args.zoom:
                 scene.cam.zoom = args.zoom

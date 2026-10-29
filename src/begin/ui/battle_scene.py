@@ -28,6 +28,8 @@ from ..sim.scoring import Assessment
 from ..sim.ship import BankRole, Kind, Ship
 from . import theme
 from .camera import Camera
+from ..help.coach import HelpContext
+from .manual import ManualView
 from .hud import PD_CYCLE, SUB_GROUPS, ContactsPanel, OwnShipPanel, Panel, TargetPanel, WeaponsPanel, hull_diagram
 from .tactical import Snapshot, TacticalView
 from .widgets import UI
@@ -116,6 +118,7 @@ class BattleScene:
         self.chart_all = False
         self.chart_origin: int | None = None
         self.keys: dict[str, str] = keys if keys is not None else {}
+        self.manual = ManualView(self._help_context, self._try_command, self._close_manual)
         self.layout(size)
         self._frame_all()
         self._log("Battle stations. The simulation is paused: press Space to begin.", theme.CAUTION)
@@ -264,6 +267,16 @@ class BattleScene:
         if ev.type == pygame.VIDEORESIZE:
             self.layout((ev.w, ev.h))
             return
+        if self.overlay == "manual":
+            if ev.type == pygame.KEYDOWN:
+                self.manual.key(ev)
+                return
+            if ev.type == pygame.TEXTINPUT:
+                self.manual.text(ev.text)
+                return
+            if ev.type == pygame.MOUSEWHEEL:
+                self.manual.wheel(ev.y, self.ui.mouse)
+                return
         if ev.type == pygame.KEYDOWN:
             if self.console_focus:
                 self._console_key(ev)
@@ -290,7 +303,7 @@ class BattleScene:
                 self.cam.zoom_at(1.15 ** ev.y, *self.ui.mouse)
 
     def _mouse_down(self, ev: pygame.event.Event) -> None:
-        if self.overlay in ("debrief", "menu"):
+        if self.overlay in ("debrief", "menu", "manual"):
             h = self.ui.hit(ev.pos)
             if h and ev.button == 1:
                 h.action()
@@ -378,8 +391,10 @@ class BattleScene:
         elif k in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SLASH, pygame.K_BACKQUOTE):
             self.console_focus = True
             pygame.key.start_text_input()
-        elif k in (pygame.K_F1, pygame.K_h):
-            self.toggle_overlay("help")
+        elif k == pygame.K_F1:
+            self.open_manual("controls")
+        elif k == pygame.K_h:
+            self.open_manual()
         elif k == pygame.K_i:
             self.toggle_overlay("damage")
         elif k == pygame.K_q:
@@ -540,8 +555,9 @@ class BattleScene:
             if val is None:
                 self._log(f"Display range {self.display_range():,.0f} units.", theme.TEXT_DIM)
             else:
-                self.set_display_range(float(val))  # type: ignore[arg-type]
-                self._log(f"Display range set to {float(val):,.0f} units.", theme.TEXT_DIM)
+                r = float(val)  # type: ignore[arg-type]
+                self.set_display_range(r)
+                self._log(f"Display range set to {r:,.0f} units.", theme.TEXT_DIM)
         elif name == "chart":
             self._chart(val)  # type: ignore[arg-type]
         elif name == "quit":
@@ -552,6 +568,8 @@ class BattleScene:
             self._transfer(int(val))  # type: ignore[call-overload]
         elif name == "key":
             self._key_binding(val)  # type: ignore[arg-type]
+        elif name == "manual":
+            self.open_manual(val)  # type: ignore[arg-type]
 
     def _chart(self, opts: dict[str, object]) -> None:
         show = True
@@ -606,6 +624,29 @@ class BattleScene:
         else:
             self.keys.pop(name, None)
             self._log(f"{name} cleared.", theme.TEXT_DIM)
+
+    # ------------------------------------------------------------ manual
+
+    def _help_context(self) -> HelpContext:
+        return HelpContext(self.world.content, self.world.observe(self.side), self.player)
+
+    def open_manual(self, query: str | None = None) -> None:
+        msg = self.manual.open(query)
+        if msg:
+            self._log(msg, theme.TEXT_DIM)
+        self.overlay = "manual"
+        self.console_focus = False
+        pygame.key.start_text_input()
+
+    def _close_manual(self) -> None:
+        if self.overlay == "manual":
+            self.overlay = None
+
+    def _try_command(self, text: str) -> None:
+        self._close_manual()
+        self.console = text
+        self.console_focus = True
+        pygame.key.start_text_input()
 
     def run_key(self, name: str) -> bool:
         text = self.keys.get(name)
@@ -753,7 +794,7 @@ class BattleScene:
             pygame.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=6)
             theme.text(surf, "Space to begin.  Left-click a contact to target it,", (r.centerx, r.y + 22), theme.TEXT, 15, anchor="center")
             theme.text(surf, "right-click the map to steer, F / T / P to fire.", (r.centerx, r.y + 46), theme.TEXT, 15, anchor="center")
-            theme.text(surf, "Enter opens the Begin-style console. F1 shows every control.", (r.centerx, r.y + 78),
+            theme.text(surf, "Enter opens the console. H opens the manual, F1 the controls.", (r.centerx, r.y + 78),
                        theme.TEXT_DIM, 13, anchor="center")
             theme.text(surf, "(any key or click to dismiss)", (r.centerx, r.y + 104), theme.TEXT_FAINT, 11, anchor="center")
         elif o == "help":
@@ -767,10 +808,13 @@ class BattleScene:
             r = self._modal(surf, 360, 190, "Battle")
             self.ui.button(surf, pygame.Rect(r.x + 30, r.y + 44, r.width - 60, 34), "Resume",
                            lambda: setattr(self, "overlay", None), size=14)
-            self.ui.button(surf, pygame.Rect(r.x + 30, r.y + 88, r.width - 60, 34), "Controls",
-                           lambda: setattr(self, "overlay", "help"), size=14)
+            self.ui.button(surf, pygame.Rect(r.x + 30, r.y + 88, r.width - 60, 34), "Manual",
+                           lambda: self.open_manual(), size=14)
             self.ui.button(surf, pygame.Rect(r.x + 30, r.y + 132, r.width - 60, 34), "Leave battle",
                            self.on_exit, size=14, accent=theme.ALERT)
+        elif o == "manual":
+            w, h = surf.get_size()
+            self.manual.draw(surf, pygame.Rect(24, 24, w - 48, h - 48), self.ui)
         elif o == "damage":
             self._damage_view(surf)
         elif o == "scan":

@@ -24,7 +24,7 @@ Useful shortcuts:
 
 ## Playing
 
-Press **F1** in battle for the full controls list. The essentials:
+Press **F1** in battle for the full controls list, or **H** for the manual. The essentials:
 
 **Time**
 - **Space** pauses and resumes. You can still give orders while paused.
@@ -49,7 +49,14 @@ Press **F1** in battle for the full controls list. The essentials:
 - As in Begin, any word can be shortened to a unique prefix, so `fir tor al` fires all torpedoes and `fir tor 1,2,3` fires tubes 1 to 3. Filler words such as "the", "to", "at" and "on" are ignored.
 - The status commands (`report`, `damage`, `banks`, `tubes`, `launchers`, `status probes`, `shields`, `fleet`, `chart`, `computer ...`) print Begin's text displays. The latest one stays in the map's lower-left corner and refreshes live until you press **Esc**.
 - `beam <ally>` moves you to an ally ship within 3,000 units, `quit` ends the simulation, and `key F5 <commands>` binds a key to one or more commands separated by `;`.
-- The remake adds `autoload`, `mode`, `pd`, `role`, `target <ship> <subsystem>`, `pause`, `resume` and `time`. Type `help` for the full list.
+- The remake adds `autoload`, `mode`, `pd`, `role`, `target <ship> <subsystem>`, `pause`, `resume` and `time`.
+
+**Manual and coach**
+- `help` or `man` opens the in-game manual: every command, grouped by station, with search, links and examples you can click to put in the console. `help tor` (or `man fire`, `help tell`, any short form) opens that command's page.
+- `coach` opens a page that reads your current battle and suggests what to do next: whether your target is inside your torpedo envelope, which torpedo or probe suits it, which shield to turn toward it, and the command for each step. The weapon pages compare every torpedo and probe type with live numbers from the game data.
+- The manual is a folder of Markdown files in `src/begin/assets/help/`. Edit them, or put your own pages in `~/.begin-remake/help/` (a file with the same name replaces the bundled page). Changes show up the next time the page is opened. The format is described on the manual's "Writing help pages" page.
+
+![The coach](docs/screenshots/manual-coach.png)
 
 ## Project layout
 
@@ -59,7 +66,9 @@ src/begin/
   core/      angles, vectors, deterministic RNG
   sim/       the authoritative simulation: ships, systems, commands, events, observations, world, scoring
   ai/        ship computer (point defense, assisted/automatic fire) and Begin-derived AI captains
-  console/   the command parser
+  console/   the command parser and Begin's text displays
+  help/      the manual library (Markdown topics) and the live coach
+  assets/    fonts and the manual's Markdown pages
   ui/        pygame presentation: tactical map, HUD panels, menus, effects
   battle.py  builds a World with AI attached from a battle description
 docs/        REFERENCE (mechanics digest), PLAN, ARCHITECTURE, EXTENDING, DEVIATIONS
