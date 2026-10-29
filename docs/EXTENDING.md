@@ -1,0 +1,113 @@
+# Extending the game
+
+Most changes are data: a new ship, scenario, officer line or manual page is a TOML or Markdown edit, with no code. Code changes follow the pattern in [ARCHITECTURE.md](ARCHITECTURE.md). Everything that acts on a battle is a `Command` validated by the `World`, and everything that decides is a controller that reads an `Observation`. Run `pytest` after any change, and `begin --balance 8` after anything that affects combat.
+
+## A new ship class
+
+`content/data/classes.toml` is generated from Begin's data, so don't put new classes there. Put them in `content/data/custom_classes.toml`, which the loader reads after it and the importer never touches. The quickest way is to start from an existing class with `base`, and list only what differs:
+
+```toml
+[[class]]
+id = "federation.dnr"
+base = "federation.dn"      # copies every field, the repair table, the names and the hull
+name = "Dreadnought Refit"
+abbrev = "RF"
+max_warp = 9.8
+warp_power = 320.0
+ship_names = ["Enterprise", "Excalibur"]
+```
+
+A brand-new class needs every field of a class in `classes.toml` and a `[class.repair]` table. The loader stops with an error that names whatever is missing.
+
+The silhouette and weapon mounts live in `content/data/hulls.toml` under `[hull."<class id>"]`. A class made with `base` reuses its base's hull unless you give it one. The comment at the top of `hulls.toml` explains the coordinate system:
+
+- `shapes` draw the ship;
+- `anchors` place the internal systems, which drives where hits land;
+- `banks`, `tubes` and `launchers` each list mount positions with an arc `[centre, width]`.
+
+You need at least one mount of each kind the class carries.
+
+Two things to keep in mind about power and speed:
+
+- A ship's top speed is limited by power as well as by `max_warp`: attainable warp = drives × `warp_power` ÷ `warp_power_use`. Raise `warp_power` with `max_warp`, as the Federation Dreadnought does.
+- To change an imported class's numbers and keep the change when the data is re-imported, add it to `OVERRIDES` in `tools/import_reference_data.py`, run the importer, and record the change in [DEVIATIONS.md](DEVIATIONS.md).
+
+## Torpedoes and probes
+
+Designs live in `content/data/ordnance.toml` (`[[torpedo]]` and `[[probe]]`). A class's native loadout is its `torpedo` and `probe` field. Its tubes and launchers can also load the other designs listed in its faction's `torpedoes` and `probes` in `factions.toml`; plasma tubes and antimatter tubes don't share designs. `ordnance.toml` is generated too, so a design you add by hand must be added again if the importer is ever re-run.
+
+## A preset battle
+
+Add a `[[preset]]` to `content/data/presets.toml`. Each fleet has a `side`, a `center` in world units and a list of class ids. On the player's fleet, `player = true` makes its first ship yours. Check the balance with:
+
+```
+begin --balance 16
+begin --preset <id>
+```
+
+The first fights every preset 16 times with AI on both sides; aim for the player's side to win roughly 35 to 65% of them. The second plays it.
+
+## Rules
+
+Every tunable number is a field of `Rules` in `sim/rules.py`. To try a change without editing the defaults, build a modified copy, `DEFAULT_RULES.with_changes(beam_kill_max=0.7)`, and pass it in a `BattleSetup`. Mark a new field [E] if it isn't from Begin.
+
+## AI behaviour
+
+There are three levels, from least to most code:
+
+- **Personality and doctrine.** Faction personality ranges are in `factions.toml` and tactics are in `doctrines.toml`, such as weapon preferences, focus fire, point-defense posture, cloaking and surrender. Changing these needs no code.
+- **Constants.** The `AI_*` constants at the top of `ai/captain.py` set distances, angles and thresholds. Tag a new one [E] with a short reason.
+- **Decisions.** `AICaptain.think` runs `_strategy` (morale, retreat, last stand, target) once a cycle, and `_tactics` at the captain's reaction speed; `_tactics` follows any ally orders (`_standing_orders`), then calls `_shields`, `_cloak`, `_weapons` and `_maneuver`. Each returns commands built with `self._cmd(...)`, which stamps them with AI authority. Add to the relevant method, and check the result with `begin --balance` and the matchup tests.
+
+`OfficerBrain` (`crew/officers.py`) subclasses `AICaptain`, so improvements to the captain carry over to the officers. The officers keep their own limits: they never change your target, retreat or surrender.
+
+## A new command
+
+1. Subclass `Command` in `sim/commands.py`. Implement `validate` (raise `Rejected("why")` when it can't be done now) and `apply`, and return the channels it controls from `channels()` so the captain's hold applies to it.
+2. Teach the console the words: add the verb and its synonyms to `VERBS` in `console/parser.py`, and write a `_v_<verb>` method that reads the tokens and appends the command to the result.
+3. Write a manual page for it (below) and add a parser test in `tests/test_manual_commands.py`.
+
+If an officer should be able to use it, map it to a station in `station_of` in `crew/officers.py`.
+
+## A HUD panel
+
+Subclass `Panel` in `ui/hud.py`. Override `draw(surf, rect, hud)`, or for a tab, `body(surf, rect, y, hud)` and `tab_label(hud)`. `hud` is the `BattleScene`: read `hud.obs` (the side's Observation), `hud.player` (your ship) and so on, and act through its methods, which submit commands. Use the widgets in `ui/widgets.py` and the colours and fonts in `ui/theme.py`. Then add the panel to `BattleScene.panels`, or as a tab to `self.side_tabs`.
+
+## Manual pages
+
+Each page is a Markdown file in `src/begin/assets/help/` with front matter:
+
+```
+---
+title: Torpedoes
+category: Weapons
+aliases: tor, torp, fire torpedoes
+summary: One line for lists and search.
+see: fire, lock, load
+order: 20
+---
+```
+
+Inside a page:
+
+- `[[topic]]` links to another page;
+- a fenced block tagged `console` makes clickable example commands;
+- `{{coach}}` and the other blocks in `help/coach.py` insert live content.
+
+To change a page without touching the bundled ones, put your version in `config/help/` with the same file name. Changes show up the next time the page opens.
+
+## Officers
+
+`content/data/officers.toml` gives each officer:
+
+- a station, plus the stations they advise on;
+- the aliases you can address them by;
+- personality overrides;
+- the persona sent to a language model;
+- offline lines for each event, with `{target}`, `{ship}`, `{captain}` and `{n}` filled in.
+
+All the lines are original writing; keep it that way (see [LICENSING.md](../LICENSING.md)).
+
+## A language model provider
+
+Write a class with a `name` and `complete(system, messages) -> str` in `llm/providers/`. Raise `LLMError` with a readable message on failure. Then add a branch for it in `make_provider` in `llm/providers/base.py`. Read API keys from environment variables only, never from settings. `post_json` in `base.py` handles plain HTTP, including bypassing the proxy for local hosts. The officers, threading and command handling need no changes.

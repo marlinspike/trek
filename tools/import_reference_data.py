@@ -49,6 +49,15 @@ STAT_FIELDS = [
     "torps_carried", "probes_carried",
 ]
 
+# Deliberate changes to the imported statistics [E], with the comment written beside each value.
+# See docs/DEVIATIONS.md. Everything else is copied unchanged.
+OVERRIDES: dict[str, dict[str, tuple[Any, str]]] = {
+    "federation.dn": {
+        "max_warp": (9.5, ""),
+        "warp_power": (305.0, "three drives must supply 9.5 × warp_power_use (95) to reach warp 9.5"),
+    },
+}
+
 REPAIR_FIELDS = {
     "reactor": "reactor_repair", "battery": "battery_repair", "phaser": "banks_repair",
     "tube": "tube_repair", "launcher": "probe_repair", "drive": "drive_repair",
@@ -97,7 +106,8 @@ def main(src: Path, out: Path) -> None:
         lines.append(f"torpedo = {toml_value(s['torp'].lower() if s['tubes'] else '')}")
         lines.append(f"probe = {toml_value(s['probe'].lower() if s['launchers'] else '')}")
         for f in STAT_FIELDS:
-            lines.append(f"{f} = {toml_value(s[f])}")
+            value, note = OVERRIDES.get(cid, {}).get(f, (s[f], ""))
+            lines.append(f"{f} = {toml_value(value)}" + (f"   # {note}" if note else ""))
         lines.append(f"ship_names = {toml_value(s['ship_names'])}")
         lines.append("[class.repair]")
         for k, f in REPAIR_FIELDS.items():

@@ -67,6 +67,9 @@ def _hull(cid: str, d: dict[str, Any]) -> HullDef:
     )
 
 
+CUSTOM_CLASSES = "custom_classes.toml"
+
+
 def _read(name: str, data_dir: Path) -> dict[str, Any]:
     with open(data_dir / name, "rb") as f:
         return tomllib.load(f)
@@ -124,7 +127,10 @@ def load_content(data_dir: Path = DATA_DIR) -> ContentDB:
 
     hulls_raw = _read("hulls.toml", data_dir)["hull"]
     raw_classes: dict[str, dict[str, Any]] = {}
-    for c in _read("classes.toml", data_dir)["class"]:
+    entries = list(_read("classes.toml", data_dir)["class"])
+    if (data_dir / CUSTOM_CLASSES).is_file():  # hand-written classes; the importer never touches this file
+        entries += _read(CUSTOM_CLASSES, data_dir).get("class", [])
+    for c in entries:
         # `base = "<class id>"` copies an earlier class; the entry then lists only what differs
         if "base" in c:
             if c["base"] not in raw_classes:

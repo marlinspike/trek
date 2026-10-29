@@ -91,9 +91,10 @@ src/begin/
   assets/    fonts and the manual's Markdown pages
   ui/        pygame presentation: tactical map, HUD panels, menus, effects
   battle.py  builds a World with AI attached from a battle description
+config/      your settings, key macros and manual pages (gitignored apart from README and example)
 docs/        REFERENCE (mechanics digest), PLAN, ARCHITECTURE, EXTENDING, DEVIATIONS
 tests/       headless tests
 tools/       content importer from the reference data
 ```
 
-Start with [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together, and [docs/EXTENDING.md](docs/EXTENDING.md) to add ships, weapons, AI policies or HUD panels.
+Start with [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together, and [docs/EXTENDING.md](docs/EXTENDING.md) to add ships, weapons, AI policies or HUD panels. [docs/DEVIATIONS.md](docs/DEVIATIONS.md) lists where the remake departs from Begin and why, and [LICENSING.md](LICENSING.md) covers the code, the original game and the fonts.

@@ -141,7 +141,7 @@ def test_class_inherits_from_base(tmp_path) -> None:  # type: ignore[no-untyped-
 
     data = tmp_path / "data"
     shutil.copytree(DATA_DIR, data)
-    with open(data / "classes.toml", "a") as f:
+    with open(data / "custom_classes.toml", "w") as f:
         f.write('\n[[class]]\nid = "federation.dnx"\nbase = "federation.dn"\nname = "Refit"\nbanks = 6\nmax_warp = 9.2\n')
     db = load_content(data)
     x, dn = db.classes["federation.dnx"], db.classes["federation.dn"]
