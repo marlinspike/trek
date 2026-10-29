@@ -18,6 +18,8 @@ from ..ship import Launcher, Ship, Tube
 from .damage import Aim, DamageKind, apply_damage
 
 if TYPE_CHECKING:
+    from ...content.schema import TorpedoDef
+    from ..rules import Rules
     from ..world import World
 
 
@@ -326,6 +328,22 @@ def reveal_burst(world: World, t: Torpedo) -> None:
                 f"{t.spec.reveal_cycles:.0f} cycles." if found else "Tachyon burst: no cloaked ships in the cloud.")
         world.emit(Message(world.tick, text, Tone.GOOD if found else Tone.CAUTION, ship_id=owner.id,
                            visible_to=frozenset({owner.side})))
+
+
+def blast_radius(spec: TorpedoDef, rules: Rules) -> float:
+    """[R] how far a warhead's blast reaches: yield × splash multiplier × radius per damage."""
+    return spec.damage * rules.splash_mult * rules.splash_radius_per_damage
+
+
+def suggested_prox(spec: TorpedoDef, target_max_warp: float, rules: Rules) -> float:
+    """[E] A proximity setting that catches an agile target yet still delivers most of the blast.
+
+    A round bursts as soon as its target comes within the proximity setting, and blast damage
+    falls to nothing at the blast radius, so a fuse near the radius (Mark 7: 500 of 500) only
+    grazes. Begin's AI used warp × 50; we cap it at half the blast radius (about 70% damage).
+    """
+    want = min(target_max_warp * 50.0, blast_radius(spec, rules) * 0.5, spec.max_prox)
+    return max(rules.prox_floor, want)
 
 
 def launch_at_point(world: World, ship: Ship, tube: Tube, x: float, y: float, prox: float | None = None,

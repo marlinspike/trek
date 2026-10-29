@@ -100,11 +100,11 @@ def apply_damage(
         target.stats.shield_damage_absorbed += absorbed
         if kind == DamageKind.SHIELD_BORE:
             world.emit(ShieldHit(world.tick, target.id, shield.index, absorbed, 0.0,
-                                 was_up and shield.strength <= 1.0))
+                                 was_up and shield.strength <= 1.0, attacker, shield.strength))
             return 0.0
         remaining = max(0.0, amount - absorbed)
         world.emit(ShieldHit(world.tick, target.id, shield.index, absorbed, remaining,
-                             was_up and shield.strength <= 1.0))
+                             was_up and shield.strength <= 1.0, attacker, shield.strength))
     elif kind == DamageKind.SHIELD_BORE:
         return 0.0
     if remaining <= 0.0:

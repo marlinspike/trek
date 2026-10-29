@@ -81,3 +81,32 @@ def test_console_displays_chart_keys_and_quit(scene):  # type: ignore[no-untyped
     sc.draw(surf)  # the printout renders
     sc.run_console("quit")
     assert sc.world.outcome.over and sc.overlay == "debrief"
+
+
+def test_hit_report_sums_up_a_volley() -> None:
+    from begin.sim.events import HullHit, ShieldHit, SubsystemDamaged
+    from begin.ui.hit_report import HitReport
+
+    r = HitReport(1)
+    r.ingest([ShieldHit(10, 7, 0, 50.0, 0.0, False, 1, 87.0), ShieldHit(10, 7, 0, 50.0, 0.0, False, 1, 76.0),
+              ShieldHit(10, 9, 0, 50.0, 0.0, False, 2, 50.0)], 10)
+    assert r.due(12, 10, {7: "Wraith"}) == []
+    assert r.due(20, 10, {7: "Wraith"}) == ["Hits on Wraith: 2, all absorbed (shield 1 now 76%)."]
+    r.ingest([ShieldHit(30, 7, 1, 20.0, 30.0, True, 1, 0.0), HullHit(30, 7, 30.0, 0, 1),
+              SubsystemDamaged(30, 7, "phaser2", "Phaser 2", 40, False, False)], 30)
+    assert r.due(40, 10, {}) == ["Hits on #7: 1, shield 2 now 0%; shield 2 collapsed; 30 damage to the hull; Phaser 2 hit."]
+
+
+def test_coach_warns_when_proximity_is_wider_than_the_blast(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.help.coach import HelpContext, tips
+    from begin.sim.commands import ConfigureAutoload, SelectTarget
+    from begin.sim.world import World
+
+    w = World(content, seed=1)
+    me = w.add_ship("federation.dn", 0, 0, 0)
+    dr = w.add_ship("klingon.dr", 1, 0, 6000)
+    w.execute(ConfigureAutoload(ship_id=me.id, weapon="tube", prox=500))
+    w.execute(SelectTarget(ship_id=me.id, target=dr.id))
+    w.step()
+    t = next(t for t in tips(HelpContext(content, w.observe(0), me)) if t.title == "Proximity fuse")
+    assert t.priority == 1 and "barely scratch" in t.text and t.commands == ["autoload tor prox 250"]

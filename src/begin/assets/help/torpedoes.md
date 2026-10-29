@@ -51,7 +51,11 @@ disable tubes 3 4
 enable all tubes
 ```
 
-> **Coach** A wide proximity catches nimble ships but delivers less of the blast. Begin's AI captains set it to about 50 × the target's top warp. The [[coach]] suggests a setting for your target.
+> **Coach** A torpedo bursts the moment its target comes within the proximity distance, and its blast fades to nothing at the edge of its reach: 50 × the warhead, so 500 units for a Mark 7. At proximity 500 a Mark 7 bursts right at that edge and barely scratches the target. At 250 it delivers about 70% of its punch, and at 100 about 90%. A wide proximity still catches nimble ships, so the [[coach]] suggests a setting that balances the two (half the blast reach at most).
+
+## Shields soak up hits
+
+A shield facing the blast absorbs damage up to its strength before anything reaches the hull, and each hit drains it by only a fraction of what it absorbed. Heavy ships such as the Klingon Dreadnought have shields strong enough to swallow whole volleys. After each volley the log tells you what happened ("Hits on Wraith: 8, all absorbed (shield 1 now 87%)"). Keep hitting the same shield until it collapses, or turn to strike a weaker one; a `scan` shows them all.
 
 ## Leading and dispersion
 

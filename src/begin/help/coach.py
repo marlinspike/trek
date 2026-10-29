@@ -22,6 +22,7 @@ from typing import Callable
 from ..ai.computer import torpedo_envelope
 from ..content.schema import ContentDB, ProbeDef, TorpedoDef
 from ..core.angles import bearing, norm360
+from ..sim.systems.ordnance import blast_radius, suggested_prox
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import Ship
 
@@ -226,13 +227,19 @@ def tips(ctx: HelpContext) -> list[Tip]:
                         f"autoload tor {b.id}")
                 # proximity fuse matched to the target's agility (the Begin AI's rule)
                 if tcls is not None:
-                    want = max(obs.rules.prox_floor, min(tcls.max_warp * 50.0, cur.max_prox))
+                    want = suggested_prox(cur, tcls.max_warp, obs.rules)
                     have = s.tubes[0].load_prox or cur.max_prox
-                    if abs(have - want) > want * 0.25:
+                    radius = blast_radius(cur, obs.rules)
+                    if have > radius * 0.7:
+                        tip(1, "Proximity fuse",
+                            f"Your {cur.name}s burst {have:,.0f} from the target, but the blast only reaches "
+                            f"{radius:,.0f}, so they barely scratch it ({math.sqrt(max(0.0, 1 - have / radius)) * 100:.0f}% "
+                            f"of the warhead). Try about {want:,.0f}.", f"autoload tor prox {want:.0f}")
+                    elif abs(have - want) > want * 0.25:
                         tip(4, "Proximity fuse",
                             f"A {tcls.name} manoeuvres at up to warp {tcls.max_warp:g}; a proximity of about {want:,.0f} "
                             f"suits it (yours: {have:,.0f}). Wider fuses catch agile ships but deliver less of the blast.",
-                            f"load tubes prox {want:.0f}")
+                            f"autoload tor prox {want:.0f}")
         # phasers
         if s.banks and any(b.intact for b in s.banks):
             r = s.cls.banks_range

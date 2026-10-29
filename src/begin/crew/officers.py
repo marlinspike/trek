@@ -38,6 +38,7 @@ from ..sim.commands import (
 from ..sim.observation import Observation
 from ..sim.ship import Kind, Ship
 from .characters import STATIONS, OfficerProfile
+from ..sim.systems.ordnance import suggested_prox
 from .objectives import Planner
 
 STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
@@ -93,7 +94,7 @@ class OfficerBrain(AICaptain):
                 and self.autoload_set_for != best.id):
             spec = obs.content.torpedoes.get(ship.tubes[0].load_ordnance or ship.cls.torpedo)
             if spec is not None:
-                prox = max(obs.rules.prox_floor, min(best.cls.max_warp * 50.0, spec.max_prox))
+                prox = suggested_prox(spec, best.cls.max_warp, obs.rules)
                 out.append(self._cmd(ConfigureAutoload, ship, weapon="tube", prox=prox))
                 self.autoload_set_for = best.id
         return out

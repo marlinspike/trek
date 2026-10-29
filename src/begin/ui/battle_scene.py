@@ -17,6 +17,7 @@ import pygame
 
 from ..battle import Battle
 from ..console import reports
+from .hit_report import HitReport
 from ..console.parser import ParseContext, parse
 from ..core.angles import bearing, norm360
 from ..sim.allies import AllyStanding
@@ -110,6 +111,7 @@ class BattleScene:
         self.history: list[str] = []
         self.hist_i = 0
         self.toast: tuple[str, theme.Color, float] | None = None
+        self.hits = HitReport(None)   # "Hits on Wraith: ..." lines in the log
         self.overlay: str | None = "help_brief"
         self.side_tabs = TabbedPanel([ContactsPanel(), FleetPanel(), CrewPanel()])
         self.panels: list[Panel] = [OwnShipPanel(), TargetPanel(), WeaponsPanel(), self.side_tabs]
@@ -280,6 +282,11 @@ class BattleScene:
         self.obs = self.world.observe(self.side)
         self.view.ingest(events, self.obs)
         self._crew_react(events)
+        self.hits.attacker = self.player_id
+        self.hits.ingest(events, self.world.tick)
+        names = {c.id: c.label.split(" (")[0] for c in self.obs.contacts().values() if c.identified}
+        for line in self.hits.due(self.world.tick, self.world.rules.ticks_per_cycle, names):
+            self._log(line, theme.GOOD)
         for ev in events:
             if isinstance(ev, Message):
                 if ev.visible_to is not None and self.side not in ev.visible_to:
@@ -1000,7 +1007,7 @@ class BattleScene:
         if self.console_focus and (pygame.time.get_ticks() // 500) % 2 == 0:
             prompt += "▏"
         if not self.console and not self.console_focus:
-            theme.text(surf, "Command console: press Enter and type an order (e.g. 'al tor al mk7 400', 'fp all s 10', 'help')",
+            theme.text(surf, "Command console: press Enter and type an order (e.g. 'al tor al mk7 250', 'fp all s 10', 'help')",
                        (self.console_rect.x + 10, self.console_rect.y + 5), theme.TEXT_FAINT, 12)
         else:
             theme.text(surf, prompt, (self.console_rect.x + 10, self.console_rect.y + 4), theme.TEXT, 13, "mono")

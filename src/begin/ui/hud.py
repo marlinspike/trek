@@ -427,7 +427,7 @@ class WeaponsPanel(Panel):
             hud.ui.button(surf, pygame.Rect(x0 + 116, yy, 206, 22),
                           f"Autoload {'on' if on else 'off'} · {t0.load_ordnance.upper()} · prox {pr:.0f}",
                           lambda: hud.issue(ConfigureAutoload(ship_id=ship.id, weapon="tube", enabled=not on)),
-                          "Autoload keeps tubes loaded; it never fires. Console: 'al tor al mk7 400'",
+                          "Autoload keeps tubes loaded; it never fires. Console: 'al tor al mk7 250'",
                           active=on, accent=theme.GOOD)
         # probes
         yy += 30
