@@ -40,7 +40,8 @@ class App:
 
     def start_battle(self, setup: BattleSetup) -> BattleScene:
         battle = build_battle(self.content, setup)
-        scene = BattleScene(battle, self.screen.get_size(), self.back_to_menu, keys=self.settings.keys)
+        scene = BattleScene(battle, self.screen.get_size(), self.back_to_menu, keys=self.settings.keys,
+                            hidden=self.settings.hidden, llm=self.settings.llm, chatter=self.settings.chatter)
         scene.speed = float(self.settings.speed) if float(self.settings.speed) in (0.25, 0.5, 1.0, 2.0, 4.0) else 1.0
         self.scene = scene
         return scene
@@ -48,6 +49,7 @@ class App:
     def back_to_menu(self) -> None:
         if isinstance(self.scene, BattleScene):
             self.settings.speed = self.scene.speed
+            self.scene.close()
             self.settings.save()
         self.menu.page = "main"
         self.menu.layout(self.screen.get_size())
@@ -71,6 +73,8 @@ class App:
             dt = min(0.1, self.clock.tick(TARGET_FPS) / 1000.0)
             self.fps = self.clock.get_fps()
             self.frame(dt)
+        if isinstance(self.scene, BattleScene):
+            self.scene.close()
         self.settings.save()
         pygame.quit()
 

@@ -749,6 +749,37 @@ class SetRepairPriority(Command):
         ship.repair_priority = self.kind
 
 
+# which holds a station covers when it is handed to (or taken back from) an officer
+STATION_CHANNELS: dict[str, tuple[str, ...]] = {
+    "helm": ("helm",),
+    "tactical": ("tactical", "phasers", "torpedoes"),
+    "engineering": ("shields", "engineering"),
+    "science": (),
+}
+
+
+@dataclass(kw_only=True)
+class DelegateStation(Command):
+    """Hand a bridge station to its officer, or take it back (remake extension)."""
+
+    station: str
+    on: bool = True
+    name: ClassVar[str] = "delegate"
+    needs_crew: ClassVar[bool] = False
+
+    def validate(self, world: World, ship: Ship) -> None:
+        if self.station not in STATION_CHANNELS:
+            raise Rejected(f"No {self.station} station.")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        if self.on:
+            ship.delegated.add(self.station)
+            for prefix in STATION_CHANNELS[self.station]:
+                world.release_holds(ship.id, prefix)
+        else:
+            ship.delegated.discard(self.station)
+
+
 @dataclass(kw_only=True)
 class Scan(Command):
     target: int

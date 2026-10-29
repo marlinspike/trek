@@ -15,7 +15,7 @@ import pygame
 
 from ..core.angles import bearing, norm360
 from ..sim.commands import (
-    ConfigureAutoload, ControlProbe, FirePhasers, FireTorpedoes, LaunchProbe, Scan, SelectTarget, SetFireMode,
+    ConfigureAutoload, ControlProbe, DelegateStation, FirePhasers, FireTorpedoes, LaunchProbe, Scan, SelectTarget, SetFireMode,
     SetPhaserSpread, SetPointDefense, SetShields,
 )
 from ..sim.factory import SHIELD_FACINGS
@@ -346,6 +346,39 @@ class WeaponsPanel(Panel):
 
 # ------------------------------------------------------------------ contacts
 
+class CrewPanel(Panel):
+    """The bridge officers: who runs each station, with a toggle to hand it over or take it back."""
+
+    title = "Bridge crew"
+    min_height = 128
+    weight = 0.0
+
+    def draw(self, surf: pygame.Surface, rect: pygame.Rect, hud: BattleScene) -> None:
+        y = theme.panel(surf, rect, self.title)
+        ship = hud.player
+        bridge = hud.bridge
+        if ship is None or bridge is None:
+            theme.text(surf, "No officers aboard.", (rect.x + 12, y), theme.TEXT_FAINT, 12)
+            return
+        rh = 22
+        for k, (station, o) in enumerate(bridge.crew.officers.items()):
+            ry = y + k * rh
+            if ry + rh > rect.bottom - 2:
+                break
+            on = station in ship.delegated
+            theme.text(surf, station.title(), (rect.x + 12, ry + 3), theme.TEXT_DIM, 12)
+            name_r = pygame.Rect(rect.x + 100, ry, rect.width - 214, rh - 2)
+            hover = name_r.collidepoint(hud.ui.mouse)
+            theme.text(surf, o.title, (name_r.x, ry + 3), theme.CREW if on or hover else theme.TEXT, 12)
+            hud.ui.add(name_r, (lambda o=o: hud.address(o.aliases[0] if o.aliases else o.id)),
+                       f"Talk to {o.name} (type after the comma)")
+            btn = pygame.Rect(rect.right - 106, ry, 94, rh - 3)
+            hud.ui.button(surf, btn, "Officer" if on else "Captain",
+                          (lambda st=station, on=on: hud.issue(DelegateStation(ship_id=ship.id, station=st, on=not on))),
+                          f"{'Take back' if on else 'Hand over'} the {station} station", active=on, accent=theme.CREW,
+                          size=11)
+
+
 class ContactsPanel(Panel):
     title = "Contacts"
     min_height = 90
@@ -395,4 +428,4 @@ class ContactsPanel(Panel):
                 hud.ui.add(r, (lambda sid=sid: hud.center_on(sid)), "Centre the map on this ally")
 
 
-__all__ = ["ContactsPanel", "OwnShipPanel", "Panel", "TargetPanel", "WeaponsPanel", "hull_diagram"]
+__all__ = ["ContactsPanel", "CrewPanel", "OwnShipPanel", "Panel", "TargetPanel", "WeaponsPanel", "hull_diagram"]

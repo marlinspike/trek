@@ -132,19 +132,36 @@ def _contact_name(c: ContactView) -> str:
     return c.label.split(" (")[0] if c.identified else f"#{c.id}"
 
 
-def coach(ctx: HelpContext) -> str:
-    """Situational advice, best first. Every suggestion comes with the command that carries it out."""
+# which bridge station each piece of advice belongs to (officers speak to their own)
+TIP_STATIONS = {
+    "Incoming ordnance": "tactical", "Pick a target": "tactical", "Find the enemy": "science",
+    "Too close for torpedoes": "helm", "Out of torpedo reach": "helm", "Torpedo shot is on": "tactical",
+    "Switch torpedoes": "tactical", "Heavier torpedo available": "tactical", "Proximity fuse": "tactical",
+    "Phasers in range": "tactical", "Closing to phaser range": "helm", "Probe it": "tactical",
+    "Scan the target": "science", "Their shields": "science", "Turn a fresh shield toward them": "helm",
+    "Engines running hot": "engineering", "Power is running out": "engineering", "Badly damaged": "engineering",
+}
+
+
+@dataclass
+class Tip:
+    priority: int          # 0 is most urgent
+    title: str
+    text: str              # Markdown
+    commands: list[str]
+    station: str = "tactical"
+
+
+def tips(ctx: HelpContext) -> list[Tip]:
+    """Situational advice, most urgent first. Every suggestion comes with the command that carries it out."""
     s, obs = ctx.ship, ctx.obs
-    if s is None or obs is None:
-        return ("> **Coach** Start a battle and the coach will read the situation: your target's range against "
-                "your weapons' envelopes, the best torpedo and proximity setting, your shields, heat and power.")
-    if not s.alive:
-        return "> **Coach** Your ship is out of action. Beam to an ally with `beam <ally>` if one is within 3,000."
-    tips: list[tuple[int, str, str, list[str]]] = []  # (priority, title, text, commands)
+    if s is None or obs is None or not s.alive:
+        return []
+    out: list[Tip] = []
     upw = obs.rules.units_per_warp
 
     def tip(prio: int, title: str, text: str, *cmds: str) -> None:
-        tips.append((prio, title, text, list(cmds)))
+        out.append(Tip(prio, title, text, list(cmds), TIP_STATIONS.get(title, "tactical")))
 
     threats = [o for o in obs.threats() if math.hypot(o.x - s.x, o.y - s.y) < 8000]
     if threats:
@@ -264,7 +281,7 @@ def coach(ctx: HelpContext) -> str:
     temp = max((dv.temp for dv in live), default=0.0)
     if temp > obs.rules.temp_limit * 0.8:
         tip(1, "Engines running hot", f"Warp drive temperature {temp:.0f} of {obs.rules.temp_limit:.0f}. "
-            "Above the limit the drives take damage; drop to cruise speed for a few cycles.", f"warp {s.cls.cruise_warp:g}")
+            "Above the limit a drive burns out; drop to cruise speed for a few cycles.", f"warp {s.cls.cruise_warp:g}")
     cap = s.battery_capacity()
     if cap > 0 and s.battery_charge() < cap * 0.2 and s.power.net < 0:
         tip(1, "Power is running out", "Batteries are below 20% and draining. Lower shields facing away from the "
@@ -272,19 +289,31 @@ def coach(ctx: HelpContext) -> str:
     if s.structure < s.structure_max * 0.35:
         tip(2, "Badly damaged", "Hull below 35%. Consider breaking off, docking with a base for repairs, "
             "or beaming to an ally.", "repair all", "fleet")
-    if not tips:
+    out.sort(key=lambda t: t.priority)
+    return out
+
+
+def coach(ctx: HelpContext) -> str:
+    """The coach page's live block: the tips as Markdown, with clickable commands."""
+    s, obs = ctx.ship, ctx.obs
+    if s is None or obs is None:
+        return ("> **Coach** Start a battle and the coach will read the situation: your target's range against "
+                "your weapons' envelopes, the best torpedo and proximity setting, your shields, heat and power.")
+    if not s.alive:
+        return "> **Coach** Your ship is out of action. Beam to an ally with `beam <ally>` if one is within 3,000."
+    found = tips(ctx)
+    if not found:
         return "> **Coach** Nothing urgent. Keep your best shield toward the enemy and watch the torpedo envelope."
-    tips.sort(key=lambda t: t[0])
-    out: list[str] = []
-    for _, title, text, cmds in tips[:7]:
-        out.append(f"### {title}")
-        out.append(text)
-        if cmds:
-            out.append("```console")
-            out.extend(cmds)
-            out.append("```")
-        out.append("")
-    return "\n".join(out)
+    lines: list[str] = []
+    for t in found[:7]:
+        lines.append(f"### {t.title}")
+        lines.append(t.text)
+        if t.commands:
+            lines.append("```console")
+            lines.extend(t.commands)
+            lines.append("```")
+        lines.append("")
+    return "\n".join(lines)
 
 
 BLOCKS: dict[str, Callable[[HelpContext], str]] = {
@@ -311,4 +340,4 @@ def expand(body: str, ctx: HelpContext) -> str:
     return _PLACEHOLDER.sub(sub, body)
 
 
-__all__ = ["BLOCKS", "HelpContext", "coach", "expand", "probe_table", "torpedo_table"]
+__all__ = ["BLOCKS", "HelpContext", "TIP_STATIONS", "Tip", "coach", "expand", "probe_table", "tips", "torpedo_table"]

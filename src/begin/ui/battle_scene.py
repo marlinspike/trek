@@ -22,15 +22,17 @@ from ..sim.commands import (
     Command, FirePhasers, FireTorpedoes, LaunchProbe, Pursue, Scan, SelectTarget, SetBanks, SetHelm,
     SetPointDefense, SetShields,
 )
-from ..sim.events import CommandRejected, Message, ScanCompleted, Tone
+from ..sim.events import CommandRejected, Event, Message, ScanCompleted, Tone
 from ..sim.observation import Observation
 from ..sim.scoring import Assessment
 from ..sim.ship import BankRole, Kind, Ship
 from . import theme
 from .camera import Camera
+from ..crew.conversation import Bridge, Utterance
+from ..crew.officers import station_of
 from ..help.coach import HelpContext
 from .manual import ManualView
-from .hud import PD_CYCLE, SUB_GROUPS, ContactsPanel, OwnShipPanel, Panel, TargetPanel, WeaponsPanel, hull_diagram
+from .hud import PD_CYCLE, SUB_GROUPS, ContactsPanel, CrewPanel, OwnShipPanel, Panel, TargetPanel, WeaponsPanel, hull_diagram
 from .tactical import Snapshot, TacticalView
 from .widgets import UI
 
@@ -80,7 +82,8 @@ FKEYS = {getattr(pygame, f"K_F{n}"): f"F{n}" for n in (2, 3, 4, 5, 6, 7, 8, 10, 
 
 class BattleScene:
     def __init__(self, battle: Battle, size: tuple[int, int], on_exit: Callable[[], None],
-                 keys: dict[str, str] | None = None) -> None:
+                 keys: dict[str, str] | None = None, hidden: dict[str, object] | None = None,
+                 llm: dict[str, object] | None = None, chatter: bool = True) -> None:
         self.battle = battle
         self.world = battle.world
         self.player_id = battle.player_ship_id
@@ -103,7 +106,7 @@ class BattleScene:
         self.hist_i = 0
         self.toast: tuple[str, theme.Color, float] | None = None
         self.overlay: str | None = "help_brief"
-        self.panels: list[Panel] = [OwnShipPanel(), TargetPanel(), WeaponsPanel(), ContactsPanel()]
+        self.panels: list[Panel] = [OwnShipPanel(), TargetPanel(), WeaponsPanel(), CrewPanel(), ContactsPanel()]
         self.assessment = Assessment.begin(self.world)
         self.drag: tuple[int, int] | None = None
         self.dragged = False
@@ -119,11 +122,29 @@ class BattleScene:
         self.chart_origin: int | None = None
         self.keys: dict[str, str] = keys if keys is not None else {}
         self.manual = ManualView(self._help_context, self._try_command, self._close_manual)
+        self.hidden: dict[str, object] = hidden if hidden is not None else {}
+        self.bridge: Bridge | None = None
+        llm_note: str | None = None
+        if battle.crew is not None:
+            service = None
+            try:
+                from ..llm.providers import config_from_settings, make_provider
+                from ..llm.service import LLMService
+
+                cfg = config_from_settings(llm or {})
+                if cfg is not None:
+                    service = LLMService(make_provider(cfg))
+                    llm_note = f"Officers are talking through {cfg.provider} ({cfg.model})."
+            except Exception as e:  # noqa: BLE001 - a bad LLM setup must never stop a battle
+                llm_note = f"LLM not available ({e}); officers will answer offline."
+            self.bridge = Bridge(battle.crew, self.hidden, service, seed=battle.setup.seed, chatter=chatter)
         self.layout(size)
         self._frame_all()
         self._log("Battle stations. The simulation is paused: press Space to begin.", theme.CAUTION)
         if battle.setup.description:
             self._log(battle.setup.description, theme.TEXT_DIM)
+        if llm_note:
+            self._log(llm_note, theme.TEXT_DIM)
 
     # ------------------------------------------------------------ layout
 
@@ -220,19 +241,25 @@ class BattleScene:
         events = self.world.take_events()
         self.obs = self.world.observe(self.side)
         self.view.ingest(events, self.obs)
+        self._crew_react(events)
         for ev in events:
             if isinstance(ev, Message):
                 if ev.visible_to is not None and self.side not in ev.visible_to:
                     continue
+                if ev.text.startswith("Scanning ") and self.player is not None and "science" in self.player.delegated:
+                    continue  # Seven reports what matters herself
                 who = f"{ev.speaker}: " if ev.speaker and ev.speaker not in ev.text else ""
                 self._log(who + ev.text, TONE_COLOR.get(ev.tone, theme.TEXT))
-            elif isinstance(ev, ScanCompleted) and ev.ship_id == self.player_id:
+            elif (isinstance(ev, ScanCompleted) and ev.ship_id == self.player_id
+                  and not (self.player is not None and "science" in self.player.delegated)):  # Seven's routine scans stay quiet
                 c = self.obs.contact(ev.target_id)
                 if c is not None and c.scan is not None:
                     self._show(reports.scan_lines(self.obs, c), None)
 
     def update(self, dt: float) -> None:
         self.ui.mouse = pygame.mouse.get_pos()
+        if self.bridge is not None and self.bridge.llm is not None:
+            self._speak(self.bridge.poll(self._help_context(), self._officer_run))
         if self.toast:
             msg, col, t = self.toast
             self.toast = (msg, col, t - dt) if t - dt > 0 else None
@@ -257,6 +284,7 @@ class BattleScene:
             self.now = Snapshot.take(self.obs)
             if self.world.outcome.over:
                 self.overlay = "debrief"
+                self._crew_outcome()
                 break
         if steps >= 12:
             self.acc = 0.0
@@ -497,6 +525,11 @@ class BattleScene:
         if self.player_id is None:
             self._log("No ship under command.", theme.CAUTION)
             return
+        if self.bridge is not None:
+            hit = self.bridge.addressed(text)
+            if hit is not None:
+                self._ask(*hit)
+                return
         res = parse(text, ParseContext(self.player_id, self.world.observe(self.side)))
         if res.error:
             self._log(res.error, theme.CAUTION)
@@ -513,6 +546,8 @@ class BattleScene:
             reason = self.issue(cmd)
             if reason is None:
                 self._log(f"  {cmd.describe()}: acknowledged", theme.TEXT_DIM)
+        if res.commands and self.bridge is not None:
+            self.bridge.captain_ran(text, self.world.tick, self.world.rules.ticks_per_cycle)
 
     def _show(self, lines: list[str], live_cmd: str | None) -> None:
         for line in lines:
@@ -564,12 +599,109 @@ class BattleScene:
             self.world.end_simulation()
             self._drain_events()
             self.overlay = "debrief"
+            self._crew_outcome()
         elif name == "transfer":
             self._transfer(int(val))  # type: ignore[call-overload]
         elif name == "key":
             self._key_binding(val)  # type: ignore[arg-type]
         elif name == "manual":
             self.open_manual(val)  # type: ignore[arg-type]
+        elif name == "ask":
+            assert isinstance(val, tuple)
+            who, words = str(val[0]), str(val[1])
+            o = self.bridge.find(who) if self.bridge is not None else None
+            if o is None:
+                self._log(f"No officer called '{who}'. Type 'crew' to see who is on the bridge.", theme.CAUTION)
+            else:
+                self._ask(o, words)
+        elif name == "crew":
+            self._crew_command(val)
+
+    # ------------------------------------------------------------ bridge officers
+
+    def _ask(self, officer: object, words: str) -> None:
+        if self.bridge is None:
+            return
+        from ..crew.characters import OfficerProfile
+
+        assert isinstance(officer, OfficerProfile)
+        self._speak(self.bridge.ask(officer, words, self._help_context(), self._officer_run))
+
+    def _officer_run(self, line: str, officer: object) -> str | None:
+        """Carry out a console line an officer was told (or decided) to run; only their own stations."""
+        from ..crew.characters import OfficerProfile
+        from ..sim.commands import DelegateStation
+
+        assert isinstance(officer, OfficerProfile)
+        if self.player_id is None:
+            return "No ship under command."
+        res = parse(line, ParseContext(self.player_id, self.world.observe(self.side)))
+        if res.error:
+            return res.error
+        if res.actions and not res.commands:
+            return "That is for the captain to do."
+        allowed = set(officer.advises) | {officer.station}
+        for cmd in res.commands:
+            st = cmd.station if isinstance(cmd, DelegateStation) else station_of(cmd)
+            if st is None or st not in allowed:
+                return "That is not my station, Captain."
+        for cmd in res.commands:
+            cmd.source = officer.title
+            reason = self.issue(cmd)
+            if reason:
+                return reason
+            self._log(f"  {cmd.describe()}: done", theme.TEXT_DIM)
+        if res.display:
+            self._show(res.display, None)
+        return None
+
+    def _speak(self, lines: list[Utterance]) -> None:
+        tone = {"crew": theme.CREW, "caution": theme.CAUTION, "dim": theme.TEXT_DIM}
+        for u in lines:
+            self._log(f"{u.speaker}: {u.text}", tone.get(u.tone, theme.CREW))
+            for c in u.commands:
+                self._log(f"    › {c}", theme.TEXT_DIM)
+
+    def address(self, name: str) -> None:
+        """Open the console ready to speak to an officer."""
+        self.console = f"{name}, "
+        self.console_focus = True
+
+    def _crew_react(self, events: list[Event]) -> None:
+        if self.bridge is not None and self.player_id is not None:
+            self._speak(self.bridge.react(events, self._help_context()))
+
+    def _crew_outcome(self) -> None:
+        if self.bridge is None:
+            return
+        o = self.world.outcome
+        won = None if o.winner is None else (o.winner == self.side)
+        self._speak(self.bridge.outcome(won))
+        self.bridge.save(self.hidden)
+
+    def _crew_command(self, val: object) -> None:
+        b = self.bridge
+        if b is None:
+            self._log("No bridge crew aboard.", theme.CAUTION)
+            return
+        if isinstance(val, tuple) and val and val[0] == "chatter":
+            b.chatter = bool(val[1])
+            self._log(f"Officer chatter {'on' if b.chatter else 'off'}.", theme.TEXT_DIM)
+            return
+        ship = self.player
+        lines = ["BRIDGE CREW:", "Station      Officer                     Running   Rapport"]
+        for st, o in b.crew.officers.items():
+            on = ship is not None and st in ship.delegated
+            mood = b.relationships.get(o.id).mood
+            lines.append(f"{st.title():<12} {o.title:<27} {'officer' if on else 'captain':<9} {mood}")
+        lines.append("delegate <station>|all · assume <station>|all · ask <officer> <words> · <officer>, <words>")
+        self._show(lines, None)
+
+    def close(self) -> None:
+        """Leaving the battle: remember how the officers feel, stop any LLM requests."""
+        if self.bridge is not None:
+            self.bridge.save(self.hidden)
+            self.bridge.close()
 
     def _chart(self, opts: dict[str, object]) -> None:
         show = True

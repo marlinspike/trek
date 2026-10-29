@@ -33,7 +33,7 @@ from pathlib import Path
 BUNDLED_DIR = Path(__file__).resolve().parent.parent / "assets" / "help"
 
 CATEGORY_ORDER = ("Getting started", "Coach", "Helm", "Weapons", "Defense", "Sensors and status", "Ship systems",
-                  "Allies", "Game")
+                  "Allies", "Crew", "Game")
 
 
 def user_help_dir() -> Path:

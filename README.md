@@ -58,6 +58,11 @@ Press **F1** in battle for the full controls list, or **H** for the manual. The 
 
 ![The coach](docs/screenshots/manual-coach.png)
 
+**Bridge officers**
+- Four officers can run stations for you: Spock (helm), Worf (tactical), Scott (engineering) and Seven of Nine (science). `delegate tactical` (or `delegate all`) hands a station over, `assume tactical` takes it back, and the Bridge crew panel has a toggle for each. Your own orders always override an officer for a few seconds, and officers never pick a different target from yours, retreat, surrender or self-destruct.
+- Talk to them by name: `spock, what do you recommend?`, `worf, fire all torpedoes`, `scotty, take engineering`, `ask seven status`. Each officer only acts for their own stations. They comment on the battle as it happens (`crew chatter off` quiets them), and they remember how you treat them.
+- Officers answer offline from the battle state. To have them answer in their own words, set an LLM provider (Anthropic, OpenAI, OpenRouter or a local Ollama) in `settings.json`; see the manual's "Officers and language models" page. API keys come only from environment variables.
+
 ## Project layout
 
 ```
@@ -68,6 +73,8 @@ src/begin/
   ai/        ship computer (point defense, assisted/automatic fire) and Begin-derived AI captains
   console/   the command parser and Begin's text displays
   help/      the manual library (Markdown topics) and the live coach
+  crew/      bridge officers: delegation, officer AI, conversation, rapport
+  llm/       optional LLM providers (Anthropic, OpenAI, OpenRouter, Ollama) on a background thread
   assets/    fonts and the manual's Markdown pages
   ui/        pygame presentation: tactical map, HUD panels, menus, effects
   battle.py  builds a World with AI attached from a battle description

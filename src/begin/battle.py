@@ -14,6 +14,8 @@ from .ai.computer import ShipComputer
 from .ai.personality import Personality
 from .content.schema import ContentDB
 from .core.rng import Rng
+from .crew.characters import load_officers
+from .crew.officers import Crew, default_crew
 from .sim.rules import DEFAULT_RULES, Rules
 from .sim.ship import PDDoctrine
 from .sim.world import World
@@ -62,6 +64,7 @@ class Battle:
     player_ship_id: int | None
     captains: dict[int, AICaptain]
     computers: dict[int, ShipComputer]
+    crew: Crew | None = None          # the player's bridge officers (delegated stations)
 
     def transfer_command(self, new_id: int) -> str | None:
         """Begin's `beam <ally>`: the player moves to a functional ally within transporter range.
@@ -94,6 +97,10 @@ class Battle:
             c = AICaptain(old.id, old.side, Personality.roll(faction, prng), prng, phase=old.id % 2)
             self.captains[old.id] = c
             w.add_controller(c)
+        if old is not None:
+            old.delegated.clear()      # the officers come with the captain
+        if self.crew is not None:
+            self.crew.move_to(new.id)
         self.player_ship_id = new.id
         return None
 
@@ -142,7 +149,12 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
             cap = AICaptain(ship.id, fleet.side, pers, prng, phase=ship.id % 2)
             captains[ship.id] = cap
             world.add_controller(cap)
-    return Battle(world, setup, player_ship, captains, computers)
+    crew = None
+    if player_ship is not None:
+        crew = Crew(player_ship, setup.player_side, content, default_crew(load_officers()), world.rng.derive("crew"),
+                    phase=1)
+        world.add_controller(crew)
+    return Battle(world, setup, player_ship, captains, computers, crew)
 
 
 def quick_battle(content: ContentDB, seed: int, player_faction: str = "federation",

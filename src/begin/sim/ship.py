@@ -353,6 +353,7 @@ class Ship:
     boarder_side: int = -1
     self_destruct: float = -1.0        # cycles remaining, -1 = off
     repair_priority: Kind | None = None
+    delegated: set[str] = field(default_factory=set)  # bridge stations run by officers (crew/stations.py)
     escape_time: float = 0.0
     surrender_time: float = 0.0
 

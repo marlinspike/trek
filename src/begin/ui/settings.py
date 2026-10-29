@@ -21,6 +21,7 @@ class Settings:
     custom: dict[str, object] = field(default_factory=dict)
     llm: dict[str, object] = field(default_factory=dict)       # provider settings (no secrets: keys come from env)
     hidden: dict[str, object] = field(default_factory=dict)    # the game's own hidden state
+    chatter: bool = True                                       # officers comment on the battle
     keys: dict[str, str] = field(default_factory=dict)         # Begin 2.0 `key` macros: "F5" -> "fire all phasers 10"
 
     @staticmethod

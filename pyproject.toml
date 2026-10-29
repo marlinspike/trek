@@ -16,7 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "mypy>=1.5"]
-llm = ["httpx>=0.27"]
+llm = ["anthropic"]
 
 [project.scripts]
 begin = "begin.__main__:main"

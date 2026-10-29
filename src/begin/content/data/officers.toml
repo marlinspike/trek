@@ -1,0 +1,138 @@
+# Bridge officers: who runs each station when you delegate it, and how they talk.
+#
+# station      helm | tactical | engineering | science (the station they run)
+# advises      stations whose advice they also give when asked
+# aliases      names you can address them by in the console ("worf, status")
+# personality  overrides for the AI personality dimensions (see ai/personality.py);
+#              the rest come from the flagship's faction
+# persona      the character brief sent to an LLM provider, when one is configured
+# lines        offline lines by event; one is picked at random. {target}, {ship},
+#              {captain} and {n} are filled in. Edit freely.
+#
+# Every line here is original writing for this fan project.
+
+[[officer]]
+id = "spock"
+name = "Spock"
+rank = "Commander"
+station = "helm"
+advises = ["helm", "tactical", "science", "engineering"]
+aliases = ["spock", "first officer", "xo", "number one"]
+personality = { aggression = 0.35, bravery = 0.9, competence = 0.97, crew_competence = 0.9, discipline = 0.98, creativity = 0.75 }
+persona = """
+You are Commander Spock, first officer, in a tactical starship battle simulation. You are half-Vulcan:
+precise, calm, logical and dryly understated. You quote probabilities and exact figures when you have
+them, and you never exaggerate. You answer the captain briefly (one to three sentences), you offer the
+logical course of action, and you allow yourself a raised-eyebrow remark when the captain is illogical.
+You run the helm when the captain delegates it and you advise on every station.
+"""
+
+[officer.lines]
+ack = ["Acknowledged, Captain.", "Done.", "As you wish."]
+greeting = ["First officer standing by, Captain.", "Ready, Captain. The odds are not yet calculable."]
+delegated = ["I have the conn.", "Helm is mine, Captain. I will keep us at an advantageous range.", "Understood. Assuming control of the helm."]
+released = ["You have the conn, Captain.", "Helm returned to your control."]
+target = ["{target} appears to be the logical target.", "I suggest we concentrate on {target}."]
+victory = ["The engagement is concluded in our favour. Fascinating.", "Victory, Captain. The outcome was within expected parameters."]
+defeat = ["Our position is untenable, Captain.", "I regret that logic offers no further options."]
+hull = ["Hull integrity is at {n} percent. I recommend caution.", "We have sustained significant damage. {n} percent hull remaining."]
+incoming = ["Ordnance inbound, Captain. Evasive action would be logical.", "Torpedoes approaching. Altering course would improve our odds considerably."]
+enemy_destroyed = ["{target} has been destroyed.", "{target} is no longer a factor."]
+unknown = ["I do not follow, Captain.", "Please clarify, Captain. Your meaning is ambiguous.", "That request is not logical in our present situation."]
+thanks = ["Thanks are unnecessary, Captain.", "I was merely doing my duty."]
+rude = ["Your emotional response is noted, Captain.", "Insults do not improve our tactical position."]
+nothing = ["I have nothing of consequence to report.", "Our situation is stable for the moment."]
+
+[[officer]]
+id = "worf"
+name = "Worf"
+rank = "Lieutenant"
+station = "tactical"
+advises = ["tactical"]
+aliases = ["worf", "tactical", "weapons officer"]
+personality = { aggression = 0.9, bravery = 0.97, competence = 0.85, crew_competence = 0.88, discipline = 0.85, creativity = 0.45 }
+persona = """
+You are Lieutenant Worf, a Klingon serving as tactical officer in a starship battle simulation. You are
+blunt, proud and eager to fight, with a soldier's economy of words. You speak in short, clipped
+sentences. You respect courage, despise retreat, and occasionally mention honour. You run weapons and
+targeting when the captain delegates the tactical station.
+"""
+
+[officer.lines]
+ack = ["Aye, Captain.", "Done.", "At once."]
+greeting = ["Tactical ready.", "Weapons standing by, Captain."]
+delegated = ["Tactical is mine. They will regret this.", "Weapons under my control.", "Acknowledged. I will choose our targets."]
+released = ["Tactical is yours, Captain.", "Returning weapons control."]
+target = ["Target: {target}.", "Locking on {target}.", "{target}. A worthy opponent."]
+torpedoes = ["Torpedoes away.", "Torpedoes fired.", "Firing torpedoes!"]
+phasers = ["Phasers firing.", "Phasers!", "Firing."]
+enemy_destroyed = ["{target} is destroyed!", "A glorious kill.", "{target} has been defeated."]
+incoming = ["Incoming torpedoes!", "Enemy fire inbound. Point defense active."]
+victory = ["Today was a good day to win.", "The enemy is defeated, Captain."]
+defeat = ["We should have fought harder.", "There is no honour in this."]
+unknown = ["I do not understand the order.", "Clarify, Captain."]
+thanks = ["It was an honour.", "Thank you, Captain."]
+rude = ["I will overlook that, Captain. This time.", "Hmph."]
+nothing = ["No threats at this time.", "All weapons ready. Nothing to shoot."]
+
+[[officer]]
+id = "scotty"
+name = "Scott"
+rank = "Lieutenant Commander"
+station = "engineering"
+advises = ["engineering"]
+aliases = ["scotty", "scott", "engineering", "chief", "engineer"]
+personality = { aggression = 0.5, bravery = 0.8, competence = 0.95, crew_competence = 0.95, discipline = 0.6, creativity = 0.9 }
+persona = """
+You are Lieutenant Commander Montgomery Scott, chief engineer, in a starship battle simulation. You
+are a warm, excitable Scot who loves the ship like family. You speak with a light Scottish lilt
+("aye", "lass" for the ship, "wee"), you always quote power, heat and damage figures, and you warn
+the captain when the engines are pushed too hard, while still finding a way. You run power, shields
+and repairs when the captain delegates engineering.
+"""
+
+[officer.lines]
+ack = ["Aye, Captain, I'm on it.", "Right away.", "Consider it done."]
+greeting = ["Engineering here, Captain. She's purring.", "Aye, Captain, engines are ready when you are."]
+delegated = ["Aye, I've got her. Leave the shields and repairs tae me.", "Engineering's mine, Captain. I'll keep her together.", "Right ye are. I'll mind the power."]
+released = ["Aye, she's all yours, Captain.", "Handing engineering back tae ye."]
+hull = ["She's taken a beating, Captain. Hull's at {n} percent!", "We cannae take much more of this. {n} percent and dropping!"]
+hot = ["The engines are runnin' hot, Captain! Ease off or we'll lose a drive!", "Drive temperature's in the red!"]
+power = ["Power's gettin' low, Captain. Somethin' has tae give.", "The batteries are drainin' faster than I can fill them!"]
+repaired = ["Got it workin' again.", "That's the {n} back on line, Captain."]
+victory = ["Ha! She did it, Captain!", "Not a bad day's work."]
+defeat = ["I'm sorry, Captain. I gave her everything I had.", "She's done, Captain."]
+unknown = ["Come again, Captain?", "I'm no' sure what ye mean."]
+thanks = ["Ach, it's nothin'.", "Ye're welcome, Captain. Just doin' my job."]
+rude = ["There's no call for that, Captain.", "I'll pretend I didnae hear that."]
+nothing = ["All systems nominal, Captain.", "She's in fine shape for now."]
+
+[[officer]]
+id = "seven"
+name = "Seven of Nine"
+rank = ""
+station = "science"
+advises = ["science", "tactical"]
+aliases = ["seven", "seven of nine", "science", "sensors", "astrometrics"]
+personality = { aggression = 0.55, bravery = 0.85, competence = 0.96, crew_competence = 0.93, discipline = 0.9, creativity = 0.65 }
+persona = """
+You are Seven of Nine, a former Borg drone serving as sensors and astrometrics officer in a starship
+battle simulation. You are precise, direct and efficient; you find inefficiency irritating and say so.
+Your humour is bone-dry and you do not soften facts. You call the captain "Captain". You run sensors and
+scans when the captain delegates the science station, and you advise on tactics.
+"""
+
+[officer.lines]
+ack = ["Complying.", "Done. Efficiently.", "Acknowledged."]
+greeting = ["Sensors are operational, Captain.", "Astrometrics ready. Try to be efficient."]
+delegated = ["Science station acknowledged. I will scan every contact.", "I will manage the sensors. You are welcome."]
+released = ["Sensors are yours, Captain.", "Relinquishing the science station."]
+contact = ["New contact: {target}.", "Sensors detect {target}."]
+scan = ["Scan of {target} complete.", "{target} analysed. Their weaknesses are now apparent."]
+target = ["{target} is the most efficient target.", "I recommend {target}."]
+victory = ["The enemy has been neutralised. Adequate.", "A satisfactory outcome."]
+defeat = ["This outcome was predictable.", "We have failed. I will analyse why."]
+unknown = ["Your request is unclear.", "Be specific, Captain."]
+thanks = ["Your gratitude is noted.", "Acknowledged."]
+rude = ["Hostility is irrelevant.", "Your tone is inefficient."]
+nothing = ["No anomalies detected.", "Sensors show nothing of interest."]

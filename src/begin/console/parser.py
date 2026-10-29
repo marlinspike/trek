@@ -21,10 +21,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Mapping, Sequence
 
 from ..sim.allies import ORDER_WORDS, SHIP_ORDERS, AllyStanding
 from ..sim.commands import (
-    AllyOrder, Command, ConfigureAutoload, ControlProbe, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
+    AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, Surrender,
     Tractor, Transport, TurnMounts,
@@ -121,6 +122,10 @@ VERBS: dict[str, tuple[str, ...]] = {
     "quit": ("quit", "exit"),
     "key": ("key",),
     "text": ("text",),
+    "delegate": ("delegate", "dg"),
+    "assume": ("assume", "takeback"),
+    "crew": ("crew", "bridge", "officers"),
+    "ask": ("ask", "say"),
 }
 
 WEAPONS = {
@@ -160,6 +165,8 @@ HELP = [
     "Library:  computer ship <nation> <class> · computer torpedo <class> · computer probe <class>",
     "Remake:   autoload tor|probe [<list>] [<type>] [<prox>] [time <t>] [on|off] · mode phasers|tubes manual|assisted|automatic",
     "          pd off|conservative|balanced|aggressive [reserve <banks>] · target <ship> [subsystem] · pause · resume · time <x>",
+    "Crew:     delegate|assume helm|tactical|engineering|science|all · crew [chatter on|off] · ask <officer> <words>",
+    "          <officer>, <words>   e.g. 'worf, fire all torpedoes' · 'spock, what do you recommend?'",
     "Other:    key F<n>|^<x> <commands; separated; by semicolons> · help · quit",
 ]
 
@@ -170,7 +177,7 @@ def _is_num(tok: str | None) -> bool:
     return tok is not None and bool(_NUM.match(tok))
 
 
-def _match(word: str, table: dict[str, tuple[str, ...]], min_len: int = 2) -> str | None:
+def _match(word: str, table: Mapping[str, Sequence[str]], min_len: int = 2) -> str | None:
     """Exact spelling first, then a unique prefix; a prefix of several entries prefers primary names."""
     for key, aliases in table.items():
         if word in aliases:
@@ -185,7 +192,7 @@ def _match(word: str, table: dict[str, tuple[str, ...]], min_len: int = 2) -> st
     return hits[0] if len(hits) == 1 else None
 
 
-def _candidates(word: str, table: dict[str, tuple[str, ...]]) -> list[str]:
+def _candidates(word: str, table: Mapping[str, Sequence[str]]) -> list[str]:
     hits = [key for key, aliases in table.items() if any(a.startswith(word) for a in aliases)]
     primary = [key for key in hits if table[key][0].startswith(word)]
     return primary or hits
@@ -1065,6 +1072,33 @@ class Parser:
         res.info.append("This remake has no text mode: the tactical display is always on. "
                         "Status commands print Begin's text displays here in the console.")
 
+    # bridge officers (remake extension) ---------------------------------
+    def _v_delegate(self, tok: _Tokens, res: ParseResult) -> None:
+        for st in _stations(tok):
+            res.commands.append(self._cmd(DelegateStation, station=st, on=True))
+
+    def _v_assume(self, tok: _Tokens, res: ParseResult) -> None:
+        for st in _stations(tok):
+            res.commands.append(self._cmd(DelegateStation, station=st, on=False))
+
+    def _v_crew(self, tok: _Tokens, res: ParseResult) -> None:
+        w = tok.next()
+        if w is not None and _match(w, {"chatter": ("chatter", "talk", "quiet")}) == "chatter":
+            on = not (w.startswith("q") or tok.take_word("off"))
+            tok.take_word("on")
+            res.actions.append(("crew", ("chatter", on)))
+            return
+        res.actions.append(("crew", None))
+
+    def _v_ask(self, tok: _Tokens, res: ParseResult) -> None:
+        raw = tok.raw.strip().split(None, 1)
+        rest = raw[1] if len(raw) > 1 else ""
+        m = re.match(r"^\s*([^\s,:]+(?:\s+of\s+nine)?)\s*[,:]?\s*(.*)$", rest, re.I)
+        if not m:
+            raise ParseError("Ask whom? e.g. 'ask worf status' or 'spock, what do you recommend?'")
+        tok.rest()
+        res.actions.append(("ask", (m.group(1), m.group(2))))
+
     def _v_key(self, tok: _Tokens, res: ParseResult) -> None:
         """Begin 2.0's `key <F#|^x> <string>`: bind a key to console commands (';' separates commands)."""
         name = tok.next()
@@ -1079,6 +1113,30 @@ class Parser:
         text = parts[2].strip() if len(parts) > 2 else ""
         tok.rest()
         res.actions.append(("key", (name, text)))
+
+
+STATION_WORDS: dict[str, tuple[str, ...]] = {
+    "helm": ("helm", "conn", "navigation", "nav"),
+    "tactical": ("tactical", "weapons", "fire"),
+    "engineering": ("engineering", "engines", "power", "damage"),
+    "science": ("science", "sensors", "scans"),
+}
+
+
+def _stations(tok: "_Tokens") -> list[str]:
+    tok.skip_filler()
+    words = tok.rest()
+    if not words or words[0] in ("all", "al", "everything", "stations"):
+        return list(STATION_WORDS)
+    out: list[str] = []
+    for w in words:
+        if w in ("and", "station", "stations", "to", "the"):
+            continue
+        st = _match(w, STATION_WORDS)
+        if st is None:
+            raise ParseError(f"No station called '{w}'. Stations: helm, tactical, engineering, science.")
+        out.append(st)
+    return out
 
 
 def parse(text: str, ctx: ParseContext) -> ParseResult:
