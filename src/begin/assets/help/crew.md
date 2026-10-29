@@ -25,7 +25,7 @@ crew
 ```
 
 - `delegate <station>` hands a station to its officer. `assume <station>` takes it back. `all` covers every station.
-- The **Bridge crew** panel shows who runs each station. Click **Captain** / **Officer** to switch, or click an officer's name to speak to them.
+- The **Crew** tab, beside **Contacts** and **Fleet** under the weapons, shows who runs each station. Click **Captain** / **Officer** to switch, or click an officer's name to speak to them.
 - `crew` lists your officers, who is running what, and how each of them feels about you.
 
 ## You stay in command

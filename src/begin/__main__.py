@@ -20,8 +20,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--size", default=None, help="window size, e.g. 1600x900")
     ap.add_argument("--screenshot")
     ap.add_argument("--cycles", type=float, default=0.0)
-    ap.add_argument("--overlay", default=None, help="for screenshots: help, damage, scan, debrief, manual[:<topic>]")
-    ap.add_argument("--console", default=None, help="for screenshots: console commands separated by ';'")
+    ap.add_argument("--overlay", default=None, help="for screenshots: help, damage, scan, debrief, manual[:<topic>], fleet[:<ally>], crew")
+    ap.add_argument("--console", default=None, help="for screenshots: console commands separated by ';' ('@5' runs 5 cycles)")
     ap.add_argument("--zoom", type=float, default=None, help="for screenshots: map zoom (pixels per unit)")
     ap.add_argument("--tournament", type=int)
     args = ap.parse_args(argv)
@@ -60,8 +60,13 @@ def main(argv: list[str] | None = None) -> int:
         if scene is not None:
             scene.overlay = None
             for cmd in (args.console or "").split(";"):
-                if cmd.strip():
-                    scene.run_console(cmd.strip())
+                cmd = cmd.strip()
+                if cmd.startswith("@"):  # '@5' lets 5 cycles pass before the next command
+                    scene.paused = False
+                    for _ in range(int(float(cmd[1:]) * 60)):
+                        scene.update(1 / 60)
+                elif cmd:
+                    scene.run_console(cmd)
             scene.paused = False
             steps = int(args.cycles * 60)
             for _ in range(steps):
@@ -69,6 +74,16 @@ def main(argv: list[str] | None = None) -> int:
             scene.paused = True if args.cycles <= 0 else scene.paused
             if args.overlay and args.overlay.startswith("manual"):
                 scene.open_manual(args.overlay.partition(":")[2] or None)
+            elif args.overlay and args.overlay.startswith("fleet"):
+                allies = scene.allies()
+                want = args.overlay.partition(":")[2].lower()
+                pick = next((a for a in allies if a.name.lower().startswith(want)), allies[0] if allies else None)
+                if pick is not None:
+                    scene.select_ally(pick.id)
+            elif args.overlay == "crew":
+                from .ui.hud import CrewPanel
+
+                scene.side_tabs.show(CrewPanel)
             elif args.overlay:
                 scene.overlay = args.overlay
             if args.zoom:

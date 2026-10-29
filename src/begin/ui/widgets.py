@@ -13,9 +13,9 @@ from . import theme
 @dataclass
 class Hotspot:
     rect: pygame.Rect
-    action: Callable[[], None]
+    action: Callable[[], object]
     tooltip: str = ""
-    right: Callable[[], None] | None = None
+    right: Callable[[], object] | None = None
     wheel: Callable[[int], None] | None = None
 
 
@@ -29,8 +29,8 @@ class UI:
         self.hotspots = []
         self.tooltip = ""
 
-    def add(self, rect: pygame.Rect, action: Callable[[], None], tooltip: str = "",
-            right: Callable[[], None] | None = None, wheel: Callable[[int], None] | None = None) -> None:
+    def add(self, rect: pygame.Rect, action: Callable[[], object], tooltip: str = "",
+            right: Callable[[], object] | None = None, wheel: Callable[[int], None] | None = None) -> None:
         self.hotspots.append(Hotspot(rect, action, tooltip, right, wheel))
         if tooltip and rect.collidepoint(self.mouse):
             self.tooltip = tooltip
@@ -41,9 +41,9 @@ class UI:
                 return h
         return None
 
-    def button(self, surf: pygame.Surface, rect: pygame.Rect, label: str, action: Callable[[], None],
+    def button(self, surf: pygame.Surface, rect: pygame.Rect, label: str, action: Callable[[], object],
                tooltip: str = "", active: bool = False, enabled: bool = True, accent: theme.Color = theme.FRIEND,
-               size: int = 12, right: Callable[[], None] | None = None) -> None:
+               size: int = 12, right: Callable[[], object] | None = None) -> None:
         hover = rect.collidepoint(self.mouse) and enabled
         bg = theme.BG_PANEL_HI if hover else theme.BG_INPUT
         if active:

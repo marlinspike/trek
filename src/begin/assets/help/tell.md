@@ -6,11 +6,12 @@ aliases: tell, order, orders, allies, ally, command allies, escort, defend, atta
 summary: Give standing orders to the other ships in your fleet, one at a time or by group.
 see: fleet, tactics, dock, tractor, transport
 ---
-`tell <ally> <order>` gives one of your ships a standing order. Allies keep following their orders until you change them, and they report back in the console. `order` means the same as `tell`.
+`tell <ally> <order>` gives one of your ships a standing order. Allies keep following their orders until you change them, and they report back in the console. `order` means the same as `tell`. Wherever an order names a ship, `me` means your own.
 
 ```console
 tell excalibur attack gorkon
 tell excalibur escort enterprise at 2000
+tell excalibur defend me
 tell 1 attack gorkon
 tell excalibur hold fire
 tell excalibur run
@@ -18,6 +19,12 @@ tell excalibur report
 ```
 
 An ally carries several orders at once: one **movement** order, a **target**, **hold fire** or **open fire**, a **weapon** preference and a **group**. A new movement order replaces the old one, but leaves the target alone, and so on.
+
+## From the screen
+
+Click an ally on the map, or its row under **Contacts**, to open the **Fleet** tab beside the map. It shows that ally's mission and has a button for the common orders: escort me, defend me, attack my target, hold or open fire, run, withdraw, stop, cancel, dock at the nearest base, disengage, release a tow, and report. The **1**, **2** and **3** buttons put the ally in a group, or take it out again. Use **‹** and **›** to step through your allies.
+
+On the map, each ally's mission is written under its name. A faint blue dashed line runs to the ship it is escorting, defending or towing, and a red one to its ordered target. The selected ally is marked with blue corners.
 
 ## Combat orders
 

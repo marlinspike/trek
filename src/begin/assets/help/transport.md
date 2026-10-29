@@ -15,6 +15,8 @@ board gorkon
 board gorkon 30
 ```
 
+From the screen: the **Board** button in the Target panel sends the default party to your target, and the panel says whether it is inside transporter range. In the **Fleet** tab, **Beam 20** sends 20 crew to the selected ally, and **Take command** moves you aboard it. A ship with enemy boarders on it shows their number in red under its name.
+
 ## Changing ships
 
 `beam <ally>` moves you and your command to one of your own ships within range. Your old ship carries on under an AI captain. Do this when your flagship is crippled but the fight is not over.

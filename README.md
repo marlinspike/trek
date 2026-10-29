@@ -44,6 +44,12 @@ Press **F1** in battle for the full controls list, or **H** for the manual. The 
 - **F** fires phasers, **T** fires torpedoes, **P** launches a probe, and **X** scans the target.
 - In the weapons panel, the **Mode** button switches a weapon group between Manual, Assisted and Automatic. The **PD** button sets the point-defense doctrine. Right-click a phaser bank to reserve it for point defense.
 
+**Allies, tractor, docking and boarding**
+- Click an ally on the map (or under **Contacts**) to open the **Fleet** tab: buttons for escort me, defend me, attack my target, hold fire, run, withdraw, dock at a base, groups 1 to 3, docking with that ally yourself, beaming crew across and taking command of it. Each ally's mission is written under its name, with faint lines to whoever its orders concern.
+- With an enemy targeted, the Target panel's **Tractor** and **Board** buttons lock a tractor beam on it and send a boarding party, and the panel says when you are in range.
+
+![Fleet orders and a tractor beam](docs/screenshots/fleet-orders.png)
+
 **Console**
 - Press **Enter** to open a Begin-style console. Every command in the Begin manual works in its documented forms, for example `fire phasers 1 2 3 spread 10`, `lock all tubes on bluefin with a dispersion of 45`, `load launchers 1 prox 500 time 20`, `tell the agena to attack the zantha` and `order terra escort altair at 5000`.
 - As in Begin, any word can be shortened to a unique prefix, so `fir tor al` fires all torpedoes and `fir tor 1,2,3` fires tubes 1 to 3. Filler words such as "the", "to", "at" and "on" are ignored.
@@ -59,7 +65,7 @@ Press **F1** in battle for the full controls list, or **H** for the manual. The 
 ![The coach](docs/screenshots/manual-coach.png)
 
 **Bridge officers**
-- Four officers can run stations for you: Spock (helm), Worf (tactical), Scott (engineering) and Seven of Nine (science). `delegate tactical` (or `delegate all`) hands a station over, `assume tactical` takes it back, and the Bridge crew panel has a toggle for each. Your own orders always override an officer for a few seconds, and officers never pick a different target from yours, retreat, surrender or self-destruct.
+- Four officers can run stations for you: Spock (helm), Worf (tactical), Scott (engineering) and Seven of Nine (science). `delegate tactical` (or `delegate all`) hands a station over, `assume tactical` takes it back, and the Crew tab has a toggle for each. Your own orders always override an officer for a few seconds, and officers never pick a different target from yours, retreat, surrender or self-destruct.
 - Talk to them by name: `spock, what do you recommend?`, `worf, fire all torpedoes`, `scotty, take engineering`, `ask seven status`. Each officer only acts for their own stations. They comment on the battle as it happens (`crew chatter off` quiets them), and they remember how you treat them.
 - Officers answer offline from the battle state. To have them answer in their own words, set an LLM provider (Anthropic, OpenAI, OpenRouter or a local Ollama) in `settings.json`; see the manual's "Officers and language models" page. API keys come only from environment variables.
 

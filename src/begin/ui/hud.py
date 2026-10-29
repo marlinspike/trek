@@ -9,14 +9,15 @@ To add a panel, subclass `Panel` and append it to `BattleScene.panels`.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, ClassVar
+from functools import partial
+from typing import TYPE_CHECKING, Callable, ClassVar
 
 import pygame
 
 from ..core.angles import bearing, norm360
 from ..sim.commands import (
-    ConfigureAutoload, ControlProbe, DelegateStation, FirePhasers, FireTorpedoes, LaunchProbe, Scan, SelectTarget, SetFireMode,
-    SetPhaserSpread, SetPointDefense, SetShields,
+    ConfigureAutoload, ControlProbe, DelegateStation, Dock, Scan, SelectTarget, SetFireMode, SetPhaserSpread,
+    SetPointDefense, SetShields, Tractor, Transport,
 )
 from ..sim.factory import SHIELD_FACINGS
 from ..sim.ship import BankRole, FireMode, Kind, PDDoctrine, Ship
@@ -39,7 +40,15 @@ class Panel:
     min_height: ClassVar[int] = 120
 
     def draw(self, surf: pygame.Surface, rect: pygame.Rect, hud: BattleScene) -> None:
+        y = theme.panel(surf, rect, self.title)
+        self.body(surf, rect, y, hud)
+
+    def body(self, surf: pygame.Surface, rect: pygame.Rect, y: int, hud: BattleScene) -> None:
+        """The panel's contents below its header; `TabbedPanel` calls this for the open tab."""
         raise NotImplementedError
+
+    def tab_label(self, hud: BattleScene) -> str:
+        return self.title
 
 
 def _kv(surf: pygame.Surface, x: int, y: int, k: str, v: str, vcol: theme.Color = theme.TEXT, w: int = 92) -> None:
@@ -160,7 +169,7 @@ class OwnShipPanel(Panel):
 
 class TargetPanel(Panel):
     title = "Target"
-    min_height = 196
+    min_height = 210
     weight = 0.0
 
     def draw(self, surf: pygame.Surface, rect: pygame.Rect, hud: BattleScene) -> None:
@@ -207,7 +216,7 @@ class TargetPanel(Panel):
             label = g or "hull"
             w = theme.text_width(label, 11) + 14
             hud.ui.button(surf, pygame.Rect(x, yy, w, 22), label,
-                          (lambda g=g: hud.issue(SelectTarget(ship_id=ship.id, target=c.id, subsystem=g))),
+                          partial(hud.issue, SelectTarget(ship_id=ship.id, target=c.id, subsystem=g)),
                           "Precision fire at a subsystem group (R cycles)", active=cur == g, accent=theme.CAUTION, size=11)
             x += w + 4
         # scan
@@ -216,6 +225,7 @@ class TargetPanel(Panel):
         label = "Scanning…" if pend else "Scan (X)"
         hud.ui.button(surf, pygame.Rect(rect.x + 12, yy, 92, 22), label,
                       lambda: hud.issue(Scan(ship_id=ship.id, target=c.id)), "Detailed sensor scan", enabled=pend is None)
+        self._close_actions(surf, rect, yy + 50, hud, ship, c.id, d)
         sc = c.scan
         if sc is None:
             theme.text(surf, "No scan data.", (rect.x + 114, yy + 4), theme.TEXT_FAINT, 12)
@@ -231,12 +241,44 @@ class TargetPanel(Panel):
                    (rect.x + 12, yy + 28), theme.TEXT_DIM, 11)
         hud.ui.add(pygame.Rect(rect.x, yy - 2, rect.width, 44), lambda: hud.toggle_overlay("scan"), "Open scan view")
 
+    @staticmethod
+    def _close_actions(surf: pygame.Surface, rect: pygame.Rect, yy: int, hud: BattleScene, ship: Ship, tid: int,
+                       d: float) -> None:
+        """Tractor and boarding (Begin 2.0): buttons plus how close we are to each range."""
+        rules = hud.world.rules
+        x = rect.x + 12
+        has_tractor = ship.cls.has_tractor and ship.tractor is not None
+        holding = ship.tractor_target == tid
+        tractor_ok = has_tractor and ship.tractor is not None and ship.tractor.intact
+        hud.ui.button(surf, pygame.Rect(x, yy, 92, 22), "Release" if holding else "Tractor",
+                      (lambda: hud.issue(Tractor(ship_id=ship.id, target=None if holding else tid))),
+                      f"Tractor beam: holds and drags the target (range {rules.tractor_range:,.0f}). Console: 'tractor'"
+                      if has_tractor else "This ship has no tractor beam.",
+                      active=holding, enabled=tractor_ok or holding, accent=theme.SHIELD)
+        n = ship.boarding_party()
+        transporters = any(not t.destroyed for t in ship.transporters)
+        hud.ui.button(surf, pygame.Rect(x + 98, yy, 92, 22), f"Board ×{n}",
+                      (lambda: hud.issue(Transport(ship_id=ship.id, target=tid, count=n))),
+                      f"Beam {n} crew across as a boarding party (range {rules.beam_range:,.0f}). Their shield facing us "
+                      "and ours facing them must be down. Console: 'board <ship> <crew>'",
+                      enabled=transporters, accent=theme.CREW)
+        if d <= rules.tractor_range:
+            note, col = "in tractor and transporter range", theme.GOOD
+        elif d <= rules.beam_range:
+            note, col = f"in transporter range · tractor at {rules.tractor_range:,.0f}", theme.GOOD
+        else:
+            note, col = f"close to {rules.beam_range:,.0f} to board", theme.TEXT_FAINT
+        tgt = hud.world.ships.get(tid)
+        if tgt is not None and tgt.boarders > 0 and tgt.boarder_side == ship.side:
+            note, col = f"our boarders aboard: {tgt.boarders}", theme.CREW
+        theme.text(surf, note, (rect.right - 12, yy + 4), col, 11, anchor="topright")
+
 
 # ------------------------------------------------------------------ weapons
 
 class WeaponsPanel(Panel):
     title = "Weapons"
-    min_height = 238
+    min_height = 188
     weight = 0.0
 
     def draw(self, surf: pygame.Surface, rect: pygame.Rect, hud: BattleScene) -> None:
@@ -266,10 +308,10 @@ class WeaponsPanel(Panel):
             theme.text(surf, f"{i + 1}", (r.x + 5, r.y + 3), theme.TEXT if b.intact else theme.ALERT, 11, "mono")
             theme.text(surf, MODE_LETTER[b.fire_mode] + (" " + role if role else ""), (r.right - 4, r.y + 3),
                        theme.TEXT_DIM, 10, anchor="topright")
-            hud.ui.add(r, (lambda i=i: hud.fire_phasers((i,))),
+            hud.ui.add(r, partial(hud.fire_phasers, (i,)),
                        f"Bank {i + 1}: {b.charge:.1f}/{ship.cls.banks_charge:.0f} · arc {b.mount.arc_width:.0f}° · "
                        f"{b.fire_mode.value} · {b.role.value}. Click fires, right-click toggles PD reserve.",
-                       right=(lambda i=i: hud.toggle_reserve(i)))
+                       right=partial(hud.toggle_reserve, i))
         yy = y + 34
         hud.ui.button(surf, pygame.Rect(x0, yy, 110, 22), "Fire phasers (F)", lambda: hud.fire_phasers(None),
                       "Fire every charged bank that bears on the target", accent=theme.PHASER)
@@ -308,7 +350,7 @@ class WeaponsPanel(Panel):
             theme.text(surf, f"{i + 1}", (r.x + 5, r.y + 3), theme.TEXT, 11, "mono")
             theme.text(surf, lab, (r.centerx + 4, r.bottom - 12), col, 10, "mono", anchor="center")
             prox = t.loaded.prox if t.loaded else t.load_prox
-            hud.ui.add(r, (lambda i=i: hud.fire_torpedoes((i,))),
+            hud.ui.add(r, partial(hud.fire_torpedoes, (i,)),
                        f"Tube {i + 1}: {('loaded ' + t.loaded.ordnance.upper() + f' prox {prox:.0f}') if t.loaded else lab} · "
                        f"autoload {'on' if t.autoload else 'off'} {t.load_ordnance.upper()} · arc {t.mount.arc_width:.0f}°")
         yy += 34
@@ -353,8 +395,12 @@ class CrewPanel(Panel):
     min_height = 128
     weight = 0.0
 
-    def draw(self, surf: pygame.Surface, rect: pygame.Rect, hud: BattleScene) -> None:
-        y = theme.panel(surf, rect, self.title)
+    def tab_label(self, hud: BattleScene) -> str:
+        ship = hud.player
+        n = len(ship.delegated) if ship is not None else 0
+        return f"Crew · {n} on duty" if n else "Crew"
+
+    def body(self, surf: pygame.Surface, rect: pygame.Rect, y: int, hud: BattleScene) -> None:
         ship = hud.player
         bridge = hud.bridge
         if ship is None or bridge is None:
@@ -370,11 +416,11 @@ class CrewPanel(Panel):
             name_r = pygame.Rect(rect.x + 100, ry, rect.width - 214, rh - 2)
             hover = name_r.collidepoint(hud.ui.mouse)
             theme.text(surf, o.title, (name_r.x, ry + 3), theme.CREW if on or hover else theme.TEXT, 12)
-            hud.ui.add(name_r, (lambda o=o: hud.address(o.aliases[0] if o.aliases else o.id)),
+            hud.ui.add(name_r, partial(hud.address, o.aliases[0] if o.aliases else o.id),
                        f"Talk to {o.name} (type after the comma)")
             btn = pygame.Rect(rect.right - 106, ry, 94, rh - 3)
             hud.ui.button(surf, btn, "Officer" if on else "Captain",
-                          (lambda st=station, on=on: hud.issue(DelegateStation(ship_id=ship.id, station=st, on=not on))),
+                          partial(hud.issue, DelegateStation(ship_id=ship.id, station=station, on=not on)),
                           f"{'Take back' if on else 'Hand over'} the {station} station", active=on, accent=theme.CREW,
                           size=11)
 
@@ -384,8 +430,11 @@ class ContactsPanel(Panel):
     min_height = 90
     weight = 1.0
 
-    def draw(self, surf: pygame.Surface, rect: pygame.Rect, hud: BattleScene) -> None:
-        y = theme.panel(surf, rect, self.title)
+    def tab_label(self, hud: BattleScene) -> str:
+        n = sum(1 for c in hud.obs.contacts().values() if c.visible)
+        return f"Contacts · {n}"
+
+    def body(self, surf: pygame.Surface, rect: pygame.Rect, y: int, hud: BattleScene) -> None:
         ship = hud.player
         obs = hud.obs
         if ship is None:
@@ -413,7 +462,7 @@ class ContactsPanel(Panel):
                 theme.text(surf, f"+{len(rows) - k} more", (rect.x + 12, ry), theme.TEXT_FAINT, 11)
                 break
             r = pygame.Rect(rect.x + 4, ry - 2, rect.width - 8, rh)
-            if sid == ship.target:
+            if sid == ship.target or sid == hud.selected_ally:
                 pygame.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=3)
             elif r.collidepoint(hud.ui.mouse):
                 pygame.draw.rect(surf, (16, 27, 49), r, border_radius=3)
@@ -421,11 +470,158 @@ class ContactsPanel(Panel):
             theme.text(surf, note, (rect.x + rect.width * 0.48, ry), theme.TEXT_DIM, 11)
             theme.text(surf, f"{d:>7,.0f}", (rect.right - 12, ry), theme.TEXT, 12, "mono", anchor="topright")
             if sid in obs.contacts():
-                hud.ui.add(r, (lambda sid=sid: hud.issue(SelectTarget(ship_id=ship.id, target=sid,
-                                                                      subsystem=ship.target_subsystem))),
+                hud.ui.add(r, partial(hud.issue, SelectTarget(ship_id=ship.id, target=sid, subsystem=ship.target_subsystem)),
                            "Select as target")
             else:
-                hud.ui.add(r, (lambda sid=sid: hud.center_on(sid)), "Centre the map on this ally")
+                hud.ui.add(r, partial(hud.select_ally, sid), "Give this ally orders",
+                           right=partial(hud.center_on, sid))
 
 
-__all__ = ["ContactsPanel", "CrewPanel", "OwnShipPanel", "Panel", "TargetPanel", "WeaponsPanel", "hull_diagram"]
+# ------------------------------------------------------------------ fleet
+
+# (label, order, needs our target, tooltip): one-click standing orders, the same as `tell <ally> ...`
+FLEET_ORDERS: list[tuple[str, str, bool, str]] = [
+    ("Escort me", "escort", False, "Stay with the flagship at 3,000 and fight what comes near."),
+    ("Defend me", "defend", False, "Stay close and shoot whatever threatens the flagship."),
+    ("Attack target", "attack", True, "Close and attack the flagship's current target."),
+    ("Run", "run", False, "Run away from the enemy."),
+    ("Withdraw", "withdraw", False, "Pull back out of torpedo range and wait."),
+    ("Stop", "stop", False, "All stop."),
+    ("Cancel", "cancel", False, "Cancel movement orders: the ally's own captain takes over."),
+]
+
+
+class FleetPanel(Panel):
+    """Orders for one ally at a time: the `tell` vocabulary as buttons, plus docking and transfers with it."""
+
+    title = "Fleet"
+
+    def tab_label(self, hud: BattleScene) -> str:
+        n = len(hud.allies())
+        return f"Fleet · {n}" if n else "Fleet"
+
+    def body(self, surf: pygame.Surface, rect: pygame.Rect, y: int, hud: BattleScene) -> None:
+        ship = hud.player
+        allies = hud.allies()
+        if ship is None or not allies:
+            theme.text(surf, "No allies under your command.", (rect.x + 12, y), theme.TEXT_FAINT, 12)
+            return
+        ids = [a.id for a in allies]
+        if hud.selected_ally not in ids:
+            hud.selected_ally = ids[0]
+        k = ids.index(hud.selected_ally)
+        a = allies[k]
+        x0 = rect.x + 12
+        # selector
+        hud.ui.button(surf, pygame.Rect(x0, y, 22, 22), "‹", lambda: hud.select_ally(ids[(k - 1) % len(ids)]),
+                      "Previous ally", enabled=len(ids) > 1, size=14)
+        d = math.hypot(a.x - ship.x, a.y - ship.y)
+        name_r = pygame.Rect(x0 + 28, y, rect.width - 80, 22)
+        theme.text(surf, a.name, (name_r.x, y + 2), theme.ALLY, 14, weight="semibold")
+        nx = name_r.x + theme.text_width(a.name, 14, weight="semibold") + 8
+        hf = max(0.0, a.structure) / a.structure_max
+        theme.text(surf, f"{a.cls.abbrev} · {d:,.0f} · hull {hf * 100:.0f}%", (nx, y + 5), theme.TEXT_DIM, 11)
+        hud.ui.add(name_r, lambda: hud.center_on(a.id), "Centre the map on this ally")
+        hud.ui.button(surf, pygame.Rect(rect.right - 34, y, 22, 22), "›", lambda: hud.select_ally(ids[(k + 1) % len(ids)]),
+                      "Next ally", enabled=len(ids) > 1, size=14)
+        st = hud.obs.ally_order(a.id)
+        names = {s.id: s.name for s in hud.world.ships.values()}
+        mission = st.summary(names) if st is not None else ""
+        theme.text(surf, "Mission", (x0, y + 28), theme.TEXT_DIM, 11)
+        theme.text(surf, mission or "own initiative", (x0 + 56, y + 28), theme.TEXT if mission else theme.TEXT_FAINT, 11)
+        # orders
+        yy = y + 48
+        bw = (rect.width - 24 - 4 * 3) // 4
+        cells: list[tuple[str, Callable[[], object], str, bool, bool]] = []
+        for label, order, needs_target, tip in FLEET_ORDERS:
+            tgt: int | None = ship.target if needs_target else (ship.id if order in ("escort", "defend") else None)
+            active = st is not None and ((st.movement == order and st.move_target in (None, ship.id))
+                                         or (order == "attack" and st.target is not None and st.target == ship.target))
+            enabled = not needs_target or ship.target is not None
+            cells.append((label, partial(hud.order_ally, a.id, order, tgt), f"{tip} Console: 'tell {a.name} {order}'",
+                          active, enabled))
+        holding = st is not None and st.hold_fire
+        cells.insert(3, ("Open fire" if holding else "Hold fire", partial(hud.order_ally, a.id, "open" if holding else "hold"),
+                         "Weapons free" if holding else "Hold fire until told otherwise", holding, True))
+        if a.docked_to is not None:
+            cells.append(("Undock", partial(hud.order_ally, a.id, "undock"), f"Leave {names.get(a.docked_to, 'the base')}",
+                          True, True))
+        else:
+            base = hud.nearest_base(a)
+            cells.append(("Dock at base", partial(hud.order_ally, a.id, "dock", base.id if base else None),
+                          f"Go and dock with {base.name} to repair and resupply" if base else "No friendly base with docking bays.",
+                          st is not None and st.movement == "dock", base is not None))
+        cells.append(("Disengage", partial(hud.order_ally, a.id, "disengage"), "Forget the ordered target; pick our own",
+                      False, st is not None and st.target is not None))
+        towing = a.tractor_target is not None
+        cells.append(("Release tow", partial(hud.order_ally, a.id, "release"), "Drop the tractor beam", towing, towing))
+        cells.append(("Report", partial(hud.ally_report, a.id), f"Status report from {a.name}. Console: 'tell {a.name} report'",
+                      False, True))
+        for i, (label, fn, tip, active, enabled) in enumerate(cells):
+            r = pygame.Rect(x0 + (i % 4) * (bw + 4), yy + (i // 4) * 26, bw, 22)
+            hud.ui.button(surf, r, label, fn, tip, active=active, enabled=enabled, accent=theme.ALLY, size=11)
+        yy += 26 * ((len(cells) + 3) // 4) + 4
+        # groups
+        theme.text(surf, "Group", (x0, yy + 4), theme.TEXT_DIM, 11)
+        group = st.group if st is not None else None
+        for g in (1, 2, 3):
+            r = pygame.Rect(x0 + 48 + (g - 1) * 30, yy, 26, 22)
+            hud.ui.button(surf, r, str(g), partial(hud.order_ally, a.id, "leave" if group == g else "join", None,
+                                                    None if group == g else float(g)),
+                          f"{'Leave' if group == g else 'Join'} group {g}; then 'tell {g} ...' orders the whole group",
+                          active=group == g, accent=theme.ALLY, size=11)
+        # our own ship with this ally: dock, beam crew, transfer command
+        x = x0 + 48 + 3 * 30 + 12
+        bays = a.cls.mass_capacity > 0
+        docked = ship.docked_to == a.id
+        hud.ui.button(surf, pygame.Rect(x, yy, 74, 22), "Undock" if docked else "Dock",
+                      partial(hud.issue, Dock(ship_id=ship.id, host=None if docked else a.id)),
+                      f"Dock with {a.name} to repair and resupply (range {hud.world.rules.dock_range:,.0f})" if bays
+                      else f"The {a.cls.name} has no docking bays.", active=docked, enabled=bays or docked, accent=theme.GOOD,
+                      size=11)
+        hud.ui.button(surf, pygame.Rect(x + 78, yy, 74, 22), "Beam 20",
+                      partial(hud.issue, Transport(ship_id=ship.id, target=a.id, count=20)),
+                      f"Beam 20 crew to {a.name} (range {hud.world.rules.beam_range:,.0f}, facing shields down). "
+                      f"Console: 'beam {a.name} <crew>'", accent=theme.CREW, size=11)
+        hud.ui.button(surf, pygame.Rect(x + 156, yy, rect.right - 12 - (x + 156), 22), "Take command",
+                      partial(hud.take_command, a.id), f"Beam aboard {a.name} and command her. Console: 'beam {a.name}'",
+                      accent=theme.FRIEND, size=11)
+
+
+class TabbedPanel(Panel):
+    """Several panels sharing one slot, with a tab strip for a header."""
+
+    weight = 1.0
+    min_height = 150
+
+    def __init__(self, tabs: list[Panel]) -> None:
+        self.tabs = tabs
+        self.active = 0
+
+    def show(self, cls: type[Panel]) -> None:
+        for i, t in enumerate(self.tabs):
+            if isinstance(t, cls):
+                self.active = i
+
+    def draw(self, surf: pygame.Surface, rect: pygame.Rect, hud: BattleScene) -> None:
+        theme.panel(surf, rect)
+        x = rect.x + 6
+        for i, t in enumerate(self.tabs):
+            label = t.tab_label(hud).upper()
+            w = theme.text_width(label, 11, weight="semibold") + 20
+            r = pygame.Rect(x, rect.y + 2, w, 22)
+            on = i == self.active
+            if on:
+                pygame.draw.line(surf, theme.FRIEND, (r.x + 4, rect.y + 1), (r.x + 28, rect.y + 1), 2)
+            elif r.collidepoint(hud.ui.mouse):
+                pygame.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=3)
+            theme.text(surf, label, (r.x + 4, rect.y + 7), theme.TEXT if on else theme.TEXT_FAINT, 11, weight="semibold")
+            hud.ui.add(r, partial(setattr, self, "active", i), t.title)
+            x += w + 2
+        self.tabs[self.active].body(surf, rect, rect.y + 28, hud)
+
+
+__all__ = [
+    "ContactsPanel", "CrewPanel", "FLEET_ORDERS", "FleetPanel", "OwnShipPanel", "Panel", "TabbedPanel", "TargetPanel",
+    "WeaponsPanel", "hull_diagram",
+]

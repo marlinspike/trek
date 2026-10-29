@@ -14,6 +14,8 @@ tractor off
 release
 ```
 
+With an enemy targeted, the **Tractor** button in the Target panel does the same, and becomes **Release** while the beam holds. The panel tells you when the target is inside tractor range. On the map the beam is a pale blue band between the two ships.
+
 - Only ships fitted with a tractor beam can use one, and it must be working.
 - The beam costs energy every cycle you hold it.
 - How firmly it holds depends on your tractor's strength against the other ship's mass, and weakens with distance. A heavy ship, or one more than 1,250 units away, breaks free.

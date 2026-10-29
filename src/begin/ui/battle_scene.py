@@ -9,6 +9,7 @@ the accumulator; orders can still be given while paused.
 from __future__ import annotations
 
 import math
+from functools import partial
 from dataclasses import dataclass
 from typing import Callable
 
@@ -18,8 +19,9 @@ from ..battle import Battle
 from ..console import reports
 from ..console.parser import ParseContext, parse
 from ..core.angles import bearing, norm360
+from ..sim.allies import AllyStanding
 from ..sim.commands import (
-    Command, FirePhasers, FireTorpedoes, LaunchProbe, Pursue, Scan, SelectTarget, SetBanks, SetHelm,
+    AllyOrder, Command, FirePhasers, FireTorpedoes, LaunchProbe, Pursue, Scan, SelectTarget, SetBanks, SetHelm,
     SetPointDefense, SetShields,
 )
 from ..sim.events import CommandRejected, Event, Message, ScanCompleted, Tone
@@ -32,7 +34,10 @@ from ..crew.conversation import Bridge, Utterance
 from ..crew.officers import station_of
 from ..help.coach import HelpContext
 from .manual import ManualView
-from .hud import PD_CYCLE, SUB_GROUPS, ContactsPanel, CrewPanel, OwnShipPanel, Panel, TargetPanel, WeaponsPanel, hull_diagram
+from .hud import (
+    PD_CYCLE, SUB_GROUPS, ContactsPanel, CrewPanel, FleetPanel, OwnShipPanel, Panel, TabbedPanel, TargetPanel, WeaponsPanel,
+    hull_diagram,
+)
 from .tactical import Snapshot, TacticalView
 from .widgets import UI
 
@@ -106,7 +111,9 @@ class BattleScene:
         self.hist_i = 0
         self.toast: tuple[str, theme.Color, float] | None = None
         self.overlay: str | None = "help_brief"
-        self.panels: list[Panel] = [OwnShipPanel(), TargetPanel(), WeaponsPanel(), CrewPanel(), ContactsPanel()]
+        self.side_tabs = TabbedPanel([ContactsPanel(), FleetPanel(), CrewPanel()])
+        self.panels: list[Panel] = [OwnShipPanel(), TargetPanel(), WeaponsPanel(), self.side_tabs]
+        self.selected_ally: int | None = None
         self.assessment = Assessment.begin(self.world)
         self.drag: tuple[int, int] | None = None
         self.dragged = False
@@ -228,6 +235,36 @@ class BattleScene:
         if pose:
             self.cam.follow = None
             self.cam.cx, self.cam.cy = pose[0], pose[1]
+
+    def allies(self) -> list[Ship]:
+        """Our other living ships, nearest first."""
+        p = self.player
+        out = [s for s in self.obs.own_ships() if p is None or s.id != p.id]
+        if p is not None:
+            out.sort(key=lambda s: math.hypot(s.x - p.x, s.y - p.y))
+        return out
+
+    def select_ally(self, sid: int) -> None:
+        self.selected_ally = sid
+        self.side_tabs.show(FleetPanel)
+
+    def order_ally(self, ally: int, order: str, target: int | None = None, value: float | None = None) -> None:
+        p = self.player
+        if p is not None:
+            self.issue(AllyOrder(ship_id=p.id, ally=ally, order=order, target=target, value=value))
+
+    def nearest_base(self, ally: Ship) -> Ship | None:
+        """The nearest of our ships with docking bays, other than the ally itself."""
+        bases = [s for s in self.obs.own_ships() if s.id != ally.id and s.cls.mass_capacity > 0]
+        return min(bases, key=lambda s: math.hypot(s.x - ally.x, s.y - ally.y), default=None)
+
+    def ally_report(self, sid: int) -> None:
+        ally = self.obs.own(sid)
+        if ally is not None:
+            self._show(reports.report_lines(self.obs, ally, self.obs.ally_order(sid) or AllyStanding()), None)
+
+    def take_command(self, sid: int) -> None:
+        self._transfer(sid)
 
     def _log(self, text: str, color: theme.Color = theme.TEXT, mono: bool = False) -> None:
         self.log.append(LogLine(self.world.tick, text, color, mono))
@@ -370,6 +407,8 @@ class BattleScene:
             return
         if sid is not None and sid in self.obs.contacts():
             self.issue(SelectTarget(ship_id=p.id, target=sid, subsystem=p.target_subsystem))
+        elif sid is not None and sid != p.id and self.obs.own(sid) is not None:
+            self.select_ally(sid)
 
     def _right_click(self, pos: tuple[int, int]) -> None:
         p = self.player
@@ -805,7 +844,7 @@ class BattleScene:
         obs = self.world.observe(self.side)
         p = self.player
         self.view.draw(surf, obs, self.prev, self.now, alpha, self.player_id,
-                       p.target if p else None, p.target_subsystem if p else None)
+                       p.target if p else None, p.target_subsystem if p else None, self.selected_ally)
         self.ui.add(self.map_rect, lambda: None)
         self._map_overlay_text(surf)
         self._draw_printout(surf)
@@ -867,7 +906,7 @@ class BattleScene:
         x += 78
         for s in SPEEDS:
             label = f"{s:g}×"
-            self.ui.button(surf, pygame.Rect(x, y, 46, 24), label, (lambda s=s: setattr(self, "speed", s)),
+            self.ui.button(surf, pygame.Rect(x, y, 46, 24), label, partial(setattr, self, "speed", s),
                            "Simulation speed ([ and ])", active=self.speed == s)
             x += 50
         theme.text(surf, "Orders also work while paused.", (x + 8, y + 5), theme.TEXT_FAINT, 11)

@@ -420,6 +420,11 @@ class Ship:
     def can_move(self) -> bool:
         return self.max_attainable_warp > 0.0
 
+    def boarding_party(self) -> int:
+        """Default boarding party: a quarter of the crew, at least 6, at most what the transporters lift at once."""
+        lift = self.cls.beam_cap * max(1, len(self.transporters))
+        return int(max(6.0, min(lift, self.crew * 0.25)))
+
     def sensor_range(self) -> float:
         if self.sensors is None or self.sensors.destroyed:
             return 0.0

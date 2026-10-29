@@ -321,6 +321,9 @@ class Parser:
             if self.obs.contact(sid) is None and self.obs.own(sid) is None:
                 raise ParseError(f"No contact #{sid}.")
             return sid
+        if t in ("me", "us", "flagship") and not any(n == t for n, _ in self._ship_table()):
+            tok.next()  # 'tell tau escort me'
+            return self.ship.id
         table = self._ship_table()
         # allow multi-word names: try the longest run of tokens that matches
         for span in (3, 2, 1):
@@ -974,7 +977,7 @@ class Parser:
         target = self.resolve_ship(tok)
         n = tok.opt_number()
         if n is None:
-            n = max(6.0, min(self.ship.cls.beam_cap * max(1, len(self.ship.transporters)), self.ship.crew * 0.25))
+            n = self.ship.boarding_party()
         res.commands.append(self._cmd(Transport, target=target, count=int(n)))
 
     def _v_detonate(self, tok: _Tokens, res: ParseResult) -> None:

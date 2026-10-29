@@ -101,6 +101,14 @@ class AllyStanding:
             bits.append(f"Recover {name_of.get(self.recover, '?')}")
         return ", ".join(bits) if bits else ".."
 
+    def summary(self, name_of: dict[int, str]) -> str:
+        """The mission plus the ordered target, for the map and the Fleet tab; empty when the ally is on its own."""
+        m = self.mission(name_of)
+        bits = [] if m == ".." else [m]
+        if self.target is not None:
+            bits.append(f"{'attack' if self.movement is None else 'target'} {name_of.get(self.target, '?')}")
+        return ", ".join(bits)
+
 
 __all__ = [
     "AllyStanding", "DEFAULT_APPROACH_RANGE", "DEFAULT_ESCORT_RANGE", "DEFEND_RANGE", "MOVEMENT_ORDERS",

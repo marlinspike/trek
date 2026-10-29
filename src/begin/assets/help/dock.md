@@ -14,6 +14,8 @@ undock
 dock off
 ```
 
+From the screen: select the base in the **Fleet** tab (click it on the map) and press **Dock**, which becomes **Undock** while you are aboard. A docked ship is labelled *docked* on the map.
+
 ## While you are docked
 
 - Repairs run twice as fast, and even destroyed systems can be rebuilt.

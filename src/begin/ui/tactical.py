@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import Callable
 
 import pygame
 
@@ -81,7 +82,8 @@ class TacticalView:
     # ----------------------------------------------------------------- drawing
 
     def draw(self, surf: pygame.Surface, obs: Observation, prev: Snapshot | None, now: Snapshot, alpha: float,
-             player_id: int | None, target_id: int | None, selected_sub: str | None) -> None:
+             player_id: int | None, target_id: int | None, selected_sub: str | None,
+             selected_ally: int | None = None) -> None:
         cam = self.cam
         r = cam.rect
         if self._overlay is None or self._overlay.get_size() != surf.get_size():
@@ -118,13 +120,17 @@ class TacticalView:
             p = lerp_pose(prev.ordnance.get(o.id) if prev else None, b, alpha)
             self._ordnance(surf, o, p)
 
+        names = {s.id: s.name for s in obs.own_ships(alive_only=False)}
+        names.update({c.id: c.label if c.identified else f"#{c.id}" for c in obs.contacts().values()})
+        self._links(surf, overlay, obs, pose, player_id, selected_ally)
+
         # ships
         for s in obs.own_ships(alive_only=False):
             if not s.exists:
                 continue
             p = pose(s.id)
             if p:
-                self._own_ship(surf, overlay, s, p, s.id == player_id, obs)
+                self._own_ship(surf, overlay, s, p, s.id == player_id, obs, s.id == selected_ally, names)
         for c in obs.contacts().values():
             p = pose(c.id)
             if p:
@@ -226,8 +232,50 @@ class TacticalView:
             rect.center = (int(sx), int(sy))
             pygame.draw.arc(surf, col, rect, a0, a1, 2 if fl is None else 3)
 
+    def _links(self, surf: pygame.Surface, overlay: pygame.Surface, obs: Observation,
+               pose: Callable[[int], Pose | None], player_id: int | None, selected_ally: int | None) -> None:
+        """Tractor beams, and each ally's standing order as a faint line to whoever it concerns."""
+        cam = self.cam
+        for s in obs.own_ships():
+            ps = pose(s.id)
+            if ps is None:
+                continue
+            a = cam.to_screen(ps[0], ps[1])
+            if s.tractor_target is not None:
+                pt = pose(s.tractor_target)
+                if pt is not None:
+                    self._beam(overlay, a, cam.to_screen(pt[0], pt[1]), theme.SHIELD)
+            if s.id == player_id:
+                continue
+            st = obs.ally_order(s.id)
+            if st is None:
+                continue
+            bright = 0.95 if s.id == selected_ally else 0.5
+            if st.move_target is not None and st.movement not in (None, "course", "run", "withdraw", "stop"):
+                pt = pose(st.move_target)
+                if pt is not None:
+                    self._dashed(surf, theme.dim(theme.ALLY, bright), a, cam.to_screen(pt[0], pt[1]), 3, 7)
+            if st.target is not None:
+                pt = pose(st.target)
+                if pt is not None:
+                    self._dashed(surf, theme.dim(theme.HOSTILE, bright * 0.8), a, cam.to_screen(pt[0], pt[1]), 3, 7)
+
+    @staticmethod
+    def _beam(overlay: pygame.Surface, a: tuple[float, float], b: tuple[float, float], col: theme.Color) -> None:
+        """A tractor beam: a soft band with a bright core, widening toward the held ship."""
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        L = math.hypot(dx, dy)
+        if L < 1:
+            return
+        nx, ny = -dy / L, dx / L
+        for w, alpha in ((7.0, 40), (4.0, 70)):
+            pts = [(a[0] + nx * w * 0.4, a[1] + ny * w * 0.4), (b[0] + nx * w, b[1] + ny * w),
+                   (b[0] - nx * w, b[1] - ny * w), (a[0] - nx * w * 0.4, a[1] - ny * w * 0.4)]
+            pygame.draw.polygon(overlay, (*col, alpha), pts)
+        pygame.draw.line(overlay, (*col, 200), a, b, 1)
+
     def _own_ship(self, surf: pygame.Surface, overlay: pygame.Surface, s: Ship, p: Pose, is_player: bool,
-                  obs: Observation) -> None:
+                  obs: Observation, selected: bool = False, names: dict[int, str] | None = None) -> None:
         cam = self.cam
         if not cam.visible(p[0], p[1], 200):
             return
@@ -252,9 +300,28 @@ class TacticalView:
                      for sh in s.shields]
         self._shield_ring(surf, s.id, sx, sy, p[2], 62 * k, strengths)
         label = s.name if s.alive else f"{s.name} — {s.status.value}"
-        theme.text(surf, label, (sx + 34 * k + 6, sy - 8), color, 12, weight="medium")
+        if s.alive and s.docked_to is not None:
+            label += " · docked"
+        lx = sx + 34 * k + 6
+        theme.text(surf, label, (lx, sy - 8), color, 12, weight="medium")
+        ly = sy + 6
         if is_player:
-            theme.text(surf, f"w{s.warp:.1f}", (sx + 34 * k + 6, sy + 6), theme.TEXT_DIM, 10, "mono")
+            theme.text(surf, f"w{s.warp:.1f}", (lx, ly), theme.TEXT_DIM, 10, "mono")
+            ly += 12
+        elif s.alive:
+            st = obs.ally_order(s.id)
+            mission = st.summary(names or {}) if st is not None else ""
+            if mission:
+                theme.text(surf, mission, (lx, ly), theme.TEXT_FAINT if not selected else theme.TEXT_DIM, 10)
+                ly += 12
+        if s.alive and s.boarders > 0 and s.boarder_side != s.side:
+            theme.text(surf, f"boarders aboard: {s.boarders}", (lx, ly), theme.ALERT, 10, weight="medium")
+        if selected:
+            b = 62 * k + 8
+            for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+                cx, cy = sx + dx * b, sy + dy * b
+                pygame.draw.line(surf, theme.ALLY, (cx, cy), (cx - dx * 7, cy), 1)
+                pygame.draw.line(surf, theme.ALLY, (cx, cy), (cx, cy - dy * 7), 1)
 
     def _contact(self, surf: pygame.Surface, c: ContactView, p: Pose, targeted: bool, sub: str | None) -> None:
         cam = self.cam
