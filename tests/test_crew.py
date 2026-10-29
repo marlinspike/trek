@@ -364,3 +364,19 @@ def test_llm_commands_are_cleaned_and_questions_only_suggest() -> None:
     assert cmds == ["helm 90 warp 6"]
     assert is_question("what do you recommend?") and is_question("should we close in")
     assert not is_question("fire all torpedoes") and not is_question("take tactical")
+
+
+def test_old_home_folder_is_copied_into_config(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from begin.paths import migrate_legacy, project_root
+
+    old, new = tmp_path / "home", tmp_path / "config"
+    (old / "help").mkdir(parents=True)
+    (old / "settings.json").write_text('{"llm": {"provider": "ollama", "model": "lfm3"}}')
+    (old / "begin2.key").write_text("F2 fire all torpedoes\n")
+    (old / "help" / "mine.md").write_text("---\ntitle: Mine\n---\nHello")
+    assert sorted(migrate_legacy(old, new)) == ["begin2.key", "help/mine.md", "settings.json"]
+    assert "lfm3" in (new / "settings.json").read_text() and (old / "settings.json").exists()
+    (new / "settings.json").write_text("{}")
+    assert migrate_legacy(old, new) == []  # once only: the project's own file wins
+    root = project_root()
+    assert root is not None and (root / "config" / "README.md").is_file()

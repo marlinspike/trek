@@ -34,7 +34,7 @@ coach
 Every page is a Markdown file. You can change the wording, add tips, or write new pages without touching the code. The path of the page you are reading is shown in the bottom-right corner of this window.
 
 - The bundled pages live in `src/begin/assets/help/`.
-- To keep your own versions separate, put `.md` files in `~/.begin-remake/help/` (or in the folder named by `BEGIN_HELP_DIR`). A file there replaces the bundled page with the same name, and new files become new pages.
+- To keep your own versions separate, put `.md` files in the project's `config/help/` folder (or in the folder named by `BEGIN_HELP_DIR`). A file there replaces the bundled page with the same name, and new files become new pages.
 - Pages reload automatically when the files change.
 
 The page format is described in [[writing-help|Writing help pages]].

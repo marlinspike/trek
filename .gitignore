@@ -11,3 +11,8 @@ dist/
 runs/
 .DS_Store
 .begin-sync.tar.gz
+.begin-sync.bundle
+# the player's own settings, key macros and manual pages (config/README.md and the example are committed)
+config/*
+!config/README.md
+!config/settings.example.json

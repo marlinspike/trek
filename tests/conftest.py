@@ -7,6 +7,12 @@ from begin.content.schema import ContentDB
 from begin.sim.world import World
 
 
+@pytest.fixture(autouse=True)
+def _private_config(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep tests away from the project's own config/ folder."""
+    monkeypatch.setenv("BEGIN_HOME", str(tmp_path_factory.mktemp("config")))
+
+
 @pytest.fixture(scope="session")
 def content() -> ContentDB:
     return default_content()

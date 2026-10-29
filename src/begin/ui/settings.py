@@ -1,16 +1,16 @@
-"""Persisted user settings (JSON in the user's home directory)."""
+"""Persisted user settings (config/settings.json in the project folder; see begin.paths)."""
 
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from ..paths import config_dir
+
 
 def settings_dir() -> Path:
-    base = os.environ.get("BEGIN_HOME")
-    return Path(base) if base else Path.home() / ".begin-remake"
+    return config_dir()
 
 
 @dataclass

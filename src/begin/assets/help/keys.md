@@ -22,7 +22,7 @@ key
 
 ## Keeping a key file
 
-You can also write your bindings in a text file called `begin2.key` in the settings folder (`~/.begin-remake/`), one per line, in the same form as the command: `F2 fire all torpedoes`. They are loaded when the game starts.
+You can also write your bindings in a text file called `begin2.key` in the project's `config/` folder, one per line, in the same form as the command: `F2 fire all torpedoes`. They are loaded when the game starts.
 
 ## Text mode
 

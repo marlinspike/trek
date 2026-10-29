@@ -14,6 +14,8 @@ You need Python 3.10 or newer. macOS's system `python3` is 3.9, which is too old
 
 If `begin` works but `python -m begin` says `No module named begin`, the venv's `python` link points at a different Python from the one the game was installed into. That happens when a venv first made with macOS's Python 3.9 is upgraded in place. Check with `ls -l .venv/bin/python*`, then rebuild the venv with the newer Python (`python3.15 -m venv --clear .venv`, then reinstall), or just use the `begin` command.
 
+Your settings, key macros and manual pages live in the project's [`config/`](config/README.md) folder, which git ignores apart from its README and an example settings file. API keys are never stored; they come from environment variables.
+
 Useful shortcuts:
 
 | Command | What it does |
@@ -65,7 +67,7 @@ Press **F1** in battle for the full controls list, or **H** for the manual. The 
 **Manual and coach**
 - `help` or `man` opens the in-game manual: every command, grouped by station, with search, links and examples you can click to put in the console. `help tor` (or `man fire`, `help tell`, any short form) opens that command's page.
 - `coach` opens a page that reads your current battle and suggests what to do next: whether your target is inside your torpedo envelope, which torpedo or probe suits it, which shield to turn toward it, and the command for each step. The weapon pages compare every torpedo and probe type with live numbers from the game data.
-- The manual is a folder of Markdown files in `src/begin/assets/help/`. Edit them, or put your own pages in `~/.begin-remake/help/` (a file with the same name replaces the bundled page). Changes show up the next time the page is opened. The format is described on the manual's "Writing help pages" page.
+- The manual is a folder of Markdown files in `src/begin/assets/help/`. Edit them, or put your own pages in `config/help/` (a file with the same name replaces the bundled page). Changes show up the next time the page is opened. The format is described on the manual's "Writing help pages" page.
 
 ![The coach](docs/screenshots/manual-coach.png)
 

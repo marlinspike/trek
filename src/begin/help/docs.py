@@ -1,7 +1,7 @@
 """The help library: Markdown topic files with a small front-matter header.
 
 Topics ship in `begin/assets/help/*.md`. Players can edit them, or add
-their own, in the user help folder (`~/.begin-remake/help/`, or the folder
+their own, in the project's help folder (`config/help/`, or the folder
 named by the BEGIN_HELP_DIR environment variable): a file there with the
 same name replaces the bundled one. Files are re-read when they change, so
 edits show up the next time the manual opens.
@@ -40,8 +40,9 @@ def user_help_dir() -> Path:
     env = os.environ.get("BEGIN_HELP_DIR")
     if env:
         return Path(env)
-    base = os.environ.get("BEGIN_HOME")
-    return (Path(base) if base else Path.home() / ".begin-remake") / "help"
+    from ..paths import config_dir
+
+    return config_dir() / "help"
 
 
 @dataclass

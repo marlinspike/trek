@@ -12,7 +12,7 @@ Requests run in the background, so a slow or failing model never stalls the batt
 
 ## Setting it up
 
-The quickest way is from a terminal, which saves the `llm` section of `~/.begin-remake/settings.json` for you and then asks Spock one question to prove it works:
+The quickest way is from a terminal, which saves the `llm` section of `config/settings.json` in the project folder for you and then asks Spock one question to prove it works:
 
 ```
 begin --llm provider=ollama model=lfm3 think=off
