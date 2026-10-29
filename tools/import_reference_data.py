@@ -63,6 +63,14 @@ OVERRIDES: dict[str, dict[str, tuple[Any, str]]] = {
     },
 }
 
+# Torpedo design changes the player asked for, kept here so a re-import doesn't undo them.
+ORDNANCE_OVERRIDES: dict[str, dict[str, tuple[Any, str]]] = {
+    "mk7": {"arm_time": (0.4, "was 1.0: arms 1,200 units out, beyond its own 575-unit blast"),
+            "blast_scale": (1.15, "[E] blast radius 575 instead of 500")},
+    "mk8": {"arm_time": (0.6, "was 1.0: arms 900 units out, beyond its own 863-unit blast"),
+            "blast_scale": (1.15, "[E] blast radius 863 instead of 750")},
+}
+
 REPAIR_FIELDS = {
     "reactor": "reactor_repair", "battery": "battery_repair", "phaser": "banks_repair",
     "tube": "tube_repair", "launcher": "probe_repair", "drive": "drive_repair",
@@ -131,7 +139,11 @@ def main(src: Path, out: Path) -> None:
         olines.append(f"name = {toml_value(t['desc'])}")
         for f in ("velocity", "damage", "arm_time", "max_time_fuse", "max_prox", "homing",
                   "speed_variance", "warhead_type", "charge_time", "load_energy"):
-            olines.append(f"{f} = {toml_value(t[f])}")
+            value, note = ORDNANCE_OVERRIDES.get(t["name"].lower(), {}).get(f, (t[f], ""))
+            olines.append(f"{f} = {toml_value(value)}" + (f"   # {note}" if note else ""))
+        for f, (value, note) in ORDNANCE_OVERRIDES.get(t["name"].lower(), {}).items():
+            if f not in t:   # remake-only fields
+                olines.append(f"{f} = {toml_value(value)}" + (f"   # {note}" if note else ""))
         olines.append("")
     for p in probes:
         olines.append("[[probe]]")

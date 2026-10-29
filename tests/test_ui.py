@@ -109,4 +109,7 @@ def test_coach_warns_when_proximity_is_wider_than_the_blast(content) -> None:  #
     w.execute(SelectTarget(ship_id=me.id, target=dr.id))
     w.step()
     t = next(t for t in tips(HelpContext(content, w.observe(0), me)) if t.title == "Proximity fuse")
-    assert t.priority == 1 and "barely scratch" in t.text and t.commands == ["autoload tor prox 250"]
+    from begin.sim.systems.ordnance import suggested_prox
+
+    want = suggested_prox(content.torpedoes["mk7"], dr.cls.max_warp, w.rules)
+    assert t.priority == 1 and "barely scratch" in t.text and t.commands == [f"autoload tor prox {want:.0f}"]

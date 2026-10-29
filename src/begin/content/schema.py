@@ -161,6 +161,7 @@ class TorpedoDef:
     reveal_radius: float = 0.0
     reveal_cycles: float = 0.0
     special: bool = False         # never offered as a normal load; made by a crew project
+    blast_scale: float = 1.0      # [E] × the blast radius Begin's formula gives (the warhead is unchanged)
 
     @property
     def is_plasma(self) -> bool:

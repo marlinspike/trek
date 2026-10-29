@@ -90,7 +90,7 @@ def load_content(data_dir: Path = DATA_DIR) -> ContentDB:
             speed_variance=float(t["speed_variance"]), warhead_type=int(t["warhead_type"]),
             charge_time=float(t["charge_time"]), load_energy=float(t["load_energy"]),
             reveal_radius=float(t.get("reveal_radius", 0.0)), reveal_cycles=float(t.get("reveal_cycles", 0.0)),
-            special=bool(t.get("special", False)),
+            special=bool(t.get("special", False)), blast_scale=float(t.get("blast_scale", 1.0)),
         )
     for p in ordnance.get("probe", []):
         db.probes[p["id"]] = ProbeDef(

@@ -35,6 +35,7 @@ from ..sim.commands import (
 from ..sim.objectives import Objective
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import TARGETABLE_GROUPS, Ship
+from ..sim.systems.ordnance import blast_radius
 from ..sim.systems.phasers import bank_bears_point, bank_ready
 
 if TYPE_CHECKING:
@@ -297,7 +298,7 @@ def _torpedo_shot(p: Planner, obs: Observation, ship: Ship, o: Objective, primar
     spec = obs.content.torpedoes[loaded[0].loaded.ordnance]  # type: ignore[union-attr]
     speed = spec.velocity * rules.units_per_warp
     reach = speed * (spec.arm_time + spec.max_time_fuse) * 0.9
-    blast_r = spec.damage * rules.splash_mult * rules.splash_radius_per_damage
+    blast_r = blast_radius(spec, rules)
     c = obs.contact(primary)
     if c is None or blast_r <= 0:
         return None

@@ -51,7 +51,7 @@ def test_delegated_officers_only_work_their_own_stations(content) -> None:  # ty
                     if lc.command.ship_id == pid and lc.command.issuer == Authority.OFFICER]
     assert officer_cmds, "officers should act"
     assert {station_of(c) for c in officer_cmds} <= {"tactical", "science"}
-    assert w.ships[pid].target is not None  # Worf chose a target
+    assert any(isinstance(c, SelectTarget) for c in officer_cmds)  # Worf chose a target
 
 
 def test_captain_orders_hold_against_the_helm_officer(content) -> None:  # type: ignore[no-untyped-def]

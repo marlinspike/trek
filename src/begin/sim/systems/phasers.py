@@ -78,7 +78,7 @@ def _detonate_split(world: World, t: Torpedo, n: int) -> None:
     from .ordnance import blast
 
     kind = DamageKind.SHIELD_BORE if t.spec.is_shield_bore else DamageKind.BLAST
-    blast(world, t.x, t.y, t.yield_, "torpedo", t.owner, n, kind, None, None)
+    blast(world, t.x, t.y, t.yield_, "torpedo", t.owner, n, kind, None, None, radius_scale=t.spec.blast_scale)
 
 
 def fire_bank(

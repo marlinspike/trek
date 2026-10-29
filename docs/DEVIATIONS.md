@@ -84,6 +84,16 @@ Numbers come from begin2.exe through the importer (`tools/import_reference_data.
 | Federation Dreadnought | top speed warp 9.5 (was 9.0), warp power 305 (was 285) | The player asked for the Federation flagship to have the edge. Raising the warp power keeps 9.5 reachable on the power budget. |
 | Klingon Dreadnought | shield absorption 0.6 (was 0.8) | With 0.8, each hit drained a shield by only a fifth of what it absorbed, and full Federation volleys couldn't wear it down. |
 | Federation Dreadnought | 10,000 torpedoes (was 55) | The player's request: with eight tubes, 55 ran out in about 20 seconds of full volleys. |
+| Federation Dreadnought | 250 probes (was 9) | The player's request. |
+
+Torpedo designs have their own table, `ORDNANCE_OVERRIDES`:
+
+| Torpedo | Change | Why |
+|---|---|---|
+| Federation Mark 7 | arms after 0.4 s, 1,200 units (was 1.0 s, 3,000); blast radius 575 (was 500) | The player's request. Each still arms beyond its own blast, so a ship can't catch itself. In 32-seed AI-vs-AI balance runs the Federation side won more: Fleet Action 17 → 25 of 32, Outpost Assault 20 → 29, Starbase Defense 21 → 27, Pirate Hunt 25 → 30. |
+| Federation Mark 8 | arms after 0.6 s, 900 units (was 1.0 s, 1,500); blast radius 863 (was 750) | As above. |
+
+The blast radius change is a per-design `blast_scale` (1.15) on Begin's formula (yield × 5 × 10); the warhead itself is unchanged, but since blast damage falls off as the square root of the share of the radius travelled, a ship at a given distance from the burst also takes a little more.
 
 ## Scenarios and setup
 

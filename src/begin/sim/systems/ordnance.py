@@ -308,7 +308,8 @@ def resolve_detonations(world: World) -> None:
             kind = DamageKind.SHIELD_BORE if t.spec.is_shield_bore else (
                 DamageKind.PLASMA if t.spec.is_plasma else DamageKind.BLAST)
             blast(world, t.x, t.y, t.yield_, "torpedo", t.owner, t.salvo, kind,
-                  t.target if t.target is not None else t.aim_ship, t.target_subsystem)
+                  t.target if t.target is not None else t.aim_ship, t.target_subsystem,
+                  radius_scale=t.spec.blast_scale)
         for p in boom_p:
             blast(world, p.x, p.y, p.yield_, "probe", p.owner, 1, DamageKind.BLAST, p.target, None)
 
@@ -331,8 +332,9 @@ def reveal_burst(world: World, t: Torpedo) -> None:
 
 
 def blast_radius(spec: TorpedoDef, rules: Rules) -> float:
-    """[R] how far a warhead's blast reaches: yield × splash multiplier × radius per damage."""
-    return spec.damage * rules.splash_mult * rules.splash_radius_per_damage
+    """[R] how far a warhead's blast reaches: yield × splash multiplier × radius per damage
+    (× the design's own blast scale [E])."""
+    return spec.damage * rules.splash_mult * rules.splash_radius_per_damage * spec.blast_scale
 
 
 def suggested_prox(spec: TorpedoDef, target_max_warp: float, rules: Rules) -> float:
@@ -391,13 +393,14 @@ def blast(
     target: int | None = None,
     selector: str | None = None,
     exclude: int | None = None,
+    radius_scale: float = 1.0,
 ) -> None:
     """[R] total = yield × 5; radius = total × 10; dmg = total × sqrt(1 − d/radius)."""
     if yield_ <= 0:
         return
     rules = world.rules
     total = yield_ * rules.splash_mult
-    radius = total * rules.splash_radius_per_damage
+    radius = total * rules.splash_radius_per_damage * radius_scale
     world.emit(Detonation(world.tick, x, y, radius, source, yield_ * salvo))
     att = world.ships.get(owner) if owner is not None else None
     hit_any = False
