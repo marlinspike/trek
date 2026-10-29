@@ -56,6 +56,7 @@ OVERRIDES: dict[str, dict[str, tuple[Any, str]]] = {
         "max_warp": (9.5, ""),
         "warp_power": (305.0, "three drives must supply 9.5 × warp_power_use (95) to reach warp 9.5"),
         "torps_carried": (10000, "the player's flagship: a deep magazine so eight tubes can keep firing"),
+        "probes_carried": (250, "the player's flagship: probes to spare"),
     },
     "klingon.dr": {
         "shield_absorption": (0.6, "was 0.8: full Federation volleys couldn't wear its shields down"),
