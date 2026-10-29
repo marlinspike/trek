@@ -1,0 +1,56 @@
+# Faction tactical doctrines [E]. They bias the AI's utility scores; the
+# individual captain's personality and competence still decide.
+#
+# weapon_bias: multipliers on how attractive each weapon's engagement envelope
+#   is when choosing the "prime weapon" (Begin chose by dominance ratios only).
+# focus_fire: tendency to pile onto the side's designated target (0..1).
+# probe_use: willingness to commit probes outside a sure kill (0..1).
+# retreat_threshold_scale: multiplies the Begin retreat test (bravery × 0.75).
+# surrender_willingness: 0 = never strikes colors, 1 = surrenders readily.
+# point_defense: default point-defense doctrine for this faction's computers.
+# cloak_ambush: Romulan habit of cloaking while closing / repositioning.
+# self_destruct: multiplier on the Begin last-stand roll.
+
+[doctrine.starfleet]
+weapon_bias = {phaser = 1.0, torpedo = 1.05, probe = 0.9}
+focus_fire = 0.75
+probe_use = 0.45
+retreat_threshold_scale = 1.0
+surrender_willingness = 0.15
+point_defense = "balanced"
+cloak_ambush = 0.0
+self_destruct = 0.3
+prefers_disabling = true
+
+[doctrine.klingon]
+weapon_bias = {phaser = 1.35, torpedo = 0.9, probe = 1.0}
+focus_fire = 0.45
+probe_use = 0.55
+retreat_threshold_scale = 1.0
+surrender_willingness = 0.02
+point_defense = "conservative"
+cloak_ambush = 0.0
+self_destruct = 1.0
+prefers_disabling = false
+
+[doctrine.romulan]
+weapon_bias = {phaser = 0.6, torpedo = 1.5, probe = 0.8}
+focus_fire = 0.85
+probe_use = 0.4
+retreat_threshold_scale = 1.0
+surrender_willingness = 0.0
+point_defense = "balanced"
+cloak_ambush = 0.8
+self_destruct = 1.4
+prefers_disabling = false
+
+[doctrine.orion]
+weapon_bias = {phaser = 1.2, torpedo = 1.0, probe = 0.7}
+focus_fire = 0.3
+probe_use = 0.3
+retreat_threshold_scale = 1.3
+surrender_willingness = 0.6
+point_defense = "conservative"
+cloak_ambush = 0.0
+self_destruct = 0.6
+prefers_disabling = true

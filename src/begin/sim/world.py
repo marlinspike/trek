@@ -1,0 +1,621 @@
+"""The authoritative simulation: owns every piece of mutable battle state.
+
+One `step()` advances one fixed tick (1/10 of a Begin cycle). Rendering,
+input, AI and officers never touch state directly: they read observations
+and submit typed commands, which the world validates and applies at a
+well-defined point in the step. Everything random draws from the world's
+seeded stream, so a battle is fully reproducible from (content, rules,
+setup, seed, command log).
+
+Step order:
+  1. sensors refresh each side's contact picture
+  2. controllers whose cadence is due think and queue commands
+  3. queued commands are validated and applied (authority holds enforced)
+  4. power, shields and weapon charging per ship
+  5. helm and movement (tractor towing applied after movement)
+  6. ordnance flight, fusing and blasts
+  7. repair, scans, self-destruct, boarding, cloak reveal decay
+  8. escape and battle outcome checks
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Iterable, Protocol
+
+from ..content.schema import ContentDB
+from ..core.rng import Rng
+from .commands import AllyOrder, Authority, Command, Rejected
+from .events import CommandRejected, Event, Message, ShipStatusChanged, SubsystemDamaged, Tone
+from .factory import build_ship
+from .ordnance import Probe, Torpedo
+from .rules import DEFAULT_RULES, Rules
+from .ship import HelmMode, LoadedProbe, Launcher, Ship, ShipStatus, Subsystem
+from .systems import sensors as sensors_sys
+from .systems.helm import move_ship, update_helm
+from .systems.ordnance import blast, fly_ordnance, resolve_detonations
+from .systems.power import update_power, warp_budget
+from .systems.repair import update_repair
+
+if TYPE_CHECKING:
+    from .observation import Observation
+
+TONES = {t.value: t for t in Tone}
+
+
+class Controller(Protocol):
+    """Anything that issues commands on a cadence: AI captain, ship computer, officer.
+
+    Controllers receive only an `Observation` (their side's knowledge), never
+    the world itself.
+    """
+
+    side: int
+    period: int  # ticks between decisions
+    phase: int   # tick offset so controllers don't all think on the same tick
+
+    def think(self, obs: Observation) -> Iterable[Command]: ...
+
+
+@dataclass(slots=True)
+class PendingScan:
+    ship_id: int
+    target_id: int
+    done_tick: int
+
+
+@dataclass(slots=True)
+class Outcome:
+    over: bool = False
+    winner: int | None = None   # side, or None for mutual destruction / disengagement
+    tick: int = 0
+    reason: str = ""
+
+
+@dataclass(slots=True)
+class LoggedCommand:
+    tick: int
+    command: Command
+    accepted: bool
+    reason: str = ""
+
+
+@dataclass
+class World:
+    content: ContentDB
+    rules: Rules = DEFAULT_RULES
+    seed: int = 1
+    player_side: int = 0
+
+    tick: int = 0
+    ships: dict[int, Ship] = field(default_factory=dict)
+    torpedoes: list[Torpedo] = field(default_factory=list)
+    probes: list[Probe] = field(default_factory=list)
+    intel: dict[int, sensors_sys.SideIntel] = field(default_factory=dict)
+    controllers: list[Controller] = field(default_factory=list)
+    outcome: Outcome = field(default_factory=Outcome)
+
+    events: list[Event] = field(default_factory=list)          # since last take_events()
+    step_events: list[Event] = field(default_factory=list)     # produced by the last step
+    command_log: list[LoggedCommand] = field(default_factory=list)
+    ally_orders: dict[int, AllyOrder] = field(default_factory=dict)
+    torpedo_pressure: dict[int, float] = field(default_factory=dict)
+    side_names: dict[int, str] = field(default_factory=dict)
+
+    _next_id: int = 1
+    _queue: list[Command] = field(default_factory=list)
+    _holds: dict[tuple[int, str], tuple[Authority, int]] = field(default_factory=dict)
+    _scans: list[PendingScan] = field(default_factory=list)
+    _probe_serial: int = 0
+    _obs_cache: dict[int, Observation] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.rng = Rng(self.seed)
+        self._names_rng = self.rng.derive("names")
+
+    # ------------------------------------------------------------ setup
+
+    def new_id(self) -> int:
+        i = self._next_id
+        self._next_id += 1
+        return i
+
+    @property
+    def time(self) -> float:
+        """Elapsed battle time in cycles."""
+        return self.tick * self.rules.dt
+
+    def add_ship(
+        self,
+        class_id: str,
+        side: int,
+        x: float,
+        y: float,
+        course: float = 0.0,
+        warp: float = 0.0,
+        name: str | None = None,
+        captain: str | None = None,
+    ) -> Ship:
+        cls = self.content.classes[class_id]
+        faction = self.content.factions[cls.faction]
+        if name is None:
+            used = {s.name for s in self.ships.values()}
+            free = [n for n in cls.ship_names if n not in used]
+            name = self._names_rng.choice(free) if free else f"{cls.abbrev}-{self._next_id}"
+        if captain is None:
+            captain = self._names_rng.choice(list(faction.captain_names)) if faction.captain_names else ""
+        ship = build_ship(self.content, self.rules, self.new_id(), class_id, side, name, captain, x, y, course, warp)
+        self.ships[ship.id] = ship
+        self.intel.setdefault(side, sensors_sys.SideIntel(side))
+        self.side_names.setdefault(side, faction.name)
+        update_power(self, ship, self.rules.dt)  # settle max warp and shields before the first tick
+        sensors_sys.update_sensors(self)
+        return ship
+
+    def add_controller(self, c: Controller) -> None:
+        self.controllers.append(c)
+
+    # ------------------------------------------------------------ events
+
+    def emit(self, ev: Event) -> None:
+        self.events.append(ev)
+        self.step_events.append(ev)
+
+    def take_events(self) -> list[Event]:
+        out = self.events
+        self.events = []
+        return out
+
+    def say(self, ship: Ship, text: str, tone: str = "info", public: bool = False, speaker: str | None = None) -> None:
+        self.emit(Message(self.tick, text, TONES.get(tone, Tone.INFO), speaker=speaker if speaker is not None else ship.name,
+                          ship_id=ship.id, visible_to=None if public else frozenset({ship.side})))
+
+    def label(self, side: int, ship_id: int) -> str:
+        s = self.ships.get(ship_id)
+        if s is None:
+            return f"contact {ship_id}"
+        if s.side == side:
+            return s.name
+        c = self.intel.get(side, sensors_sys.SideIntel(side)).contacts.get(ship_id)
+        if c is not None and c.identified:
+            return f"{s.name} ({s.cls.abbrev})"
+        return f"unidentified contact {ship_id}"
+
+    # ------------------------------------------------------------ sensor facade
+
+    def apparent_position(self, side: int, ship_id: int) -> tuple[float, float] | None:
+        return sensors_sys.apparent_position(self, side, ship_id)
+
+    def track(self, side: int, ship_id: int) -> tuple[float, float, float, float] | None:
+        return sensors_sys.track(self, side, ship_id)
+
+    def is_visible(self, side: int, ship_id: int) -> bool:
+        return sensors_sys.is_visible(self, side, ship_id)
+
+    def intel_quality(self, side: int, ship_id: int) -> float:
+        return sensors_sys.intel_quality(self, side, ship_id)
+
+    def observe(self, side: int) -> Observation:
+        """The read-only picture one side is entitled to (cached per tick)."""
+        from .observation import Observation
+
+        obs = self._obs_cache.get(side)
+        if obs is None or obs.tick != self.tick:
+            obs = Observation(self, side)
+            self._obs_cache[side] = obs
+        return obs
+
+    # ------------------------------------------------------------ commands
+
+    def submit(self, cmd: Command) -> None:
+        """Queue a command for the start of the next step."""
+        self._queue.append(cmd)
+
+    def execute(self, cmd: Command) -> str | None:
+        """Validate and apply a command now. Returns the rejection reason, or None."""
+        ship = self.ships.get(cmd.ship_id)
+        reason: str | None = None
+        if ship is None or not ship.exists:
+            reason = "That ship is no longer under command."
+        elif cmd.needs_crew and (ship.crew <= 0 or ship.status != ShipStatus.ACTIVE):
+            reason = f"{ship.name} is not responding ({ship.status.value})."
+        else:
+            reason = self._held(cmd)
+            if reason is None:
+                try:
+                    cmd.validate(self, ship)
+                except Rejected as r:
+                    reason = str(r)
+        self.command_log.append(LoggedCommand(self.tick, cmd, reason is None, reason or ""))
+        if reason is not None:
+            self.emit(CommandRejected(self.tick, cmd.ship_id, cmd.name, reason, cmd.source))
+            if cmd.issuer >= Authority.CAPTAIN and ship is not None:
+                self.emit(Message(self.tick, f"Unable to comply: {reason}", Tone.CAUTION, speaker=cmd.source,
+                                  ship_id=ship.id, visible_to=frozenset({ship.side})))
+            return reason
+        assert ship is not None
+        cmd.apply(self, ship)
+        if cmd.issuer >= Authority.CAPTAIN:
+            until = self.tick + int(self.rules.captain_hold_cycles * self.rules.ticks_per_cycle)
+            for ch in cmd.channels():
+                self._holds[(ship.id, ch)] = (cmd.issuer, until)
+        return None
+
+    def _held(self, cmd: Command) -> str | None:
+        for ch in cmd.channels():
+            h = self._holds.get((cmd.ship_id, ch))
+            if h is None:
+                continue
+            auth, until = h
+            if until < self.tick:
+                del self._holds[(cmd.ship_id, ch)]
+                continue
+            if cmd.issuer < auth:
+                return f"Captain's order holds {ch.split('.')[0]} control."
+        return None
+
+    def release_holds(self, ship_id: int, prefix: str = "") -> None:
+        """Hand channels back to automation (delegating a station)."""
+        for key in [k for k in self._holds if k[0] == ship_id and k[1].startswith(prefix)]:
+            del self._holds[key]
+
+    def holds(self, ship_id: int) -> dict[str, float]:
+        """Remaining hold time (cycles) per channel, for the UI."""
+        out = {}
+        for (sid, ch), (_, until) in self._holds.items():
+            if sid == ship_id and until >= self.tick:
+                out[ch] = (until - self.tick) * self.rules.dt
+        return out
+
+    # ------------------------------------------------------------ the step
+
+    def step(self) -> None:
+        if self.outcome.over:
+            return
+        rules = self.rules
+        dt = rules.dt
+        self.step_events = []
+
+        sensors_sys.update_sensors(self)
+
+        for c in self.controllers:
+            if c.period > 0 and (self.tick - c.phase) % c.period == 0:
+                for cmd in c.think(self.observe(c.side)):
+                    self._queue.append(cmd)
+        queue, self._queue = self._queue, []
+        for cmd in queue:
+            self.execute(cmd)
+
+        ships = list(self.ships.values())
+        for s in ships:
+            if s.exists:
+                update_power(self, s, dt)
+
+        prev: dict[int, tuple[float, float]] = {}
+        for s in ships:
+            if not s.exists:
+                continue
+            prev[s.id] = (s.x, s.y)
+            if s.status != ShipStatus.ACTIVE or s.crew <= 0:
+                s.desired_warp = 0.0
+                s.helm_mode = HelmMode.COURSE
+            update_helm(self, s, dt)
+        for s in ships:
+            if s.exists and s.docked_to is None:
+                move_ship(self, s, dt)
+        self._tow(prev)
+        for s in ships:
+            if s.exists and s.docked_to is not None:
+                move_ship(self, s, dt)
+
+        fly_ordnance(self, dt, prev)
+        resolve_detonations(self)
+
+        cycle_edge = (self.tick + 1) % rules.ticks_per_cycle == 0
+        for s in ships:
+            if not s.exists:
+                continue
+            update_repair(self, s, dt)
+            s.reveal_time = max(0.0, s.reveal_time - dt)
+            self._self_destruct(s, dt)
+            if cycle_edge and s.boarders > 0:
+                self._boarding(s)
+            if self.tick % 5 == 0 and s.docked_to is None:
+                s.trail.append((s.x, s.y))
+                if len(s.trail) > 24:
+                    del s.trail[0]
+        self._complete_scans()
+        for k in list(self.torpedo_pressure):
+            self.torpedo_pressure[k] *= 1.0 - 0.2 * dt
+            if self.torpedo_pressure[k] < 0.05:
+                del self.torpedo_pressure[k]
+
+        self._escapes(dt)
+        self.tick += 1
+        self._check_outcome()
+
+    def run(self, cycles: float) -> None:
+        for _ in range(int(round(cycles * self.rules.ticks_per_cycle))):
+            if self.outcome.over:
+                break
+            self.step()
+
+    # ------------------------------------------------------------ state changes used by systems
+
+    def _set_status(self, ship: Ship, status: ShipStatus, cause: str, by: int | None, text: str, tone: Tone) -> None:
+        ship.status = status
+        ship.self_destruct = -1.0
+        ship.tractor_target = None
+        ship.cloaked = False
+        self.emit(ShipStatusChanged(self.tick, ship.id, status.value, cause, by))
+        self.emit(Message(self.tick, text, tone, ship_id=ship.id))
+        for other in self.ships.values():
+            if other.tractor_target == ship.id and status in (ShipStatus.DESTROYED, ShipStatus.ESCAPED):
+                other.tractor_target = None
+            if other.helm_target == ship.id and status in (ShipStatus.DESTROYED, ShipStatus.ESCAPED):
+                other.helm_target = None
+                other.helm_mode = HelmMode.COURSE
+            if other.target == ship.id and status in (ShipStatus.DESTROYED, ShipStatus.ESCAPED):
+                other.target = None
+                other.target_subsystem = None
+                for b in other.banks:
+                    if b.lock == ship.id:
+                        b.lock = None
+                for t in other.tubes:
+                    if t.lock == ship.id:
+                        t.lock = None
+
+    def _credit(self, ship: Ship, attacker: int | None) -> None:
+        att = self.ships.get(attacker) if attacker is not None else None
+        if att is not None and att.side != ship.side:
+            att.stats.kills += 1
+
+    def destroy_ship(self, ship: Ship, cause: str, attacker: int | None = None, breakup: bool = True) -> None:
+        if ship.status == ShipStatus.DESTROYED:
+            return
+        was_alive = ship.status == ShipStatus.ACTIVE
+        energy = warp_budget(ship) / self.rules.destruct_divisor
+        ship.structure = min(ship.structure, 0.0)
+        ship.crew = 0
+        self._set_status(ship, ShipStatus.DESTROYED, cause, attacker, f"{ship.name} has been destroyed ({cause}).", Tone.ALERT)
+        if was_alive:
+            self._credit(ship, attacker)
+        for other in self.ships.values():
+            if other.docked_to == ship.id:
+                other.docked_to = None
+        if breakup and energy > 0:
+            blast(self, ship.x, ship.y, energy, "ship", attacker, exclude=ship.id)
+
+    def lose_all_hands(self, ship: Ship, cause: str, attacker: int | None = None) -> None:
+        if ship.status in (ShipStatus.DESTROYED, ShipStatus.DERELICT):
+            return
+        was_alive = ship.status == ShipStatus.ACTIVE
+        ship.stats.crew_lost += ship.crew
+        ship.crew = 0
+        ship.desired_warp = 0.0
+        self._set_status(ship, ShipStatus.DERELICT, cause, attacker,
+                         f"{ship.name} is adrift: no surviving crew ({cause}).", Tone.ALERT)
+        if was_alive:
+            self._credit(ship, attacker)
+
+    def surrender(self, ship: Ship) -> None:
+        if ship.status != ShipStatus.ACTIVE:
+            return
+        ship.desired_warp = 0.0
+        for sh in ship.shields:
+            sh.up = False
+            sh.reinforced = False
+        for b in ship.banks:
+            b.enabled = False
+            b.lock = None
+        for t in ship.tubes:
+            t.enabled = False
+            t.lock = None
+        ship.surrender_time = self.time
+        self._set_status(ship, ShipStatus.SURRENDERED, "surrender", None,
+                         f"{ship.name} has lowered its shields and surrenders.", Tone.CAUTION)
+
+    def destroy_subsystem(self, ship: Ship, sub: Subsystem, cause: str) -> None:
+        if sub.destroyed:
+            return
+        sub.damage = 100
+        sub.repair_progress = 0.0
+        sub.on_damaged()
+        ship.stats.subsystems_disabled += 1
+        self.emit(SubsystemDamaged(self.tick, ship.id, sub.sid, sub.label, 100, True, False))
+        self.emit(Message(self.tick, f"{ship.name}: {sub.label.lower()} {cause} and failed!", Tone.ALERT,
+                          speaker="Engineering", ship_id=ship.id, visible_to=frozenset({ship.side})))
+
+    def load_probe(self, ship: Ship, launcher: Launcher) -> None:
+        if ship.probes_remaining <= 0 or launcher.loaded is not None:
+            return
+        spec = self.content.probes.get(launcher.load_ordnance) or self.content.probes.get(ship.cls.probe)
+        if spec is None:
+            return
+        r = self.rules
+        prox = launcher.load_prox if launcher.load_prox > 0 else spec.max_prox
+        prox = max(r.probe_prox_floor, min(spec.max_prox, prox))
+        tm = launcher.load_time if launcher.load_time > 0 else spec.max_time_fuse
+        tm = max(r.probe_time_floor, min(spec.max_time_fuse, tm))
+        self._probe_serial += 1
+        code = f"{ship.cls.abbrev[:1].upper()}{self._probe_serial:02d}"
+        launcher.loaded = LoadedProbe(spec.id, prox, tm, code)
+        launcher.prep = 0.0
+        launcher.manual_load_pending = False
+        ship.probes_remaining -= 1
+
+    def note_torpedo_pressure(self, target_id: int, n: int) -> None:
+        """Torpedoes recently aimed at a target; AI uses it to spread fire and lead [R]."""
+        self.torpedo_pressure[target_id] = self.torpedo_pressure.get(target_id, 0.0) + 10.0 * n
+
+    def begin_scan(self, ship: Ship, target_id: int) -> None:
+        dur = sensors_sys.scan_duration(ship)
+        self._scans = [s for s in self._scans if s.ship_id != ship.id]
+        self._scans.append(PendingScan(ship.id, target_id, self.tick + max(1, int(dur * self.rules.ticks_per_cycle))))
+        self.say(ship, f"Scanning {self.label(ship.side, target_id)}…", "info", speaker="Science")
+
+    def _complete_scans(self) -> None:
+        keep = []
+        for sc in self._scans:
+            if sc.done_tick > self.tick:
+                keep.append(sc)
+                continue
+            ship = self.ships.get(sc.ship_id)
+            tgt = self.ships.get(sc.target_id)
+            if ship is None or tgt is None or not ship.alive or not tgt.exists:
+                continue
+            if not self.is_visible(ship.side, tgt.id) or ship.sensors is None or ship.sensors.destroyed:
+                self.say(ship, "Scan interrupted: contact lost.", "caution", speaker="Science")
+                continue
+            sensors_sys.perform_scan(self, ship, tgt)
+            self.say(ship, f"Scan of {tgt.name} complete.", "good", speaker="Science")
+        self._scans = keep
+
+    def pending_scan(self, ship_id: int) -> PendingScan | None:
+        for sc in self._scans:
+            if sc.ship_id == ship_id:
+                return sc
+        return None
+
+    def transport(self, ship: Ship, target: Ship, count: int) -> None:
+        cap = ship.cls.beam_cap * sum(1 for t in ship.transporters if not t.destroyed)
+        n = max(0, min(count, cap, ship.crew - 6))
+        if n <= 0:
+            return
+        ship.crew -= n
+        if target.side == ship.side:
+            room = max(0, target.cls.crew - target.crew)
+            moved = min(n, room)
+            target.crew += moved
+            ship.crew += n - moved
+            self.say(ship, f"{moved} crew beamed to {target.name}.", "good")
+        else:
+            if target.boarders > 0 and target.boarder_side != ship.side:
+                target.boarders = 0
+            target.boarders += n
+            target.boarder_side = ship.side
+            self.say(ship, f"Boarding party of {n} beamed aboard {target.name}.", "alert", public=True)
+
+    def deliver_order(self, ship: Ship, order: AllyOrder) -> None:
+        ally = self.ships[order.ally]
+        self.ally_orders[ally.id] = order
+        self.say(ally, f"{ally.name} acknowledges: {order.order}.", "info", speaker=ally.captain or ally.name)
+
+    # ------------------------------------------------------------ per-tick specials
+
+    def _tow(self, prev: dict[int, tuple[float, float]]) -> None:
+        """Tractor beams: the target follows the tower's motion by the pull ratio [R]."""
+        r = self.rules
+        for s in self.ships.values():
+            if s.tractor_target is None or not s.alive:
+                continue
+            t = self.ships.get(s.tractor_target)
+            if t is None or not t.exists or s.tractor is None or not s.tractor.intact:
+                s.tractor_target = None
+                continue
+            d = math.hypot(t.x - s.x, t.y - s.y)
+            ratio = s.cls.tractor_strength / max(1.0, t.cls.mass) * max(0.0, 1.0 - 0.5 * d / r.tractor_range)
+            if d > r.tractor_range * 1.25 or ratio < 0.1:
+                s.tractor_target = None
+                self.say(s, f"Tractor beam lost {t.name}.", "caution")
+                continue
+            k = min(1.0, ratio)
+            sx0, sy0 = prev.get(s.id, (s.x, s.y))
+            tx0, ty0 = prev.get(t.id, (t.x, t.y))
+            mdx, mdy = s.x - sx0, s.y - sy0
+            odx, ody = t.x - tx0, t.y - ty0
+            t.x += (mdx - odx) * k
+            t.y += (mdy - ody) * k
+
+    def _self_destruct(self, ship: Ship, dt: float) -> None:
+        if ship.self_destruct < 0 or not ship.exists:
+            return
+        before = ship.self_destruct
+        ship.self_destruct -= dt
+        if math.floor(before) != math.floor(ship.self_destruct) and 0 < before <= 5.0:
+            self.say(ship, f"Self-destruct in {math.ceil(ship.self_destruct)}…", "alert", public=True)
+        if ship.self_destruct <= 0:
+            energy = warp_budget(ship) / self.rules.destruct_divisor + ship.cls.destruct
+            ship.self_destruct = -1.0
+            x, y = ship.x, ship.y
+            self.destroy_ship(ship, "self-destruct", None, breakup=False)
+            blast(self, x, y, energy, "destruct", ship.id, exclude=ship.id)
+
+    def _boarding(self, ship: Ship) -> None:
+        """One cycle of boarding combat [R]: rounds = rand × boarders, rolled against the boarders' nation."""
+        attacker_side = ship.boarder_side
+        level = 0.5
+        for s in self.ships.values():
+            if s.side == attacker_side:
+                level = self.content.factions[s.faction].dogma.boarding
+                break
+        rounds = int(self.rng.unit() * ship.boarders) + 1
+        for _ in range(rounds):
+            if ship.boarders <= 0 or ship.crew <= 0:
+                break
+            if self.rng.unit() < level * (ship.boarders / (ship.boarders + ship.crew)) * 2:
+                ship.crew -= 1
+                ship.stats.crew_lost += 1
+            else:
+                ship.boarders -= 1
+        if ship.boarders <= 0:
+            ship.boarders = 0
+            self.say(ship, f"Boarders on {ship.name} have been repelled.", "good", public=True)
+        elif ship.crew < 6 and ship.boarders >= 6:
+            old = ship.side
+            ship.side = attacker_side
+            ship.crew = ship.boarders
+            ship.boarders = 0
+            ship.target = None
+            ship.helm_mode = HelmMode.COURSE
+            ship.status = ShipStatus.ACTIVE
+            self.emit(ShipStatusChanged(self.tick, ship.id, ShipStatus.CAPTURED.value, f"captured from side {old}", None))
+            self.emit(Message(self.tick, f"{ship.name} has been captured!", Tone.ALERT, ship_id=ship.id))
+        elif ship.crew <= 0:
+            self.lose_all_hands(ship, "boarders")
+
+    def _escapes(self, dt: float) -> None:
+        r = self.rules
+        for s in self.ships.values():
+            if not s.alive:
+                continue
+            enemies = [e for e in self.ships.values() if e.alive and e.side != s.side]
+            if not enemies:
+                s.escape_time = 0.0
+                continue
+            nearest = min(math.hypot(e.x - s.x, e.y - s.y) for e in enemies)
+            if nearest > r.escape_distance:
+                s.escape_time += dt
+                if s.escape_time >= r.escape_cycles:
+                    self._set_status(s, ShipStatus.ESCAPED, "escaped", None,
+                                     f"{s.name} has left the battle area.", Tone.CAUTION)
+            else:
+                s.escape_time = 0.0
+
+    def _check_outcome(self) -> None:
+        sides = {s.side for s in self.ships.values() if s.alive}
+        all_sides = {s.side for s in self.ships.values()}
+        if len(all_sides) < 2 or len(sides) > 1:
+            return
+        o = self.outcome
+        o.over = True
+        o.tick = self.tick
+        if sides:
+            o.winner = next(iter(sides))
+            o.reason = f"{self.side_names.get(o.winner, 'Side ' + str(o.winner))} holds the field."
+        else:
+            o.winner = None
+            o.reason = "No combatants remain."
+        self.emit(Message(self.tick, f"Battle over: {o.reason}", Tone.INFO))
+
+    # ------------------------------------------------------------ queries
+
+    def ships_of(self, side: int, alive_only: bool = True) -> list[Ship]:
+        return [s for s in self.ships.values() if s.side == side and (s.alive if alive_only else s.exists)]
+
+    def sides(self) -> list[int]:
+        return sorted({s.side for s in self.ships.values()})
+
+
+__all__ = ["Controller", "LoggedCommand", "Outcome", "PendingScan", "World"]

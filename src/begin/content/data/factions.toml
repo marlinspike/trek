@@ -1,0 +1,64 @@
+# Factions. `dogma` is Begin's decoded nation dogma [R]; everything else is a
+# remake extension [E]: computer sophistication, captain competence model,
+# doctrine and ordnance compatibility.
+#
+# computer.sophistication (0..1) drives concrete capabilities, never a flat
+# combat bonus: point-defense reaction time and track quality, torpedo
+# solution accuracy, scan fidelity, dead-reckoning of lost contacts, threat
+# prediction horizon and the quality of recommendations shown to the player.
+
+[[faction]]
+id = "federation"
+name = "Federation"
+long_name = "United Federation of Planets"
+command = "Starfleet Command"
+doctrine = "starfleet"
+torpedoes = ["mk7", "mk8"]
+probes = ["px2", "pxd2"]
+officer_names = ["Spock", "Sulu", "Chekov", "Uhura", "Scott", "McCoy"]
+captain_names = ["Webster", "Bronson", "Decker", "Wesley", "Pappas", "Chang", "Garrovick", "Tracey", "Harris", "Rios", "Shaw", "Vale"]
+dogma = {aggression = 0.65, bravery = 0.95, loyalty = 1.20, fanaticism = 0.05, boarding = 0.5, deviation = 0.30}
+computer = {sophistication = 0.92}
+captains = {competence = 0.70, competence_dev = 0.15, discipline = 0.80, creativity = 0.55, deviation = 0.15}
+
+[[faction]]
+id = "klingon"
+name = "Klingon"
+long_name = "Klingon Empire"
+command = "The Imperial Command"
+doctrine = "klingon"
+torpedoes = ["ktx"]
+probes = ["klpp", "dnk", "kdat"]
+officer_names = ["Martok", "Kurn", "Worf", "Klag", "Kromm", "Koloth"]
+captain_names = ["Krig", "Borup", "Keng", "Borak", "Veal", "Horax", "Zonk", "Hoif", "Klee", "Kor", "Kang", "Kruge"]
+dogma = {aggression = 0.95, bravery = 0.50, loyalty = 0.60, fanaticism = 0.10, boarding = 0.5, deviation = 0.20}
+computer = {sophistication = 0.55}
+captains = {competence = 0.65, competence_dev = 0.20, discipline = 0.55, creativity = 0.45, deviation = 0.20}
+
+[[faction]]
+id = "romulan"
+name = "Romulan"
+long_name = "Romulan Star Empire"
+command = "Romulan Fleet Command"
+doctrine = "romulan"
+torpedoes = ["plasma", "xplasma"]
+probes = ["rmpp", "rdat"]
+officer_names = ["Thei", "Setal", "Movar", "Tal", "Mirok", "Nijil"]
+captain_names = ["Koram", "Pakron", "Yandil", "Wurth", "Yayil", "Tomalak", "Sela", "Velal", "Taris", "Donatra"]
+dogma = {aggression = 0.75, bravery = 0.95, loyalty = 1.00, fanaticism = 0.95, boarding = 0.5, deviation = 0.10}
+computer = {sophistication = 0.70}
+captains = {competence = 0.68, competence_dev = 0.12, discipline = 0.85, creativity = 0.70, deviation = 0.10}
+
+[[faction]]
+id = "orion"
+name = "Orion"
+long_name = "Orion Pirate Guild"
+command = "The Orion Pirate Guild"
+doctrine = "orion"
+torpedoes = ["opbt", "oshb"]
+probes = ["klpp"]
+officer_names = ["Dirk", "Barth", "Maddog", "Sparks", "Jake", "Fred"]
+captain_names = ["Zeek", "Sont", "Anrol", "Etrick", "Onoh", "Enrin", "Hib", "Dirl", "Kleb", "Alph", "Harrad", "Tarsus"]
+dogma = {aggression = 0.45, bravery = 0.45, loyalty = 0.45, fanaticism = 0.45, boarding = 0.75, deviation = 0.40}
+computer = {sophistication = 0.40}
+captains = {competence = 0.55, competence_dev = 0.30, discipline = 0.30, creativity = 0.75, deviation = 0.40}

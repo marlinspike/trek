@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "begin-remake"
+version = "0.1.0"
+description = "A real-time tactical starship simulation inspired by Begin 2 (personal fan project)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Code: MIT. See LICENSING.md for content and trademark notes." }
+dependencies = [
+  "pygame-ce>=2.4",
+  "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "mypy>=1.5"]
+llm = ["httpx>=0.27"]
+
+[project.scripts]
+begin = "begin.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+begin = ["content/data/*.toml", "assets/fonts/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+python_version = "3.10"
+mypy_path = "src"
+packages = ["begin"]
+warn_unused_ignores = false
+ignore_missing_imports = true

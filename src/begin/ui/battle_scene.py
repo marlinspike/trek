@@ -1,0 +1,697 @@
+"""The battle screen: fixed-step simulation, tactical map, HUD, console and overlays.
+
+The simulation advances in fixed ticks (10 per cycle; one cycle is one
+second at 1×) from an accumulator fed by wall-clock time × the chosen
+speed. Rendering interpolates between the last two ticks. Pausing stops
+the accumulator; orders can still be given while paused.
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+from typing import Callable
+
+import pygame
+
+from ..battle import Battle
+from ..console.parser import ParseContext, parse
+from ..core.angles import bearing, norm360
+from ..sim.commands import (
+    Command, FirePhasers, FireTorpedoes, LaunchProbe, Pursue, Scan, SelectTarget, SetBanks, SetHelm,
+    SetPointDefense, SetShields,
+)
+from ..sim.events import CommandRejected, Message, Tone
+from ..sim.observation import Observation
+from ..sim.scoring import Assessment
+from ..sim.ship import BankRole, Kind, Ship
+from . import theme
+from .camera import Camera
+from .hud import PD_CYCLE, SUB_GROUPS, ContactsPanel, OwnShipPanel, Panel, TargetPanel, WeaponsPanel, hull_diagram
+from .tactical import Snapshot, TacticalView
+from .widgets import UI
+
+SPEEDS = (0.25, 0.5, 1.0, 2.0, 4.0)
+TONE_COLOR = {
+    Tone.INFO: theme.TEXT, Tone.GOOD: theme.GOOD, Tone.CAUTION: theme.CAUTION, Tone.ALERT: theme.ALERT,
+    Tone.CREW: theme.CREW,
+}
+
+CONTROLS = [
+    ("Space", "Pause / resume"),
+    ("[  ]", "Slower / faster (0.25× – 4×)"),
+    ("W  S", "Warp up / down"),
+    ("A  D", "Turn 15° port / starboard (Shift: 5°)"),
+    ("Right-click map", "Steer toward that point"),
+    ("Shift + right-click ship", "Pursue that ship"),
+    ("Left-click ship", "Select target"),
+    ("Tab", "Next target"),
+    ("R", "Cycle subsystem aim (hull, propulsion, weapons…)"),
+    ("F  T  P", "Fire phasers / torpedoes / launch probe"),
+    ("X", "Scan target"),
+    ("G", "Raise / lower shields"),
+    ("V", "Cycle point-defense doctrine"),
+    ("Q", "Show phaser arcs"),
+    ("Wheel, + −", "Zoom"),
+    ("Drag, arrows", "Pan the map"),
+    ("C", "Centre and follow own ship"),
+    ("Enter or /", "Open the command console (type 'help')"),
+    ("I", "Damage assessment (inspect own ship)"),
+    ("F1 or H", "This reference"),
+    ("Esc", "Close overlay / battle menu"),
+]
+
+
+@dataclass
+class LogLine:
+    tick: int
+    text: str
+    color: theme.Color
+
+
+class BattleScene:
+    def __init__(self, battle: Battle, size: tuple[int, int], on_exit: Callable[[], None]) -> None:
+        self.battle = battle
+        self.world = battle.world
+        self.player_id = battle.player_ship_id
+        self.side = battle.setup.player_side if battle.setup.player_side >= 0 else 0
+        self.on_exit = on_exit
+        self.ui = UI()
+        self.paused = True
+        self.speed = 1.0
+        self.acc = 0.0
+        self.omniscient = False
+        self.cam = Camera(pygame.Rect(0, 0, 100, 100), zoom=0.035, follow=self.player_id)
+        self.view = TacticalView(self.cam)
+        self.obs: Observation = self.world.observe(self.side)
+        self.prev: Snapshot | None = None
+        self.now = Snapshot.take(self.obs)
+        self.log: list[LogLine] = []
+        self.console = ""
+        self.console_focus = False
+        self.history: list[str] = []
+        self.hist_i = 0
+        self.toast: tuple[str, theme.Color, float] | None = None
+        self.overlay: str | None = "help_brief"
+        self.panels: list[Panel] = [OwnShipPanel(), TargetPanel(), WeaponsPanel(), ContactsPanel()]
+        self.assessment = Assessment.begin(self.world)
+        self.drag: tuple[int, int] | None = None
+        self.dragged = False
+        self.layout(size)
+        self._frame_all()
+        self._log("Battle stations. The simulation is paused: press Space to begin.", theme.CAUTION)
+        if battle.setup.description:
+            self._log(battle.setup.description, theme.TEXT_DIM)
+
+    # ------------------------------------------------------------ layout
+
+    def layout(self, size: tuple[int, int]) -> None:
+        w, h = size
+        self.size = size
+        col = max(420, int(w * 0.29))
+        bottom = 168
+        self.map_rect = pygame.Rect(8, 8, w - col - 24, h - bottom - 16)
+        self.cam.rect = self.map_rect
+        self.col_rect = pygame.Rect(w - col - 8, 8, col, h - 16)
+        self.bottom_rect = pygame.Rect(8, h - bottom, w - col - 24, bottom - 8)
+
+    def _frame_all(self) -> None:
+        """Zoom so every ship we know about is on screen."""
+        pts = list(self.now.ships.values())
+        if not pts:
+            return
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        span_x = max(xs) - min(xs) + 6000
+        span_y = max(ys) - min(ys) + 6000
+        r = self.map_rect
+        self.cam.zoom = max(self.cam.min_zoom, min(0.08, r.width / span_x, r.height / span_y))
+
+    def display_range(self) -> float:
+        """World units from the map centre to its nearer edge (Begin's display 'range')."""
+        r = self.map_rect
+        return min(r.width, r.height) / 2.0 / self.cam.zoom
+
+    def set_display_range(self, units: float) -> None:
+        r = self.map_rect
+        self.cam.zoom = max(self.cam.min_zoom, min(self.cam.max_zoom, min(r.width, r.height) / 2.0 / units))
+        if self.player_id is not None:
+            self.cam.follow = self.player_id
+
+    # ------------------------------------------------------------ helpers used by panels
+
+    @property
+    def player(self) -> Ship | None:
+        return self.obs.own(self.player_id) if self.player_id is not None else None
+
+    def issue(self, cmd: Command) -> str | None:
+        reason = self.world.execute(cmd)
+        if reason:
+            self.toast = (reason, theme.CAUTION, 3.0)
+        self._drain_events()
+        return reason
+
+    def fire_phasers(self, banks: tuple[int, ...] | None) -> None:
+        p = self.player
+        if p is not None:
+            self.issue(FirePhasers(ship_id=p.id, banks=banks))
+
+    def fire_torpedoes(self, tubes: tuple[int, ...] | None) -> None:
+        p = self.player
+        if p is not None:
+            self.issue(FireTorpedoes(ship_id=p.id, tubes=tubes))
+
+    def launch_probe(self) -> None:
+        p = self.player
+        if p is None:
+            return
+        if p.target is None:
+            self.toast = ("Select a target for the probe (or use the console: 'fire probes course 90').", theme.CAUTION, 3.0)
+            return
+        self.issue(LaunchProbe(ship_id=p.id, target=p.target))
+
+    def toggle_reserve(self, i: int) -> None:
+        p = self.player
+        if p is None:
+            return
+        role = BankRole.FLEX if p.banks[i].role == BankRole.DEFENSE else BankRole.DEFENSE
+        self.issue(SetBanks(ship_id=p.id, banks=(i,), role=role))
+
+    def toggle_overlay(self, name: str) -> None:
+        self.overlay = None if self.overlay == name else name
+
+    def center_on(self, sid: int) -> None:
+        pose = self.now.ships.get(sid)
+        if pose:
+            self.cam.follow = None
+            self.cam.cx, self.cam.cy = pose[0], pose[1]
+
+    def _log(self, text: str, color: theme.Color = theme.TEXT) -> None:
+        self.log.append(LogLine(self.world.tick, text, color))
+        if len(self.log) > 400:
+            del self.log[:100]
+
+    # ------------------------------------------------------------ simulation
+
+    def _drain_events(self) -> None:
+        events = self.world.take_events()
+        self.obs = self.world.observe(self.side)
+        self.view.ingest(events, self.obs)
+        for ev in events:
+            if isinstance(ev, Message):
+                if ev.visible_to is not None and self.side not in ev.visible_to:
+                    continue
+                who = f"{ev.speaker}: " if ev.speaker and ev.speaker not in ev.text else ""
+                self._log(who + ev.text, TONE_COLOR.get(ev.tone, theme.TEXT))
+            elif isinstance(ev, CommandRejected) and ev.ship_id == self.player_id and ev.issuer != "captain":
+                pass
+
+    def update(self, dt: float) -> None:
+        self.ui.mouse = pygame.mouse.get_pos()
+        if self.toast:
+            msg, col, t = self.toast
+            self.toast = (msg, col, t - dt) if t - dt > 0 else None
+        self.view.update(dt)
+        if self.paused or self.world.outcome.over:
+            self.acc = 0.0
+            self.obs = self.world.observe(self.side)
+            return
+        tick_len = 1.0 / self.world.rules.ticks_per_cycle
+        self.acc += dt * self.speed
+        steps = 0
+        while self.acc >= tick_len and steps < 12:
+            self.prev = Snapshot.take(self.world.observe(self.side))
+            self.world.step()
+            self.acc -= tick_len
+            steps += 1
+            self._drain_events()
+            self.now = Snapshot.take(self.obs)
+            if self.world.outcome.over:
+                self.overlay = "debrief"
+                break
+        if steps >= 12:
+            self.acc = 0.0
+
+    # ------------------------------------------------------------ input
+
+    def handle(self, ev: pygame.event.Event) -> None:
+        if ev.type == pygame.VIDEORESIZE:
+            self.layout((ev.w, ev.h))
+            return
+        if ev.type == pygame.KEYDOWN:
+            if self.console_focus:
+                self._console_key(ev)
+            else:
+                self._key(ev)
+        elif ev.type == pygame.TEXTINPUT and self.console_focus:
+            self.console += ev.text
+        elif ev.type == pygame.MOUSEBUTTONDOWN:
+            self._mouse_down(ev)
+        elif ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
+            if self.drag is not None and not self.dragged:
+                self._left_click(ev.pos)
+            self.drag = None
+        elif ev.type == pygame.MOUSEMOTION and self.drag is not None:
+            dx, dy = ev.pos[0] - self.drag[0], ev.pos[1] - self.drag[1]
+            if self.dragged or abs(dx) + abs(dy) > 4:
+                self.dragged = True
+                self.cam.pan_pixels(dx, dy)
+                self.drag = ev.pos
+        elif ev.type == pygame.MOUSEWHEEL:
+            if self.map_rect.collidepoint(self.ui.mouse):
+                self.cam.zoom_at(1.15 ** ev.y, *self.ui.mouse)
+
+    def _mouse_down(self, ev: pygame.event.Event) -> None:
+        if self.overlay in ("debrief", "menu"):
+            h = self.ui.hit(ev.pos)
+            if h and ev.button == 1:
+                h.action()
+            return
+        h = self.ui.hit(ev.pos)
+        if h is not None and not (self.map_rect.collidepoint(ev.pos) and self.overlay is None and h.rect == self.map_rect):
+            if ev.button == 1:
+                if self.overlay and self.overlay.startswith("help"):
+                    self.overlay = None
+                h.action()
+                return
+            if ev.button == 3 and h.right is not None:
+                h.right()
+                return
+        if self.overlay and self.overlay.startswith("help"):
+            self.overlay = None
+        if self.console_rect.collidepoint(ev.pos):
+            self.console_focus = True
+            return
+        self.console_focus = False
+        if not self.map_rect.collidepoint(ev.pos):
+            return
+        if ev.button == 1:
+            self.drag = ev.pos
+            self.dragged = False
+        elif ev.button == 2:
+            self.drag = ev.pos
+            self.dragged = True
+        elif ev.button == 3:
+            self._right_click(ev.pos)
+
+    def _left_click(self, pos: tuple[int, int]) -> None:
+        p = self.player
+        sid = self.view.pick(self.obs, self.now, *pos)
+        if p is None:
+            return
+        if sid is not None and sid in self.obs.contacts():
+            self.issue(SelectTarget(ship_id=p.id, target=sid, subsystem=p.target_subsystem))
+
+    def _right_click(self, pos: tuple[int, int]) -> None:
+        p = self.player
+        if p is None:
+            return
+        mods = pygame.key.get_mods()
+        sid = self.view.pick(self.obs, self.now, *pos)
+        if sid is not None and sid != p.id and mods & pygame.KMOD_SHIFT:
+            self.issue(Pursue(ship_id=p.id, target=sid, warp=max(p.desired_warp, 1.0)))
+            return
+        wx, wy = self.cam.to_world(*pos)
+        crs = bearing(wx - p.x, wy - p.y)
+        warp = p.desired_warp if p.desired_warp > 0.5 else min(p.cls.cruise_warp, p.max_attainable_warp)
+        self.issue(SetHelm(ship_id=p.id, course=round(crs), warp=warp))
+
+    def _key(self, ev: pygame.event.Event) -> None:
+        k = ev.key
+        p = self.player
+        shift = ev.mod & pygame.KMOD_SHIFT
+        if k == pygame.K_ESCAPE:
+            if self.overlay in (None, "help_brief"):
+                self.overlay = "menu"
+            elif self.overlay == "debrief":
+                self.on_exit()
+            else:
+                self.overlay = None
+            return
+        if self.overlay == "debrief":
+            if k in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                self.on_exit()
+            return
+        if self.overlay and self.overlay.startswith("help") and k not in (pygame.K_F1, pygame.K_h):
+            self.overlay = None
+        if k == pygame.K_SPACE:
+            self.paused = not self.paused
+        elif k in (pygame.K_RIGHTBRACKET, pygame.K_PERIOD):
+            self.speed = SPEEDS[min(len(SPEEDS) - 1, SPEEDS.index(self.speed) + 1)]
+        elif k in (pygame.K_LEFTBRACKET, pygame.K_COMMA):
+            self.speed = SPEEDS[max(0, SPEEDS.index(self.speed) - 1)]
+        elif k in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SLASH, pygame.K_BACKQUOTE):
+            self.console_focus = True
+            pygame.key.start_text_input()
+        elif k in (pygame.K_F1, pygame.K_h):
+            self.toggle_overlay("help")
+        elif k == pygame.K_i:
+            self.toggle_overlay("damage")
+        elif k == pygame.K_q:
+            self.view.show_arcs = not self.view.show_arcs
+        elif k == pygame.K_c:
+            self.cam.follow = self.player_id
+        elif k in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS):
+            self.cam.zoom_at(1.25, *self.map_rect.center)
+        elif k in (pygame.K_MINUS, pygame.K_KP_MINUS):
+            self.cam.zoom_at(0.8, *self.map_rect.center)
+        elif k in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN):
+            step = 80
+            dx = {pygame.K_LEFT: step, pygame.K_RIGHT: -step}.get(k, 0)
+            dy = {pygame.K_UP: step, pygame.K_DOWN: -step}.get(k, 0)
+            self.cam.pan_pixels(dx, dy)
+        elif k == pygame.K_F9:
+            self.omniscient = not self.omniscient
+        elif p is None:
+            return
+        elif k == pygame.K_w:
+            self.issue(SetHelm(ship_id=p.id, warp=min(p.cls.max_warp, math.floor(p.desired_warp + 1))))
+        elif k == pygame.K_s:
+            self.issue(SetHelm(ship_id=p.id, warp=max(0.0, math.ceil(p.desired_warp - 1))))
+        elif k == pygame.K_a:
+            self.issue(SetHelm(ship_id=p.id, course=norm360(p.desired_course - (5 if shift else 15))))
+        elif k == pygame.K_d:
+            self.issue(SetHelm(ship_id=p.id, course=norm360(p.desired_course + (5 if shift else 15))))
+        elif k == pygame.K_f:
+            self.fire_phasers(None)
+        elif k == pygame.K_t:
+            self.fire_torpedoes(None)
+        elif k == pygame.K_p:
+            self.launch_probe()
+        elif k == pygame.K_x:
+            if p.target is not None:
+                self.issue(Scan(ship_id=p.id, target=p.target))
+        elif k == pygame.K_TAB:
+            self._cycle_target(-1 if shift else 1)
+        elif k == pygame.K_r:
+            if p.target is not None:
+                i = SUB_GROUPS.index(p.target_subsystem) if p.target_subsystem in SUB_GROUPS else 0
+                self.issue(SelectTarget(ship_id=p.id, target=p.target, subsystem=SUB_GROUPS[(i + 1) % len(SUB_GROUPS)]))
+        elif k == pygame.K_g:
+            up = not any(s.up for s in p.shields)
+            self.issue(SetShields(ship_id=p.id, up=up))
+        elif k == pygame.K_v:
+            nxt = PD_CYCLE[(PD_CYCLE.index(p.pd_doctrine) + 1) % len(PD_CYCLE)]
+            self.issue(SetPointDefense(ship_id=p.id, doctrine=nxt))
+            self.toast = (f"Point defense: {nxt.value}", theme.GOOD, 2.0)
+
+    def _cycle_target(self, step: int) -> None:
+        p = self.player
+        if p is None:
+            return
+        cs = sorted(self.obs.contacts().values(), key=lambda c: c.distance_to(p.x, p.y))
+        if not cs:
+            self.toast = ("No contacts on sensors.", theme.CAUTION, 2.0)
+            return
+        ids = [c.id for c in cs]
+        i = ids.index(p.target) if p.target in ids else -1
+        nxt = ids[(i + step) % len(ids)]
+        self.issue(SelectTarget(ship_id=p.id, target=nxt, subsystem=p.target_subsystem))
+
+    def _console_key(self, ev: pygame.event.Event) -> None:
+        k = ev.key
+        if k == pygame.K_ESCAPE:
+            self.console_focus = False
+        elif k in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            self._submit_console()
+        elif k == pygame.K_BACKSPACE:
+            self.console = self.console[:-1]
+        elif k == pygame.K_UP and self.history:
+            self.hist_i = max(0, self.hist_i - 1)
+            self.console = self.history[self.hist_i]
+        elif k == pygame.K_DOWN and self.history:
+            self.hist_i = min(len(self.history), self.hist_i + 1)
+            self.console = self.history[self.hist_i] if self.hist_i < len(self.history) else ""
+
+    def _submit_console(self) -> None:
+        text = self.console.strip()
+        self.console = ""
+        if not text:
+            self.console_focus = False
+            return
+        self.history.append(text)
+        self.hist_i = len(self.history)
+        self.run_console(text)
+
+    def run_console(self, text: str) -> None:
+        self._log(f"> {text}", theme.FRIEND)
+        if self.player_id is None:
+            self._log("No ship under command.", theme.CAUTION)
+            return
+        res = parse(text, ParseContext(self.player_id, self.world.observe(self.side)))
+        if res.error:
+            self._log(res.error, theme.CAUTION)
+            self.toast = (res.error, theme.CAUTION, 3.0)
+            return
+        for line in res.info:
+            self._log(line, theme.TEXT_DIM)
+        for name, val in res.actions:
+            if name == "pause":
+                self.paused = True
+            elif name == "resume":
+                self.paused = False
+            elif name == "speed":
+                self.speed = float(val)  # type: ignore[arg-type]
+            elif name == "status":
+                self._status_report()
+            elif name == "damage":
+                self.overlay = "damage"
+            elif name == "range":
+                if val is None:
+                    self._log(f"Display range {self.display_range():,.0f} units.", theme.TEXT_DIM)
+                else:
+                    self.set_display_range(float(val))  # type: ignore[arg-type]
+                    self._log(f"Display range set to {float(val):,.0f} units.", theme.TEXT_DIM)
+        for cmd in res.commands:
+            reason = self.issue(cmd)
+            if reason is None:
+                self._log(f"  {cmd.describe()}: acknowledged", theme.TEXT_DIM)
+
+    def _status_report(self) -> None:
+        p = self.player
+        if p is None:
+            return
+        self._log(f"{p.name}: warp {p.warp:.1f}, course {p.course:.0f}, crew {p.crew}, hull "
+                  f"{max(0.0, p.structure) / p.structure_max * 100:.0f}%, torps {p.torps_remaining}, probes {p.probes_remaining}",
+                  theme.TEXT)
+
+    # ------------------------------------------------------------ drawing
+
+    def draw(self, surf: pygame.Surface) -> None:
+        self.ui.begin_frame()
+        surf.fill((5, 9, 18))
+        tick_len = 1.0 / self.world.rules.ticks_per_cycle
+        alpha = 1.0 if self.paused else max(0.0, min(1.0, self.acc / tick_len))
+        obs = self.world.observe(self.side)
+        p = self.player
+        self.view.draw(surf, obs, self.prev, self.now, alpha, self.player_id,
+                       p.target if p else None, p.target_subsystem if p else None)
+        self.ui.add(self.map_rect, lambda: None)
+        self._map_overlay_text(surf)
+        self._bottom(surf)
+        self._column(surf)
+        if self.overlay:
+            self._draw_overlay(surf)
+        if self.toast:
+            msg, col, t = self.toast
+            w = theme.text_width(msg, 13) + 24
+            r = pygame.Rect(0, 0, w, 30)
+            r.midbottom = (self.map_rect.centerx, self.map_rect.bottom - 14)
+            pygame.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=4)
+            pygame.draw.rect(surf, col, r, 1, border_radius=4)
+            theme.text(surf, msg, r.center, col, 13, anchor="center")
+        self.ui.draw_tooltip(surf)
+
+    def _map_overlay_text(self, surf: pygame.Surface) -> None:
+        r = self.map_rect
+        t = self.world.time
+        state = "PAUSED" if self.paused else f"{self.speed:g}×"
+        col = theme.CAUTION if self.paused else theme.GOOD
+        theme.text(surf, f"Cycle {t:7.1f}", (r.x + 14, r.y + 10), theme.TEXT, 14, "mono")
+        theme.text(surf, state, (r.x + 130, r.y + 10), col, 14, "mono", weight="medium")
+        theme.text(surf, self.battle.setup.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
+        theme.text(surf, f"range {self.display_range():,.0f}  ·  F1 controls", (r.right - 14, r.y + 28), theme.TEXT_FAINT,
+                   11, anchor="topright")
+
+    def _bottom(self, surf: pygame.Surface) -> None:
+        r = self.bottom_rect
+        pygame.draw.rect(surf, theme.BG_PANEL, r, border_radius=4)
+        pygame.draw.rect(surf, theme.BORDER, r, 1, border_radius=4)
+        # time controls
+        x = r.x + 10
+        y = r.y + 8
+        self.ui.button(surf, pygame.Rect(x, y, 70, 24), "▶ Run" if self.paused else "❚❚ Pause",
+                       lambda: setattr(self, "paused", not self.paused), "Space", active=not self.paused, accent=theme.GOOD)
+        x += 78
+        for s in SPEEDS:
+            label = f"{s:g}×"
+            self.ui.button(surf, pygame.Rect(x, y, 46, 24), label, (lambda s=s: setattr(self, "speed", s)),
+                           "Simulation speed ([ and ])", active=self.speed == s)
+            x += 50
+        theme.text(surf, "Orders also work while paused.", (x + 8, y + 5), theme.TEXT_FAINT, 11)
+        # log
+        lines_area = pygame.Rect(r.x + 10, r.y + 40, r.width - 20, r.height - 76)
+        n = lines_area.height // 16
+        for i, line in enumerate(self.log[-n:]):
+            theme.text(surf, line.text[:160], (lines_area.x, lines_area.y + i * 16), line.color, 12)
+        # console
+        self.console_rect = pygame.Rect(r.x + 8, r.bottom - 32, r.width - 16, 26)
+        pygame.draw.rect(surf, theme.BG_INPUT, self.console_rect, border_radius=3)
+        pygame.draw.rect(surf, theme.FRIEND if self.console_focus else theme.BORDER, self.console_rect, 1, border_radius=3)
+        prompt = "› " + self.console
+        if self.console_focus and (pygame.time.get_ticks() // 500) % 2 == 0:
+            prompt += "▏"
+        if not self.console and not self.console_focus:
+            theme.text(surf, "Command console: press Enter and type an order (e.g. 'al tor al mk7 400', 'fp all s 10', 'help')",
+                       (self.console_rect.x + 10, self.console_rect.y + 5), theme.TEXT_FAINT, 12)
+        else:
+            theme.text(surf, prompt, (self.console_rect.x + 10, self.console_rect.y + 4), theme.TEXT, 13, "mono")
+
+    def _column(self, surf: pygame.Surface) -> None:
+        r = self.col_rect
+        fixed = sum(p.min_height for p in self.panels if p.weight == 0)
+        gap = 8
+        free = r.height - fixed - gap * (len(self.panels) - 1)
+        wsum = sum(p.weight for p in self.panels) or 1.0
+        y = r.y
+        for p in self.panels:
+            h = p.min_height if p.weight == 0 else max(p.min_height, int(free * p.weight / wsum))
+            p.draw(surf, pygame.Rect(r.x, y, r.width, h), self)
+            y += h + gap
+
+    # ------------------------------------------------------------ overlays
+
+    def _modal(self, surf: pygame.Surface, w: int, h: int, title: str, accent: theme.Color = theme.FRIEND) -> pygame.Rect:
+        shade = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        shade.fill((2, 5, 12, 170))
+        surf.blit(shade, (0, 0))
+        r = pygame.Rect(0, 0, w, h)
+        r.center = (surf.get_width() // 2, surf.get_height() // 2)
+        theme.panel(surf, r, title, accent)
+        return r
+
+    def _draw_overlay(self, surf: pygame.Surface) -> None:
+        o = self.overlay
+        if o == "help_brief":
+            r = pygame.Rect(0, 0, 520, 132)
+            r.center = self.map_rect.center
+            pygame.draw.rect(surf, theme.BG_PANEL, r, border_radius=6)
+            pygame.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=6)
+            theme.text(surf, "Space to begin.  Left-click a contact to target it,", (r.centerx, r.y + 22), theme.TEXT, 15, anchor="center")
+            theme.text(surf, "right-click the map to steer, F / T / P to fire.", (r.centerx, r.y + 46), theme.TEXT, 15, anchor="center")
+            theme.text(surf, "Enter opens the Begin-style console. F1 shows every control.", (r.centerx, r.y + 78),
+                       theme.TEXT_DIM, 13, anchor="center")
+            theme.text(surf, "(any key or click to dismiss)", (r.centerx, r.y + 104), theme.TEXT_FAINT, 11, anchor="center")
+        elif o == "help":
+            r = self._modal(surf, 640, 40 + 22 * len(CONTROLS) + 20, "Controls")
+            y = r.y + 34
+            for k, v in CONTROLS:
+                theme.text(surf, k, (r.x + 24, y), theme.FRIEND, 13, "mono")
+                theme.text(surf, v, (r.x + 250, y), theme.TEXT, 13)
+                y += 22
+        elif o == "menu":
+            r = self._modal(surf, 360, 190, "Battle")
+            self.ui.button(surf, pygame.Rect(r.x + 30, r.y + 44, r.width - 60, 34), "Resume",
+                           lambda: setattr(self, "overlay", None), size=14)
+            self.ui.button(surf, pygame.Rect(r.x + 30, r.y + 88, r.width - 60, 34), "Controls",
+                           lambda: setattr(self, "overlay", "help"), size=14)
+            self.ui.button(surf, pygame.Rect(r.x + 30, r.y + 132, r.width - 60, 34), "Leave battle",
+                           self.on_exit, size=14, accent=theme.ALERT)
+        elif o == "damage":
+            self._damage_view(surf)
+        elif o == "scan":
+            self._scan_view(surf)
+        elif o == "debrief":
+            self._debrief(surf)
+
+    def _damage_view(self, surf: pygame.Surface) -> None:
+        p = self.player
+        if p is None:
+            self.overlay = None
+            return
+        r = self._modal(surf, 860, 560, f"Damage assessment — {p.name}")
+        hull_diagram(surf, p, pygame.Rect(r.x + 20, r.y + 40, 380, 480))
+        x = r.x + 420
+        y = r.y + 40
+        groups: dict[Kind, list] = {}
+        for s in p.subsystems():
+            groups.setdefault(s.kind, []).append(s)
+        for kind, subs in groups.items():
+            theme.text(surf, subs[0].label.split(" ")[0] if len(subs) > 1 else subs[0].label, (x, y), theme.TEXT_DIM, 12)
+            xx = x + 120
+            for s in subs:
+                col = theme.health_color(s.health, s.destroyed)
+                rr = pygame.Rect(xx, y + 2, 34, 12)
+                theme.bar(surf, rr, s.health, col)
+                if s.damage:
+                    theme.text(surf, f"{s.damage}", (rr.centerx, rr.bottom + 1), col, 9, "mono", anchor="midtop")
+                xx += 40
+                if xx > r.right - 40:
+                    xx = x + 120
+                    y += 26
+            y += 28
+        theme.text(surf, "Damaged weapons must be fully repaired before they charge again.  'repair <system>' sets priority.",
+                   (r.x + 20, r.bottom - 26), theme.TEXT_FAINT, 11)
+
+    def _scan_view(self, surf: pygame.Surface) -> None:
+        p = self.player
+        c = self.obs.contact(p.target) if p and p.target is not None else None
+        if c is None or c.scan is None:
+            self.overlay = None
+            return
+        sc = c.scan
+        r = self._modal(surf, 720, 420, f"Scan — {c.label}", theme.HOSTILE)
+        y = r.y + 40
+        theme.text(surf, f"Confidence {sc.confidence * 100:.0f}% · {((self.obs.tick - sc.tick) * self.obs.rules.dt):.0f} cycles old",
+                   (r.x + 20, y), theme.TEXT_DIM, 12)
+        y += 24
+        for i, v in enumerate(sc.shields):
+            theme.text(surf, f"Shield {i + 1}", (r.x + 20, y), theme.TEXT_DIM, 12)
+            theme.bar(surf, pygame.Rect(r.x + 110, y + 3, 200, 10), max(0, v) / 100, theme.SHIELD if v > 0 else theme.ALERT)
+            theme.text(surf, "down" if v < 0 else f"{v:.0f}%", (r.x + 320, y), theme.TEXT, 12, "mono")
+            y += 20
+        y += 8
+        theme.text(surf, f"Crew ~{sc.crew} · hull {sc.structure_frac * 100:.0f}% · charged banks {sc.charged_banks} · "
+                         f"loaded tubes {sc.loaded_tubes} · probes {sc.probes_loaded}", (r.x + 20, y), theme.TEXT, 13)
+        y += 28
+        bad = sorted(((d, sid) for sid, d in sc.subsystems.items() if d > 0), reverse=True)[:12]
+        theme.text(surf, "Damaged systems (estimated):" if bad else "No damage resolved.", (r.x + 20, y), theme.TEXT_DIM, 12)
+        y += 20
+        for i, (d, sid) in enumerate(bad):
+            theme.text(surf, f"{sid}: {d}%", (r.x + 20 + (i % 3) * 220, y + (i // 3) * 18),
+                       theme.health_color(1 - d / 100, d >= 100), 12, "mono")
+
+    def _debrief(self, surf: pygame.Surface) -> None:
+        w = self.world
+        res = self.assessment.sides(w)
+        score = self.assessment.score(w, self.side)
+        r = self._modal(surf, 760, 470, "Battle assessment", theme.CAUTION)
+        verdict = self.assessment.verdict(score)
+        theme.text(surf, w.outcome.reason or "The engagement is over.", (r.x + 24, r.y + 40), theme.TEXT, 16, weight="semibold")
+        theme.text(surf, verdict, (r.x + 24, r.y + 66), theme.CAUTION, 14)
+        theme.text(surf, f"Score {score:+.1f}   ·   {w.time:.0f} cycles", (r.right - 24, r.y + 42), theme.TEXT, 14, "mono",
+                   anchor="topright")
+        y = r.y + 104
+        for side, sr in sorted(res.items()):
+            name = w.side_names.get(side, f"Side {side}")
+            col = theme.FRIEND if side == self.side else theme.HOSTILE
+            theme.text(surf, name + (" (you)" if side == self.side else ""), (r.x + 24, y), col, 14, weight="medium")
+            theme.text(surf, f"{sr.ships} ships · lost {sr.lost} · disabled {sr.disabled} · escaped {sr.escaped} · "
+                             f"surrendered {sr.surrendered} · strength {sr.loss * -100:+.0f}%",
+                       (r.x + 24, y + 20), theme.TEXT_DIM, 12)
+            y += 46
+        y += 6
+        for s in list(w.ships.values())[:9]:
+            st = s.stats
+            col = theme.FRIEND if s.side == self.side else theme.HOSTILE
+            theme.text(surf, f"{s.name} ({s.cls.abbrev})", (r.x + 24, y), col, 12)
+            theme.text(surf, f"{s.status.value:<11} dealt {st.damage_dealt:6.0f}  taken {st.damage_taken:6.0f}  "
+                             f"phaser hits {st.phaser_hits}/{st.phaser_shots}  torps {st.torpedo_hits}/{st.torpedoes_fired}  "
+                             f"intercepts {st.ordnance_intercepted}", (r.x + 200, y), theme.TEXT_DIM, 11, "mono")
+            y += 18
+        self.ui.button(surf, pygame.Rect(r.right - 184, r.bottom - 46, 160, 30), "Return to menu", self.on_exit, size=13)
+        self.ui.button(surf, pygame.Rect(r.right - 352, r.bottom - 46, 160, 30), "Review the field",
+                       lambda: setattr(self, "overlay", None), size=13)
+
+
+__all__ = ["BattleScene", "CONTROLS", "SPEEDS"]

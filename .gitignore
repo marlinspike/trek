@@ -1,0 +1,13 @@
+# Reference material that must not be redistributed
+reference/*.pdf
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+runs/
+.DS_Store
+.begin-sync.tar.gz

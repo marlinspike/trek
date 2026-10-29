@@ -1,0 +1,408 @@
+# Hull geometry, subsystem anchors and weapon mounts.  [remake extension]
+#
+# Begin treated ships as points; these silhouettes, mount positions and arcs
+# are ours. They drive rendering, phaser origins, firing arcs and the
+# location-aware subsystem damage model.
+#
+# Design coordinates: +y = bow, +x = starboard, the hull spans roughly
+# y = -50..+50 (100 design units = `length` world units).
+# Shapes: {kind="poly", pts=[[x,y],...]} or {kind="ellipse", c=[x,y], r=[rx,ry]}.
+#   role "hull" is filled, "nacelle" is filled with the engine tint,
+#   "detail" is stroked only.
+# Mounts: pos in design units; arc = [center, width] in degrees relative to the
+#   bow (0 = ahead, 90 = starboard). A target must lie inside the arc to fire.
+# Anchors place internal systems: bridge, core (reactors, batteries,
+#   computer), nose (sensors), aft (impulse, tractor), nacelles (warp drives).
+
+# ---------------------------------------------------------------- Federation
+
+[hull."federation.in"]
+length = 170
+shapes = [
+  {kind="ellipse", c=[0, 20], r=[17, 26], role="hull"},
+  {kind="poly", pts=[[-3, 0], [3, 0], [4, -14], [-4, -14]], role="hull"},
+  {kind="poly", pts=[[-3, -8], [-11, -20], [-9, -23], [-2, -14]], role="hull"},
+  {kind="poly", pts=[[3, -8], [11, -20], [9, -23], [2, -14]], role="hull"},
+  {kind="ellipse", c=[-12, -26], r=[2.8, 19], role="nacelle"},
+  {kind="ellipse", c=[12, -26], r=[2.8, 19], role="nacelle"},
+  {kind="ellipse", c=[0, 22], r=[6, 7], role="detail"},
+]
+anchors = {bridge=[0, 24], core=[0, 4], nose=[0, 42], aft=[0, -14], nacelles=[[-12, -26], [12, -26]]}
+banks = [
+  {pos=[-8, 30], arc=[-40, 240]}, {pos=[8, 30], arc=[40, 240]},
+  {pos=[-12, 14], arc=[-90, 200]}, {pos=[12, 14], arc=[90, 200]},
+  {pos=[-5, 0], arc=[-150, 200]}, {pos=[5, 0], arc=[150, 200]},
+]
+tubes = [{pos=[0, 44], arc=[0, 160]}]
+launchers = [{pos=[0, -12], arc=[180, 360]}]
+
+[hull."federation.de"]
+length = 210
+shapes = [
+  {kind="ellipse", c=[0, 16], r=[30, 30], role="hull"},
+  {kind="poly", pts=[[-24, -2], [24, -2], [20, -10], [-20, -10]], role="hull"},
+  {kind="poly", pts=[[-18, -8], [-14, -8], [-14, -18], [-18, -18]], role="hull"},
+  {kind="poly", pts=[[18, -8], [14, -8], [14, -18], [18, -18]], role="hull"},
+  {kind="ellipse", c=[-16, -30], r=[3.4, 18], role="nacelle"},
+  {kind="ellipse", c=[16, -30], r=[3.4, 18], role="nacelle"},
+  {kind="poly", pts=[[-10, 4], [10, 4], [10, 0], [-10, 0]], role="detail"},
+  {kind="ellipse", c=[0, 18], r=[8, 8], role="detail"},
+]
+anchors = {bridge=[0, 20], core=[0, 6], nose=[0, 42], aft=[0, -8], nacelles=[[-16, -30], [16, -30]]}
+banks = [
+  {pos=[-12, 30], arc=[-30, 250]}, {pos=[12, 30], arc=[30, 250]},
+  {pos=[-22, 0], arc=[-130, 220]}, {pos=[22, 0], arc=[130, 220]},
+]
+tubes = [
+  {pos=[-4, 44], arc=[0, 160]}, {pos=[4, 44], arc=[0, 160]},
+  {pos=[-8, -6], arc=[180, 140]}, {pos=[8, -6], arc=[180, 140]},
+]
+launchers = [{pos=[-6, -8], arc=[180, 360]}, {pos=[6, -8], arc=[180, 360]}]
+
+[hull."federation.hc"]
+length = 270
+shapes = [
+  {kind="ellipse", c=[0, 24], r=[25, 25], role="hull"},
+  {kind="poly", pts=[[-3.5, 4], [3.5, 4], [4.5, -6], [-4.5, -6]], role="hull"},
+  {kind="ellipse", c=[0, -14], r=[7, 19], role="hull"},
+  {kind="poly", pts=[[-5, -16], [-16, -24], [-15, -28], [-5, -22]], role="hull"},
+  {kind="poly", pts=[[5, -16], [16, -24], [15, -28], [5, -22]], role="hull"},
+  {kind="ellipse", c=[-17, -30], r=[3.5, 20], role="nacelle"},
+  {kind="ellipse", c=[17, -30], r=[3.5, 20], role="nacelle"},
+  {kind="ellipse", c=[0, 26], r=[7, 7], role="detail"},
+  {kind="ellipse", c=[0, 24], r=[17, 17], role="detail"},
+]
+anchors = {bridge=[0, 27], core=[0, -12], nose=[0, 47], aft=[0, -31], nacelles=[[-17, -30], [17, -30]]}
+banks = [
+  {pos=[-10, 34], arc=[-35, 260]}, {pos=[10, 34], arc=[35, 260]},
+  {pos=[-6, -18], arc=[-150, 230]}, {pos=[6, -18], arc=[150, 230]},
+]
+tubes = [
+  {pos=[-3, 6], arc=[0, 150]}, {pos=[3, 6], arc=[0, 150]},
+  {pos=[-5, 2], arc=[0, 150]}, {pos=[5, 2], arc=[0, 150]},
+  {pos=[-3, -32], arc=[180, 130]}, {pos=[3, -32], arc=[180, 130]},
+]
+launchers = [{pos=[-4, -28], arc=[180, 360]}, {pos=[0, -30], arc=[180, 360]}, {pos=[4, -28], arc=[180, 360]}]
+
+[hull."federation.dn"]
+length = 330
+shapes = [
+  {kind="ellipse", c=[0, 25], r=[26, 25], role="hull"},
+  {kind="poly", pts=[[-5, 4], [5, 4], [6, -6], [-6, -6]], role="hull"},
+  {kind="ellipse", c=[0, -14], r=[9, 22], role="hull"},
+  {kind="poly", pts=[[-7, -14], [-20, -22], [-19, -27], [-7, -21]], role="hull"},
+  {kind="poly", pts=[[7, -14], [20, -22], [19, -27], [7, -21]], role="hull"},
+  {kind="ellipse", c=[-21, -28], r=[3.6, 21], role="nacelle"},
+  {kind="ellipse", c=[21, -28], r=[3.6, 21], role="nacelle"},
+  {kind="ellipse", c=[0, -36], r=[3.6, 14], role="nacelle"},
+  {kind="ellipse", c=[0, 27], r=[8, 8], role="detail"},
+  {kind="ellipse", c=[0, 25], r=[18, 17], role="detail"},
+]
+anchors = {bridge=[0, 28], core=[0, -10], nose=[0, 48], aft=[0, -30], nacelles=[[-21, -28], [21, -28], [0, -38]]}
+banks = [
+  {pos=[-12, 34], arc=[-35, 260]}, {pos=[12, 34], arc=[35, 260]},
+  {pos=[-22, 18], arc=[-90, 220]}, {pos=[22, 18], arc=[90, 220]},
+  {pos=[-8, -22], arc=[-150, 230]}, {pos=[8, -22], arc=[150, 230]},
+]
+tubes = [
+  {pos=[-3, 6], arc=[0, 150]}, {pos=[3, 6], arc=[0, 150]},
+  {pos=[-6, 2], arc=[0, 150]}, {pos=[6, 2], arc=[0, 150]},
+  {pos=[-8, 10], arc=[-20, 150]}, {pos=[8, 10], arc=[20, 150]},
+  {pos=[-4, -34], arc=[180, 130]}, {pos=[4, -34], arc=[180, 130]},
+]
+launchers = [
+  {pos=[-6, -30], arc=[180, 360]}, {pos=[-2, -32], arc=[180, 360]},
+  {pos=[2, -32], arc=[180, 360]}, {pos=[6, -30], arc=[180, 360]},
+]
+
+[hull."federation.tg"]
+length = 170
+shapes = [
+  {kind="ellipse", c=[0, 30], r=[13, 12], role="hull"},
+  {kind="poly", pts=[[-5, 20], [5, 20], [6, -26], [-6, -26]], role="hull"},
+  {kind="poly", pts=[[-6, -14], [-14, -20], [-14, -24], [-6, -20]], role="hull"},
+  {kind="poly", pts=[[6, -14], [14, -20], [14, -24], [6, -20]], role="hull"},
+  {kind="ellipse", c=[-15, -28], r=[3, 15], role="nacelle"},
+  {kind="ellipse", c=[15, -28], r=[3, 15], role="nacelle"},
+  {kind="poly", pts=[[-9, 8], [9, 8], [9, -10], [-9, -10]], role="detail"},
+]
+anchors = {bridge=[0, 32], core=[0, 0], nose=[0, 41], aft=[0, -26], nacelles=[[-15, -28], [15, -28]]}
+banks = []
+tubes = []
+launchers = []
+
+[hull."federation.tn"]
+length = 320
+shapes = [
+  {kind="poly", pts=[[-6, 50], [6, 50], [11, 38], [11, -36], [-11, -36], [-11, 38]], role="hull"},
+  {kind="ellipse", c=[-15, 18], r=[4.5, 12], role="hull"},
+  {kind="ellipse", c=[15, 18], r=[4.5, 12], role="hull"},
+  {kind="ellipse", c=[-15, -10], r=[4.5, 12], role="hull"},
+  {kind="ellipse", c=[15, -10], r=[4.5, 12], role="hull"},
+  {kind="ellipse", c=[0, -42], r=[6, 10], role="nacelle"},
+  {kind="poly", pts=[[-11, 30], [11, 30]], role="detail"},
+  {kind="poly", pts=[[-11, 4], [11, 4]], role="detail"},
+  {kind="poly", pts=[[-11, -22], [11, -22]], role="detail"},
+]
+anchors = {bridge=[0, 44], core=[0, 0], nose=[0, 49], aft=[0, -34], nacelles=[[0, -42]]}
+banks = []
+tubes = []
+launchers = []
+
+[hull."federation.sb"]
+length = 650
+shapes = [
+  {kind="ellipse", c=[0, 0], r=[48, 48], role="hull"},
+  {kind="ellipse", c=[0, 0], r=[40, 40], role="detail"},
+  {kind="ellipse", c=[0, 0], r=[16, 16], role="detail"},
+  {kind="poly", pts=[[-3, 16], [3, 16], [3, 40], [-3, 40]], role="detail"},
+  {kind="poly", pts=[[-3, -16], [3, -16], [3, -40], [-3, -40]], role="detail"},
+  {kind="poly", pts=[[16, -3], [16, 3], [40, 3], [40, -3]], role="detail"},
+  {kind="poly", pts=[[-16, -3], [-16, 3], [-40, 3], [-40, -3]], role="detail"},
+]
+anchors = {bridge=[0, 4], core=[0, 0], nose=[0, 46], aft=[0, -46], nacelles=[]}
+banks = [
+  {pos=[0, 44], arc=[0, 200]}, {pos=[31, 31], arc=[45, 200]},
+  {pos=[44, 0], arc=[90, 200]}, {pos=[31, -31], arc=[135, 200]},
+  {pos=[0, -44], arc=[180, 200]}, {pos=[-31, -31], arc=[-135, 200]},
+  {pos=[-44, 0], arc=[-90, 200]}, {pos=[-31, 31], arc=[-45, 200]},
+]
+tubes = []
+launchers = []
+
+# ------------------------------------------------------------------ Klingon
+
+[hull."klingon.es"]
+length = 170
+shapes = [
+  {kind="ellipse", c=[0, 38], r=[6, 7], role="hull"},
+  {kind="poly", pts=[[-2, 32], [2, 32], [3, 6], [-3, 6]], role="hull"},
+  {kind="poly", pts=[[0, 10], [9, 3], [26, -12], [28, -24], [20, -24], [10, -17], [6, -28], [-6, -28], [-10, -17], [-20, -24], [-28, -24], [-26, -12], [-9, 3]], role="hull"},
+  {kind="ellipse", c=[-27, -22], r=[3, 12], role="nacelle"},
+  {kind="ellipse", c=[27, -22], r=[3, 12], role="nacelle"},
+]
+anchors = {bridge=[0, 39], core=[0, -10], nose=[0, 44], aft=[0, -26], nacelles=[[-27, -22], [27, -22]]}
+banks = [
+  {pos=[-3, 40], arc=[-30, 240]}, {pos=[3, 40], arc=[30, 240]},
+  {pos=[-18, -14], arc=[-130, 220]}, {pos=[18, -14], arc=[130, 220]},
+]
+tubes = [{pos=[0, 44], arc=[0, 150]}]
+launchers = [{pos=[0, -26], arc=[180, 360]}]
+
+[hull."klingon.fr"]
+length = 200
+shapes = [
+  {kind="ellipse", c=[0, 34], r=[8, 9], role="hull"},
+  {kind="poly", pts=[[-3, 26], [3, 26], [4, 6], [-4, 6]], role="hull"},
+  {kind="poly", pts=[[0, 12], [11, 4], [30, -12], [32, -26], [22, -26], [12, -18], [8, -30], [-8, -30], [-12, -18], [-22, -26], [-32, -26], [-30, -12], [-11, 4]], role="hull"},
+  {kind="ellipse", c=[-31, -24], r=[3.2, 13], role="nacelle"},
+  {kind="ellipse", c=[31, -24], r=[3.2, 13], role="nacelle"},
+  {kind="ellipse", c=[0, 35], r=[3.5, 4], role="detail"},
+]
+anchors = {bridge=[0, 36], core=[0, -10], nose=[0, 42], aft=[0, -28], nacelles=[[-31, -24], [31, -24]]}
+banks = [
+  {pos=[-5, 38], arc=[-30, 240]}, {pos=[5, 38], arc=[30, 240]},
+  {pos=[-20, -12], arc=[-110, 220]}, {pos=[20, -12], arc=[110, 220]},
+  {pos=[0, -28], arc=[180, 220]},
+]
+tubes = [{pos=[-2, 42], arc=[0, 150]}, {pos=[2, 42], arc=[0, 150]}]
+launchers = [{pos=[-4, -28], arc=[180, 360]}, {pos=[4, -28], arc=[180, 360]}]
+
+[hull."klingon.bc"]
+length = 270
+shapes = [
+  {kind="ellipse", c=[0, 40], r=[7, 8], role="hull"},
+  {kind="poly", pts=[[-2.5, 33], [2.5, 33], [3.5, 4], [-3.5, 4]], role="hull"},
+  {kind="poly", pts=[[0, 8], [11, 2], [34, -14], [36, -28], [27, -28], [13, -20], [9, -34], [-9, -34], [-13, -20], [-27, -28], [-36, -28], [-34, -14], [-11, 2]], role="hull"},
+  {kind="ellipse", c=[-35, -25], r=[3.5, 15], role="nacelle"},
+  {kind="ellipse", c=[35, -25], r=[3.5, 15], role="nacelle"},
+  {kind="ellipse", c=[0, 41], r=[3, 3.5], role="detail"},
+  {kind="poly", pts=[[-9, -6], [9, -6], [6, -26], [-6, -26]], role="detail"},
+]
+anchors = {bridge=[0, 42], core=[0, -14], nose=[0, 47], aft=[0, -32], nacelles=[[-35, -25], [35, -25]]}
+banks = [
+  {pos=[-4, 42], arc=[-30, 240]}, {pos=[4, 42], arc=[30, 240]},
+  {pos=[-24, -16], arc=[-110, 220]}, {pos=[24, -16], arc=[110, 220]},
+  {pos=[0, -32], arc=[180, 220]},
+]
+tubes = [
+  {pos=[0, 47], arc=[0, 150]}, {pos=[-3, 45], arc=[0, 150]}, {pos=[3, 45], arc=[0, 150]},
+  {pos=[-4, -33], arc=[180, 130]}, {pos=[4, -33], arc=[180, 130]},
+]
+launchers = [{pos=[-6, -30], arc=[180, 360]}, {pos=[6, -30], arc=[180, 360]}]
+
+[hull."klingon.dr"]
+length = 340
+shapes = [
+  {kind="ellipse", c=[0, 40], r=[9, 9], role="hull"},
+  {kind="poly", pts=[[-3.5, 32], [3.5, 32], [5, 4], [-5, 4]], role="hull"},
+  {kind="poly", pts=[[0, 10], [14, 4], [38, -12], [40, -30], [30, -30], [16, -22], [11, -36], [-11, -36], [-16, -22], [-30, -30], [-40, -30], [-38, -12], [-14, 4]], role="hull"},
+  {kind="ellipse", c=[-39, -27], r=[3.8, 16], role="nacelle"},
+  {kind="ellipse", c=[39, -27], r=[3.8, 16], role="nacelle"},
+  {kind="ellipse", c=[0, -36], r=[4, 12], role="nacelle"},
+  {kind="ellipse", c=[0, 41], r=[4, 4], role="detail"},
+  {kind="poly", pts=[[-12, -4], [12, -4], [8, -28], [-8, -28]], role="detail"},
+]
+anchors = {bridge=[0, 42], core=[0, -14], nose=[0, 48], aft=[0, -34], nacelles=[[-39, -27], [39, -27], [0, -38]]}
+banks = [
+  {pos=[-5, 42], arc=[-30, 240]}, {pos=[5, 42], arc=[30, 240]},
+  {pos=[-28, -16], arc=[-110, 220]}, {pos=[28, -16], arc=[110, 220]},
+  {pos=[-8, -32], arc=[-160, 220]}, {pos=[8, -32], arc=[160, 220]},
+]
+tubes = [
+  {pos=[0, 48], arc=[0, 150]}, {pos=[-4, 46], arc=[0, 150]}, {pos=[4, 46], arc=[0, 150]},
+  {pos=[-6, 44], arc=[-15, 150]}, {pos=[6, 44], arc=[15, 150]},
+  {pos=[-20, -18], arc=[-90, 150]}, {pos=[20, -18], arc=[90, 150]},
+  {pos=[0, -34], arc=[180, 130]},
+]
+launchers = [
+  {pos=[-8, -30], arc=[180, 360]}, {pos=[-3, -32], arc=[180, 360]},
+  {pos=[3, -32], arc=[180, 360]}, {pos=[8, -30], arc=[180, 360]},
+]
+
+[hull."klingon.op"]
+length = 620
+shapes = [
+  {kind="poly", pts=[[0, 48], [42, 24], [42, -24], [0, -48], [-42, -24], [-42, 24]], role="hull"},
+  {kind="poly", pts=[[0, 30], [26, 15], [26, -15], [0, -30], [-26, -15], [-26, 15]], role="detail"},
+  {kind="ellipse", c=[0, 0], r=[10, 10], role="detail"},
+]
+anchors = {bridge=[0, 4], core=[0, 0], nose=[0, 46], aft=[0, -46], nacelles=[]}
+banks = [
+  {pos=[0, 46], arc=[0, 200]}, {pos=[40, 22], arc=[60, 200]},
+  {pos=[40, -22], arc=[120, 200]}, {pos=[0, -46], arc=[180, 200]},
+  {pos=[-40, -22], arc=[-120, 200]}, {pos=[-40, 22], arc=[-60, 200]},
+  {pos=[20, 36], arc=[30, 200]}, {pos=[-20, -36], arc=[-150, 200]},
+]
+tubes = []
+launchers = []
+
+# ------------------------------------------------------------------ Romulan
+
+[hull."romulan.we"]
+length = 150
+shapes = [
+  {kind="ellipse", c=[0, 8], r=[10, 28], role="hull"},
+  {kind="poly", pts=[[0, 16], [30, -6], [34, -26], [22, -20], [8, -18], [-8, -18], [-22, -20], [-34, -26], [-30, -6]], role="hull"},
+  {kind="ellipse", c=[-30, -18], r=[3, 10], role="nacelle"},
+  {kind="ellipse", c=[30, -18], r=[3, 10], role="nacelle"},
+  {kind="ellipse", c=[0, 20], r=[4, 6], role="detail"},
+]
+anchors = {bridge=[0, 22], core=[0, 2], nose=[0, 35], aft=[0, -18], nacelles=[[-30, -18], [30, -18]]}
+banks = [
+  {pos=[-4, 30], arc=[-30, 240]}, {pos=[4, 30], arc=[30, 240]},
+  {pos=[-20, -10], arc=[-110, 220]}, {pos=[20, -10], arc=[110, 220]},
+  {pos=[0, -18], arc=[180, 220]},
+]
+tubes = [{pos=[0, 36], arc=[0, 180]}]
+launchers = []
+
+[hull."romulan.bp"]
+length = 290
+shapes = [
+  {kind="ellipse", c=[0, 8], r=[13, 32], role="hull"},
+  {kind="poly", pts=[[0, 20], [44, -8], [48, -30], [34, -22], [12, -22], [-12, -22], [-34, -22], [-48, -30], [-44, -8]], role="hull"},
+  {kind="ellipse", c=[-43, -22], r=[3.5, 13], role="nacelle"},
+  {kind="ellipse", c=[43, -22], r=[3.5, 13], role="nacelle"},
+  {kind="ellipse", c=[0, 26], r=[5, 8], role="detail"},
+  {kind="poly", pts=[[-24, -6], [0, 6], [24, -6]], role="detail"},
+]
+anchors = {bridge=[0, 28], core=[0, 0], nose=[0, 39], aft=[0, -22], nacelles=[[-43, -22], [43, -22]]}
+banks = [
+  {pos=[0, 38], arc=[0, 260]},
+  {pos=[-30, -14], arc=[-120, 230]}, {pos=[30, -14], arc=[120, 230]},
+]
+tubes = [{pos=[-4, 38], arc=[0, 200]}, {pos=[4, 38], arc=[0, 200]}]
+launchers = [{pos=[-6, -20], arc=[180, 360]}, {pos=[6, -20], arc=[180, 360]}]
+
+[hull."romulan.fr"]
+length = 210
+shapes = [
+  {kind="ellipse", c=[0, 6], r=[9, 36], role="hull"},
+  {kind="poly", pts=[[0, 12], [26, -18], [30, -40], [18, -30], [-18, -30], [-30, -40], [-26, -18]], role="hull"},
+  {kind="ellipse", c=[0, -38], r=[4, 11], role="nacelle"},
+  {kind="ellipse", c=[0, 24], r=[4, 7], role="detail"},
+]
+anchors = {bridge=[0, 26], core=[0, 0], nose=[0, 41], aft=[0, -30], nacelles=[[0, -38]]}
+banks = [
+  {pos=[-4, 32], arc=[-30, 240]}, {pos=[4, 32], arc=[30, 240]},
+  {pos=[-22, -24], arc=[-120, 220]}, {pos=[22, -24], arc=[120, 220]},
+]
+tubes = [{pos=[-3, 40], arc=[0, 200]}, {pos=[3, 40], arc=[0, 200]}]
+launchers = [{pos=[-6, -26], arc=[180, 360]}, {pos=[6, -26], arc=[180, 360]}]
+
+# -------------------------------------------------------------------- Orion
+
+[hull."orion.as"]
+length = 110
+shapes = [
+  {kind="poly", pts=[[0, 50], [8, 2], [20, -46], [5, -34], [0, -40], [-5, -34], [-20, -46], [-8, 2]], role="hull"},
+  {kind="ellipse", c=[0, -36], r=[3, 8], role="nacelle"},
+  {kind="poly", pts=[[0, 30], [0, -20]], role="detail"},
+]
+anchors = {bridge=[0, 20], core=[0, -6], nose=[0, 46], aft=[0, -34], nacelles=[[0, -36]]}
+banks = [{pos=[0, 44], arc=[0, 240]}, {pos=[-10, -24], arc=[-120, 220]}, {pos=[10, -24], arc=[120, 220]}]
+tubes = []
+launchers = []
+
+[hull."orion.ra"]
+length = 140
+shapes = [
+  {kind="poly", pts=[[0, 46], [10, 20], [22, -10], [22, -46], [12, -40], [0, -30], [-12, -40], [-22, -46], [-22, -10], [-10, 20]], role="hull"},
+  {kind="ellipse", c=[-17, -38], r=[3, 9], role="nacelle"},
+  {kind="ellipse", c=[17, -38], r=[3, 9], role="nacelle"},
+  {kind="poly", pts=[[0, 30], [0, -24]], role="detail"},
+]
+anchors = {bridge=[0, 22], core=[0, -8], nose=[0, 44], aft=[0, -30], nacelles=[[-17, -38], [17, -38]]}
+banks = [
+  {pos=[0, 42], arc=[0, 240]}, {pos=[-12, 10], arc=[-70, 220]}, {pos=[12, 10], arc=[70, 220]},
+  {pos=[-18, -30], arc=[-140, 220]}, {pos=[18, -30], arc=[140, 220]},
+]
+tubes = []
+launchers = []
+
+[hull."orion.sa"]
+length = 160
+shapes = [
+  {kind="poly", pts=[[0, 48], [12, 16], [14, -20], [26, -44], [8, -36], [0, -42], [-8, -36], [-26, -44], [-14, -20], [-12, 16]], role="hull"},
+  {kind="ellipse", c=[0, -38], r=[4, 9], role="nacelle"},
+  {kind="poly", pts=[[-12, 0], [12, 0]], role="detail"},
+]
+anchors = {bridge=[0, 24], core=[0, -6], nose=[0, 46], aft=[0, -36], nacelles=[[0, -38]]}
+banks = [
+  {pos=[0, 44], arc=[0, 240]}, {pos=[-12, 12], arc=[-70, 220]}, {pos=[12, 12], arc=[70, 220]},
+  {pos=[-20, -36], arc=[-140, 220]}, {pos=[20, -36], arc=[140, 220]},
+]
+tubes = [{pos=[0, 46], arc=[0, 150]}]
+launchers = []
+
+[hull."orion.an"]
+length = 190
+shapes = [
+  {kind="poly", pts=[[0, 48], [16, 18], [18, -16], [30, -42], [10, -36], [0, -44], [-10, -36], [-30, -42], [-18, -16], [-16, 18]], role="hull"},
+  {kind="ellipse", c=[0, -40], r=[4.5, 10], role="nacelle"},
+  {kind="poly", pts=[[-16, 2], [16, 2]], role="detail"},
+  {kind="poly", pts=[[-10, 24], [10, 24]], role="detail"},
+]
+anchors = {bridge=[0, 26], core=[0, -6], nose=[0, 46], aft=[0, -38], nacelles=[[0, -40]]}
+banks = [
+  {pos=[0, 44], arc=[0, 240]}, {pos=[-14, 14], arc=[-70, 220]}, {pos=[14, 14], arc=[70, 220]},
+  {pos=[-22, -36], arc=[-140, 220]}, {pos=[22, -36], arc=[140, 220]},
+]
+tubes = [{pos=[-3, 46], arc=[0, 150]}, {pos=[3, 46], arc=[0, 150]}, {pos=[0, -42], arc=[180, 130]}]
+launchers = [{pos=[0, -30], arc=[180, 360]}]
+
+[hull."orion.ar"]
+length = 230
+shapes = [
+  {kind="ellipse", c=[0, 0], r=[30, 46], role="hull"},
+  {kind="ellipse", c=[0, -44], r=[6, 8], role="nacelle"},
+  {kind="poly", pts=[[-28, 18], [28, 18]], role="detail"},
+  {kind="poly", pts=[[-30, 0], [30, 0]], role="detail"},
+  {kind="poly", pts=[[-28, -18], [28, -18]], role="detail"},
+  {kind="ellipse", c=[0, 30], r=[8, 6], role="detail"},
+]
+anchors = {bridge=[0, 30], core=[0, 0], nose=[0, 45], aft=[0, -40], nacelles=[[0, -44]]}
+banks = [{pos=[0, 44], arc=[0, 240]}, {pos=[0, -40], arc=[180, 240]}]
+tubes = [{pos=[-4, 44], arc=[0, 150]}, {pos=[4, 44], arc=[0, 150]}]
+launchers = [{pos=[0, -36], arc=[180, 360]}]
