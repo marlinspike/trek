@@ -18,7 +18,7 @@ from enum import IntEnum
 from typing import TYPE_CHECKING, ClassVar
 
 from ..core.angles import bearing, in_arc, norm360
-from .ship import BankRole, FireMode, HelmMode, Kind, PDDoctrine, Ship, ShipStatus, TARGETABLE_GROUPS
+from .ship import BankRole, FireMode, HelmMode, Kind, PDDoctrine, Ship, ShipStatus, TARGETABLE_GROUPS, Tube
 
 if TYPE_CHECKING:
     from .world import World
@@ -487,6 +487,74 @@ class FireTorpedoes(Command):
             if sub is None and tgt is not None and tgt == ship.target:
                 sub = ship.target_subsystem
             launch_torpedoes(world, ship, [ship.tubes[i] for i in idx], tgt, sub, self.fan)
+
+
+@dataclass(kw_only=True)
+class StartProject(Command):
+    """Set the officers to design something over a few cycles (sim/projects.py) [E]."""
+
+    project: str
+    name: ClassVar[str] = "design"
+
+    def channels(self) -> tuple[str, ...]:
+        return ("project",)
+
+    def validate(self, world: World, ship: Ship) -> None:
+        from .projects import PROJECTS, project_loaded
+
+        proj = PROJECTS.get(self.project)
+        if proj is None:
+            raise Rejected(f"Nothing called '{self.project}' to design. Known: {', '.join(PROJECTS)}.")
+        if self.project in ship.projects:
+            raise Rejected(f"The {proj.title} is already being designed ({ship.projects[self.project]:.0f} cycles left).")
+        if proj.needs_tubes and not any(t.intact for t in ship.tubes):
+            raise Rejected(f"The {proj.title} needs a working torpedo tube.")
+        loaded_in = project_loaded(ship, proj) if proj.ordnance else None
+        if loaded_in is not None:
+            raise Rejected(f"A {proj.title} is already loaded in tube {loaded_in + 1}.")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        from .projects import PROJECTS
+
+        ship.projects[self.project] = PROJECTS[self.project].cycles
+
+    def describe(self) -> str:
+        return f"design {self.project}"
+
+
+@dataclass(kw_only=True)
+class FireSpecialRound(Command):
+    """Fire a designed round (e.g. the tachyon detector) at a point, fused to burst there [E]."""
+
+    ordnance: str
+    x: float
+    y: float
+    name: ClassVar[str] = "fire special round"
+
+    def channels(self) -> tuple[str, ...]:
+        return ("torpedoes",)
+
+    def _tube(self, ship: Ship) -> Tube:
+        tube = next((t for t in ship.tubes if t.loaded is not None and t.loaded.ordnance == self.ordnance), None)
+        if tube is None:
+            raise Rejected(f"No {self.ordnance} round is loaded. Ask Spock and Seven to design one ('design {self.ordnance}').")
+        return tube
+
+    def validate(self, world: World, ship: Ship) -> None:
+        self._tube(ship)
+        spec = world.content.torpedoes[self.ordnance]
+        reach = spec.velocity * world.rules.units_per_warp * (spec.arm_time + spec.max_time_fuse)
+        d = math.hypot(self.x - ship.x, self.y - ship.y)
+        if d > reach:
+            raise Rejected(f"That point is {d:,.0f} away; the round reaches {reach:,.0f}.")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        from .systems.ordnance import launch_at_point
+
+        launch_at_point(world, ship, self._tube(ship), self.x, self.y)
+
+    def describe(self) -> str:
+        return f"fire {self.ordnance} at ({self.x:,.0f}, {self.y:,.0f})"
 
 
 @dataclass(kw_only=True)

@@ -54,7 +54,7 @@ def torpedo_stats(t: TorpedoDef, upw: float) -> dict[str, float]:
 def torpedo_table(ctx: HelpContext) -> str:
     rows = ["| Torpedo | Id | Warp | Warhead | Arms at | Reach | Max prox | Guidance | Reload | Carried by |",
             "|---|---|---|---|---|---|---|---|---|---|"]
-    for t in sorted(ctx.content.torpedoes.values(), key=lambda t: -t.damage):
+    for t in sorted((t for t in ctx.content.torpedoes.values() if not t.special), key=lambda t: -t.damage):
         st = torpedo_stats(t, ctx.upw)
         rows.append(
             f"| {t.name} | `{t.id}` | {t.velocity:g} | {t.damage:g} {WARHEAD.get(t.warhead_type, '')} | "
@@ -139,6 +139,7 @@ TIP_STATIONS = {
     "Switch torpedoes": "tactical", "Heavier torpedo available": "tactical", "Proximity fuse": "tactical",
     "Phasers in range": "tactical", "Closing to phaser range": "helm", "Probe it": "tactical",
     "Scan the target": "science", "Their shields": "science", "Turn a fresh shield toward them": "helm",
+    "Cloaked ship nearby": "science", "Tachyon round ready": "tactical",
     "Engines running hot": "engineering", "Power is running out": "engineering", "Badly damaged": "engineering",
 }
 
@@ -277,6 +278,18 @@ def tips(ctx: HelpContext) -> list[Tip]:
                     f"{best.effective:.0f}%: steer {turn:.0f} to put it toward them, or reinforce the weak one.",
                     f"helm {turn:.0f}", f"reenforce {sh.index + 1}")
     # engines and power
+    cloaked = [h for h in obs.hostile_contacts() if h.cloaked_hint]
+    if cloaked and s.tubes:
+        h = min(cloaked, key=lambda h: h.distance_to(s.x, s.y))
+        name = _contact_name(h)
+        if any(t.loaded is not None and t.loaded.ordnance == "tachyon" for t in s.tubes):
+            tip(1, "Tachyon round ready", f"Burst the tachyon detector where **{name}** vanished to light it up.",
+                f"tachyon {name.lower()}")
+        elif "tachyon" in s.projects:
+            pass  # Spock and Seven are on it
+        else:
+            tip(2, "Cloaked ship nearby", f"**{name}** has probably cloaked. Spock and Seven can build a tachyon "
+                "detector torpedo to find it.", "design tachyon", "help tachyon")
     live = [dv for dv in s.drives if not dv.destroyed]
     temp = max((dv.temp for dv in live), default=0.0)
     if temp > obs.rules.temp_limit * 0.8:

@@ -27,7 +27,8 @@ from ..core.rng import Rng
 from ..sim.commands import (
     Authority, Command, ConfigureAutoload, ControlProbe, FirePhasers, FireTorpedoes, LaunchProbe, LoadTubes,
     LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak, SetFireMode, SetHelm,
-    SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, TurnMounts,
+    SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, StartProject, TurnMounts,
+    FireSpecialRound,
 )
 from ..sim.observation import Observation
 from ..sim.ship import Kind, Ship
@@ -36,9 +37,10 @@ from .characters import STATIONS, OfficerProfile
 STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
     "helm": (SetHelm, Pursue),
     "tactical": (SelectTarget, LockWeapons, TurnMounts, FirePhasers, SetPhaserSpread, SetBanks, FireTorpedoes,
-                 ConfigureAutoload, LoadTubes, SetTubes, LaunchProbe, ControlProbe, SetFireMode, SetPointDefense),
+                 ConfigureAutoload, LoadTubes, SetTubes, LaunchProbe, ControlProbe, SetFireMode, SetPointDefense,
+                 FireSpecialRound),
     "engineering": (SetShields, ReinforceShield, SetRepairPriority, SetCloak),
-    "science": (Scan,),
+    "science": (Scan, StartProject),
 }
 
 STATION_NAMES = {"helm": "Helm", "tactical": "Tactical", "engineering": "Engineering", "science": "Science"}

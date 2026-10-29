@@ -390,3 +390,48 @@ def test_last_torpedoes_go_to_tubes_that_can_finish(content) -> None:  # type: i
     assert all(t.charge == 0.0 for t in dn.tubes if t.loaded is None)
     assert dn.torps_remaining == 0
     assert any(isinstance(e, Message) and "magazine empty" in e.text for e in w.take_events())
+
+
+def test_tachyon_round_is_designed_loaded_once_and_lights_up_cloaked_ships(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.commands import FireSpecialRound, StartProject
+    from begin.sim.events import ProjectCompleted
+
+    w = make_world(content)
+    hc = w.add_ship("federation.hc", 0, 0, 0)
+    bp = w.add_ship("romulan.bp", 1, 0, 12000)
+    bp.cloaked = True
+    w.submit(StartProject(ship_id=hc.id, project="tachyon", issuer=Authority.CAPTAIN))
+    w.run(10)
+    assert "tachyon" in hc.projects and not any(t.loaded and t.loaded.ordnance == "tachyon" for t in hc.tubes)
+    w.run(12)
+    done = [e for e in w.take_events() if isinstance(e, ProjectCompleted)]
+    assert done and done[0].tube is not None
+    tube = hc.tubes[done[0].tube]
+    assert tube.loaded is not None and tube.loaded.ordnance == "tachyon"
+    assert sum(1 for t in hc.tubes if t.loaded and t.loaded.ordnance == "tachyon") == 1
+    obs = w.observe(0).contact(bp.id)
+    assert obs is None or not obs.visible
+
+    w.submit(FireSpecialRound(ship_id=hc.id, ordnance="tachyon", x=bp.x, y=bp.y, issuer=Authority.CAPTAIN))
+    w.run(8)
+    c = w.observe(0).contact(bp.id)
+    assert bp.cloaked and c is not None and c.visible   # lit up while still cloaked
+    assert any(isinstance(e, Detonation) for e in w.take_events())
+    w.run(4)
+    assert tube.loaded is not None and tube.loaded.ordnance == hc.cls.torpedo   # back to ordinary torpedoes
+    w.run(30)
+    c = w.observe(0).contact(bp.id)
+    assert c is None or not c.visible   # the particles have dispersed
+
+
+def test_tachyon_round_needs_a_design_and_reach(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.commands import FireSpecialRound, StartProject
+
+    w = make_world(content)
+    hc = w.add_ship("federation.hc", 0, 0, 0)
+    w.add_ship("klingon.bc", 1, 0, 30000)
+    w.submit(FireSpecialRound(ship_id=hc.id, ordnance="tachyon", x=0, y=5000, issuer=Authority.CAPTAIN))
+    w.submit(StartProject(ship_id=hc.id, project="warp core", issuer=Authority.CAPTAIN))
+    w.run(0.2)
+    reasons = [e.reason for e in w.take_events() if isinstance(e, CommandRejected)]
+    assert any("design tachyon" in r for r in reasons) and any("Nothing called" in r for r in reasons)

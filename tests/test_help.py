@@ -82,7 +82,7 @@ def test_live_blocks_expand_without_a_battle(content) -> None:  # type: ignore[n
         assert out.strip() and "{{" not in out, name
     table = expand("{{torpedo_table}}", ctx)
     for t in content.torpedoes.values():
-        assert t.name in table
+        assert t.name in table or t.special
     assert expand("{{nonsense}}", ctx) == "{{nonsense}}"
 
 

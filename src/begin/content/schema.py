@@ -157,6 +157,10 @@ class TorpedoDef:
     warhead_type: int  # 0 antimatter, 1 shield-bore, 2 plasma (decays)
     charge_time: float
     load_energy: float
+    # [E] special designs (custom_ordnance.toml): a burst that lights up cloaked ships instead of damaging
+    reveal_radius: float = 0.0
+    reveal_cycles: float = 0.0
+    special: bool = False         # never offered as a normal load; made by a crew project
 
     @property
     def is_plasma(self) -> bool:

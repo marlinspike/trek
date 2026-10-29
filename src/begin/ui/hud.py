@@ -396,7 +396,7 @@ class WeaponsPanel(Panel):
             pygame.draw.rect(surf, theme.GOOD if bears and t.loaded else theme.BORDER, r, 1, border_radius=3)
             if t.loaded:
                 # loaded but the target is outside this tube's arc: dimmed, so it's clear why it won't fire
-                lab, col = t.loaded.ordnance.upper(), theme.GOOD if bears or tgt is None else theme.TEXT_DIM
+                lab, col = t.loaded.ordnance.upper()[:4], theme.GOOD if bears or tgt is None else theme.TEXT_DIM
             elif not t.intact:
                 lab, col = "DMG", theme.ALERT
             elif ship.torps_remaining <= 0:

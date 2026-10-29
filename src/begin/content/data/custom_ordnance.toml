@@ -1,0 +1,23 @@
+# Hand-written ordnance [E]. The importer regenerates ordnance.toml but never touches this file.
+#
+# Special designs (`special = true`) are never offered as a normal load: a crew
+# project builds one round and loads it into a tube (see sim/projects.py).
+# reveal_radius / reveal_cycles: the burst floods the area with particles; any
+# cloaked ship inside the radius shows on sensors for that many cycles.
+
+[[torpedo]]
+id = "tachyon"
+name = "Tachyon Detector Torpedo"
+velocity = 30.0
+damage = 0.0
+arm_time = 1.0
+max_time_fuse = 12.0
+max_prox = 100.0
+homing = false
+speed_variance = 0.0
+warhead_type = 0
+charge_time = 3.0
+load_energy = 10.0
+reveal_radius = 6000.0
+reveal_cycles = 30.0
+special = true

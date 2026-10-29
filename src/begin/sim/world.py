@@ -31,6 +31,7 @@ from .commands import AllyOrder, Authority, Command, Rejected
 from .events import CommandRejected, Event, Message, ShipStatusChanged, SubsystemDamaged, Tone
 from .factory import build_ship
 from .ordnance import Probe, Torpedo
+from .projects import update_projects
 from .rules import DEFAULT_RULES, Rules
 from .ship import HelmMode, LoadedProbe, Launcher, Ship, ShipStatus, Subsystem
 from .systems import sensors as sensors_sys
@@ -319,6 +320,7 @@ class World:
             if not s.exists:
                 continue
             update_repair(self, s, dt)
+            update_projects(self, s, dt)
             s.reveal_time = max(0.0, s.reveal_time - dt)
             self._self_destruct(s, dt)
             if cycle_edge and s.boarders > 0:

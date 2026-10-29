@@ -4,9 +4,9 @@ category: Ship systems
 order: 3
 aliases: cloak, cl, decloak, uncloak, invisible, stealth
 summary: Hide your ship from enemy sensors, at the cost of energy, until you fire or are hit.
-see: scan, chart, tactics
+see: tachyon, scan, chart, tactics
 ---
-Some ships, mostly Romulan and Klingon, carry a cloaking device. While it runs, enemy sensors can only find you at very close range.
+Some ships, mostly Romulan and Klingon, carry a cloaking device. While it runs, enemy sensors can't find you at all.
 
 ```console
 cloak on
@@ -22,3 +22,5 @@ decloak
 ## Hunting a cloaked ship
 
 When an enemy that can cloak vanishes at close range, it has almost certainly cloaked, and it has not gone far. Watch for the moment it fires, and have tubes ready. Wide-spread phasers and torpedoes with a big proximity are your best chance.
+
+Better still, ask Spock and Seven for a [[tachyon]] detector torpedo. Its burst lights up cloaked ships long enough to target them.

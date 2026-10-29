@@ -34,7 +34,7 @@ Two things to keep in mind about power and speed:
 
 ## Torpedoes and probes
 
-Designs live in `content/data/ordnance.toml` (`[[torpedo]]` and `[[probe]]`). A class's native loadout is its `torpedo` and `probe` field. Its tubes and launchers can also load the other designs listed in its faction's `torpedoes` and `probes` in `factions.toml`; plasma tubes and antimatter tubes don't share designs. `ordnance.toml` is generated too, so a design you add by hand must be added again if the importer is ever re-run.
+Designs live in `content/data/ordnance.toml` (`[[torpedo]]` and `[[probe]]`). A class's native loadout is its `torpedo` and `probe` field. Its tubes and launchers can also load the other designs listed in its faction's `torpedoes` and `probes` in `factions.toml`; plasma tubes and antimatter tubes don't share designs. `ordnance.toml` is generated, so put hand-made designs in `content/data/custom_ordnance.toml` instead; it is loaded after the generated file and survives a re-import. A design marked `special = true` is never autoloaded. It only reaches a tube through a crew project (see below). `reveal_radius` and `reveal_cycles` make a round burst into a cloud that shows cloaked ships, as the tachyon detector does.
 
 ## A preset battle
 
@@ -107,6 +107,15 @@ To change a page without touching the bundled ones, put your version in `config/
 - offline lines for each event, with `{target}`, `{ship}`, `{captain}` and `{n}` filled in.
 
 All the lines are original writing; keep it that way (see [LICENSING.md](../LICENSING.md)).
+
+## Crew collaborations and projects
+
+Spock and Seven's tachyon detector is the first of these, and the pattern is meant for more. It has two halves:
+
+- **The project** (`sim/projects.py`): a `ProjectDef` in `PROJECTS` says how long the work takes with a full crew and what finishing it does, for example `load_special_round`, which puts one round of a `special` design into a tube. The simulation knows nothing about officers, so the console command `design <project>` works with or without them.
+- **The collaboration** (`crew/collaborations.py`): a `Collaboration` in `COLLABORATIONS` names the officers, the phrases that set it off when the captain talks to one of them, and the lines each says when work starts and when it is done (`{tube}` is filled in). The Bridge checks these before anything else, so they work offline and with a language model.
+
+Add a help page for each new project, and a coach tip in `help/coach.py` if there is a situation that calls for it.
 
 ## A language model provider
 

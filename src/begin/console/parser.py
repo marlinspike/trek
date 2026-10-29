@@ -28,7 +28,7 @@ from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, Surrender,
-    Tractor, Transport, TurnMounts,
+    FireSpecialRound, StartProject, Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
 from ..sim.ship import TARGETABLE_GROUPS, BankRole, FireMode, Kind, PDDoctrine
@@ -87,6 +87,8 @@ VERBS: dict[str, tuple[str, ...]] = {
     "reinforce": ("reinforce", "reenforce", "rf"),
     "repair": ("repair",),
     "scan": ("scan", "sc"),
+    "design": ("design", "collaborate", "invent"),
+    "tachyon": ("tachyon",),
     "range": ("range", "display", "rng", "zoom", "scale"),
     "chart": ("chart",),
     "report": ("report",),
@@ -935,6 +937,40 @@ class Parser:
 
     def _v_undock(self, tok: _Tokens, res: ParseResult) -> None:
         res.commands.append(self._cmd(Dock, host=None))
+
+    def _v_design(self, tok: _Tokens, res: ParseResult) -> None:
+        """`design tachyon`: Spock and Seven build a one-off special round [E]."""
+        from ..sim.projects import PROJECTS
+
+        tok.skip_filler()
+        word = (tok.peek() or "").lower()
+        hits = [p for p in PROJECTS if p.startswith(word)] if word else []
+        if len(hits) != 1:
+            raise ParseError(f"Design what? Known: {', '.join(PROJECTS)}.")
+        tok.rest()
+        res.commands.append(self._cmd(StartProject, project=hits[0]))
+
+    def _v_tachyon(self, tok: _Tokens, res: ParseResult) -> None:
+        """`tachyon <bearing> <range>`, `tachyon <ship>` or bare `tachyon` (at the target): burst the detector there."""
+        import math
+
+        tok.take_word("fire", "at", "toward", "towards")
+        tok.skip_filler()
+        if _is_num(tok.peek()):
+            brg = tok.number("bearing")
+            tok.take_word("range", "at", "distance")
+            rng_ = tok.number("range")
+            a = math.radians(brg)
+            x, y = self.ship.x + math.sin(a) * rng_, self.ship.y + math.cos(a) * rng_
+        else:
+            sid = self.resolve_ship(tok, allow_none=True)
+            if sid is None:
+                sid = self.ship.target
+            c = self.obs.contact(sid) if sid is not None else None
+            if c is None:
+                raise ParseError("Burst it where? 'tachyon <bearing> <range>' or 'tachyon <ship>'.")
+            x, y = c.x, c.y
+        res.commands.append(self._cmd(FireSpecialRound, ordnance="tachyon", x=x, y=y))
 
     def _v_cloak(self, tok: _Tokens, res: ParseResult) -> None:
         on = not tok.take_word("off")

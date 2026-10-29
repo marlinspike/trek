@@ -141,3 +141,10 @@ class ContactChanged(Event):
 class ScanCompleted(Event):
     ship_id: int
     target_id: int
+
+
+@dataclass(slots=True)
+class ProjectCompleted(Event):
+    ship_id: int
+    project: str
+    tube: int | None       # where a designed round was loaded

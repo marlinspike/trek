@@ -340,6 +340,7 @@ class Ship:
     life_failure_time: float = 0.0
     torps_remaining: int = 0
     magazine_empty_told: bool = False
+    projects: dict[str, float] = field(default_factory=dict)   # crew projects under way: id -> cycles left
     probes_remaining: int = 0
 
     # fire control state shared by every controller of this ship

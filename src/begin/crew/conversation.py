@@ -33,12 +33,13 @@ from ..help.coach import HelpContext, tips
 from ..llm.providers.base import Message
 from ..llm.service import LLMService
 from ..sim.events import (
-    ContactChanged, Event, HullHit, PhaserFired, ScanCompleted, ShipStatusChanged, SubsystemRepaired, TorpedoLaunched,
+    ContactChanged, Event, HullHit, PhaserFired, ProjectCompleted, ScanCompleted, ShipStatusChanged, SubsystemRepaired, TorpedoLaunched,
 )
 from ..sim.observation import Observation
 from ..sim.ship import Ship
 from .characters import (
 )
+from . import collaborations
 from .officers import STATION_NAMES, Crew
 
 
@@ -60,6 +61,7 @@ _GREET = re.compile(r"^(hello|hi|hey|greetings|report in)\b")
 _TAKE = re.compile(r"\b(take over|take (the |your )?(conn|helm|station|tactical|weapons|engineering|science|sensors)"
                    r"|you have the (conn|helm|station)|your station|take charge|you'?re in charge|handle it)\b")
 _RELEASE = re.compile(r"\b(stand down|i have (the|it)|i'?ll (take|handle) (it|the)|i relieve you|belay)\b")
+_FIRING = re.compile(r"^\s*(fire\b|tachyon\s+\S)")  # an order to fire the round, not to design one
 _STATUS = re.compile(r"\b(status|report|sitrep|situation|how are|how's|condition)\b")
 _ADVICE = re.compile(r"\b(advice|advise|recommend|suggest|what (should|do you|now|next)|ideas?|options?|thoughts?|opinion)\b")
 
@@ -113,6 +115,9 @@ class Bridge:
             rel.nudge(0.03)
         if _RUDE.search(low):
             rel.nudge(-0.08)
+        collab = None if _FIRING.match(low) else collaborations.matching(officer.id, low)
+        if collab is not None:
+            return self.collaborate(officer, collab, run)
         if self.llm is not None:
             if self.llm.busy(officer.id):
                 return [self._say(officer, "One moment, Captain.", "dim")]
@@ -124,6 +129,22 @@ class Bridge:
             self.asking[officer.id] = is_question(low)
             return [self._say(officer, "…", "dim")]
         return self.offline(officer, low, ctx, run)
+
+    def collaborate(self, officer: OfficerProfile, collab: collaborations.Collaboration,
+                    run: RunCommand) -> list[Utterance]:
+        """Officers set to work together on a project; each says their part."""
+        err = run(f"design {collab.project}", officer)
+        if err:
+            return [self._say(officer, err, "caution")]
+        return self._chorus(collab.start)
+
+    def _chorus(self, lines: Iterable[tuple[str, str]], **fill: object) -> list[Utterance]:
+        out: list[Utterance] = []
+        for oid, text in lines:
+            o = self.find(oid)
+            if o is not None:
+                out.append(self._say(o, text.format(**fill)))
+        return out
 
     def poll(self, ctx: HelpContext, run: RunCommand) -> list[Utterance]:
         """LLM answers that have arrived since the last frame."""
@@ -255,7 +276,12 @@ class Bridge:
         out: list[Utterance] = []
         delegated = s.delegated
         for ev in events:
-            if isinstance(ev, TorpedoLaunched) and ev.ship_id == s.id and "tactical" in delegated:
+            if isinstance(ev, ProjectCompleted) and ev.ship_id == s.id:
+                collab = collaborations.for_project(ev.project)
+                if collab is not None and ev.tube is not None:
+                    out.extend(self._chorus(collab.done, tube=ev.tube + 1))
+                    self._last_any = obs.tick
+            elif isinstance(ev, TorpedoLaunched) and ev.ship_id == s.id and "tactical" in delegated:
                 self._maybe(out, obs, "tactical", "torpedoes", 0.6)
             elif isinstance(ev, PhaserFired) and ev.ship_id == s.id and "tactical" in delegated:
                 self._maybe(out, obs, "tactical", "phasers", 0.15)
@@ -341,7 +367,8 @@ COMMAND_SYNTAX = """\
   fire all torpedoes | fire probes at <ship> | autoload tor <torpedo id> | load all tubes <proximity>
   pd off|conservative|balanced|aggressive | mode phasers|tubes manual|assisted|automatic
   raise all | lower <shield numbers> | reinforce <1-6> | repair <system>|all | cloak on|off
-  scan <ship>
+  scan <ship> | design tachyon (Spock and Seven build a detector round for cloaked ships)
+  tachyon <bearing> <range> | tachyon <ship> (burst the loaded detector round there)
   delegate <helm|tactical|engineering|science> | assume <station>   (hand a station to its officer, or take it back)"""
 
 

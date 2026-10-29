@@ -426,3 +426,27 @@ def test_seven_rapport_floor_holds(content) -> None:  # type: ignore[no-untyped-
     rel.nudge(-0.5)
     assert rel.rapport == 1.0
     assert bridge.relationships.get("spock").floor == -1.0
+
+
+def test_spock_and_seven_design_a_tachyon_detector(scene) -> None:  # type: ignore[no-untyped-def]
+    import math
+
+    from begin.console.parser import ParseContext, parse
+    from begin.sim.commands import FireSpecialRound
+
+    sc, surf = scene
+    sc.run_console("spock, I think there's a cloaked ship out there")
+    assert "tachyon" in sc.player.projects
+    assert _said(sc, "Spock") and any("Twenty seconds" in t for t in _said(sc, "Seven of Nine"))
+    sc.run_console("seven, find the cloaked ship")   # already under way: she says so instead of starting again
+    assert any("already being designed" in t for t in _said(sc, "Seven of Nine"))
+    for _ in range(25 * sc.world.rules.ticks_per_cycle):
+        sc.world.step()
+        sc._drain_events()
+    tube = next(t for t in sc.player.tubes if t.loaded and t.loaded.ordnance == "tachyon")
+    assert any(f"ready in tube {tube.index + 1}" in t for t in _said(sc, "Seven of Nine"))
+    cmd = parse("tachyon 90 8000", ParseContext(sc.player_id, sc.world.observe(sc.side))).commands[0]
+    assert isinstance(cmd, FireSpecialRound) and math.isclose(cmd.x, sc.player.x + 8000, abs_tol=1)
+    sc.run_console("worf, tachyon 90 8000")
+    assert tube.loaded is None or tube.loaded.ordnance != "tachyon"
+    sc.draw(surf)

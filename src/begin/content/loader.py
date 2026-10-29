@@ -68,6 +68,7 @@ def _hull(cid: str, d: dict[str, Any]) -> HullDef:
 
 
 CUSTOM_CLASSES = "custom_classes.toml"
+CUSTOM_ORDNANCE = "custom_ordnance.toml"
 
 
 def _read(name: str, data_dir: Path) -> dict[str, Any]:
@@ -78,13 +79,18 @@ def _read(name: str, data_dir: Path) -> dict[str, Any]:
 def load_content(data_dir: Path = DATA_DIR) -> ContentDB:
     db = ContentDB()
     ordnance = _read("ordnance.toml", data_dir)
-    for t in ordnance.get("torpedo", []):
+    torpedoes = list(ordnance.get("torpedo", []))
+    if (data_dir / CUSTOM_ORDNANCE).is_file():  # hand-written designs; the importer never touches this file
+        torpedoes += _read(CUSTOM_ORDNANCE, data_dir).get("torpedo", [])
+    for t in torpedoes:
         db.torpedoes[t["id"]] = TorpedoDef(
             id=t["id"], name=t["name"], velocity=float(t["velocity"]), damage=float(t["damage"]),
             arm_time=float(t["arm_time"]), max_time_fuse=float(t["max_time_fuse"]),
             max_prox=float(t["max_prox"]), homing=bool(t["homing"]),
             speed_variance=float(t["speed_variance"]), warhead_type=int(t["warhead_type"]),
             charge_time=float(t["charge_time"]), load_energy=float(t["load_energy"]),
+            reveal_radius=float(t.get("reveal_radius", 0.0)), reveal_cycles=float(t.get("reveal_cycles", 0.0)),
+            special=bool(t.get("special", False)),
         )
     for p in ordnance.get("probe", []):
         db.probes[p["id"]] = ProbeDef(

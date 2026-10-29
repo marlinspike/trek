@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from ...core.angles import bearing, in_arc, norm360
 from ...core.vec import closest_approach
-from ..events import Detonation, ProbeLaunched, TorpedoLaunched
+from ..events import Detonation, Message, ProbeLaunched, Tone, TorpedoLaunched
 from ..ordnance import Probe, Torpedo
 from ..ship import Launcher, Ship, Tube
 from .damage import Aim, DamageKind, apply_damage
@@ -199,7 +199,10 @@ def fly_ordnance(world: World, dt: float, prev: dict[int, tuple[float, float]]) 
                 t.detonate = True
                 continue
             if t.fuse <= 0.0:
-                t.fizzle = True  # torpedoes expire quietly [R]
+                if t.spec.reveal_radius > 0:
+                    t.detonate = True  # [E] a detector round bursts where its fuse runs out
+                else:
+                    t.fizzle = True  # torpedoes expire quietly [R]
         if len(t.trail) == 0 or math.hypot(t.x - t.trail[-1][0], t.y - t.trail[-1][1]) > 120:
             t.trail.append((t.x, t.y))
             if len(t.trail) > 8:
@@ -297,11 +300,57 @@ def resolve_detonations(world: World) -> None:
         world.torpedoes = [t for t in world.torpedoes if not t.detonate]
         world.probes = [p for p in world.probes if not p.detonate]
         for t in boom_t:
+            if t.spec.reveal_radius > 0:
+                reveal_burst(world, t)
+                continue
             kind = DamageKind.SHIELD_BORE if t.spec.is_shield_bore else (
                 DamageKind.PLASMA if t.spec.is_plasma else DamageKind.BLAST)
             blast(world, t.x, t.y, t.yield_, "torpedo", t.owner, t.salvo, kind, t.target, t.target_subsystem)
         for p in boom_p:
             blast(world, p.x, p.y, p.yield_, "probe", p.owner, 1, DamageKind.BLAST, p.target, None)
+
+
+def reveal_burst(world: World, t: Torpedo) -> None:
+    """[E] A detector round's particle cloud: cloaked ships inside it show on sensors for a while."""
+    r = t.spec.reveal_radius
+    world.emit(Detonation(world.tick, t.x, t.y, r, "tachyon", 0.0))
+    found = 0
+    for s in world.ships.values():
+        if s.alive and s.cloaked and math.hypot(s.x - t.x, s.y - t.y) <= r:
+            s.reveal_time = max(s.reveal_time, t.spec.reveal_cycles)
+            found += 1
+    owner = world.ships.get(t.owner)
+    if owner is not None:
+        text = (f"Tachyon burst: {found} cloaked ship{'s' if found != 1 else ''} lit up for "
+                f"{t.spec.reveal_cycles:.0f} cycles." if found else "Tachyon burst: no cloaked ships in the cloud.")
+        world.emit(Message(world.tick, text, Tone.GOOD if found else Tone.CAUTION, ship_id=owner.id,
+                           visible_to=frozenset({owner.side})))
+
+
+def launch_at_point(world: World, ship: Ship, tube: Tube, x: float, y: float) -> Torpedo | None:
+    """Fire one tube's round straight at a point, fused to burst there (detector rounds) [E]."""
+    loaded = tube.loaded
+    if loaded is None:
+        return None
+    spec = world.content.torpedoes[loaded.ordnance]
+    ox, oy = tube_origin(ship, tube)
+    aim = bearing(x - ox, y - oy)
+    speed = spec.velocity * world.rules.units_per_warp
+    travel = math.hypot(x - ox, y - oy) / max(1.0, speed)
+    tube.loaded = None
+    tube.charge = 0.0
+    tube.mark = norm360(aim - ship.course)
+    torp = Torpedo(
+        id=world.new_id(), owner=ship.id, side=ship.side, spec=spec, x=ox, y=oy, course=aim,
+        velocity=spec.velocity, prox=loaded.prox, arm=min(spec.arm_time, travel),
+        fuse=max(0.05, travel - spec.arm_time), strength=spec.max_time_fuse,
+    )
+    torp.trail.append((ox, oy))
+    world.torpedoes.append(torp)
+    world.emit(TorpedoLaunched(world.tick, ship.id, torp.id, tube.index, 1, spec.id))
+    ship.stats.torpedoes_fired += 1
+    ship.reveal_time = max(ship.reveal_time, world.rules.cloak_reveal_cycles)
+    return torp
 
 
 def blast(
