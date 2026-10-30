@@ -2,7 +2,7 @@
 title: Course and speed
 category: Helm
 order: 0
-aliases: helm, h, course, c, warp, w, speed, stop, allstop, halt, steer, heading, move
+aliases: helm, h, course, c, warp, w, speed, stop, allstop, halt, steer, heading, move, evasive, evasion, jink, evasive manoeuvres, evasive maneuvers, evasive action
 summary: Set your course in degrees and your speed in warp.
 see: pursue, tactics, controls
 ---
@@ -26,6 +26,19 @@ stop
 Every warp factor is 100 units of distance per cycle. Your top speed is limited by your class, by damage to your drives and by the power you have left over for shields and weapons. If you ask for more than you can reach, the helm tells you and uses the most it can.
 
 Warp heats your drives. A drive that overheats burns out, so watch the temperature gauges on the engineering panel when you run at high warp. The [[coach]] warns you before that happens.
+
+## Evasive manoeuvres
+
+Federation helms are drilled in evasive manoeuvres. Give the order and the helm keeps your course and warp but turns away from each torpedo that would hit. It is aimed where you would be if you held course, so turning as it is launched makes it miss. Once the torpedoes are clear, the helm comes back to your heading.
+
+```console
+evasive
+evade
+sulu, evasive manoeuvres
+evasive off
+```
+
+While the order stands, a banner across the top of the map says so (amber while the helm is dodging), the **Course** line in the Own ship panel says "evasive", and the helm's dodge is drawn on the map like an officer's. Any navigation order you give yourself, such as `helm`, `warp`, `stop`, `pursue`, `elude` or `dock`, ends it. Klingon, Romulan and Orion crews don't have the drill. An officer flying the ship (see [[conn]]) dodges torpedoes anyway.
 
 ## Mouse and keys
 

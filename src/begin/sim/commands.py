@@ -146,6 +146,7 @@ class SetHelm(Command):
             world.say(ship, f"Helm: maximum attainable warp is {ship.max_attainable_warp:.1f}.", "caution")
 
     def apply(self, world: World, ship: Ship) -> None:
+        _end_evasive(world, ship, self)
         if self.course is not None:
             ship.desired_course = norm360(self.course)
             ship.helm_mode = HelmMode.COURSE
@@ -160,6 +161,47 @@ class SetHelm(Command):
         if self.warp is not None:
             parts.append(f"warp {self.warp:.1f}")
         return "helm " + " ".join(parts)
+
+
+def _end_evasive(world: World, ship: Ship, cmd: Command) -> None:
+    """Any navigation order from the captain ends evasive manoeuvres."""
+    if ship.evasive and cmd.issuer >= Authority.CAPTAIN:
+        ship.evasive = False
+        ship.evasive_resume = None
+        world.say(ship, "Evasive manoeuvres ended: the helm takes your order.", "dim", speaker="Helm")
+
+
+@dataclass(kw_only=True)
+class Evasive(Command):
+    """Tell the helm to dodge incoming torpedoes on its own (remake extension, Federation drill).
+
+    The helm keeps the captain's course and warp, turns away from each torpedo
+    that would hit, and comes back afterwards. Any navigation order from the
+    captain (helm, warp, stop, pursue, elude, dock) ends it.
+    """
+
+    on: bool = True
+    name: ClassVar[str] = "evasive"
+
+    def validate(self, world: World, ship: Ship) -> None:
+        if not self.on:
+            return
+        if ship.cls.is_base:
+            raise Rejected(f"{ship.cls.name}s are immobile.")
+        faction = world.content.factions.get(ship.faction)
+        if faction is None or "evasive" not in faction.orders:
+            name = faction.name if faction is not None else ship.faction
+            raise Rejected(f"{name} crews aren't drilled in evasive manoeuvres; that is a Starfleet order.")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        if self.on:
+            if not ship.evasive:
+                ship.evasive_resume = (ship.desired_course, ship.desired_warp, ship.helm_mode, ship.helm_target)
+            ship.evasive = True
+            world.release_holds(ship.id, "helm")   # the captain's last helm order no longer pins the helm
+        else:
+            ship.evasive = False
+            ship.evasive_resume = None
 
 
 @dataclass(kw_only=True)
@@ -178,6 +220,7 @@ class Pursue(Command):
         _require_target(world, ship, self.target)
 
     def apply(self, world: World, ship: Ship) -> None:
+        _end_evasive(world, ship, self)
         ship.helm_mode = HelmMode.ELUDE if self.elude else HelmMode.PURSUE
         ship.helm_target = self.target
         if self.warp is not None:
@@ -1305,6 +1348,7 @@ class Dock(Command):
             raise Rejected("Docking bays are full.")
 
     def apply(self, world: World, ship: Ship) -> None:
+        _end_evasive(world, ship, self)
         ship.docked_to = self.host
         if self.host is not None:
             ship.desired_warp = 0.0

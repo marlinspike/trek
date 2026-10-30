@@ -30,21 +30,21 @@ from ..ai.personality import Personality
 from ..content.schema import ContentDB
 from ..core.rng import Rng
 from ..sim.commands import (
-    Authority, Command, ConfigureAutoload, ControlProbe, FirePhasers, FireTorpedoes, LaunchProbe, LoadTubes,
+    Authority, Command, ConfigureAutoload, ControlProbe, Evasive, FirePhasers, FireTorpedoes, LaunchProbe, LoadTubes,
     LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak, SetFireMode, SetHelm,
     SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, StartProject, TurnMounts,
     FireSpecialRound, DeflectorPulse, SetObjective, EndObjective, FireAtPoint,
 )
 from ..sim.allies import AllyStanding
 from ..sim.observation import ContactView, Observation
-from ..sim.ship import HULL, Kind, RepairTarget, Ship
+from ..sim.ship import HULL, HelmMode, Kind, RepairTarget, Ship
 from .characters import STATIONS, OfficerProfile
 from ..sim.systems.ordnance import suggested_prox
 from .helm import HelmPlan, incoming, plan_helm, support_range, threatened
 from .objectives import Planner
 
 STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
-    "helm": (SetHelm, Pursue),
+    "helm": (SetHelm, Pursue, Evasive),
     "tactical": (SelectTarget, LockWeapons, TurnMounts, FirePhasers, SetPhaserSpread, SetBanks, FireTorpedoes, FireAtPoint,
                  ConfigureAutoload, LoadTubes, SetTubes, LaunchProbe, ControlProbe, SetFireMode, SetPointDefense,
                  FireSpecialRound),
@@ -53,6 +53,7 @@ STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
 }
 
 APPROACH_SLACK = 3000.0   # beyond the supporting range by more than this, the helm just closes
+EVASIVE_SETTLE = 2.0      # cycles clear of torpedoes before evasive manoeuvres return to the captain's course
 HULL_URGENT = 0.5         # below this share of the hull, patching it comes before spreading the work
 
 STATION_NAMES = {"helm": "Helm", "tactical": "Tactical", "engineering": "Engineering", "science": "Science"}
@@ -302,6 +303,9 @@ class Crew:
     brains: dict[str, OfficerBrain] = field(default_factory=dict)
     planners: dict[str, Planner] = field(default_factory=dict)
     names: dict[int, str] = field(default_factory=dict)     # ships we have known, by name, for reports
+    evasive_plan: HelmPlan | None = None    # the helm's last move under evasive manoeuvres, for the HUD
+    evasive_seen: frozenset[int] = frozenset()
+    evasive_at: int = -10**9                # tick of the last dodge
 
     def officer(self, station: str) -> OfficerProfile | None:
         return self.officers.get(station)
@@ -334,6 +338,44 @@ class Crew:
             return []          # nobody asked, or the engineering station already does it
         return self._brain("bridge", ship, prof)._engineering(obs, ship)
 
+    def _evasive(self, obs: Observation, ship: Ship) -> list[Command]:
+        """Evasive manoeuvres [E]: the helm keeps the captain's course and turns away from each torpedo that would
+        hit, then comes back to it. With an officer flying the ship this is already part of their job."""
+        if not ship.evasive or "helm" in ship.delegated or not ship.can_move():
+            self.evasive_plan = None if not ship.evasive else self.evasive_plan
+            return []
+        tpc = obs.rules.ticks_per_cycle
+        threats = incoming(obs, ship)
+        ids = frozenset(t.id for t in threats)
+        fresh = bool(ids - self.evasive_seen)
+        self.evasive_seen = ids
+        if threats and (fresh or obs.tick - self.evasive_at >= tpc) and threatened(obs, ship, threats):
+            c = obs.contact(ship.target) if ship.target is not None else None
+            if c is not None and not c.visible:
+                c = None
+            want = c.distance_to(ship.x, ship.y) if c is not None else None
+            top = ship.evasive_resume[1] if ship.evasive_resume else ship.desired_warp
+            plan = plan_helm(obs, ship, c, want, max(top, ship.max_attainable_warp))
+            if plan is not None and plan.reason == "evade":
+                self.evasive_at = obs.tick
+                since = self.evasive_plan.since if self.evasive_plan and self.evasive_plan.reason == "evade" else obs.tick
+                self.evasive_plan = replace(plan, since=since)
+                return [SetHelm(ship_id=ship.id, course=plan.course, warp=plan.warp, issuer=Authority.OFFICER,
+                                source="Helm")]
+        if (self.evasive_plan is not None and self.evasive_plan.reason == "evade" and not threatened(obs, ship, threats)
+                and obs.tick - self.evasive_at >= EVASIVE_SETTLE * tpc):
+            # clear of them: back to the captain's order
+            course, warp, mode, chase = ship.evasive_resume or (ship.desired_course, ship.desired_warp, None, None)
+            self.evasive_plan = HelmPlan(course, warp, "hold", 0, 0, 0.0, 0.0, obs.tick)
+            if mode in (HelmMode.PURSUE, HelmMode.ELUDE) and chase is not None and (obs.contact(chase) or obs.own(chase)) is not None:
+                return [Pursue(ship_id=ship.id, target=chase, warp=warp, elude=mode == HelmMode.ELUDE,
+                               issuer=Authority.OFFICER, source="Helm")]
+            return [SetHelm(ship_id=ship.id, course=course, warp=warp, issuer=Authority.OFFICER, source="Helm")]
+        if self.evasive_plan is None:
+            course, warp = ship.evasive_resume[:2] if ship.evasive_resume else (ship.desired_course, ship.desired_warp)
+            self.evasive_plan = HelmPlan(course, warp, "hold", 0, 0, 0.0, 0.0, obs.tick)
+        return []
+
     def _objectives(self, obs: Observation, ship: Ship) -> list[Command]:
         """Officers working on what the captain asked of them, whether or not they run a station."""
         out: list[Command] = []
@@ -362,6 +404,16 @@ class Crew:
             helm_brain, role, who = self.brains.get(f"bridge:{commander.id}"), "conn", commander.id
         elif "helm" in ship.delegated and "helm" in self.officers:
             helm_brain, role, who = self.brains.get("helm"), "helm", self.officers["helm"].id
+        if ship.evasive and helm_brain is None and self.evasive_plan is not None:
+            ev = self.evasive_plan
+            who = self.officers["helm"].id if "helm" in self.officers else "helm"
+            if ev.reason == "evade":
+                n = "a torpedo" if ev.threats == 1 else f"{ev.threats} torpedoes"
+                doing = f"Evading {n}, coming to {ev.course:.0f} warp {ev.warp:.0f}"
+            else:
+                doing = f"Holding course {ev.course:.0f} warp {ev.warp:.0f}, watching for torpedoes"
+            out.append(Activity(who, "evasive", doing, "evade" if ev.reason == "evade" else "hold", ev.since,
+                                "Any helm order from you ends it", plan=ev))
         if helm_brain is not None and helm_brain.helm_plan is not None:
             plan = helm_brain.helm_plan
             name = label(obs, helm_brain.target, self.names) if helm_brain.target is not None else "the enemy"
@@ -402,7 +454,7 @@ class Crew:
         ship = obs.own(self.ship_id)
         if ship is None or not ship.alive or ship.crew <= 0:
             return []
-        out = self._objectives(obs, ship) + self._repairs(obs, ship)
+        out = self._objectives(obs, ship) + self._repairs(obs, ship) + self._evasive(obs, ship)
         if not ship.delegated:
             return out
         commander = self.find(ship.conn) if ship.conn else None

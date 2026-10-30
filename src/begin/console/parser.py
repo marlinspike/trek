@@ -27,7 +27,7 @@ from ..sim.allies import ORDER_WORDS, SHIP_ORDERS, AllyStanding
 from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
-    SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, ManageRepairs, SetShields, SetTubes, Surrender,
+    SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, ManageRepairs, Evasive, SetShields, SetTubes, Surrender,
     DeflectorPulse, EndObjective, FireAtPoint, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
@@ -64,6 +64,7 @@ VERBS: dict[str, tuple[str, ...]] = {
     "warp": ("warp", "w", "speed"),
     "pursue": ("pursue", "chase", "follow"),
     "elude": ("elude", "evade", "flee"),
+    "evasive": ("evasive", "evasion", "jink"),
     "stop": ("stop", "allstop", "halt"),
     "fire": ("fire", "f", "shoot"),
     "fp": ("fp",),
@@ -154,6 +155,7 @@ FILLER = {"with", "the", "to", "at", "on", "of", "and", "set", "please", "by", "
 # the manual's command summary, grouped as in its overview (pp. 4-7) plus the 2.0 and remake additions
 HELP = [
     "Helm:     helm <course> [warp] <w> · pursue|elude <ship> [warp] <w> · warp <w> · stop · <course> <warp>",
+    "          evasive [off]   (Federation: the helm dodges incoming torpedoes until your next helm order)",
     "Display:  range|display|scan <range> · chart [on|off|all|<ship>|by name|distance|nation] · report",
     "Status:   status [damage|banks|tubes|launchers|probes|shields|fleet] · damage · banks · tubes · launchers · shields · fleet · group",
     "Phasers:  fire [all] phasers [<list>] [spread] <s> · lock [all] banks [<list>] on <ship> · turn banks [<list>] to <mark>",
@@ -429,7 +431,20 @@ class Parser:
         self._pursue(tok, res, False)
 
     def _v_elude(self, tok: _Tokens, res: ParseResult) -> None:
+        tok.skip_filler()
+        if tok.done() or tok.is_word("torpedoes", "torps", "incoming"):
+            self._v_evasive(tok, res)    # 'evade' with no ship to run from: evasive manoeuvres
+            return
         self._pursue(tok, res, True)
+
+    def _v_evasive(self, tok: _Tokens, res: ParseResult) -> None:
+        """evasive [manoeuvres|action] [on|off]: the helm dodges incoming torpedoes until the next navigation order."""
+        off = False
+        while not tok.done():
+            w = tok.next() or ""
+            if w in ("off", "cancel", "stop", "end", "belay"):
+                off = True
+        res.commands.append(self._cmd(Evasive, on=not off))
 
     # targeting -------------------------------------------------------------
     def _v_target(self, tok: _Tokens, res: ParseResult) -> None:

@@ -1045,6 +1045,8 @@ class BattleScene:
         ship, b = self.player, self.bridge
         o = b.find(ship.conn) if ship is not None and ship.conn and b is not None else None
         if o is None:
+            if ship is not None and ship.evasive:
+                self._draw_evasive_banner(surf, top)
             return
         msg = f"{o.name.upper()} HAS THE CONN  ·  say \"I have the bridge\" to take it back"
         box = pygame.Rect(0, 0, theme.text_width(msg, 13, weight="semibold") + 32, 28)
@@ -1053,6 +1055,19 @@ class BattleScene:
         pygame.draw.rect(surf, theme.CREW, box, 2, border_radius=4)
         theme.text(surf, msg, box.center, theme.CREW, 13, weight="semibold", anchor="center")
         self.ui.add(box, lambda: self.run_console("I have the bridge"), "Take the bridge back")
+
+    def _draw_evasive_banner(self, surf: pygame.Surface, top: int) -> None:
+        """Evasive manoeuvres are on: amber while the helm is dodging; click to end them."""
+        dodging = any(a.role == "evasive" and a.kind == "evade" for a in self._activity(self.obs))
+        msg = "EVASIVE MANOEUVRES  ·  " + ("dodging torpedoes" if dodging else "watching for torpedoes") + \
+              "  ·  any helm order ends them"
+        col = theme.CAUTION if dodging else theme.FRIEND
+        box = pygame.Rect(0, 0, theme.text_width(msg, 13, weight="semibold") + 32, 28)
+        box.midtop = (self.map_rect.centerx, top)
+        pygame.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
+        pygame.draw.rect(surf, col, box, 2, border_radius=4)
+        theme.text(surf, msg, box.center, col, 13, weight="semibold", anchor="center")
+        self.ui.add(box, lambda: self.run_console("evasive off"), "End evasive manoeuvres (or give any helm order)")
 
     def _draw_printout(self, surf: pygame.Surface) -> None:
         """The latest Begin text display, in the map's lower-left corner."""

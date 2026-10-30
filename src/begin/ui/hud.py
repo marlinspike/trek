@@ -170,6 +170,8 @@ class OwnShipPanel(Panel):
         _kv(surf, x, yy, "Warp", f"{ship.warp:4.1f} → {ship.desired_warp:.1f}  (max {cw:.1f})")
         yy += 18
         _kv(surf, x, yy, "Course", f"{ship.course:5.1f} → {ship.desired_course:.0f}")
+        if ship.evasive:
+            theme.text(surf, "evasive", (x + 92 + 110, yy + 1), theme.CAUTION, 11)
         yy += 18
         crew_col = theme.health_color(ship.crew / max(1, ship.cls.crew))
         _kv(surf, x, yy, "Crew", f"{ship.crew} / {ship.cls.crew}", crew_col)

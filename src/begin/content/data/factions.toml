@@ -7,6 +7,9 @@
 # solution accuracy, scan fidelity, dead-reckoning of lost contacts, threat
 # prediction horizon and the quality of recommendations shown to the player.
 #
+# orders (optional): special orders the race's crews are drilled in. "evasive": the helm can be told to
+#   dodge incoming torpedoes on its own until the captain gives another navigation order.
+#
 # colors (optional): how the race's weapons look on the map, so you can tell who fired what.
 #   phaser and torpedo are #RRGGBB; phaser_style is "beam" (a steady line) or "pulse" (a string of bolts),
 #   which also tells races apart for players who can't separate two colours.
@@ -33,6 +36,7 @@ computer = {sophistication = 0.92, pd_discipline = 0.85}
 sensors = {range = 1.0}
 captains = {competence = 0.70, competence_dev = 0.15, discipline = 0.80, creativity = 0.55, deviation = 0.15}
 colors = {phaser = "#FFA04A", phaser_style = "beam", torpedo = "#FF5E3A"}   # orange phasers, red-orange photon torpedoes
+orders = ["evasive"]
 
 [[faction]]
 id = "klingon"

@@ -366,6 +366,8 @@ class Ship:
     boarder_side: int = -1
     self_destruct: float = -1.0        # cycles remaining, -1 = off
     repair_priority: RepairTarget | None = None
+    evasive: bool = False              # the helm dodges incoming torpedoes on its own (Federation drill) [E]
+    evasive_resume: tuple[float, float, HelmMode, int | None] | None = None   # the captain's order to go back to
     repairs_by: str = ""               # officer id directing the repair crews; "" = the captain [E]
     last_hull_hit: int = -10**9        # tick the hull last took damage: field repairs slow down under fire [E]
     delegated: set[str] = field(default_factory=set)  # bridge stations run by officers (crew/stations.py)

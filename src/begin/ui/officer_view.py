@@ -30,7 +30,7 @@ PANEL_W = 470
 AIM_FADE = 4.0          # seconds a salvo's ring stays on the map
 HELM_SECONDS = 5.0      # how far ahead the helm officer's course is drawn
 
-ROLE_WORDS = {"conn": "has the conn", "helm": "at the helm"}
+ROLE_WORDS = {"conn": "has the conn", "helm": "at the helm", "evasive": "evasive manoeuvres"}
 
 
 def _fit(s: str, size: int, width: int) -> str:

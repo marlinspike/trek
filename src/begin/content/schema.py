@@ -246,6 +246,8 @@ class Faction:
     phaser_color: tuple[int, int, int] = (255, 170, 90)
     phaser_style: str = "beam"          # "beam" (a steady line) | "pulse" (a string of bolts)
     torpedo_color: tuple[int, int, int] = (255, 120, 80)
+    # [E] special helm and bridge orders this race's crews are drilled in, e.g. "evasive"
+    orders: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)
