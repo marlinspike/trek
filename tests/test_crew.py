@@ -438,6 +438,7 @@ def test_seven_rapport_floor_holds(content) -> None:  # type: ignore[no-untyped-
     rel.nudge(-0.5)
     assert rel.rapport == 1.0
     seven = bridge.find("seven")
+    assert seven is not None and "ex-Borg precision" in bridge.character(seven)
     assert bridge.relationships.get("spock").floor == -1.0
 
 
