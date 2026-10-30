@@ -119,3 +119,26 @@ def test_a_captured_ship_joins_your_side_and_you_can_take_command(content) -> No
     assert not w.outcome.over                                        # the other Klingon is still out there
     assert b.transfer_command(prize.id) is None                      # 'beam <her>': you take command
     assert b.player_ship_id == prize.id
+
+
+def test_aimed_torpedoes_carry_the_aim_even_when_they_do_not_home(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.commands import ConfigureAutoload, FireTorpedoes
+    from begin.sim.events import SubsystemDamaged
+
+    w = World(content, seed=4)
+    fed = w.add_ship("federation.hc", 0, 0, 0, name="Enterprise")
+    kl = w.add_ship("klingon.bc", 1, 0, 3000, name="Votek")
+    assert not content.torpedoes[fed.cls.torpedo].homing                 # Mark 7s fly straight
+    for sh in kl.shields:
+        sh.up, sh.effective = False, 0.0
+    w.execute(ConfigureAutoload(ship_id=fed.id, weapon="tube", prox=400, reload=True))
+    w.run(4.0)
+    assert w.execute(SelectTarget(ship_id=fed.id, target=kl.id, subsystem="weapons")) is None
+    hull = kl.structure
+    assert w.execute(FireTorpedoes(ship_id=fed.id, target=kl.id)) is None
+    assert all(t.aim_ship == kl.id and t.target_subsystem == "weapons" for t in w.torpedoes if t.owner == fed.id)
+    w.take_events()
+    w.run(4.0)
+    seen = [e for e in w.take_events() if isinstance(e, SubsystemDamaged) and e.ship_id == kl.id]
+    assert any(e.targeted for e in seen)                                  # the warheads went for her weapons
+    assert kl.exists and kl.structure > hull * 0.3                        # and at the aimed share of hull damage

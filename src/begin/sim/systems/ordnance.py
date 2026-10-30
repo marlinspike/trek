@@ -125,7 +125,7 @@ def launch_torpedoes(
             id=world.new_id(), owner=ship.id, side=ship.side, spec=spec, x=ox, y=oy, course=aim,
             velocity=vel, prox=loaded.prox, arm=spec.arm_time, fuse=spec.max_time_fuse,
             strength=spec.max_time_fuse, target=target_id if spec.homing else None,
-            target_subsystem=selector,
+            aim_ship=target_id if selector else None, target_subsystem=selector,
         )
         torp.trail.append((ox, oy))
         salvo[key] = torp
