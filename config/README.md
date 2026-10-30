@@ -16,3 +16,4 @@ API keys never go in here: they come only from environment variables (`ANTHROPIC
 
 Set `BEGIN_HOME` to use a different folder. Older versions kept these files in `~/.begin-remake`. The first run brings them here, once: anything already in this folder wins, and settings missing from your `settings.json` (such as officer rapport) are filled in from the old one. The old folder is left alone, so you can delete it once you're happy.
 
+Every officer's persona is yours to configure in `officers.toml`: their `traits`, their `response_style`, and optionally a `rapport_floor` (-1 to 1), the lowest their regard for you can fall however you treat them. Under `hidden` in `settings.json` the game keeps its record of officer rapport; anything else there from older versions is dropped the next time it runs.

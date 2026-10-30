@@ -31,6 +31,7 @@ def test_officer_roster() -> None:
     for o in officers.values():
         assert o.persona and o.lines.get("ack") and o.lines.get("unknown")
         assert o.traits                  # every officer ships with a few words on how they come across
+    assert "ex-Borg precision" in officers["seven"].traits and all(o.rapport_floor == -1.0 for o in officers.values())
 
 
 def test_station_commands_do_not_overlap() -> None:
@@ -123,6 +124,10 @@ def test_response_styles_come_from_the_data_and_the_players_config(tmp_path) -> 
     f = tmp_path / "officers.toml"
     f.write_text('[seven]\nresponse_style = "long, florid answers"\n[worf]\ntraits = ["stern"]\n')
     assert read_response_styles(f) == {"seven": "long, florid answers"}
+    f2 = tmp_path / "floors.toml"
+    f2.write_text('[worf]\nrapport_floor = 0.5\n[seven]\nrapport_floor = 7\n')
+    floors = load_officers(traits_file=f2)
+    assert floors["worf"].rapport_floor == 0.5 and floors["seven"].rapport_floor == 1.0 and floors["spock"].rapport_floor == -1.0
     mine = load_officers(traits_file=f)
     assert mine["seven"].response_style == "long, florid answers"
     assert mine["worf"].response_style == shipped["worf"].response_style      # left out: the game's own
@@ -143,6 +148,17 @@ def test_officers_json_never_shows_as_speech() -> None:
     assert spoken('Aye, Captain. {"oops": 1, ') == "Aye, Captain."
     assert parse_reply("Plain words, Captain.") == ("Plain words, Captain.", [])
     assert parse_answer(twice)[0] == "Shields holding."
+
+
+def test_retired_hidden_settings_are_dropped(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    import json
+
+    from begin.ui.settings import Settings
+
+    monkeypatch.setenv("BEGIN_HOME", str(tmp_path))
+    (tmp_path / "settings.json").write_text(json.dumps({"hidden": {"old_setting": 9, "rapport": {}}}))
+    assert Settings.load().hidden == {"rapport": {}}
+
 
 def test_parse_reply() -> None:
     assert parse_reply('Sure. {"say": "Firing.", "commands": ["fire all torpedoes"]}') == ("Firing.", ["fire all torpedoes"])
@@ -298,8 +314,9 @@ def test_talking_to_officers_offline(scene) -> None:  # type: ignore[no-untyped-
     before = sc.bridge.relationships.get("worf").rapport
     sc.run_console("worf, you are useless")
     assert sc.bridge.relationships.get("worf").rapport < before
+    before = sc.bridge.relationships.get("seven").rapport
     sc.run_console("seven, you are useless")
-    assert sc.bridge.relationships.get("seven").rapport == 1.0
+    assert sc.bridge.relationships.get("seven").rapport < before        # like anyone else, unless configured
     sc.run_console("ask seven of nine status")
     assert any("contacts" in t for t in _said(sc, "Seven of Nine"))
     sc.run_console("crew")
@@ -429,9 +446,11 @@ def test_old_home_folder_is_copied_into_config(tmp_path) -> None:  # type: ignor
     assert migrate_legacy(old, new) == []  # once only
     other = tmp_path / "config2"
     other.mkdir()
+    (other / "settings.json").write_text('{"hidden": {"old_setting": 1}, "llm": {"provider": "off"}}')
     (old / "settings.json").write_text('{"hidden": {"rapport": {"spock": {}}}, "llm": {"model": "x"}, "speed": 2}')
     assert "settings.json" in migrate_legacy(old, other)
     merged = json.loads((other / "settings.json").read_text())
+    assert merged["hidden"] == {"old_setting": 1, "rapport": {"spock": {}}} and merged["speed"] == 2
     assert merged["llm"] == {"provider": "off", "model": "x"}  # the project's own values win
     root = project_root()
     assert root is not None and (root / "config" / "README.md").is_file()
@@ -458,20 +477,22 @@ def test_science_officer_gives_last_fix_on_lost_contact(content) -> None:  # typ
     assert any(enemy.name in t and "bearing" in t for t in said), said
 
 
-def test_seven_rapport_floor_holds(content) -> None:  # type: ignore[no-untyped-def]
+def test_a_configured_rapport_floor_holds(content) -> None:  # type: ignore[no-untyped-def]
+    import dataclasses
+
     from begin.crew.conversation import Bridge
     from begin.presets import load_presets
 
     b = build_battle(content, load_presets()[0].setup())
     assert b.crew is not None
-    bridge = Bridge(b.crew, {"rapport": {"seven": {"rapport": -0.9}}})
-    rel = bridge.relationships.get("seven")
-    assert rel.rapport == 1.0 and rel.mood == "devoted"
+    worf = b.crew.officers["tactical"]
+    b.crew.officers["tactical"] = dataclasses.replace(worf, rapport_floor=0.5)     # as config/officers.toml can set it
+    bridge = Bridge(b.crew, {"rapport": {"worf": {"rapport": -0.9}, "seven": {"rapport": -0.9}}})
+    rel = bridge.relationships.get("worf")
+    assert rel.rapport == 0.5
     rel.nudge(-0.5)
-    assert rel.rapport == 1.0
-    seven = bridge.find("seven")
-    assert seven is not None and "ex-Borg precision" in bridge.character(seven)
-    assert bridge.relationships.get("spock").floor == -1.0
+    assert rel.rapport == 0.5
+    assert bridge.relationships.get("seven").rapport == -0.9 and bridge.relationships.get("seven").floor == -1.0
 
 
 def test_spock_and_seven_design_a_tachyon_detector(scene) -> None:  # type: ignore[no-untyped-def]

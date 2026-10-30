@@ -9,6 +9,9 @@ from pathlib import Path
 from ..paths import config_dir
 
 
+HIDDEN_KEYS = ("rapport",)      # what the game keeps for itself under "hidden"
+
+
 def settings_dir() -> Path:
     return config_dir()
 
@@ -42,9 +45,10 @@ class Settings:
             if hasattr(s, k):
                 setattr(s, k, tuple(v) if k == "window" else v)
         s.keys.update(read_key_file(settings_dir() / "begin2.key"))
+        s.hidden = {k: v for k, v in s.hidden.items() if k in HIDDEN_KEYS}   # anything else is a retired setting
         rapport = s.hidden.get("rapport")
         if isinstance(rapport, dict) and "scotty" in rapport:
-            rapport.setdefault("geordi", rapport.pop("scotty"))     # Geordi La Forge took over engineering   # retired: officers' traits (config/officers.toml) shape how they talk
+            rapport.setdefault("geordi", rapport.pop("scotty"))     # Geordi La Forge took over engineering
         return s
 
     def save(self) -> None:

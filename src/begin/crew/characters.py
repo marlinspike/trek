@@ -48,7 +48,7 @@ class OfficerProfile:
     lines: dict[str, tuple[str, ...]]
     traits: tuple[str, ...] = ()
     response_style: str = ""       # how they answer, for the language model ("terse, clipped reports")
-    rapport_floor: float = -1.0    # the lowest their rapport can fall (-1: no floor)
+    rapport_floor: float = -1.0    # the lowest their rapport can fall (-1: no floor); set in config/officers.toml
 
     @property
     def title(self) -> str:
@@ -90,11 +90,22 @@ def read_response_styles(path: Path) -> dict[str, str]:
             for oid, v in raw.items() if isinstance(v, dict) and isinstance(v.get("response_style"), str)}
 
 
+def read_rapport_floors(path: Path) -> dict[str, float]:
+    """The player's own rapport floors (`[<officer id>] rapport_floor = 0.5`, -1 to 1); empty when there is none."""
+    try:
+        raw = tomllib.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {str(oid).lower(): max(-1.0, min(1.0, float(v["rapport_floor"])))
+            for oid, v in raw.items() if isinstance(v, dict) and isinstance(v.get("rapport_floor"), (int, float))}
+
+
 def load_officers(data_dir: Path = DATA_DIR, traits_file: Path | None = None) -> dict[str, OfficerProfile]:
     """The bridge officers; `traits_file` (config/officers.toml) replaces their traits and response styles, officer by officer."""
     raw: list[dict[str, Any]] = _read("officers.toml", data_dir).get("officer", [])
     mine = read_traits(traits_file) if traits_file is not None else {}
     styles = read_response_styles(traits_file) if traits_file is not None else {}
+    floors = read_rapport_floors(traits_file) if traits_file is not None else {}
     out: dict[str, OfficerProfile] = {}
     for o in raw:
         station = o["station"]
@@ -109,7 +120,7 @@ def load_officers(data_dir: Path = DATA_DIR, traits_file: Path | None = None) ->
             lines={k: tuple(v) for k, v in o.get("lines", {}).items()},
             traits=mine.get(o["id"], tuple(str(t) for t in o.get("traits", []))),
             response_style=styles.get(o["id"], " ".join(str(o.get("response_style", "")).split())),
-            rapport_floor=float(o.get("rapport_floor", -1.0)),
+            rapport_floor=floors.get(o["id"], float(o.get("rapport_floor", -1.0))),
         )
     return out
 

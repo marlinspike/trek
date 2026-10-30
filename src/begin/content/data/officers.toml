@@ -10,6 +10,7 @@
 #              talks (never how well they do the job). Override them in config/officers.toml.
 # response_style  how the officer answers when a language model writes their words: length, tone,
 #              register. Also overridable in config/officers.toml.
+# rapport_floor  optional, -1 to 1: the lowest their regard for the captain can fall. Overridable too.
 # lines        offline lines by event; one is picked at random. {target}, {ship},
 #              {captain} and {n} are filled in. Edit freely.
 #
@@ -137,7 +138,6 @@ station = "science"
 advises = ["science", "tactical"]
 aliases = ["seven", "seven of nine", "science", "sensors", "astrometrics"]
 personality = { aggression = 0.55, bravery = 0.85, competence = 0.96, crew_competence = 0.93, discipline = 0.9, creativity = 0.65 }
-rapport_floor = 1.0
 traits = ["highly effective", "efficient", "coolly confident", "ex-Borg precision"]
 response_style = "factual, crisp, coolly confident"
 persona = """

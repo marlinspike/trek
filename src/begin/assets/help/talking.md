@@ -45,6 +45,6 @@ traits = ["honour-bound", "blunt", "quietly proud of his captain"]
 response_style = "short soldier's reports, a growl when it goes badly"
 ```
 
-Either line can be left out to keep the game's own. The game passes your traits and response styles to your model as you wrote them.
+Either line can be left out to keep the game's own. You can also give an officer a `rapport_floor` from -1 to 1: the lowest their regard for you can fall, however you treat them. The game passes your traits and response styles to your model as you wrote them.
 
 Officer lines are in `src/begin/content/data/officers.toml`. Edit them, change a personality, or swap in a different officer for a station.
