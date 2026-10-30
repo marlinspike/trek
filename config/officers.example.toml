@@ -2,18 +2,23 @@
 #
 # Each officer's traits are a few words on how they come across. With a language model set up, the
 # officers' lines are written fresh in their own voice, coloured by these traits. Traits change how an
-# officer talks, never how well they do the job. An officer you leave out keeps the traits the game ships with.
+# officer talks, never how well they do the job. An officer's response_style tells the model how they answer:
+# length, tone, register. An officer you leave out keeps the traits the game ships with.
 #
 # Officers: spock, worf, scotty, seven
 
 [spock]
 traits = ["precise and emphatic", "dry wit", "unflappable"]
+response_style = "precise and measured, with dry understatement; short, exact sentences"
 
 [worf]
 traits = ["honour-bound", "blunt", "impatient for battle", "fiercely loyal"]
+response_style = "terse, clipped reports; few words and no pleasantries"
 
 [scotty]
 traits = ["warm", "worried for his engines", "Scottish idiom", "miracle worker"]
+response_style = "warm and colourful, in a Scots voice; plain about what the ship can take"
 
 [seven]
 traits = ["highly effective", "efficient", "coolly confident", "ex-Borg precision"]
+response_style = "factual, crisp, coolly confident"

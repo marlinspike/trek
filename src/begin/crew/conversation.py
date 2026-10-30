@@ -445,6 +445,8 @@ class Bridge:
         if o.traits:
             out += (f" Your character traits: {', '.join(o.traits)}. Let them colour how you speak and how you are "
                     "with the captain; they never change how well you do your job.")
+        if o.response_style:
+            out += f" How you respond: {o.response_style}. Keep to it in every answer and remark."
         said = list(self.recent.get(o.id, ()))
         if said:
             out += (" Things you have said lately (never repeat them or their wording; find a fresh way to say "

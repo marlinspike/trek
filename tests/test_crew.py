@@ -10,7 +10,7 @@ import pytest
 
 from begin.battle import build_battle
 from begin.crew.characters import (
-    Relationship, Relationships, load_officers, read_traits,
+    Relationship, Relationships, load_officers, read_response_styles, read_traits,
 )
 from begin.crew.conversation import parse_reply, situation
 from begin.crew.officers import STATION_COMMANDS, station_of
@@ -111,6 +111,23 @@ def test_traits_come_from_the_players_config(tmp_path) -> None:  # type: ignore[
     assert officers["seven"].traits == ("warm", "playful") and officers["worf"].traits == ("stern", "proud")
     assert officers["spock"].traits == load_officers()["spock"].traits      # untouched officers keep theirs
     assert read_traits(tmp_path / "missing.toml") == {}
+
+
+def test_response_styles_come_from_the_data_and_the_players_config(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from types import SimpleNamespace
+
+    from begin.crew.conversation import Bridge
+
+    shipped = load_officers()
+    assert shipped["worf"].response_style.startswith("terse") and shipped["seven"].response_style
+    f = tmp_path / "officers.toml"
+    f.write_text('[seven]\nresponse_style = "long, florid answers"\n[worf]\ntraits = ["stern"]\n')
+    assert read_response_styles(f) == {"seven": "long, florid answers"}
+    mine = load_officers(traits_file=f)
+    assert mine["seven"].response_style == "long, florid answers"
+    assert mine["worf"].response_style == shipped["worf"].response_style      # left out: the game's own
+    brief = Bridge.character(SimpleNamespace(recent={}), mine["seven"])   # type: ignore[arg-type]
+    assert "How you respond: long, florid answers." in brief
 
 def test_parse_reply() -> None:
     assert parse_reply('Sure. {"say": "Firing.", "commands": ["fire all torpedoes"]}') == ("Firing.", ["fire all torpedoes"])

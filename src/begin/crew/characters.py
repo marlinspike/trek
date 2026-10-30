@@ -15,8 +15,11 @@ player's own, in `config/officers.toml`, replace them officer by officer:
 
     [seven]
     traits = ["highly effective", "coolly confident", "ex-Borg precision"]
+    response_style = "factual, crisp, coolly confident"
 
-The game passes the player's traits to their model as written.
+A **response style** says how the officer answers when a model writes their
+words: length, tone, register. The game passes the player's traits and
+response styles to their model as written.
 """
 
 from __future__ import annotations
@@ -44,6 +47,7 @@ class OfficerProfile:
     persona: str
     lines: dict[str, tuple[str, ...]]
     traits: tuple[str, ...] = ()
+    response_style: str = ""       # how they answer, for the language model ("terse, clipped reports")
     rapport_floor: float = -1.0    # the lowest their rapport can fall (-1: no floor)
 
     @property
@@ -76,10 +80,21 @@ def read_traits(path: Path) -> dict[str, tuple[str, ...]]:
     return out
 
 
+def read_response_styles(path: Path) -> dict[str, str]:
+    """The player's own response styles (`[<officer id>] response_style = "..."`); empty when there is no file."""
+    try:
+        raw = tomllib.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {str(oid).lower(): " ".join(str(v["response_style"]).split())
+            for oid, v in raw.items() if isinstance(v, dict) and isinstance(v.get("response_style"), str)}
+
+
 def load_officers(data_dir: Path = DATA_DIR, traits_file: Path | None = None) -> dict[str, OfficerProfile]:
-    """The bridge officers; `traits_file` (config/officers.toml) replaces their traits, officer by officer."""
+    """The bridge officers; `traits_file` (config/officers.toml) replaces their traits and response styles, officer by officer."""
     raw: list[dict[str, Any]] = _read("officers.toml", data_dir).get("officer", [])
     mine = read_traits(traits_file) if traits_file is not None else {}
+    styles = read_response_styles(traits_file) if traits_file is not None else {}
     out: dict[str, OfficerProfile] = {}
     for o in raw:
         station = o["station"]
@@ -93,6 +108,7 @@ def load_officers(data_dir: Path = DATA_DIR, traits_file: Path | None = None) ->
             persona=" ".join(o.get("persona", "").split()),
             lines={k: tuple(v) for k, v in o.get("lines", {}).items()},
             traits=mine.get(o["id"], tuple(str(t) for t in o.get("traits", []))),
+            response_style=styles.get(o["id"], " ".join(str(o.get("response_style", "")).split())),
             rapport_floor=float(o.get("rapport_floor", -1.0)),
         )
     return out
@@ -149,5 +165,5 @@ class Relationships:
 
 
 __all__ = [
-    "OfficerProfile", "Relationship", "Relationships", "STATIONS", "load_officers", "read_traits",
+    "OfficerProfile", "Relationship", "Relationships", "STATIONS", "load_officers", "read_response_styles", "read_traits",
 ]
