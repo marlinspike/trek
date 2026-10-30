@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 from typing import Callable
 
@@ -13,11 +14,14 @@ from ..help.coach import HelpContext
 from ..presets import Preset, load_presets
 from . import theme
 from .hulls import draw_hull
+from .starfield import Starfield
 from .manual import ManualView
 from .settings import Settings
 from .widgets import UI
 
 FACTIONS = ["federation", "klingon", "romulan", "orion"]
+STAR_DRIFT = 900.0        # world units per second the menu's view drifts through the stars
+SHIP_CROSSING = 80.0      # seconds the menu's ship takes to cross the screen
 
 
 class MenuScene:
@@ -43,6 +47,7 @@ class MenuScene:
             "seed": int(cs.get("seed", 1)),
         }
         self.t = 0.0
+        self.stars = Starfield(seed=47)
         self.manual: ManualView | None = None     # made the first time the coach or manual is opened
         self._swallow = False
 
@@ -144,12 +149,10 @@ class MenuScene:
             self.manual.draw(surf, pygame.Rect(24, 24, w - 48, h - 48), self.ui)
             self.ui.draw_tooltip(surf)
             return
-        # quiet grid backdrop
-        off = (self.t * 6) % 80
-        for x in range(-80, w + 80, 80):
-            pygame.draw.line(surf, theme.GRID, (x + off, 0), (x + off, h))
-        for y in range(0, h, 80):
-            pygame.draw.line(surf, theme.GRID, (0, y), (w, y))
+        # stars drifting past, nearer layers faster
+        self.stars.draw(surf, surf.get_rect(), self.t * STAR_DRIFT, self.t * STAR_DRIFT * 0.18)
+        if self.page == "main":
+            self._drifting_ship(surf)
         theme.text(surf, "BEGIN", (80, 70), theme.FRIEND, 64, weight="semibold")
         theme.text(surf, "A tactical starship simulation · a remake of Begin 2", (84, 150), theme.TEXT_DIM, 16)
         if self.page == "main":
@@ -180,15 +183,25 @@ class MenuScene:
         self.ui.button(surf, pygame.Rect(x, y + 12, 300, 30), f"Quick battle side: {self.content.factions[pf].name}",
                        lambda: self._cycle("player_faction", FACTIONS), "Which faction you command in a quick battle",
                        size=12)
-        # a silhouette parade on the right
+
+    def _drifting_ship(self, surf: pygame.Surface) -> None:
+        """A starship gliding slowly across the background, its engine wake fading behind it."""
         w, h = surf.get_size()
-        cx = int(w * 0.68)
-        for i, cid in enumerate(["federation.hc", "klingon.bc", "romulan.bp", "orion.an"]):
-            cls = self.content.classes[cid]
-            yy = 250 + i * 150
-            col = theme.FRIEND if cls.faction == "federation" else theme.HOSTILE
-            draw_hull(surf, cls.hull, cx, yy, 90.0 + 4 * (i % 2), 1.25, col)
-            theme.text(surf, f"{cls.name} · {self.content.factions[cls.faction].name}", (cx + 90, yy - 8), theme.TEXT_DIM, 13)
+        cls = self.content.classes.get("federation.hc")
+        if cls is None:
+            return
+        u = (self.t / SHIP_CROSSING) % 1.0
+        x0, y0, x1, y1 = w * 0.3, h + 180, w + 260, h * 0.12
+        x, y = x0 + (x1 - x0) * u, y0 + (y1 - y0) * u
+        course = math.degrees(math.atan2(x1 - x0, -(y1 - y0)))
+        dx, dy = (x1 - x0) / math.hypot(x1 - x0, y1 - y0), (y1 - y0) / math.hypot(x1 - x0, y1 - y0)
+        wake = pygame.Surface((w, h), pygame.SRCALPHA)
+        for i in range(24):                       # the wake: a streak that fades toward its tail
+            a, b = 26 + i * 9, 26 + (i + 1) * 9
+            alpha = int(70 * (1 - i / 24) ** 2)
+            pygame.draw.line(wake, (*theme.FRIEND, alpha), (x - dx * a, y - dy * a), (x - dx * b, y - dy * b), 2)
+        surf.blit(wake, (0, 0))
+        draw_hull(surf, cls.hull, x, y, course, 2.6, theme.dim(theme.FRIEND, 0.75), fill_alpha=0.12)
 
     def _presets(self, surf: pygame.Surface) -> None:
         x, y = 84, 210

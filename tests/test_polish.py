@@ -158,3 +158,56 @@ def test_the_end_screen_and_red_alert_draw(content) -> None:  # type: ignore[no-
     sc.run_console("sound torpedo c")
     assert sc.audio.choice.get("launch") == "c" and "version c" in sc.log[-1].text
     sc.close()
+
+
+def test_hud_numbers_ease_and_flash_and_detail_is_on_request(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.ui.tween import Tweens
+
+    tw = Tweens()
+    assert tw.get("hull", 100.0) == 100.0
+    assert tw.get("hull", 80.0) == 100.0                    # shown value starts where it was...
+    assert tw.colour("hull", (10, 10, 10)) != (10, 10, 10)  # ...lit up for the change
+    for _ in range(60):
+        tw.update(1 / 60)
+    assert abs(tw.get("hull", 80.0) - 80.0) < 0.1 and tw.colour("hull", (10, 10, 10)) == (10, 10, 10)
+    tw.get("crew", 400.0)
+    tw.get("crew", 399.8)                                   # a tiny drift doesn't flash
+    assert tw.colour("crew", (10, 10, 10)) == (10, 10, 10)
+
+    b = build_battle(content, next(p for p in load_presets() if p.id == "dreadnought-duel").setup())
+    ctx = ParseContext(b.player_ship_id, b.world.observe(0))
+    assert parse("hud detail", ctx).actions == [("hud", "detail")]
+    assert parse("hud simple", ctx).actions == [("hud", "simple")]
+    assert parse("hud", ctx).actions == [("hud", None)]
+    assert parse("hud loud", ctx).error is not None
+
+
+def test_torpedoes_leave_trails_and_the_lock_closes_in(content) -> None:  # type: ignore[no-untyped-def]
+    pygame.init()
+    from begin.ui.battle_scene import BattleScene
+
+    theme.font.cache_clear()
+    theme._fallback.cache_clear()
+    surf = pygame.display.set_mode((1400, 860))
+    b = build_battle(content, next(p for p in load_presets() if p.id == "dreadnought-duel").setup())
+    sc = BattleScene(b, surf.get_size(), lambda: None, hidden={}, llm={})
+    me = sc.player
+    enemy = next(s for s in b.world.ships.values() if s.id != me.id)
+    sc.overlay, sc.paused = None, False
+    for _ in range(120):                                    # let the tubes load
+        sc.update(0.05)
+    enemy.x, enemy.y = me.x + 2000, me.y + 3000             # far enough that the torpedoes fly a while
+    sc.run_console(f"target #{enemy.id}")
+    sc.run_console("fire all torpedoes")
+    sc.overlay = None
+    sc.draw(surf)
+    assert sc.view._lock[0] == enemy.id
+    for _ in range(8):
+        sc.update(0.05)
+        sc.overlay = None
+        sc.draw(surf)
+    assert sc.view.torp_trails and max(len(v) for v in sc.view.torp_trails.values()) >= 3
+    sc.run_console("hud detail")
+    assert sc.hud_detail and "every number" in sc.log[-1].text
+    sc.draw(surf)
+    sc.close()

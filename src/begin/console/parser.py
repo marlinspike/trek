@@ -140,6 +140,7 @@ VERBS: dict[str, tuple[str, ...]] = {
     "orders": ("orders", "plans"),
     "belay": ("belay",),
     "sound": ("sound", "volume", "audio", "mute"),
+    "hud": ("hud", "detail"),
 }
 
 WEAPONS = {
@@ -188,6 +189,7 @@ HELP = [
     "          disable|cripple <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> · disable off",
     "          destroy <ships> · bait <ship>   (standing objectives and tricks for Seven)",
     "Orders:   execute order <name> | <name>   (a named order from config/orders.toml) · orders (list them) · belay (stop one running)",
+    "Display:  hud detail|simple   (simple: hover a panel for its numbers)",
     "Sound:    sound on|off|<0-100>   sound phaser|torpedo a-d   (M mutes)",
     "Other:    key F<n>|^<x> <commands; separated; by semicolons> · translate on|off|always · help · quit",
 ]
@@ -1196,6 +1198,19 @@ class Parser:
         """`belay [that|order]`: stop the named order that is running."""
         tok.rest()
         res.actions.append(("belay", None))
+
+    def _v_hud(self, tok: _Tokens, res: ParseResult) -> None:
+        """`hud detail|simple`: every number on the panels, or only what matters (hover a panel to see the rest)."""
+        first = tok.toks[0] if tok.toks else ""
+        w = tok.next()
+        if w is None:
+            res.actions.append(("hud", "detail" if first == "detail" else None))
+        elif w in ("detail", "detailed", "full", "all", "on", "more"):
+            res.actions.append(("hud", "detail"))
+        elif w in ("simple", "less", "off", "minimal", "clean"):
+            res.actions.append(("hud", "simple"))
+        else:
+            raise ParseError("hud detail (every number on the panels) or hud simple (hover a panel for the rest).")
 
     def _v_sound(self, tok: _Tokens, res: ParseResult) -> None:
         """`sound on|off|<0-100>`, `sound phaser b`: the battle's sound effects and which version (M mutes too)."""

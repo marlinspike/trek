@@ -25,13 +25,15 @@ from . import theme
 from .camera import Camera
 from .effects import Effects
 from .hulls import draw_hull, hull_pixel_scale
+from .starfield import Starfield
 
 SHIELD_FLASH = 0.7        # seconds a shield hit shimmers
 TRAIL_POINT = 0.25        # cycles between the points of an engine trail
 TRAIL_BANDS = 4           # strokes per wake, each fainter toward the tail
-STAR_TILE = 512           # pixels: the starfield repeats at this size
-STAR_LAYERS = ((0.004, 110, 0.4), (0.009, 50, 0.6), (0.016, 20, 0.85))   # (parallax px/unit, stars per tile, brightness)
 SMOULDER_BELOW = 0.5      # hull fraction below which a ship trails sparks
+TORP_TRAIL = 1.4          # cycles of exhaust a torpedo leaves behind it
+TORP_TRAIL_POINT = 0.05   # cycles between the points of a torpedo trail
+LOCK_TIME = 0.35          # seconds the target brackets take to close in
 
 Pose = tuple[float, float, float]  # x, y, course
 
@@ -81,12 +83,15 @@ class TacticalView:
     _burning: list[tuple[float, float, float]] = field(default_factory=list)   # (x, y, hull fraction) seen damaged this frame
     trails: dict[int, list[tuple[float, float, float]]] = field(default_factory=dict)   # ship -> [(x, y, time)]
     _cloaked: dict[int, bool] = field(default_factory=dict)     # how each ship looked last frame, to see it vanish
-    _stars: list[pygame.Surface] = field(default_factory=list)
+    stars: Starfield = field(default_factory=Starfield)
     _sounds: list[tuple[str, float, float]] = field(default_factory=list)   # (sound, x, y) seen this frame
     show_arcs: bool = False
     hover_world: tuple[float, float] | None = None
     _overlay: pygame.Surface | None = None
     _label_rects: list[pygame.Rect] = field(default_factory=list)   # labels drawn this frame
+    torp_trails: dict[int, list[tuple[float, float, float]]] = field(default_factory=dict)   # round -> [(x, y, time)]
+    clock: float = 0.0                       # wall-clock seconds, for animation
+    _lock: tuple[int | None, float] = (None, 0.0)   # the target the brackets are on, and when they started closing
 
     def ingest(self, events: list[Event], obs: Observation) -> None:
         visible = {s.id for s in obs.own_ships(alive_only=False)} | {c.id for c in obs.contacts().values() if c.visible}
@@ -99,6 +104,7 @@ class TacticalView:
                     [float(ev.sector), 0.0, power, 1.0 if ev.collapsed else 0.0])
 
     def update(self, dt: float) -> None:
+        self.clock += dt
         self.effects.update(dt)
         for x, y, frac in self._burning:
             self.effects.smoulder(x, y, frac, dt, self.cam.zoom)
@@ -149,12 +155,19 @@ class TacticalView:
                 self._ranges(surf, overlay, me, p)
 
         # ordnance
+        live: set[int] = set()
         for o in obs.ordnance():
             b = now.ordnance.get(o.id)
             if b is None:
                 continue
             p = lerp_pose(prev.ordnance.get(o.id) if prev else None, b, alpha)
-            self._ordnance(surf, o, p, obs.content.factions.get(o.faction))
+            f = obs.content.factions.get(o.faction)
+            if o.kind == "torpedo":
+                live.add(o.id)
+                self._torp_trail(overlay, o.id, p, obs.time, f)
+            self._ordnance(surf, o, p, f, overlay)
+        for oid in [k for k in self.torp_trails if k not in live]:
+            del self.torp_trails[oid]
 
         names = {s.id: s.name for s in obs.own_ships(alive_only=False)}
         names.update({c.id: c.label if c.identified else f"#{c.id}" for c in obs.contacts().values()})
@@ -187,34 +200,7 @@ class TacticalView:
 
     def _starfield(self, surf: pygame.Surface) -> None:
         """Faint stars far beyond the battle, drifting a little against the grid as the view pans."""
-        if not self._stars:
-            rng = random.Random(1701)
-            for _, count, bright in STAR_LAYERS:
-                tile = pygame.Surface((STAR_TILE, STAR_TILE))
-                for _ in range(count):
-                    level = bright * rng.uniform(0.35, 1.0)
-                    tint = rng.choice(((200, 215, 255), (255, 240, 220), (230, 235, 255)))
-                    col = tuple(int(c * level * 0.8) for c in tint)
-                    x, y = rng.randrange(STAR_TILE), rng.randrange(STAR_TILE)
-                    tile.set_at((x, y), col)
-                    if level > 0.7:
-                        dim = tuple(c // 3 for c in col)
-                        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                            tile.set_at(((x + dx) % STAR_TILE, (y + dy) % STAR_TILE), dim)
-                tile.set_colorkey((0, 0, 0), pygame.RLEACCEL)   # mostly empty: blits skip the dark runs
-                self._stars.append(tile)
-        cam = self.cam
-        r = cam.rect
-        for (parallax, _, _), tile in zip(STAR_LAYERS, self._stars):
-            ox = int(-cam.cx * parallax) % STAR_TILE
-            oy = int(cam.cy * parallax) % STAR_TILE
-            y = r.top - STAR_TILE + oy
-            while y < r.bottom:
-                x = r.left - STAR_TILE + ox
-                while x < r.right:
-                    surf.blit(tile, (x, y))
-                    x += STAR_TILE
-                y += STAR_TILE
+        self.stars.draw(surf, self.cam.rect, self.cam.cx, self.cam.cy)
 
     def _trails(self, overlay: pygame.Surface, obs: Observation, pose: Callable[[int], Pose | None]) -> None:
         """Engine wakes: where each ship has just been, longer the faster it goes."""
@@ -253,6 +239,25 @@ class TacticalView:
                 alpha = int(95 * strength * ((band + 1) / TRAIL_BANDS) ** 1.5)
                 if hi > lo and alpha > 3:
                     pygame.draw.lines(overlay, (*wake, alpha), False, path[lo:hi + 1], 2 if band == TRAIL_BANDS - 1 else 1)
+
+    def _torp_trail(self, overlay: pygame.Surface, oid: int, p: Pose, now: float, f: Faction | None) -> None:
+        """The exhaust a torpedo leaves: a short streak that fades out behind it."""
+        pts = self.torp_trails.setdefault(oid, [])
+        if pts and now < pts[-1][2]:
+            pts.clear()
+        if not pts or now - pts[-1][2] >= TORP_TRAIL_POINT:
+            pts.append((p[0], p[1], now))
+        while pts and now - pts[0][2] > TORP_TRAIL:
+            pts.pop(0)
+        cam = self.cam
+        if len(pts) < 2 or not cam.visible(p[0], p[1], 300):
+            return
+        col = f.torpedo_color if f is not None else theme.TORPEDO
+        path = [cam.to_screen(x, y) for x, y, _ in pts] + [cam.to_screen(p[0], p[1])]
+        n = len(path) - 1
+        for i in range(n):                    # each segment fainter the older it is
+            k = (i + 1) / n
+            pygame.draw.line(overlay, (*col, int(170 * k * k)), path[i], path[i + 1], 1 if k < 0.5 else 2)
 
     def _ripples(self, obs: Observation, pose: Callable[[int], Pose | None]) -> None:
         """A ship that cloaks or decloaks in sight bends the light around it for a moment."""
@@ -528,16 +533,32 @@ class TacticalView:
         if lost:
             theme.text(surf, f"lost {c.age:.0f}s", (sx + rad + 8, top + 14), theme.TEXT_FAINT, 10)
         if targeted:
-            b = rad + 10
-            col = theme.CAUTION
+            if self._lock[0] != c.id:
+                self._lock = (c.id, self.clock)             # a new target: the brackets close in on it
+            t = min(1.0, (self.clock - self._lock[1]) / LOCK_TIME)
+            ease = 1 - (1 - t) ** 3
+            b = rad + 10 + 46 * (1 - ease)
+            col = theme.mix(theme.BG, theme.CAUTION, 0.35 + 0.65 * ease)
+            if t >= 1.0:                                      # locked: a slow breath of light
+                col = theme.mix(theme.CAUTION, (255, 240, 200), 0.25 * (0.5 + 0.5 * math.sin(self.clock * 3)))
+            spin = math.radians(90 * (1 - ease))
             for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
-                cx, cy = sx + dx * b, sy + dy * b
-                pygame.draw.line(surf, col, (cx, cy), (cx - dx * 8, cy), 2)
-                pygame.draw.line(surf, col, (cx, cy), (cx, cy - dy * 8), 2)
+                ox, oy = dx * b, dy * b
+                rx = ox * math.cos(spin) - oy * math.sin(spin)
+                ry = ox * math.sin(spin) + oy * math.cos(spin)
+                cx, cy = sx + rx, sy + ry
+                ax, ay = -dx * 8, -dy * 8                     # the two arms of the bracket, turned with it
+                a1 = (cx + ax * math.cos(spin), cy + ax * math.sin(spin))
+                a2 = (cx - ay * math.sin(spin), cy + ay * math.cos(spin))
+                pygame.draw.line(surf, col, (cx, cy), a1, 2)
+                pygame.draw.line(surf, col, (cx, cy), a2, 2)
+            if t < 1.0 and overlay is not None:
+                pygame.draw.circle(overlay, (*theme.CAUTION, int(60 * (1 - t))), (int(sx), int(sy)), int(b), 1)
             if sub:
                 theme.text(surf, f"⌖ {sub}", (sx, sy + b + 6), col, 11, anchor="midtop")
 
-    def _ordnance(self, surf: pygame.Surface, o: OrdnanceView, p: Pose, f: Faction | None) -> None:
+    def _ordnance(self, surf: pygame.Surface, o: OrdnanceView, p: Pose, f: Faction | None,
+                  overlay: pygame.Surface | None = None) -> None:
         cam = self.cam
         if not cam.visible(p[0], p[1], 20):
             return
@@ -545,6 +566,10 @@ class TacticalView:
         a = math.radians(p[2])
         if o.kind == "torpedo":
             col = f.torpedo_color if f is not None else theme.TORPEDO
+            if overlay is not None:          # the glow of the warhead, pulsing faintly
+                pulse = 0.8 + 0.2 * math.sin(self.clock * 14 + o.id)
+                pygame.draw.circle(overlay, (*col, int(40 * pulse)), (int(sx), int(sy)), 9)
+                pygame.draw.circle(overlay, (*theme.mix(col, (255, 255, 255), 0.5), int(85 * pulse)), (int(sx), int(sy)), 5)
             tail = min(28.0, 8 + o.speed * cam.zoom * 0.05)
             pygame.draw.line(surf, theme.dim(col, 0.45), (sx, sy), (sx - math.sin(a) * tail, sy + math.cos(a) * tail), 1)
             pts = [(sx + math.sin(a) * 4, sy - math.cos(a) * 4), (sx + math.cos(a) * 3, sy + math.sin(a) * 3),

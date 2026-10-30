@@ -290,6 +290,10 @@ class Effects:
                     pts.append(cam.to_screen(b.x0 + math.sin(a) * d, b.y0 + math.cos(a) * d))
                 pygame.draw.polygon(overlay, (*b.color, int(38 * t)), pts)
             col = theme.mix(theme.BG, b.color, 0.35 + 0.65 * t)
+            for w, a in BEAM_GLOW:                     # the soft light around the shot
+                pygame.draw.line(overlay, (*b.color, int(a * t)), p0, p1, w)
+            pygame.draw.circle(overlay, (*theme.mix(b.color, (255, 255, 255), 0.4), int(90 * t)),
+                               (int(p1[0]), int(p1[1])), int(3 + 4 * t))      # where it strikes
             if b.style == "pulse":
                 _bolts(surf, col, p0, p1, max(1, int(b.width * (0.8 + t))), b.age)
                 continue
@@ -324,6 +328,7 @@ FIZZLE = (150, 150, 150)           # a round shot down before it could go off pr
 EMBER = (255, 132, 60)
 CLOAK = (170, 225, 215)            # the shimmer of a cloak engaging or dropping
 GLOW_STEPS = 28             # burning fragments of a ship
+BEAM_GLOW = ((13, 30), (7, 60))   # (pixels wide, alpha at full strength): the halo around a beam
 
 
 def _bolts(surf: pygame.Surface, col: theme.Color, a: tuple[float, float], b: tuple[float, float], width: int,

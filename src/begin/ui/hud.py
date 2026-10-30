@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Callable, ClassVar
 
 import pygame
 
-from ..core.angles import bearing, norm360
+from ..core.angles import bearing, norm180, norm360
 from ..sim.commands import (
     ConfigureAutoload, ControlProbe, DelegateStation, Dock, Scan, SelectTarget, SetFireMode, SetPhaserSpread,
     SetPointDefense, SetShields, Tractor, Transport,
@@ -28,6 +28,7 @@ from .hulls import draw_hull, transform
 
 if TYPE_CHECKING:
     from .battle_scene import BattleScene
+    from .tween import Tweens
     from .widgets import UI
     from ..sim.observation import ContactView
 
@@ -61,7 +62,8 @@ def _kv(surf: pygame.Surface, x: int, y: int, k: str, v: str, vcol: theme.Color 
 
 def hull_diagram(surf: pygame.Surface, ship: Ship, box: pygame.Rect, show_shields: bool = True,
                  highlight: set[Kind] | None = None, repairing: set[str] | None = None,
-                 ui: UI | None = None, on_click: Callable[[], object] | None = None) -> None:
+                 ui: UI | None = None, on_click: Callable[[], object] | None = None,
+                 numbers: bool = True, tweens: Tweens | None = None) -> None:
     """Top-down damage-assessment diagram: hull, subsystems coloured by health, shield arcs.
     Systems under repair get a pulsing ring (a bright double one for the repair priority). With `ui`,
     each system has a tooltip saying what it is and how it stands."""
@@ -106,8 +108,11 @@ def hull_diagram(surf: pygame.Surface, ship: Ship, box: pygame.Rect, show_shield
                 pygame.draw.arc(surf, (255, 255, 255), rect.inflate(6, 6), a0, a1, 1)
             mid = math.radians(facing)
             lx, ly = cx + math.sin(mid) * (rad + 11), cy - math.cos(mid) * (rad + 11)
-            theme.text(surf, f"{sh.effective:.0f}" if not sh.destroyed else "×", (lx, ly), theme.dim(col, 1.0), 10, "mono",
-                       anchor="center")
+            key = f"shield{ship.id}.{i}"
+            shown = tweens.get(key, sh.effective, 3.0) if tweens is not None else sh.effective
+            if numbers or sh.destroyed:
+                tcol = tweens.colour(key, col) if tweens is not None else col
+                theme.text(surf, f"{shown:.0f}" if not sh.destroyed else "×", (lx, ly), tcol, 10, "mono", anchor="center")
             if ui is not None:
                 state = "destroyed" if sh.destroyed else "down" if not sh.up else f"{sh.effective:.0f}%"
                 ui.add(pygame.Rect(int(lx) - 12, int(ly) - 8, 24, 16), on_click or (lambda: None), f"Shield {i + 1}: {state}")
@@ -118,8 +123,9 @@ def _morale_tag(surf: pygame.Surface, hud: BattleScene, ship: Ship, at: tuple[in
     from ..console.reports import morale_words
 
     m = ship.morale
-    col = theme.health_color(m / 100.0)
-    theme.text(surf, f"{morale_words(m)} {m:.0f}", at, col, 11)
+    shown = hud.tweens.get(f"morale{ship.id}", m, 2.0)
+    col = hud.tweens.colour(f"morale{ship.id}", theme.health_color(m / 100.0))
+    theme.text(surf, f"{morale_words(m)} {shown:.0f}", at, col, 11)
     f = ship.morale_factor
     r = hud.world.rules
     effect = ("no effect on the crew's work" if abs(f) < 0.05 else
@@ -179,28 +185,44 @@ class OwnShipPanel(Panel):
         fixing, hull_fixing = under_repair(hud.world, ship)
         hud.ui.add(box, lambda: hud.toggle_overlay("damage"),
                    "Damage assessment (I). Dots are systems, coloured by health; rings mark repairs.")
-        hull_diagram(surf, ship, box, repairing=fixing, ui=hud.ui, on_click=lambda: hud.toggle_overlay("damage"))
+        detail = hud.hud_detail or rect.collidepoint(hud.ui.mouse)    # the rest of the numbers, on hover
+        hull_diagram(surf, ship, box, repairing=fixing, ui=hud.ui, on_click=lambda: hud.toggle_overlay("damage"),
+                     numbers=detail, tweens=hud.tweens)
         x = rect.x + 186
         yy = y + 42
         cw = ship.max_attainable_warp
-        _kv(surf, x, yy, "Warp", f"{ship.warp:4.1f} → {ship.desired_warp:.1f}  (max {cw:.1f})")
+        warp = f"{ship.warp:4.1f}"
+        if detail or abs(ship.desired_warp - ship.warp) > 0.05:
+            warp += f" → {ship.desired_warp:.1f}"
+        _kv(surf, x, yy, "Warp", warp + (f"  (max {cw:.1f})" if detail else ""))
         yy += 18
-        _kv(surf, x, yy, "Course", f"{ship.course:5.1f} → {ship.desired_course:.0f}")
+        course = f"{ship.course:5.1f}" if detail else f"{ship.course:5.0f}"
+        if detail or abs(norm180(ship.desired_course - ship.course)) > 1:
+            course += f" → {ship.desired_course:.0f}"
+        _kv(surf, x, yy, "Course", course)
         if ship.evasive:
             theme.text(surf, "evasive", (x + 92 + 110, yy + 1), theme.CAUTION, 11)
         yy += 18
-        crew_col = theme.health_color(ship.crew / max(1, ship.cls.crew))
-        _kv(surf, x, yy, "Crew", f"{ship.crew} / {ship.cls.crew}", crew_col)
+        tw = hud.tweens
+        crew_n = tw.get(f"crew{ship.id}", ship.crew, 1.0)
+        crew_col = tw.colour(f"crew{ship.id}", theme.health_color(ship.crew / max(1, ship.cls.crew)))
+        _kv(surf, x, yy, "Crew", f"{crew_n:.0f} / {ship.cls.crew}" if detail else f"{crew_n:.0f}", crew_col)
         _morale_tag(surf, hud, ship, (x + 92 + 92, yy + 1), pygame.Rect(x, yy, rect.right - x - 8, 16))
         yy += 18
         hf = max(0.0, ship.structure) / ship.structure_max
-        _kv(surf, x, yy, "Hull", f"{hf * 100:5.1f}%", theme.health_color(hf))
+        hull = tw.get(f"hull{ship.id}", hf * 100, 0.5)
+        _kv(surf, x, yy, "Hull", f"{hull:5.1f}%" if detail else f"{hull:5.0f}%",
+            tw.colour(f"hull{ship.id}", theme.health_color(hf)))
         if hull_fixing:
             theme.text(surf, "under repair", (x + 92 + 58, yy + 1), theme.REPAIR, 11)
         yy += 22
         p = ship.power
         theme.text(surf, "Power", (x, yy), theme.TEXT_DIM, 12)
-        theme.text(surf, f"+{p.generation:.0f}  −{p.consumption:.0f}/cyc", (x + 92, yy), theme.TEXT, 12, "mono")
+        if detail:
+            theme.text(surf, f"+{p.generation:.0f}  −{p.consumption:.0f}/cyc", (x + 92, yy), theme.TEXT, 12, "mono")
+        else:
+            net = p.generation - p.consumption
+            theme.text(surf, "charging" if net >= 0 else "draining", (x + 92, yy), theme.TEXT if net >= 0 else theme.CAUTION, 12)
         yy += 17
         cap = max(1.0, p.capacity)
         theme.text(surf, "Battery", (x, yy), theme.TEXT_DIM, 12)
@@ -217,7 +239,10 @@ class OwnShipPanel(Panel):
                 col = (70, 74, 86)
             theme.bar(surf, pygame.Rect(x + 92 + i * (w + 4), yy + 4, w, 8), frac, col)
         yy += 19
-        _kv(surf, x, yy, "Magazine", f"{ship.torps_remaining} torp · {ship.probes_remaining} probe")
+        if detail:
+            _kv(surf, x, yy, "Magazine", f"{ship.torps_remaining} torp · {ship.probes_remaining} probe")
+        else:
+            theme.text(surf, "hover for detail · 'hud detail'", (x, yy + 1), theme.TEXT_FAINT, 11)
         yy += 18
         rp = repair_words(ship.repair_priority)
         crew = hud.battle.crew

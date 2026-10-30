@@ -40,6 +40,7 @@ from ..crew.officers import STATION_COMMANDS, Activity, station_of
 from ..sim.systems.repair import in_battle, under_repair
 from ..help.coach import HelpContext
 from .manual import ManualView
+from .tween import Tweens
 from .hud import (
     PD_CYCLE, SUB_GROUPS, ContactsPanel, CrewPanel, FleetPanel, OwnShipPanel, Panel, TabbedPanel, TargetPanel, WeaponsPanel,
     diagram_legend, hull_diagram,
@@ -136,6 +137,8 @@ class BattleScene:
         self.printout_tick = -1
         self.log_scroll = 0
         self.chart_auto = False
+        self.hud_detail = False             # every number on the panels; otherwise hover a panel to see them
+        self.tweens = Tweens()              # panel numbers easing to their new values
         self.chart_sort = "name"
         self.chart_hidden: set[int] = set()
         self.chart_all = False
@@ -345,6 +348,7 @@ class BattleScene:
                     self._show(reports.scan_lines(self.obs, c), None)
 
     def update(self, dt: float) -> None:
+        self.tweens.update(dt)
         self.ui.mouse = pygame.mouse.get_pos()
         if self.bridge is not None and self.bridge.llm is not None:
             self._speak(self.bridge.poll(self._help_context(), self._officer_run))
@@ -758,6 +762,11 @@ class BattleScene:
             self._belay()
         elif name == "sound":
             self._sound(val)
+        elif name == "hud":
+            if val is not None:
+                self.hud_detail = val == "detail"
+            self._log("Panels show every number." if self.hud_detail else
+                      "Panels show what matters; hover one for its numbers. 'hud detail' shows them all.", theme.TEXT_DIM)
 
     # ------------------------------------------------------------ named orders
 
