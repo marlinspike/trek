@@ -97,6 +97,8 @@ _CEASE = re.compile(r"\b(cease ?fire|hold (your )?fire|stop (firing|shooting|the
 # "disable the Klingons' shields", "knock out Gorkon's torpedoes", "cancel that objective"
 _DISABLE = re.compile(r"\b(disable|disarm|cripple|knock out|take out|neutrali[sz]e|shut down|destroy|eliminate|"
                       r"finish off|kill|sink|blow up)\b")
+# "worf, capture the Votek" / "seize her" / "take her intact" / "take her as a prize"
+_CAPTURE = re.compile(r"\b(capture|seize|take (her|it|them|the [\w'-]+) (intact|alive|as (a )?prize))\b")
 _KILL_VERBS = ("take out", "destroy", "eliminate", "finish off", "kill", "sink", "blow up", "knock out")
 _FIRING = re.compile(r"^\s*(fire\b|tachyon\s+\S)")  # an order to fire the round, not to design one
 # "spock, manage repairs" / "repairs are yours"; "I'll handle repairs" takes them back [E]
@@ -214,6 +216,13 @@ class Bridge:
             if not taking:
                 return [self._say(officer, "The repair crews are yours, Captain.")]
             return [self._say(officer, "Understood. I will direct the repair crews and tell you what I am doing.")]
+        m = _CAPTURE.search(low)
+        if m is not None:
+            if m.group(1) in ("capture", "seize"):
+                rest = low[m.end():]
+            else:
+                rest = "" if m.group(2) in ("her", "it", "them") else m.group(2)   # "her": the current target
+            return self.objective(officer, f"capture {rest}", run)
         m = _DISABLE.search(low)
         if m is not None:
             rest = low[m.end():]
@@ -732,7 +741,10 @@ class Bridge:
                 continue
             systems = DISABLE_GROUPS.get(ev.group, ev.group)
             names = ", ".join(self._names.get(t, f"#{t}") for t in ev.targets)
-            if ev.outcome == "done" and ev.goal == "destroy":
+            if ev.outcome == "done" and ev.goal == "capture":
+                out.append(self._line(o, "objective_captured", targets=names)
+                           or self._say(o, f"{names} is ours, Captain. The boarding parties hold her."))
+            elif ev.outcome == "done" and ev.goal == "destroy":
                 out.append(self._line(o, "objective_destroyed", targets=names)
                            or self._say(o, f"{names}: destroyed, Captain."))
             elif ev.outcome == "done":

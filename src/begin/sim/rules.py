@@ -90,6 +90,9 @@ class Rules:
     targeted_max_accuracy: float = 0.85
     crew_deck_kill: tuple[float, float] = (0.03, 0.08)   # share of design crew per aimed hit on the crew decks [E]
     aimed_structure: float = 0.35             # × structural damage from fire aimed at a system [E]
+    crew_deck_structure: float = 0.2          # × structural damage from fire aimed at the crew decks [E]
+    aimed_repair: float = 0.35                # × repair speed of a system hit by aimed fire, in space [E]
+    aimed_torpedo_accuracy: float = 0.5       # × computer quality: share of an aimed warhead's rolls on the mark [E]
     shield_gap: float = 5.0                   # a shield under this % lets transporters through [E]
     prize_window: float = 60.0                # cycles to board a helpless last enemy before the battle ends [E]
     weapons_need_full_repair: bool = True     # [R] banks/tubes must be at 0% damage to charge/load

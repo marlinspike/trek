@@ -41,7 +41,8 @@ Begin detects a ship at its rated sensor range multiplied by the ship's reflecti
 **Aimed fire and taking ships.** Begin let you aim at a group of systems, and each roll of a hit that got through went to it or at random. Here:
 - An aimed hit that gets through always has at least one roll at its mark, and keeps after a system it has already hurt, so aimed fire knocks systems out one at a time.
 - A roll that misses its mark is a single stray hit, not Begin's sweep through every kind of system.
-- Aimed fire does 35% of the usual structural damage, so you can cripple a ship without breaking her.
+- Aimed fire does 35% of the usual structural damage (20% when aimed at life support), so you can cripple a ship without breaking her. Torpedoes count: a torpedo that flies straight (Federation and Klingon types) carries the aim to its burst, with half the computer's quality as its accuracy. Before 2026-10-30 only homing torpedoes kept the aim, so aimed fire steered the phasers alone and the torpedoes did full hull damage.
+- A system hit by aimed fire repairs at 35% of its usual speed in space until it is whole again (`Rules.aimed_repair`; docked repairs are unaffected), so what you knock out stays out long enough to matter. In test fights of a Federation Heavy Cruiser against a Klingon Battlecruiser, her crew had been repairing systems faster than aimed phasers could knock them out.
 - There is a new aim point, **life support** (the crew decks): each aimed roll that lands kills 3-8% of her design crew.
 - The console understands "warp core", "life support", "engines", "shield generators" and `aim <system>`. Before this change, `target <ship> warp core` was silently ignored.
 - Transporters beam through any of her shields that is destroyed or under 5%, not only the one facing you.
@@ -49,6 +50,7 @@ Begin detects a ship at its rated sensor range multiplied by the ship's reflecti
 - Life support draws power for the crew aboard rather than the design crew, so a prize crew can live on a crippled ship.
 - A captured ship gets a new ship computer and a captain from her new side. You can `tell` her what to do or `beam` aboard her.
 - When the last enemy is left derelict or surrendered, the battle stays open for 60 cycles so the player can board her.
+- `capture <ship>` (or "Worf, capture the Votek") is a standing objective like `disable`: the officer opens one of her shields, holding torpedoes back once her hull is half gone; with a gap open, fires phasers only at her life support while steering to keep the gap toward us; and once 60 or fewer of her crew are left, holds fire, closes to transporter range, lowers our facing shield only while each party beams across, and raises it again. With Spock at the helm it took a Klingon Battlecruiser in 7 or 8 of 16 test fights against a Heavy Cruiser; the rest she was destroyed, escaped, or we lost.
 
 In 140 AI battles the results matched the previous build (107 wins against 105).
 

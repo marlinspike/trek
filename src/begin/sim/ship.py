@@ -90,6 +90,7 @@ class Subsystem:
     pos: tuple[float, float]  # hull design coordinates
     damage: int = 0
     repair_progress: float = 0.0
+    aimed_hit: bool = False   # knocked about by aimed fire: slow to repair until whole again [E]
 
     @property
     def health(self) -> float:

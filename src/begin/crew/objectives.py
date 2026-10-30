@@ -18,6 +18,13 @@ Disabling, Seven's way:
   salvo hits both;
 - if a target cloaks, hunt it with the deflector pulse or tachyon detector.
 
+Capturing (`plan_capture`) is disabling in three stages: open one of her
+shields (aimed phasers and torpedoes, the torpedoes held back once her hull is
+half gone so she isn't blown apart); with a gap open, phasers only, aimed at
+her crew decks, while the helm keeps the gap toward us; and when few enough of
+her crew are left, cease fire, close to transporter range, lower our facing
+shield just long enough to beam boarding parties across, and raise it again.
+
 To add a goal: write a planner `(Planner, obs, ship, objective) -> list[Command]`
 and register it in `PLANNERS`.
 """
@@ -29,9 +36,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ..core.angles import bearing, norm360
 from ..sim.commands import (
-    Authority, Command, EndObjective, FireAtPoint, FireBait, FirePhasers, Scan, SelectTarget,
+    Authority, Command, EndObjective, FireAtPoint, FireBait, FirePhasers, Pursue, Scan, SelectTarget, SetHelm,
+    SetShields, Transport,
 )
+from ..sim.factory import SHIELD_FACINGS
 from ..sim.objectives import Objective
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import TARGETABLE_GROUPS, Ship
@@ -46,6 +56,11 @@ if TYPE_CHECKING:
 DISABLED_SHARE: dict[str, float] = {"shields": 0.66}
 SCAN_STALE = 8.0         # cycles before a target's scan is too old to judge by
 DONE_SCAN_AGE = 4.0      # the scan that confirms success must be this fresh
+# capturing [E]
+BOARD_AT_CREW = 60        # board once her crew is down to this many (or our parties outnumber her 2 to 1)
+CAPTURE_TORPEDO_HULL = 0.5   # torpedoes only while more than this share of her hull is left
+GAP_STANDOFF = 0.55       # × phaser range: where the helm holds us, off her open shield
+BEAM_SPACING = 1.0        # cycles between boarding parties
 
 
 def group_state(c: ContactView | None, group: str) -> tuple[int, int] | None:
@@ -84,6 +99,7 @@ class Planner:
     title: str
     last_scan: dict[int, int] = field(default_factory=dict)
     last_volley: int = -10 ** 9
+    last_party: int = -10 ** 9      # when the last boarding party went across
     # what the officer is doing, for the activity panel, the map and her callouts
     step: str = ""                 # "Salvo of 6 on a ring around the Wraith"
     step_kind: str = ""            # scan | phasers | bait | salvo | between | load | range | hunt | confirm
@@ -123,7 +139,8 @@ def _alive(obs: Observation, tid: int) -> bool:
     return tid not in obs.gone()
 
 
-def plan_disable(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: OfficerBrain | None) -> list[Command]:
+def plan_disable(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: OfficerBrain | None,
+                 torpedoes: bool = True) -> list[Command]:
     rules = obs.rules
     tpc = rules.ticks_per_cycle
     contacts = {t: obs.contact(t) for t in o.targets}
@@ -192,7 +209,7 @@ def plan_disable(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: 
             p.count("phasers")
             p.note(obs, "phasers", f"Phasers on {label(obs, primary)}'s {aim or 'hull'}")
     # torpedoes, burst where point defense won't expect them
-    shot = _torpedo_shot(p, obs, ship, o, primary, [t for t in visible if t != primary])
+    shot = _torpedo_shot(p, obs, ship, o, primary, [t for t in visible if t != primary]) if torpedoes else None
     if shot is not None:
         out.append(shot)
     elif obs.tick - p.step_tick > 2 * obs.rules.ticks_per_cycle or p.step_kind in ("", "scan", "confirm", "hunt"):
@@ -235,6 +252,11 @@ def progress(obs: Observation, o: Objective, names: dict[int, str] | None = None
         if o.goal == "destroy":
             parts.append(f"{name} hull {c.scan.structure_frac * 100:.0f}%{stale}")
             continue
+        if o.goal == "capture":
+            gaps = open_shields(c, obs.rules.shield_gap)
+            way = f"shield {gaps[0] + 1} open" if gaps else "all shields up"
+            parts.append(f"{name} crew {c.scan.crew}, {way}, hull {c.scan.structure_frac * 100:.0f}%{stale}")
+            continue
         st = group_state(c, o.group)
         what = DISABLE_GROUPS.get(o.group, o.group)
         if st is None or st[0] == 0:
@@ -261,6 +283,8 @@ def summary(p: Planner, tick: int, tpc: int) -> str:
         bits.append(f"{t['salvos']} salvo{'s' * (t['salvos'] != 1)}")
     if t.get("rounds"):
         bits.append(f"{t['rounds']} torpedoes in all")
+    if t.get("parties"):
+        bits.append(f"{t['parties']} boarding part{'ies' if t['parties'] != 1 else 'y'} ({t.get('boarders', 0)} crew)")
     if t.get("phasers"):
         bits.append(f"{t['phasers']} phaser volley{'s' * (t['phasers'] != 1)}")
     if t.get("scans"):
@@ -363,8 +387,113 @@ def _torpedo_shot(p: Planner, obs: Observation, ship: Ship, o: Objective, primar
                   subsystem=None if destroy else o.group, spread=spread)
 
 
+def open_shields(c: ContactView | None, gap: float) -> list[int]:
+    """Her shield sectors we can beam and shoot through: down by our latest scan, or by our latest hits."""
+    if c is None:
+        return []
+    out = []
+    n = len(c.scan.shields) if c.scan is not None else len(c.assessed.shields) if c.assessed is not None else 0
+    for i in range(n):
+        hit = c.assessed.shields[i] if c.assessed is not None and i < len(c.assessed.shields) else None
+        newer = c.assessed is not None and (c.scan is None or c.assessed.tick >= c.scan.tick)
+        seen = hit if hit is not None and newer else (c.scan.shields[i] if c.scan is not None else hit)
+        if seen is not None and seen < gap:
+            out.append(i)
+    return out
+
+
+def _gap_station(ship: Ship, c: ContactView, sector: int, standoff: float) -> tuple[float, float]:
+    """Where to hold so that her open shield faces us."""
+    facing = SHIELD_FACINGS[sector % len(SHIELD_FACINGS)]
+    r = math.radians(norm360(c.course + facing))
+    return c.x + math.sin(r) * standoff, c.y + math.cos(r) * standoff
+
+
+def _hold_station(p: Planner, obs: Observation, ship: Ship, c: ContactView, point: tuple[float, float],
+                  brain: OfficerBrain | None) -> Command:
+    """Steer for a point beside her and keep station there, matching her course once we are on it."""
+    d = math.hypot(point[0] - ship.x, point[1] - ship.y)
+    fast = brain.combat_speed(ship, obs) if brain is not None else min(ship.max_attainable_warp, 6.0)
+    if d < 400.0:
+        return p._cmd(SetHelm, ship, course=c.course, warp=min(fast, c.warp))
+    return p._cmd(SetHelm, ship, course=bearing(point[0] - ship.x, point[1] - ship.y),
+                  warp=max(1.0, min(fast, c.warp + d / 1500.0)))
+
+
+def plan_capture(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: OfficerBrain | None) -> list[Command]:
+    rules = obs.rules
+    tpc = rules.ticks_per_cycle
+    if any(obs.own(t) is not None for t in o.targets):
+        return [p._cmd(EndObjective, ship, group=o.group, outcome="done")]
+    alive = [t for t in o.targets if _alive(obs, t)]
+    if not alive:
+        return [p._cmd(EndObjective, ship, group=o.group, outcome="impossible", reason="she was destroyed")]
+    if not any(not x.destroyed for x in ship.transporters):
+        return [p._cmd(EndObjective, ship, group=o.group, outcome="impossible", reason="our transporters are out")]
+    contacts = {t: obs.contact(t) for t in alive}
+    seen = [t for t in alive if contacts[t] is not None and contacts[t].visible]  # type: ignore[union-attr]
+    if not seen:
+        return plan_disable(p, obs, ship, Objective("disable", "shields", tuple(alive), o.officer, o.started), brain)
+    primary = min(seen, key=lambda t: contacts[t].distance_to(ship.x, ship.y))  # type: ignore[union-attr]
+    c = contacts[primary]
+    assert c is not None
+    name = label(obs, primary)
+    gaps = open_shields(c, rules.shield_gap)
+    crew = c.scan.crew if c.scan is not None else None
+    d = c.distance_to(ship.x, ship.y)
+
+    def work(group: str, torpedoes: bool) -> list[Command]:
+        cmds = plan_disable(p, obs, ship, Objective("disable", group, (primary,), o.officer, o.started), brain,
+                            torpedoes=torpedoes)
+        return [x for x in cmds if not isinstance(x, EndObjective)]
+
+    party = ship.boarding_party()
+    if gaps and crew is not None and (crew <= BOARD_AT_CREW or crew * 2 <= party):
+        # board: hold fire, close to transporter range off her open side, and beam parties across
+        out: list[Command] = []
+        point = _gap_station(ship, c, gaps[0], rules.beam_range * 0.5)
+        out.append(_hold_station(p, obs, ship, c, point, brain) if d < rules.beam_range * 2
+                   else p._cmd(Pursue, ship, target=primary))
+        own = ship.shield_for_bearing(norm360(bearing(c.x - ship.x, c.y - ship.y) - ship.course))
+        spare = ship.crew - max(6, ship.cls.crew // 3)
+        ready = obs.tick - p.last_party >= BEAM_SPACING * tpc
+        if d <= rules.beam_range * 0.95 and spare > 6 and ready:
+            if own is not None and own.effective > 0:
+                out.append(p._cmd(SetShields, ship, sectors=(own.index,), up=False))
+                p.note(obs, "board", f"Lowering shield {own.index + 1} to beam aboard {name}")
+            else:
+                n = min(party, spare)
+                out.append(p._cmd(Transport, ship, target=primary, count=n))
+                p.last_party = obs.tick
+                p.count("parties")
+                p.count("boarders", n)
+                p.note(obs, "board", f"Boarding party of {n} to {name}")
+        else:
+            if any(not sh.up and not sh.destroyed for sh in ship.shields):
+                out.append(p._cmd(SetShields, ship, up=True))   # down only while a party goes across
+            p.note(obs, "board", f"Closing on {name} to board her ({d:,.0f})")
+        return out
+    if any(not sh.up and not sh.destroyed for sh in ship.shields):
+        out_up: list[Command] = [p._cmd(SetShields, ship, up=True)]
+    else:
+        out_up = []
+    if gaps:
+        # phasers through the gap at her crew decks; torpedoes would blow her apart
+        out = out_up + [x for x in work("crew", torpedoes=False) if not isinstance(x, (SetHelm, Pursue))]
+        if d < ship.cls.banks_range * 1.5:
+            out.append(_hold_station(p, obs, ship, c, _gap_station(ship, c, gaps[0],
+                                                                   ship.cls.banks_range * GAP_STANDOFF), brain))
+        return out
+    # open a shield first
+    hull_ok = c.scan is None or c.scan.structure_frac > CAPTURE_TORPEDO_HULL
+    return out_up + work("shields", torpedoes=hull_ok)
+
+
 Plan = Callable[[Planner, Observation, Ship, Objective, "OfficerBrain | None"], list[Command]]
-PLANNERS: dict[str, Plan] = {"disable": plan_disable, "destroy": plan_disable}
+PLANNERS: dict[str, Plan] = {"disable": plan_disable, "destroy": plan_disable, "capture": plan_capture}
 
 
-__all__ = ["PLANNERS", "Planner", "baitable", "disabled", "group_state", "label", "plan_disable", "progress", "summary"]
+__all__ = [
+    "PLANNERS", "Planner", "baitable", "disabled", "group_state", "label", "open_shields", "plan_capture", "plan_disable",
+    "progress", "summary",
+]

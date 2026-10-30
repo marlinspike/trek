@@ -88,6 +88,7 @@ VERBS: dict[str, tuple[str, ...]] = {
     "enable": ("enable",),
     "disable": ("disable", "disarm", "cripple"),
     "destroy": ("destroy", "eliminate", "annihilate"),
+    "capture": ("capture", "seize"),
     "bait": ("bait",),
     "role": ("role",),
     "raise": ("raise", "up"),
@@ -232,7 +233,7 @@ HELP = [
     "          <officer>, <words>   e.g. 'worf, fire all torpedoes' · 'spock, what do you recommend?'",
     "Special:  design tachyon|deflector · tachyon <ship>|<bearing> <range> · pulse · conn <officer>|captain",
     "          disable|cripple <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> · disable off",
-    "          destroy <ships> · bait <ship>   (standing objectives and tricks for Seven)",
+    "          destroy <ships> · capture <ship> · bait <ship>   (standing objectives and tricks for Seven)",
     "Orders:   execute order <name> | <name>   (a named order from config/orders.toml) · orders (list them) · belay (stop one running)",
     "Display:  hud detail|simple   (simple: hover a panel for its numbers)",
     "Sound:    sound on|off|<0-100>   sound phaser|torpedo a-d   (M mutes)",
@@ -1389,6 +1390,15 @@ class Parser:
             res.commands.append(self._cmd(EndObjective, group="hull", outcome="cancelled"))
             return
         res.commands.append(self._cmd(SetObjective, goal="destroy", group="hull", targets=self._enemy_targets(words)))
+
+    def _v_capture(self, tok: _Tokens, res: ParseResult) -> None:
+        """`capture <ship>`: open a shield, thin her crew through the gap, board her and keep her [E]."""
+        words = [w.strip(".!?;'\"").removesuffix("'s").removesuffix("s'") for w in tok.rest()]
+        words = [w for w in words if w]
+        if any(w in ("off", "cancel", "stop", "belay", "abort") for w in words):
+            res.commands.append(self._cmd(EndObjective, group="crew", outcome="cancelled"))
+            return
+        res.commands.append(self._cmd(SetObjective, goal="capture", group="crew", targets=self._enemy_targets(words)))
 
     def _v_bait(self, tok: _Tokens, res: ParseResult) -> None:
         """`bait [ship]`: one torpedo to draw their point defense, the rest a cycle later [E]."""
