@@ -24,7 +24,7 @@ from ..sim.ship import Ship
 from . import theme
 from .camera import Camera
 from .effects import Effects
-from .showpiece import SPRITE_CENTRE_Y, SPRITE_PX, ship_image
+from .showpiece import SPRITE_CENTRE_Y, SPRITE_PX, ship_image, ship_lights
 from .hulls import draw_hull, hull_pixel_scale
 from .starfield import Starfield
 
@@ -441,7 +441,9 @@ class TacticalView:
             return False
         a = math.radians(course)
         off = -SPRITE_CENTRE_Y * k                 # the sprite's centre sits a little aft of the hull origin
-        surf.blit(img, img.get_rect(center=(int(sx - math.sin(a) * off), int(sy + math.cos(a) * off))))
+        cx, cy = sx - math.sin(a) * off, sy + math.cos(a) * off
+        surf.blit(img, img.get_rect(center=(int(cx), int(cy))))
+        ship_lights(surf, cx, cy, round(course) % 360, scale, pygame.time.get_ticks() / 1000.0)
         return True
 
     @staticmethod

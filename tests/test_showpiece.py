@@ -98,3 +98,36 @@ def test_symbols_fall_back_from_the_display_font() -> None:
     assert theme.render("QUICK BATTLE", theme.TEXT, 16, "display").get_width() > 0
     pause = theme.render("❚❚ Pause", theme.TEXT, 12, "display")
     assert pause.get_width() == theme.render("❚❚ Pause", theme.TEXT, 12, "ui").get_width()
+
+
+def test_nav_lights_flash_and_engines_glow() -> None:
+    from begin.ui.showpiece import NAV_FLASH, ship_lights
+
+    surf = _display()
+    lit = []
+    for t in (NAV_FLASH / 2, NAV_FLASH * 3):                  # mid-flash, then dark
+        g = pygame.Surface((400, 400))
+        g.fill((0, 0, 0))
+        ship_lights(g, 200, 200, 0.0, 0.5, t)
+        lit.append(sum(1 for x in range(0, 400, 2) for y in range(0, 400, 2) if max(g.get_at((x, y))[:3]) > 60))
+    assert lit[1] > 0                                          # the engines glow all the time
+    assert lit[0] > lit[1]                                     # and the nav lights add their flash
+
+
+def test_a_klingon_decloaks_and_is_destroyed_on_a_distant_pass() -> None:
+    surf = _display()
+    f = Flybys(seed=4)
+    f.encounter_odds = 1.0
+    seen, boomed, scale = False, False, 1.0
+    for _ in range(20 * 400):
+        f.update(0.05, surf.get_size())
+        e = f.encounter
+        if e is not None:
+            seen = True
+            scale = e.scale
+            boomed |= e.blast is not None and e.blast.t > 0.5
+            f.draw(surf)
+        elif seen:
+            break
+    assert seen and boomed and f.encounter is None              # it decloaked, blew up, and the scene cleared
+    assert scale <= 0.42 * 0.9 + 1e-9                          # only ever on a distant pass
