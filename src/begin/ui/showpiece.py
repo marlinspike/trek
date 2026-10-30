@@ -25,8 +25,11 @@ BAKED = 12                # sprites, one per 30° of heading
 PHASER_COL = (255, 160, 74)
 TORPEDO_COL = (255, 94, 58)
 SHIP_DIR = Path(__file__).resolve().parent.parent / "assets" / "ships"
-TORP_SPEED = 1500.0       # pixels a second
-TRAIL = 0.55              # seconds of trail behind a torpedo
+TORP_SPEED = 420.0        # pixels a second at scale 1: slow enough to watch the salvo go
+SCALE_NEAR = 0.86         # the largest she is drawn on a pass (sprite scale)
+SCALE_FAR = 0.22          # the smallest
+TRAIL = 0.9               # seconds of trail behind a torpedo
+TORP_LIFE = 4.5           # seconds before a torpedo is forgotten (long gone off screen by then)
 BEAM_TIME = 0.75          # seconds a phaser shot lasts
 # hull-unit emitters (x right, y forward): phaser banks around the saucer, the torpedo launch at the bow
 EMITTERS = ((-10.0, 34.0), (10.0, 34.0), (-22.0, 24.0), (22.0, 24.0), (-14.0, 8.0), (14.0, 8.0))
@@ -82,6 +85,7 @@ class Shot:
     bearing: float                   # screen bearing it goes off along
     emitter: tuple[float, float]     # hull-unit point it leaves from
     pos: tuple[float, float] = (0.0, 0.0)
+    scale: float = 1.0                # the pass's scale, so a distant ship's shots are small too
     trail: list[tuple[float, float, float]] = field(default_factory=list)
 
 
@@ -116,6 +120,7 @@ class Flybys:
         self.current: Pass | None = None
         self.wait = 1.2                       # a moment of empty stars before the first pass
         self.shots: list[Shot] = []
+        self.next_kind = "torpedo"            # firing passes take turns to lead with torpedoes and phasers
         self.size = (1600, 900)
 
     # ------------------------------------------------------------ planning
@@ -123,7 +128,8 @@ class Flybys:
     def _plan(self) -> Pass:
         w, h = self.size
         r = self.rng
-        scale = r.choice((0.55, 0.7, 0.85, 1.0, 1.15))
+        # a different vantage point each pass, from close by to far off; even odds of near and far
+        scale = math.exp(r.uniform(math.log(SCALE_FAR), math.log(SCALE_NEAR)))
         reach = 420 * scale + 60                                   # far enough that she is wholly off screen
         travel = r.uniform(0, 360)
         tx, ty = math.sin(math.radians(travel)), -math.cos(math.radians(travel))
@@ -138,15 +144,17 @@ class Flybys:
         a_len, b_len = to_edge(-tx, -ty), to_edge(tx, ty)
         start = (mid[0] - tx * a_len, mid[1] - ty * a_len)
         end = (mid[0] + tx * b_len, mid[1] + ty * b_len)
-        speed = r.uniform(80, 120) * (0.6 + 0.5 * scale)           # a stately glide; a close pass a little quicker
+        speed = r.uniform(100, 130) * math.sqrt(scale)            # a stately glide; farther off looks slower
         duration = (a_len + b_len) / speed
         fires: list[tuple[float, str, float]] = []
         roll = r.random()
-        if roll < 0.75:
-            for _ in range(r.choice((1, 1, 2))):
-                kind = "phaser" if r.random() < 0.55 else "torpedo"
+        if roll < 0.85:
+            for n in range(r.choice((1, 1, 2))):
+                kind = self.next_kind if n == 0 else r.choice(("phaser", "torpedo"))
                 off = r.choice((-1, 1)) * r.uniform(35, 110) if kind == "phaser" else r.uniform(-12, 12)
                 fires.append((r.uniform(0.35, 0.62), kind, off))
+        if fires:
+            self.next_kind = "phaser" if self.next_kind == "torpedo" else "torpedo"
         return Pass(start, mid, end, duration, scale, sorted(fires))
 
     # ------------------------------------------------------------ running
@@ -166,10 +174,11 @@ class Flybys:
                     continue
                 s.pos = hull_to_screen(at[0], at[1], at[2], p.scale, *s.emitter)   # type: ignore[union-attr]
             else:
-                s.pos = (s.pos[0] + math.sin(a) * TORP_SPEED * dt, s.pos[1] - math.cos(a) * TORP_SPEED * dt)
+                v = TORP_SPEED * s.scale
+                s.pos = (s.pos[0] + math.sin(a) * v * dt, s.pos[1] - math.cos(a) * v * dt)
             s.trail.append((s.pos[0], s.pos[1], s.t))
             s.trail = [q for q in s.trail if s.t - q[2] <= TRAIL]
-        self.shots = [s for s in self.shots if (s.t < BEAM_TIME if s.kind == "phaser" else s.t < 3.0)]
+        self.shots = [s for s in self.shots if (s.t < BEAM_TIME if s.kind == "phaser" else s.t < TORP_LIFE)]
         if self.current is None:
             self.wait -= dt
             if self.wait <= 0:
@@ -195,14 +204,14 @@ class Flybys:
             rel = math.radians(off)
             ranked = sorted(EMITTERS, key=lambda e: -(e[0] * math.sin(rel) + e[1] * math.cos(rel)))
             for k, em in enumerate(ranked[: self.rng.choice((2, 3))]):
-                self.shots.append(Shot("phaser", -0.12 * k, bearing + self.rng.uniform(-2, 2), em))
+                self.shots.append(Shot("phaser", -0.12 * k, bearing + self.rng.uniform(-2, 2), em, scale=p.scale))
             if self.sound:
                 self.sound("phaser", pan, 0.35)
         else:
             n = self.rng.choice((2, 3, 4))
             for k in range(n):
                 em = LAUNCH[k % 2]
-                shot = Shot("torpedo", -0.16 * k, bearing + (k - (n - 1) / 2) * 3.0, em)
+                shot = Shot("torpedo", -0.16 * k, bearing + (k - (n - 1) / 2) * 3.0, em, scale=p.scale)
                 self.shots.append(shot)
             if self.sound:
                 self.sound("launch", pan, 0.4)
@@ -243,8 +252,9 @@ class Flybys:
         k = max(0.0, 1.0 - s.t / BEAM_TIME)
         k = k * k * (3 - 2 * k)
         core = theme.mix(PHASER_COL, (255, 255, 255), 0.55)
+        g = 0.4 + 0.6 * scale                  # a distant ship's beams are finer
         for width, level in ((17, 0.10), (9, 0.22), (5, 0.45)):
-            pygame.draw.line(glow, self._light(PHASER_COL, level * k), p0, p1, width)
+            pygame.draw.line(glow, self._light(PHASER_COL, level * k), p0, p1, max(1, round(width * g)))
         pygame.draw.line(glow, self._light(core, 0.95 * k), p0, p1, 2)
         flash = halo(max(4, int(26 * scale)), self._light(core, k))
         glow.blit(flash, flash.get_rect(center=(int(p0[0]), int(p0[1]))), special_flags=pygame.BLEND_RGB_ADD)
@@ -254,12 +264,17 @@ class Flybys:
             return
         for (x0, y0, t0), (x1, y1, _) in zip(s.trail, s.trail[1:]):
             k = 1.0 - (s.t - t0) / TRAIL
-            pygame.draw.line(glow, self._light(TORPEDO_COL, 0.55 * k * k), (x0, y0), (x1, y1), max(1, int(5 * k)))
+            g = 0.4 + 0.6 * s.scale
+            pygame.draw.line(glow, self._light(TORPEDO_COL, 0.3 * k * k), (x0, y0), (x1, y1),
+                             max(1, int(12 * k * g)))                       # soft glow around the trail
+            pygame.draw.line(glow, self._light(TORPEDO_COL, 0.9 * k * k), (x0, y0), (x1, y1),
+                             max(1, int(4 * k * g)))
         pulse = 0.8 + 0.2 * math.sin(s.t * 30.0)
         px, py = int(s.pos[0]), int(s.pos[1])
-        big = halo(30, self._light(TORPEDO_COL, pulse))
+        g = 0.4 + 0.6 * s.scale
+        big = halo(max(10, round(40 * g)), self._light(TORPEDO_COL, pulse))
         glow.blit(big, big.get_rect(center=(px, py)), special_flags=pygame.BLEND_RGB_ADD)
-        hot = halo(9, theme.mix(TORPEDO_COL, (255, 255, 255), 0.8))
+        hot = halo(max(4, round(13 * g)), theme.mix(TORPEDO_COL, (255, 255, 255), 0.8))
         glow.blit(hot, hot.get_rect(center=(px, py)), special_flags=pygame.BLEND_RGB_ADD)
 
 __all__ = ["Flybys", "Pass", "hull_to_screen", "ship_image", "sprite"]
