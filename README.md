@@ -2,9 +2,15 @@
 
 ![The title screen: a Klingon battle cruiser decloaks and the Enterprise's torpedo bursts on its shields](docs/screenshots/title-klingon.png)
 
-A real-time 2D tactical starship simulation in Python and pygame-ce, rebuilt from *Begin: A Tactical Starship Simulation* (Clockwork Software, v1.65 manual with the Begin 2.0 appendix) and the [fireflyk64/begin](https://github.com/fireflyk64/begin) reverse-engineered reconstruction. It is a personal, non-commercial fan project: see [LICENSING.md](LICENSING.md).
+A real-time 2D tactical starship simulation in Python and pygame-ce, and my own bottom-up rebuild of a game I loved: *Begin: A Tactical Starship Simulation* (Clockwork Software, v1.65 with the Begin 2.0 appendix). It isn't a port. The simulation, AI captains, console, HUD, effects, sound and manual are all new code, written from scratch against Begin's published manual and its rules. Two sources made that possible, and I'm grateful to both. The original manual defined how the game should play. The [fireflyk64/begin](https://github.com/fireflyk64/begin) reverse-engineered reconstruction gave me the original ship statistics and decoded formulas, which I reimplemented so the fights feel like Begin's. Where my version departs from Begin, [docs/DEVIATIONS.md](docs/DEVIATIONS.md) says how and why. It is a personal, non-commercial fan project: see [LICENSING.md](LICENSING.md).
 
-You command a starship from a top-down tactical map and a Begin-style command console. The simulation keeps Begin's mechanics: six shield sectors, phaser banks that hit harder up close, torpedoes with arming and proximity fuses, heat, power, probes and cloaks. On top of that the remake adds a bridge crew who can fight the ship for you and talk back (optionally through a language model), named battle plans, a coach that reads the fight, crew morale, hull repairs, and synthesised sound and effects, with a HUD that keeps to the essentials until you ask for more.
+You command a starship from a top-down tactical map and a Begin-style command console. The core is Begin's: six shield sectors, phaser banks that hit harder up close, torpedoes with arming and proximity fuses, heat, power, probes and cloaks. Around it I've built a lot that Begin never had:
+
+- a bridge crew who can fight the ship for you and talk back;
+- named battle plans and a coach that reads the fight;
+- aimed fire at a ship's systems, and boarding parties that take and keep enemy ships;
+- crew morale and hull repairs;
+- synthesised sound and effects, and a HUD that keeps to the essentials until you ask for more.
 
 ![Close quarters: the Enterprise's phasers on a Klingon battle cruiser, its shield taking the hit](docs/screenshots/close-quarters.png)
 
@@ -71,7 +77,30 @@ Spock (helm), Worf (tactical), Geordi La Forge (engineering) and Seven of Nine (
 
 ![Seven of Nine has the conn](docs/screenshots/bridge-crew.png)
 
-Officers answer offline from the battle state. With a language model (Anthropic, OpenAI, OpenRouter or a local Ollama: `begin --llm provider=ollama model=lfm3 think=off`, then `begin --llm-test`), they answer in their own words and you can type orders in plain English. Each officer has **traits** and a **response style** that shape how they talk; change them in `config/officers.toml` (copy `config/officers.example.toml`). Exact commands, abbreviations included, always run at once without the model. If the model takes more than 20 seconds to interpret a line, the console says so and runs nothing.
+Each officer has **traits** and a **response style** that shape how they talk; change them in `config/officers.toml` (copy `config/officers.example.toml`). Officers answer from the battle state on their own, and a language model can give them their own words: see [Language models (optional)](#language-models-optional).
+
+### Language models (optional)
+
+You don't need a language model to play. Without one, every system in the game works: the AI captains, the officers running their stations, the coach, named orders written as console lines, and every console command. The officers still report and answer from the battle state, in lines written for them.
+
+A model only adds a little colour and convenience:
+
+- the officers answer you in their own words, in their own voice, and can chat about anything;
+- you can type orders in plain English ("swing round and give them a full spread"). The model turns them into console commands, the parser checks each one before it runs, and it echoes them with a ≈ so you learn the syntax;
+- plain-English steps in your named orders are translated once and remembered.
+
+These are small jobs: short prompts, short answers. A small model running on your own machine is plenty. I play with **lfm3** on [Ollama](https://ollama.com), and it keeps up fine. Exact commands, abbreviations included, never wait for the model, and requests run in the background so a slow model never stalls the battle. If a line takes more than 20 seconds to interpret, the console says so and runs nothing.
+
+**Local (Ollama).** Install Ollama, pull a model with `ollama pull <model>`, then point the game at it and try it out:
+
+```bash
+begin --llm provider=ollama model=lfm3 think=off
+begin --llm-test        # asks Spock one question and prints the answer and timing
+```
+
+`think=off` turns off a model's long "thinking" step, which these jobs don't need. Add `base_url=http://<host>:11434` if Ollama runs on another machine.
+
+**Cloud.** Use `provider=anthropic`, `openai` or `openrouter` with that provider's model id (`model=` is always required; the game has no default), and put the key in an environment variable: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `OPENROUTER_API_KEY`. Keys are never written to disk. The settings are saved in `config/settings.json`, and `BEGIN_LLM_PROVIDER`, `BEGIN_LLM_MODEL` and `BEGIN_LLM_BASE_URL` override them for one session.
 
 ### Named orders
 
