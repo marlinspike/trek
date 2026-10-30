@@ -32,6 +32,10 @@ Two things to keep in mind about power and speed:
 - A ship's top speed is limited by power as well as by `max_warp`: attainable warp = drives × `warp_power` ÷ `warp_power_use`. Raise `warp_power` with `max_warp`, as the Federation Dreadnought does.
 - To change an imported class's numbers and keep the change when the data is re-imported, add it to `OVERRIDES` in `tools/import_reference_data.py`, run the importer, and record the change in [DEVIATIONS.md](DEVIATIONS.md).
 
+## Ship sprites
+
+The Enterprise's lit, plated sprite comes from `tools/render_ship.py`, which builds the ship from height fields (saucer, bridge dome, secondary hull, pylons, nacelles), lights it, and writes `src/begin/assets/ships/heavy-cruiser-000.png` to `-330.png`, one per 30° of heading. It needs numpy (`pip install numpy`); the game itself only loads the PNGs. `python tools/render_ship.py` bakes all twelve in about a minute and a half, and `python tools/render_ship.py 0 90` bakes just those headings while you iterate. The constants at the top set the pixel scale (`PX`), supersampling (`SS`), the light and rim directions and the palette; if you change `PX` or the model's bounds, change `SPRITE_PX` and `SPRITE_CENTRE_Y` in `ui/showpiece.py` to match. To draw another class with a sprite in battle, bake its images under its own name, teach `showpiece.sprite` to load them, and add the class id to `SHOWPIECE` in `ui/tactical.py`.
+
 ## Torpedoes and probes
 
 Designs live in `content/data/ordnance.toml` (`[[torpedo]]` and `[[probe]]`). A class's native loadout is its `torpedo` and `probe` field. Its tubes and launchers can also load the other designs listed in its faction's `torpedoes` and `probes` in `factions.toml`; plasma tubes and antimatter tubes don't share designs. `ordnance.toml` is generated, so put hand-made designs in `content/data/custom_ordnance.toml` instead; it is loaded after the generated file and survives a re-import. A design marked `special = true` is never autoloaded. It only reaches a tube through a crew project (see below). `reveal_radius` and `reveal_cycles` make a round burst into a cloud that shows cloaked ships, as the tachyon detector does.

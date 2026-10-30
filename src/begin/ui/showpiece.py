@@ -1,0 +1,265 @@
+"""The main menu's showpiece: the player's heavy cruiser flying past, now and then firing [E].
+
+The ship is a pre-rendered sprite (baked by `tools/render_ship.py`, one per 30° of heading
+so the light stays put on screen while she turns). `Flybys` plans passes from varied
+directions, sizes and speeds, with quiet gaps between, and sometimes has her fire phasers
+or a torpedo salvo at something off screen. No enemy is ever shown.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
+from typing import Callable
+
+import pygame
+
+from . import theme
+
+SPRITE_PX = 7.0           # sprite pixels per hull unit at scale 1 (tools/render_ship.py PX)
+SPRITE_CENTRE_Y = -1.0    # hull-unit y at the sprite's centre
+BAKED = 12                # sprites, one per 30° of heading
+PHASER_COL = (255, 160, 74)
+TORPEDO_COL = (255, 94, 58)
+SHIP_DIR = Path(__file__).resolve().parent.parent / "assets" / "ships"
+TORP_SPEED = 1500.0       # pixels a second
+TRAIL = 0.55              # seconds of trail behind a torpedo
+BEAM_TIME = 0.75          # seconds a phaser shot lasts
+# hull-unit emitters (x right, y forward): phaser banks around the saucer, the torpedo launch at the bow
+EMITTERS = ((-10.0, 34.0), (10.0, 34.0), (-22.0, 24.0), (22.0, 24.0), (-14.0, 8.0), (14.0, 8.0))
+LAUNCH = ((-2.0, 46.0), (2.0, 46.0))
+
+
+@lru_cache(maxsize=None)
+def sprite(i: int) -> pygame.Surface | None:
+    """Baked sprite number i (heading i × 30°), or None if the art is missing."""
+    try:
+        img = pygame.image.load(str(SHIP_DIR / f"heavy-cruiser-{i * 360 // BAKED:03d}.png"))
+        return img.convert_alpha() if pygame.display.get_surface() is not None else img
+    except (FileNotFoundError, pygame.error, OSError):
+        return None
+
+
+@lru_cache(maxsize=64)
+def halo(radius: int, col: tuple[int, int, int]) -> pygame.Surface:
+    """A soft round light (black outside), for adding onto the scene: brightest at the centre."""
+    d = radius * 2 + 1
+    g = pygame.Surface((d, d))
+    g.fill((0, 0, 0))
+    for r in range(radius, 0, -1):
+        k = (1.0 - r / radius) ** 2.2
+        pygame.draw.circle(g, (int(col[0] * k), int(col[1] * k), int(col[2] * k)), (radius, radius), r)
+    return g
+
+
+@lru_cache(maxsize=96)
+def ship_image(heading: float, scale: float) -> pygame.Surface | None:
+    """The ship at a heading (degrees clockwise from up) and scale, lit from the same side whatever her heading."""
+    i = round(heading / (360.0 / BAKED)) % BAKED
+    img = sprite(i)
+    if img is None:
+        return None
+    return pygame.transform.rotozoom(img, -heading, scale)
+
+
+def hull_to_screen(cx: float, cy: float, heading: float, scale: float, hx: float, hy: float) -> tuple[float, float]:
+    """Where a hull-unit point of the ship lands on screen."""
+    a = math.radians(heading)
+    fx, fy = math.sin(a), -math.cos(a)        # forward
+    rx, ry = math.cos(a), math.sin(a)         # starboard
+    k = SPRITE_PX * scale
+    f = hy - SPRITE_CENTRE_Y
+    return cx + (hx * rx + f * fx) * k, cy + (hx * ry + f * fy) * k
+
+
+@dataclass
+class Shot:
+    kind: str                        # "phaser" | "torpedo"
+    t: float                         # seconds since it started
+    bearing: float                   # screen bearing it goes off along
+    emitter: tuple[float, float]     # hull-unit point it leaves from
+    pos: tuple[float, float] = (0.0, 0.0)
+    trail: list[tuple[float, float, float]] = field(default_factory=list)
+
+
+@dataclass
+class Pass:
+    start: tuple[float, float]
+    mid: tuple[float, float]
+    end: tuple[float, float]
+    duration: float
+    scale: float
+    fires: list[tuple[float, str, float]]     # (fraction of the pass, "phaser"|"torpedo", bearing off her heading)
+    t: float = 0.0
+
+    def at(self, u: float) -> tuple[float, float, float]:
+        """(x, y, heading) a fraction u along a gentle curve."""
+        (x0, y0), (x1, y1), (x2, y2) = self.start, self.mid, self.end
+        a, b, c = (1 - u) ** 2, 2 * u * (1 - u), u * u
+        x, y = a * x0 + b * x1 + c * x2, a * y0 + b * y1 + c * y2
+        dx = 2 * (1 - u) * (x1 - x0) + 2 * u * (x2 - x1)
+        dy = 2 * (1 - u) * (y1 - y0) + 2 * u * (y2 - y1)
+        return x, y, math.degrees(math.atan2(dx, -dy)) % 360.0
+
+
+class Flybys:
+    """Plans and draws the passes. `sound(name, pan, level)` is called when she fires, if given."""
+
+    def __init__(self, seed: int = 1701, sound: Callable[[str, float, float], None] | None = None) -> None:
+        self.rng = random.Random(seed)
+        self.sound = sound
+        self.current: Pass | None = None
+        self.wait = 1.2                       # a moment of empty stars before the first pass
+        self.shots: list[Shot] = []
+        self.size = (1600, 900)
+
+    # ------------------------------------------------------------ planning
+
+    def _plan(self) -> Pass:
+        w, h = self.size
+        r = self.rng
+        scale = r.choice((0.55, 0.7, 0.85, 1.0, 1.15))
+        reach = 420 * scale + 60                                   # far enough that she is wholly off screen
+        travel = r.uniform(0, 360)
+        tx, ty = math.sin(math.radians(travel)), -math.cos(math.radians(travel))
+        mid = (r.uniform(0.42, 0.86) * w, r.uniform(0.25, 0.75) * h)
+        # how far along the line to either edge, plus the sprite's reach
+        def to_edge(sx: float, sy: float) -> float:
+            ts = []
+            for d, p, lim in ((sx, mid[0], w), (sy, mid[1], h)):
+                if abs(d) > 1e-6:
+                    ts.append(((lim - p) / d) if d > 0 else (-p / d))
+            return min(ts) + reach
+        a_len, b_len = to_edge(-tx, -ty), to_edge(tx, ty)
+        start = (mid[0] - tx * a_len, mid[1] - ty * a_len)
+        end = (mid[0] + tx * b_len, mid[1] + ty * b_len)
+        bend = r.uniform(-0.18, 0.18) * (a_len + b_len)            # a gentle turn through the pass
+        ctrl = (mid[0] - ty * bend, mid[1] + tx * bend)
+        speed = r.uniform(170, 260) * (0.6 + 0.5 * scale)          # a close pass is a quicker one
+        duration = (a_len + b_len) / speed
+        fires: list[tuple[float, str, float]] = []
+        roll = r.random()
+        if roll < 0.75:
+            for _ in range(r.choice((1, 1, 2))):
+                kind = "phaser" if r.random() < 0.55 else "torpedo"
+                off = r.choice((-1, 1)) * r.uniform(35, 110) if kind == "phaser" else r.uniform(-12, 12)
+                fires.append((r.uniform(0.35, 0.62), kind, off))
+        return Pass(start, ctrl, end, duration, scale, sorted(fires))
+
+    # ------------------------------------------------------------ running
+
+    def update(self, dt: float, size: tuple[int, int]) -> None:
+        self.size = size
+        p = self.current
+        at = p.at(min(1.0, p.t / p.duration)) if p is not None else None
+        for s in self.shots:
+            s.t += dt
+            if s.kind != "torpedo" or s.t < 0:
+                continue
+            a = math.radians(s.bearing)
+            if not s.trail:
+                if at is None:
+                    s.t = 99.0          # her pass ended before this one left the tube
+                    continue
+                s.pos = hull_to_screen(at[0], at[1], at[2], p.scale, *s.emitter)   # type: ignore[union-attr]
+            else:
+                s.pos = (s.pos[0] + math.sin(a) * TORP_SPEED * dt, s.pos[1] - math.cos(a) * TORP_SPEED * dt)
+            s.trail.append((s.pos[0], s.pos[1], s.t))
+            s.trail = [q for q in s.trail if s.t - q[2] <= TRAIL]
+        self.shots = [s for s in self.shots if (s.t < BEAM_TIME if s.kind == "phaser" else s.t < 3.0)]
+        if self.current is None:
+            self.wait -= dt
+            if self.wait <= 0:
+                self.current = self._plan()
+            return
+        p = self.current
+        before = p.t / p.duration
+        p.t += dt
+        u = p.t / p.duration
+        for when, kind, off in p.fires:
+            if before < when <= u:
+                self._fire(p, kind, off)
+        if u >= 1.0:
+            self.current = None
+            self.wait = self.rng.uniform(2.5, 7.0)
+
+    def _fire(self, p: Pass, kind: str, off: float) -> None:
+        x, y, hdg = p.at(min(1.0, p.t / p.duration))
+        bearing = (hdg + off) % 360.0
+        pan = max(-1.0, min(1.0, (x / max(1, self.size[0])) * 2 - 1))
+        if kind == "phaser":
+            # the banks that face the target, two or three shots a moment apart
+            rel = math.radians(off)
+            ranked = sorted(EMITTERS, key=lambda e: -(e[0] * math.sin(rel) + e[1] * math.cos(rel)))
+            for k, em in enumerate(ranked[: self.rng.choice((2, 3))]):
+                self.shots.append(Shot("phaser", -0.12 * k, bearing + self.rng.uniform(-2, 2), em))
+            if self.sound:
+                self.sound("phaser", pan, 0.35)
+        else:
+            n = self.rng.choice((2, 3, 4))
+            for k in range(n):
+                em = LAUNCH[k % 2]
+                shot = Shot("torpedo", -0.16 * k, bearing + (k - (n - 1) / 2) * 3.0, em)
+                self.shots.append(shot)
+            if self.sound:
+                self.sound("launch", pan, 0.4)
+
+    # ------------------------------------------------------------ drawing
+
+    def draw(self, surf: pygame.Surface) -> None:
+        p = self.current
+        w, h = surf.get_size()
+        glow = pygame.Surface((w, h))            # light, added onto the scene
+        glow.fill((0, 0, 0))
+        ship_at = p.at(min(1.0, p.t / p.duration)) if p is not None else None
+        ship_scale = p.scale if p is not None else 1.0
+        for s in self.shots:
+            if s.t < 0:
+                continue
+            if s.kind == "phaser" and ship_at is not None:
+                self._beam(glow, s, ship_at, ship_scale, w, h)
+            elif s.kind == "torpedo":
+                self._torpedo(glow, s)
+        if ship_at is not None:
+            x, y, hdg = ship_at
+            img = ship_image(round(hdg) % 360, ship_scale)
+            if img is not None:
+                surf.blit(img, img.get_rect(center=(int(x), int(y))))
+        surf.blit(glow, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+
+    @staticmethod
+    def _light(col: tuple[int, int, int], k: float) -> tuple[int, int, int]:
+        return (int(col[0] * k), int(col[1] * k), int(col[2] * k))
+
+    def _beam(self, glow: pygame.Surface, s: Shot, at: tuple[float, float, float], scale: float, w: int, h: int) -> None:
+        x, y, hdg = at
+        p0 = hull_to_screen(x, y, hdg, scale, *s.emitter)
+        a = math.radians(s.bearing)
+        reach = math.hypot(w, h)
+        p1 = (p0[0] + math.sin(a) * reach, p0[1] - math.cos(a) * reach)
+        k = max(0.0, 1.0 - s.t / BEAM_TIME)
+        k = k * k * (3 - 2 * k)
+        core = theme.mix(PHASER_COL, (255, 255, 255), 0.55)
+        for width, level in ((17, 0.10), (9, 0.22), (5, 0.45)):
+            pygame.draw.line(glow, self._light(PHASER_COL, level * k), p0, p1, width)
+        pygame.draw.line(glow, self._light(core, 0.95 * k), p0, p1, 2)
+        flash = halo(max(4, int(26 * scale)), self._light(core, k))
+        glow.blit(flash, flash.get_rect(center=(int(p0[0]), int(p0[1]))), special_flags=pygame.BLEND_RGB_ADD)
+
+    def _torpedo(self, glow: pygame.Surface, s: Shot) -> None:
+        if not s.trail:
+            return
+        for (x0, y0, t0), (x1, y1, _) in zip(s.trail, s.trail[1:]):
+            k = 1.0 - (s.t - t0) / TRAIL
+            pygame.draw.line(glow, self._light(TORPEDO_COL, 0.55 * k * k), (x0, y0), (x1, y1), max(1, int(5 * k)))
+        pulse = 0.8 + 0.2 * math.sin(s.t * 30.0)
+        px, py = int(s.pos[0]), int(s.pos[1])
+        big = halo(30, self._light(TORPEDO_COL, pulse))
+        glow.blit(big, big.get_rect(center=(px, py)), special_flags=pygame.BLEND_RGB_ADD)
+        hot = halo(9, theme.mix(TORPEDO_COL, (255, 255, 255), 0.8))
+        glow.blit(hot, hot.get_rect(center=(px, py)), special_flags=pygame.BLEND_RGB_ADD)
+
+__all__ = ["Flybys", "Pass", "hull_to_screen", "ship_image", "sprite"]

@@ -83,10 +83,12 @@ The providers (`llm/providers/`) share one `complete(system, messages) -> str` m
 
 `BattleScene` adds frame time × speed to an accumulator and steps the world in fixed ticks, at most 12 per frame. It keeps the previous tick's snapshot so motion is drawn smoothly between ticks. Each frame it draws:
 
-- the tactical map (`ui/tactical.py`, with `camera.py`, `hulls.py`, `effects.py` and `starfield.py`), which also keeps torpedo trails and the target-lock animation;
+- the tactical map (`ui/tactical.py`, with `camera.py`, `hulls.py`, `effects.py` and `starfield.py`), which also keeps torpedo trails and the target-lock animation. Zoomed in, a ship class listed in `tactical.SHOWPIECE` is drawn from its baked sprite instead of its outline;
 - the HUD panels (`ui/hud.py`): Own Ship, Target, Weapons, and a tabbed Contacts/Fleet/Crew column. Shown numbers go through `ui/tween.py`, which eases them and flashes changes; `BattleScene.hud_detail` (or the mouse over a panel) decides whether every number is shown;
 - the console and its log;
 - any open overlay: Begin's text reports (`console/reports.py`) or the manual (`ui/manual.py`, which renders `ui/markdown.py`).
+
+`MenuScene` draws the starfield and the flybys from `ui/showpiece.py`, which plans each pass as a curve across the screen, fires phasers and torpedoes along it and draws them with additive glow. The ship sprites it uses are PNGs in `assets/ships/`, baked by `tools/render_ship.py` (which needs numpy; the game does not).
 
 Panels subclass `Panel` and draw themselves into a rectangle, using small immediate-mode widgets from `ui/widgets.py`. Colours and fonts come from `ui/theme.py`.
 

@@ -1,10 +1,12 @@
 # Begin (remake)
 
+![The Enterprise on the main menu, phasers lancing out and a torpedo spread running ahead](docs/screenshots/showpiece.png)
+
 A real-time 2D tactical starship simulation in Python and pygame-ce, rebuilt from *Begin: A Tactical Starship Simulation* (Clockwork Software, v1.65 manual with the Begin 2.0 appendix) and the [fireflyk64/begin](https://github.com/fireflyk64/begin) reverse-engineered reconstruction. It is a personal, non-commercial fan project: see [LICENSING.md](LICENSING.md).
 
 You command a starship from a top-down tactical map and a Begin-style command console. The simulation keeps Begin's mechanics: six shield sectors, phaser banks that hit harder up close, torpedoes with arming and proximity fuses, heat, power, probes and cloaks. On top of that the remake adds a bridge crew who can fight the ship for you and talk back (optionally through a language model), named battle plans, a coach that reads the fight, crew morale, hull repairs, and synthesised sound and effects, with a HUD that keeps to the essentials until you ask for more.
 
-![A close duel: phasers, a shield taking the hit, and the full HUD](docs/screenshots/duel.png)
+![Close quarters: the Enterprise's phasers on a Klingon battle cruiser, its shield taking the hit](docs/screenshots/close-quarters.png)
 
 ## Run it
 
@@ -35,9 +37,9 @@ Useful shortcuts:
 
 ### Before you start
 
-The main menu sits over a slowly drifting starfield, with a starship gliding across it. It has quick, preset and custom battles, plus **Coach & training** (or **C**). That opens the coach before any battle, with a short training run: how to find and target the enemy, close the range, use torpedoes at long range and phasers up close, and keep a good shield toward them, each with the command to type. **Manual** (or **H**) opens the whole manual.
+The main menu sits over a slowly drifting starfield. Every so often the Enterprise sweeps across it from a new direction, at a new size and on a gently curving path, and on most passes she fires: a phaser volley from the saucer banks that face the unseen enemy, or a spread of torpedoes from the forward tubes. Then she is gone and the stars have the screen until the next pass. The menu's sound is quieter than the battle's. From the menu you can start quick, preset and custom battles, or open **Coach & training** (or **C**). That opens the coach before any battle, with a short training run: how to find and target the enemy, close the range, use torpedoes at long range and phasers up close, and keep a good shield toward them, each with the command to type. **Manual** (or **H**) opens the whole manual.
 
-![The main menu, with a ship drifting across the stars](docs/screenshots/menu.png)
+![The main menu, with the Enterprise passing and firing a phaser volley](docs/screenshots/menu.png)
 
 ![The coach's training run, opened from the menu before a battle](docs/screenshots/manual-coach.png)
 
@@ -47,7 +49,7 @@ Every battle starts paused. **Space** runs and pauses the clock, and **[** and *
 
 Left-click a contact (or press **Tab**) to target it, and **R** cycles precision aim through propulsion, weapons, shields, power and sensors. Right-click the map to steer there, Shift + right-click a ship to pursue it, **W**/**S** change warp and **A**/**D** turn. **F** fires phasers, **T** torpedoes, **P** launches a probe and **X** scans the target. In the weapons panel, each weapon group can be Manual, Assisted or Automatic, and the **PD** button sets the point-defense doctrine.
 
-The map shows what your sensors know and nothing more. Phaser beams glow around a bright core, torpedoes pulse as they fly and leave a trail that fades behind them, shields ripple along the struck arc, ships leave engine wakes and break up in shards and embers, and the panel borders pulse red at red alert. When you pick a target, its brackets swing in from wide and close on it, then pulse gently while the lock holds.
+The map shows what your sensors know and nothing more. Phaser beams glow around a bright core, torpedoes pulse as they fly and leave a trail that fades behind them, shields ripple along the struck arc, ships leave engine wakes and break up in shards and embers, and the panel borders pulse red at red alert. When you pick a target, its brackets swing in from wide and close on it, then pulse gently while the lock holds. Zoom right in on a Federation heavy cruiser and the map swaps the outline for the same lit, plated Enterprise as the menu.
 
 ![Torpedoes in flight with fading trails, glowing point-defense beams, and the lock closed on the target](docs/screenshots/torpedoes.png)
 
@@ -83,9 +85,15 @@ Click an ally to open the **Fleet** tab: escort, defend, attack my target, hold 
 
 ![A fleet action](docs/screenshots/fleet-action.png)
 
+### How the AI fights
+
+Enemy captains, and your allies, fight to their ship's strengths. Each one weighs its loadout against the target's: phaser banks and torpedo tubes on both sides, and how much punishment each hull and shield can take. A torpedo ship facing a phaser brawler holds its distance outside the enemy's banks (at least 1.3 times their reach) and works the tubes; it only closes once the target's scan shows its hull or shields failing. A ship with no tubes closes, because its banks are all it has, and a faster ship that is outgunned stays out of reach. When the shield facing the enemy drops below about a third, the captain turns a fresh one toward them. In AI-versus-AI testing over 420 battles this kept ships out of enemy phaser range noticeably more (27% of the time, against 32% before) and lifted survival in the big fights, for example Fleet Action from 86% to 93%.
+
 ### Damage, repairs and morale
 
-Damage-control crews repair systems and now the hull too, slowly in space (up to 75%) and fully when docked; `repair hull` or `repair shields` sets the priority. Every crew has morale from 0 to 100, shaken by damage and losses and lifted by hits, kills and your `address crew`. It nudges repair speed, loading and accuracy, and a shaken AI crew gives up sooner.
+Damage-control crews repair systems and now the hull too, slowly in space (up to 75%) and fully when docked; `repair hull` or `repair shields` sets the priority. Every crew has morale from 0 to 100, shaken by damage and losses and lifted by hits, kills and your `address crew`. It nudges repair speed, loading and accuracy, and a shaken AI crew gives up sooner. **I** (or a click on the hull diagram in the Own Ship panel) opens the damage assessment: every system where it sits in the hull, coloured by damage, with what the crews are repairing and the shields' strength around it.
+
+![The damage assessment after a punishing exchange: hull at 61%, reactors and shields damaged, repairs under way](docs/screenshots/damage.png)
 
 ### Sound
 

@@ -25,7 +25,7 @@ begin = "begin.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-begin = ["content/data/*.toml", "assets/fonts/*", "assets/help/*.md"]
+begin = ["content/data/*.toml", "assets/fonts/*", "assets/help/*.md", "assets/ships/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

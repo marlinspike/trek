@@ -24,6 +24,7 @@ from ..sim.ship import Ship
 from . import theme
 from .camera import Camera
 from .effects import Effects
+from .showpiece import SPRITE_CENTRE_Y, SPRITE_PX, ship_image
 from .hulls import draw_hull, hull_pixel_scale
 from .starfield import Starfield
 
@@ -31,6 +32,8 @@ SHIELD_FLASH = 0.7        # seconds a shield hit shimmers
 TRAIL_POINT = 0.25        # cycles between the points of an engine trail
 TRAIL_BANDS = 4           # strokes per wake, each fainter toward the tail
 SMOULDER_BELOW = 0.5      # hull fraction below which a ship trails sparks
+SPRITE_MIN_K = 0.9         # pixels per hull unit at which a ship with showpiece art is drawn with it
+SHOWPIECE = frozenset({"federation.hc"})
 TORP_TRAIL = 1.4          # cycles of exhaust a torpedo leaves behind it
 TORP_TRAIL_POINT = 0.05   # cycles between the points of a torpedo trail
 LOCK_TIME = 0.35          # seconds the target brackets take to close in
@@ -428,6 +431,20 @@ class TacticalView:
                     self._dashed(surf, theme.dim(theme.HOSTILE, bright * 0.8), a, cam.to_screen(pt[0], pt[1]), 3, 7)
 
     @staticmethod
+    def _sprite(surf: pygame.Surface, cls_id: str, sx: float, sy: float, course: float, k: float) -> bool:
+        """Close in, a ship with showpiece art is drawn with it. False when there's none for the class."""
+        if cls_id not in SHOWPIECE:
+            return False
+        scale = round(k / SPRITE_PX, 2)
+        img = ship_image(round(course) % 360, scale)
+        if img is None:
+            return False
+        a = math.radians(course)
+        off = -SPRITE_CENTRE_Y * k                 # the sprite's centre sits a little aft of the hull origin
+        surf.blit(img, img.get_rect(center=(int(sx - math.sin(a) * off), int(sy + math.cos(a) * off))))
+        return True
+
+    @staticmethod
     def _beam(overlay: pygame.Surface, a: tuple[float, float], b: tuple[float, float], col: theme.Color) -> None:
         """A tractor beam: a soft band with a bright core, widening toward the held ship."""
         dx, dy = b[0] - a[0], b[1] - a[1]
@@ -462,7 +479,8 @@ class TacticalView:
             a = math.radians(s.desired_course)
             L = 50 * k
             pygame.draw.line(surf, theme.dim(theme.CAUTION, 0.7), (sx, sy), (sx + math.sin(a) * L, sy - math.cos(a) * L), 1)
-        draw_hull(surf, s.cls.hull, sx, sy, p[2], k, color)
+        if not (s.alive and not s.cloaked and k >= SPRITE_MIN_K and self._sprite(surf, s.cls.id, sx, sy, p[2], k)):
+            draw_hull(surf, s.cls.hull, sx, sy, p[2], k, color)
         strengths = [(sh.effective if not sh.destroyed else 0.0, sh.up and not sh.destroyed and sh.effective > 0.5)
                      for sh in s.shields]
         self._shield_ring(surf, s.id, sx, sy, p[2], 62 * k, strengths, overlay)

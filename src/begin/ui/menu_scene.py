@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+import threading
 from typing import Callable
 
 import pygame
@@ -13,7 +14,7 @@ from ..content.schema import ContentDB
 from ..help.coach import HelpContext
 from ..presets import Preset, load_presets
 from . import theme
-from .hulls import draw_hull
+from .showpiece import Flybys
 from .starfield import Starfield
 from .manual import ManualView
 from .settings import Settings
@@ -21,7 +22,7 @@ from .widgets import UI
 
 FACTIONS = ["federation", "klingon", "romulan", "orion"]
 STAR_DRIFT = 900.0        # world units per second the menu's view drifts through the stars
-SHIP_CROSSING = 80.0      # seconds the menu's ship takes to cross the screen
+MENU_SOUND = 0.4          # × the player's volume: the menu's flybys are heard, quietly
 
 
 class MenuScene:
@@ -48,6 +49,9 @@ class MenuScene:
         }
         self.t = 0.0
         self.stars = Starfield(seed=47)
+        self.flybys = Flybys(sound=self._sound)
+        self._audio: object | None = None          # made on a worker thread: it takes a moment to synthesise
+        threading.Thread(target=self._make_audio, daemon=True).start()
         self.manual: ManualView | None = None     # made the first time the coach or manual is opened
         self._swallow = False
 
@@ -68,6 +72,7 @@ class MenuScene:
 
     def update(self, dt: float) -> None:
         self.t += dt
+        self.flybys.update(dt, self.size)
         self._swallow = False
         self.ui.mouse = pygame.mouse.get_pos()
 
@@ -152,7 +157,7 @@ class MenuScene:
         # stars drifting past, nearer layers faster
         self.stars.draw(surf, surf.get_rect(), self.t * STAR_DRIFT, self.t * STAR_DRIFT * 0.18)
         if self.page == "main":
-            self._drifting_ship(surf)
+            self.flybys.draw(surf)
         theme.text(surf, "BEGIN", (80, 70), theme.FRIEND, 64, weight="semibold")
         theme.text(surf, "A tactical starship simulation · a remake of Begin 2", (84, 150), theme.TEXT_DIM, 16)
         if self.page == "main":
@@ -184,24 +189,19 @@ class MenuScene:
                        lambda: self._cycle("player_faction", FACTIONS), "Which faction you command in a quick battle",
                        size=12)
 
-    def _drifting_ship(self, surf: pygame.Surface) -> None:
-        """A starship gliding slowly across the background, its engine wake fading behind it."""
-        w, h = surf.get_size()
-        cls = self.content.classes.get("federation.hc")
-        if cls is None:
-            return
-        u = (self.t / SHIP_CROSSING) % 1.0
-        x0, y0, x1, y1 = w * 0.3, h + 180, w + 260, h * 0.12
-        x, y = x0 + (x1 - x0) * u, y0 + (y1 - y0) * u
-        course = math.degrees(math.atan2(x1 - x0, -(y1 - y0)))
-        dx, dy = (x1 - x0) / math.hypot(x1 - x0, y1 - y0), (y1 - y0) / math.hypot(x1 - x0, y1 - y0)
-        wake = pygame.Surface((w, h), pygame.SRCALPHA)
-        for i in range(24):                       # the wake: a streak that fades toward its tail
-            a, b = 26 + i * 9, 26 + (i + 1) * 9
-            alpha = int(70 * (1 - i / 24) ** 2)
-            pygame.draw.line(wake, (*theme.FRIEND, alpha), (x - dx * a, y - dy * a), (x - dx * b, y - dy * b), 2)
-        surf.blit(wake, (0, 0))
-        draw_hull(surf, cls.hull, x, y, course, 2.6, theme.dim(theme.FRIEND, 0.75), fill_alpha=0.12)
+    def _make_audio(self) -> None:
+        from ..paths import config_dir
+        from .audio import Audio
+
+        st = self.settings
+        self._audio = Audio(st.volume, st.muted, st.sounds, config_dir() / "sounds")
+
+    def _sound(self, name: str, pan: float, level: float) -> None:
+        """The flybys' phasers and torpedoes, quietly (the sounds are made in the background at start-up)."""
+        if self._audio is not None and not self.settings.muted:
+            import time
+
+            self._audio.play(name, time.monotonic(), pan, level * MENU_SOUND)  # type: ignore[attr-defined]
 
     def _presets(self, surf: pygame.Surface) -> None:
         x, y = 84, 210
