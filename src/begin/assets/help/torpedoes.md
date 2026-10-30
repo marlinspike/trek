@@ -67,6 +67,15 @@ lock tubes 1 2 on gorkon 0
 lock all tubes on gorkon with a dispersion of 30
 ```
 
+You can also fan a single salvo as you fire it, without changing the locks. The angle is the whole width of the fan, centred on the lead point, with the torpedoes evenly spaced across it:
+
+```console
+fire all torpedoes spread 10
+fire tubes 1 2 3 4 at gorkon fan 20
+```
+
+Pick the angle with the proximity fuse in mind. Each torpedo already bursts anywhere within its proximity of the target, so a fan only helps once its width at the target's range is more than that. At 6,000 units, 2° spans only about 210 units, well inside a Mark 7's 800 proximity, so it changes nothing. 10° spans about 1,050 units and 20° about 2,100: wide enough to cover a sharp turn, with the torpedoes about 1.4° and 2.9° apart in an eight-tube salvo. Too wide a fan leaves gaps between torpedoes bigger than the proximity, and a target in a gap is missed by all of them.
+
 ## Status
 
 ```console

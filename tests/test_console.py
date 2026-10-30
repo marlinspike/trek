@@ -133,3 +133,20 @@ def test_destroy_and_bait_commands(setup) -> None:  # type: ignore[no-untyped-de
     assert isinstance(c, SetObjective) and c.goal == "destroy" and c.targets == (foe.id,)
     c = p(w, me, "bait gorkon").commands[0]
     assert isinstance(c, FireBait) and c.target == foe.id
+
+
+def test_a_torpedo_spread_fans_the_salvo(setup) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.commands import FireTorpedoes
+
+    w, me = setup[0], setup[1]
+    for text in ("fire all torpedoes spread 10", "fire tor al s 10", "fire all tubes fan 10"):
+        (c,) = p(w, me, text).commands
+        assert isinstance(c, FireTorpedoes) and c.fan == 10
+    from tests.conftest import charge_all
+
+    foe = setup[2]
+    charge_all(w, 6)
+    before = {t.id for t in w.torpedoes}
+    assert w.execute(FireTorpedoes(ship_id=me.id, target=foe.id, fan=20)) is None
+    courses = sorted((t.course + 180) % 360 - 180 for t in w.torpedoes if t.id not in before)   # the target is dead ahead
+    assert len(courses) >= 4 and 15 < courses[-1] - courses[0] < 25   # each round on its own heading, 20° wide

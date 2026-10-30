@@ -158,7 +158,7 @@ HELP = [
     "Status:   status [damage|banks|tubes|launchers|probes|shields|fleet] · damage · banks · tubes · launchers · shields · fleet · group",
     "Phasers:  fire [all] phasers [<list>] [spread] <s> · lock [all] banks [<list>] on <ship> · turn banks [<list>] to <mark>",
     "          enable|disable [all] banks [<list>] · spread <s> · role banks <list> offense|flex|defense",
-    "Torps:    fire [all] torpedoes [<list>]   (fir tor al, torp 1 2) · lock [all] tubes [<list>] on <ship> [dispersion <d>]",
+    "Torps:    fire [all] torpedoes [<list>] [spread <deg>]   (fir tor al, torp 1 2, fire all tor spread 10) · lock [all] tubes [<list>] on <ship> [dispersion <d>]",
     "          turn tubes [<list>] to <mark> · load [all] tubes [<list>] [prox] <p> · unload [all] tubes [<list>] · enable|disable tubes",
     "Probes:   fire [all] probes [<list>] at <ship> | course <c> · load launchers [<list>] [prox] <p> [time] <t> · unload launchers",
     "          turn probe <code>|all probes [course] <c> · lock probe <code>|all probes on <ship> · detonate <code>|all · status probes",
@@ -598,7 +598,10 @@ class Parser:
         sub = None
         while not tok.done():
             if tok.take_word("spread", "s"):
-                spread = tok.number("spread")
+                if weapon == "tube":
+                    fan = tok.number("spread")   # a torpedo spread is a fan around the lead point
+                else:
+                    spread = tok.number("spread")
             elif tok.take_word("fan", "dispersion"):
                 fan = tok.number("fan")
             elif tok.take_word("course"):
