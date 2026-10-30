@@ -37,7 +37,7 @@ Useful shortcuts:
 
 ### Before you start
 
-The main menu sits over a slowly drifting starfield. Every so often the Enterprise sweeps across it from a new direction, at a new size and on a gently curving path, and on most passes she fires: a phaser volley from the saucer banks that face the unseen enemy, or a spread of torpedoes from the forward tubes. Then she is gone and the stars have the screen until the next pass. The menu's sound is quieter than the battle's. From the menu you can start quick, preset and custom battles, or open **Coach & training** (or **C**). That opens the coach before any battle, with a short training run: how to find and target the enemy, close the range, use torpedoes at long range and phasers up close, and keep a good shield toward them, each with the command to type. **Manual** (or **H**) opens the whole manual.
+The main menu sits over a slowly drifting starfield. Every so often the Enterprise sweeps across it from a new direction, at a new size and in a slow, straight glide, and on most passes she fires: a phaser volley from the saucer banks that face the unseen enemy, or a spread of torpedoes from the forward tubes. Then she is gone and the stars have the screen until the next pass. The menu's sound is quieter than the battle's. From the menu you can start quick, preset and custom battles, or open **Coach & training** (or **C**). That opens the coach before any battle, with a short training run: how to find and target the enemy, close the range, use torpedoes at long range and phasers up close, and keep a good shield toward them, each with the command to type. **Manual** (or **H**) opens the whole manual.
 
 ![The main menu, with the Enterprise passing and firing a phaser volley](docs/screenshots/menu.png)
 

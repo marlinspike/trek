@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pygame
 
 from begin.ui import showpiece
@@ -50,3 +52,22 @@ def test_flybys_fall_back_quietly_without_sprites(monkeypatch) -> None:  # type:
             f.draw(surf)
     finally:
         showpiece.ship_image.cache_clear()
+
+
+def test_each_pass_is_a_straight_line_at_one_heading() -> None:
+    surf = _display()
+    f = Flybys(seed=8)
+    seen = 0
+    while seen < 3:
+        f.update(0.05, surf.get_size())
+        p = f.current
+        if p is None or p.t > 0.05:
+            continue
+        seen += 1
+        pts = [p.at(u / 20) for u in range(21)]
+        assert len({h for _, _, h in pts}) == 1                    # one heading, one sprite, all pass long
+        (x0, y0, _), (x1, y1, _) = pts[0], pts[-1]
+        for x, y, _ in pts:                                         # every point on the line from start to end
+            assert abs((x1 - x0) * (y - y0) - (y1 - y0) * (x - x0)) < 1e-6 * max(1.0, abs(x1 - x0) + abs(y1 - y0)) ** 2
+        speed = math.hypot(x1 - x0, y1 - y0) / p.duration
+        assert speed < 140                                          # a slow glide, in pixels a second

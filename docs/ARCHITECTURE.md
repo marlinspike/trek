@@ -88,7 +88,7 @@ The providers (`llm/providers/`) share one `complete(system, messages) -> str` m
 - the console and its log;
 - any open overlay: Begin's text reports (`console/reports.py`) or the manual (`ui/manual.py`, which renders `ui/markdown.py`).
 
-`MenuScene` draws the starfield and the flybys from `ui/showpiece.py`, which plans each pass as a curve across the screen, fires phasers and torpedoes along it and draws them with additive glow. The ship sprites it uses are PNGs in `assets/ships/`, baked by `tools/render_ship.py` (which needs numpy; the game does not).
+`MenuScene` draws the starfield and the flybys from `ui/showpiece.py`, which plans each pass as a straight line across the screen at one heading, fires phasers and torpedoes along it and draws them with additive glow. The ship sprites it uses are PNGs in `assets/ships/`, baked by `tools/render_ship.py` (which needs numpy; the game does not).
 
 Panels subclass `Panel` and draw themselves into a rectangle, using small immediate-mode widgets from `ui/widgets.py`. Colours and fonts come from `ui/theme.py`.
 

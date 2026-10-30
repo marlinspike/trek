@@ -95,14 +95,16 @@ class Pass:
     fires: list[tuple[float, str, float]]     # (fraction of the pass, "phaser"|"torpedo", bearing off her heading)
     t: float = 0.0
 
+    @property
+    def heading(self) -> float:
+        """Her one heading for the whole pass, in whole degrees so the sprite is turned once."""
+        (x0, y0), (x2, y2) = self.start, self.end
+        return float(round(math.degrees(math.atan2(x2 - x0, -(y2 - y0)))) % 360)
+
     def at(self, u: float) -> tuple[float, float, float]:
-        """(x, y, heading) a fraction u along a gentle curve."""
-        (x0, y0), (x1, y1), (x2, y2) = self.start, self.mid, self.end
-        a, b, c = (1 - u) ** 2, 2 * u * (1 - u), u * u
-        x, y = a * x0 + b * x1 + c * x2, a * y0 + b * y1 + c * y2
-        dx = 2 * (1 - u) * (x1 - x0) + 2 * u * (x2 - x1)
-        dy = 2 * (1 - u) * (y1 - y0) + 2 * u * (y2 - y1)
-        return x, y, math.degrees(math.atan2(dx, -dy)) % 360.0
+        """(x, y, heading) a fraction u along a straight line: no turning, so nothing twitches."""
+        (x0, y0), (x2, y2) = self.start, self.end
+        return x0 + (x2 - x0) * u, y0 + (y2 - y0) * u, self.heading
 
 
 class Flybys:
@@ -136,9 +138,7 @@ class Flybys:
         a_len, b_len = to_edge(-tx, -ty), to_edge(tx, ty)
         start = (mid[0] - tx * a_len, mid[1] - ty * a_len)
         end = (mid[0] + tx * b_len, mid[1] + ty * b_len)
-        bend = r.uniform(-0.18, 0.18) * (a_len + b_len)            # a gentle turn through the pass
-        ctrl = (mid[0] - ty * bend, mid[1] + tx * bend)
-        speed = r.uniform(170, 260) * (0.6 + 0.5 * scale)          # a close pass is a quicker one
+        speed = r.uniform(80, 120) * (0.6 + 0.5 * scale)           # a stately glide; a close pass a little quicker
         duration = (a_len + b_len) / speed
         fires: list[tuple[float, str, float]] = []
         roll = r.random()
@@ -147,7 +147,7 @@ class Flybys:
                 kind = "phaser" if r.random() < 0.55 else "torpedo"
                 off = r.choice((-1, 1)) * r.uniform(35, 110) if kind == "phaser" else r.uniform(-12, 12)
                 fires.append((r.uniform(0.35, 0.62), kind, off))
-        return Pass(start, ctrl, end, duration, scale, sorted(fires))
+        return Pass(start, mid, end, duration, scale, sorted(fires))
 
     # ------------------------------------------------------------ running
 
@@ -225,9 +225,9 @@ class Flybys:
                 self._torpedo(glow, s)
         if ship_at is not None:
             x, y, hdg = ship_at
-            img = ship_image(round(hdg) % 360, ship_scale)
+            img = ship_image(hdg, ship_scale)
             if img is not None:
-                surf.blit(img, img.get_rect(center=(int(x), int(y))))
+                surf.blit(img, img.get_rect(center=(round(x), round(y))))
         surf.blit(glow, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
 
     @staticmethod
