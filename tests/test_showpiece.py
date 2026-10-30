@@ -83,7 +83,7 @@ def test_torpedo_salvos_come_often_and_stay_in_view() -> None:
         f.update(0.05, (w, h))
         if f.current is not None and f.current is not last:
             last = f.current
-            passes += 1
+            passes += not f.current.klingon               # a Klingon pass has its own fight instead
             salvos += any(kind == "torpedo" for _, kind, _ in f.current.fires)
         if any(s.kind == "torpedo" and s.trail and 0 <= s.pos[0] <= w and 0 <= s.pos[1] <= h for s in f.shots):
             seen += 0.05
@@ -119,6 +119,7 @@ def test_a_klingon_decloaks_and_is_destroyed_on_a_distant_pass() -> None:
     f = Flybys(seed=4)
     f.encounter_odds = 1.0
     seen, boomed, scale = False, False, 1.0
+    absorbed, wide, beams = False, False, False
     for _ in range(20 * 400):
         f.update(0.05, surf.get_size())
         e = f.encounter
@@ -126,10 +127,14 @@ def test_a_klingon_decloaks_and_is_destroyed_on_a_distant_pass() -> None:
             seen = True
             scale = e.scale
             boomed |= e.blast is not None and e.blast.t > 0.5
+            absorbed |= any(fl.strength >= 1.0 for fl in e.her_flares)      # its torpedo on her shields
+            beams |= any(fl.strength < 1.0 for fl in e.her_flares)          # its disruptors too
+            wide |= any(b.wide and not b.done and b.trail for b in e.bolts)    # and one going wide
             f.draw(surf)
         elif seen:
             break
     assert seen and boomed and f.encounter is None              # it decloaked, blew up, and the scene cleared
+    assert absorbed and beams and wide                          # it fired first, and her shields held
     assert scale <= 0.42 * 0.9 + 1e-9                          # only ever on a distant pass
 
 

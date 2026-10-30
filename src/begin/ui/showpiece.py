@@ -18,7 +18,7 @@ from typing import Callable
 import pygame
 
 from . import theme
-from .blast import Blast, CLOAK, HullHit, ShieldFlare, add_light, halo, level as blast_level, ring
+from .blast import SHIELD, Blast, CLOAK, HullHit, ShieldFlare, add_light, halo, level as blast_level, ring
 
 SPRITE_PX = 7.0           # sprite pixels per hull unit at scale 1 (tools/render_ship.py PX)
 SPRITE_CENTRE_Y = -1.0    # hull-unit y at the sprite's centre
@@ -40,8 +40,14 @@ KLINGON_SCALE = 0.9       # the Klingon's scale relative to hers (it is a little
 KLINGON_BUBBLE = 38.0     # shield radius, hull units
 KLINGON_SIZE = 30.0       # rough radius of the hull, hull units
 DECLOAK = 1.6             # seconds for the cloak to fall
-OPEN_FIRE = 2.4           # seconds after decloaking starts that she fires phasers
-TORPEDOES = 3.3           # ... and launches torpedoes
+SHIELDS_UP = 0.9          # seconds after decloaking starts that she raises her shields
+KLINGON_FIRE = 2.0        # ... that the Klingon opens up with disruptors
+KLINGON_TORPS = 2.7       # ... and launches two torpedoes: one strikes her shields, one goes wide
+OPEN_FIRE = 4.6           # ... that she answers with phasers
+TORPEDOES = 5.5           # ... and torpedoes
+HER_BUBBLE = 58.0         # her shield radius, hull units
+DISRUPTOR_COL = (98, 232, 90)    # Klingon colours, as in factions.toml
+KTORP_COL = (184, 242, 60)
 # hull-unit emitters (x right, y forward): phaser banks around the saucer, the torpedo launch at the bow
 EMITTERS = ((-10.0, 34.0), (10.0, 34.0), (-22.0, 24.0), (22.0, 24.0), (-14.0, 8.0), (14.0, 8.0))
 LAUNCH = ((-2.0, 46.0), (2.0, 46.0))
@@ -182,9 +188,22 @@ class _Round:
     done: bool = False
 
 
+@dataclass
+class _Bolt:
+    """A Klingon torpedo, flying straight: at her, or wide of her."""
+    t: float
+    pos: tuple[float, float]
+    vel: tuple[float, float]
+    wide: bool
+    trail: list[tuple[float, float, float]] = field(default_factory=list)
+    done: bool = False
+
+
 class Encounter:
-    """A Klingon battle cruiser decloaks off her beam; she answers with phasers, which its shields
-    stop, then a torpedo salvo that batters the shields down and breaks it apart."""
+    """A Klingon battle cruiser decloaks off her beam. She raises her shields at once; it fires
+    disruptors and two torpedoes, her shields soak up the disruptors and one torpedo and the other
+    goes wide. She answers with phasers, which its shields stop, then a torpedo salvo that batters
+    the shields down and breaks it apart."""
 
     def __init__(self, x: float, y: float, scale: float, rng: random.Random,
                  sound: Callable[[str, float, float], None] | None, width: int) -> None:
@@ -204,6 +223,13 @@ class Encounter:
         self.blast: Blast | None = None
         self.boom_at: float | None = None
         self.fired = 0                            # 1 phasers, 2 torpedoes
+        self.kfired = 0                           # the Klingon's: 1 disruptors, 2 torpedoes
+        self.kbeams: list[float] = []             # start times of its disruptor bolts
+        self.bolts: list[_Bolt] = []
+        self.her_flares: list[ShieldFlare] = []   # on her shields, which move with her
+        self.her_bubble = 0.0
+        self.her_v = (0.0, 0.0)                   # her velocity on screen, to lead her with the torpedoes
+        self._her_last: tuple[float, float] | None = None
 
     @property
     def bubble(self) -> float:
@@ -220,11 +246,78 @@ class Encounter:
         if self.sound:
             self.sound(name, self._pan(), level)
 
+    def _klingon_point(self, hx: float, hy: float) -> tuple[float, float]:
+        """A point on the cruiser, in its hull units (the sprite's centre is 5 units forward of its origin)."""
+        a = math.radians(self.heading)
+        hy -= 5.0
+        return (self.x + (hx * math.cos(a) + hy * math.sin(a)) * self.k,
+                self.y + (hx * math.sin(a) - hy * math.cos(a)) * self.k)
+
+    def _her_flare(self, ship: tuple[float, float, float], at: tuple[float, float], strength: float) -> None:
+        ang = math.atan2(at[1] - ship[1], at[0] - ship[0])
+        self.her_flares.append(ShieldFlare(ship[0], ship[1], self.her_bubble, self.her_bubble, ang, strength,
+                                           life=0.9 if strength >= 1 else 0.6))
+
+    def _klingon_fire(self, before: float, dt: float, ship: tuple[float, float, float] | None, ship_scale: float) -> None:
+        """The Klingon's opening shots, all stopped by her shields but the torpedo that goes wide."""
+        if ship is not None and self.alive:
+            if self.kfired == 0 and self.t >= KLINGON_FIRE:
+                self.kfired = 1
+                self.kbeams = [self.t, self.t + 0.35]
+                self._play("phaser", 0.35)
+            elif self.kfired == 1 and self.t >= KLINGON_TORPS:
+                self.kfired = 2
+                speed = TORP_SPEED * max(ship_scale, 0.3) * 1.5
+                x0, y0 = self._klingon_point(0.0, 37.6)
+                for n, wide in enumerate((False, True)):
+                    lead = math.hypot(ship[0] - x0, ship[1] - y0) / speed + 0.3 * n     # where she'll be
+                    tx, ty = ship[0] + self.her_v[0] * lead, ship[1] + self.her_v[1] * lead
+                    if wide:                          # aimed just astern of her, so it streaks past behind her
+                        dx, dy = tx - x0, ty - y0
+                        d = math.hypot(dx, dy) or 1.0
+                        h = math.radians(ship[2])
+                        ahead = -dy / d * math.sin(h) + dx / d * -math.cos(h)
+                        off = self.her_bubble * 1.15 * (-1.0 if ahead > 0 else 1.0)
+                        tx, ty = tx - dy / d * off, ty + dx / d * off
+                    d = math.hypot(tx - x0, ty - y0) or 1.0
+                    self.bolts.append(_Bolt(self.t + 0.3 * n, (x0, y0), ((tx - x0) / d * speed, (ty - y0) / d * speed), wide))
+                self._play("launch", 0.4)
+        if ship is not None:
+            for t0 in self.kbeams:
+                if before < t0 + 0.02 <= self.t:
+                    self._her_flare(ship, (self.x, self.y), 0.6)
+        w = self.width
+        for b in self.bolts:
+            if b.done or self.t < b.t:
+                continue
+            b.pos = (b.pos[0] + b.vel[0] * dt, b.pos[1] + b.vel[1] * dt)
+            b.trail.append((b.pos[0], b.pos[1], self.t))
+            b.trail = [q for q in b.trail if self.t - q[2] <= TRAIL]
+            if ship is not None and not b.wide and math.hypot(b.pos[0] - ship[0], b.pos[1] - ship[1]) <= self.her_bubble:
+                b.done = True
+                self._her_flare(ship, b.pos, 1.0)
+                self._play("shield", 0.4)
+            elif self.t - b.t > TORP_LIFE or not (-200 < b.pos[0] < w + 200 and -200 < b.pos[1] < 2000):
+                b.done = True
+        for f in self.her_flares:
+            f.t += dt
+            if ship is not None:
+                f.x, f.y = ship[0], ship[1]
+        self.her_flares = [f for f in self.her_flares if f.t < f.life]
+
     def update(self, dt: float, ship: tuple[float, float, float] | None, ship_scale: float) -> None:
         before = self.t
         self.t += dt
         if before == 0.0:
             self._play("cloak", 0.35)
+        self.her_bubble = HER_BUBBLE * SPRITE_PX * ship_scale
+        if ship is not None:
+            if self._her_last is not None and dt > 0:
+                self.her_v = ((ship[0] - self._her_last[0]) / dt, (ship[1] - self._her_last[1]) / dt)
+            self._her_last = (ship[0], ship[1])
+        if before < SHIELDS_UP <= self.t:
+            self._play("shield", 0.25)
+        self._klingon_fire(before, dt, ship, ship_scale)
         if ship is not None and self.alive:
             self.heading = _bearing(self.x, self.y, ship[0], ship[1])       # it turns to face her
             rel = math.radians((_bearing(ship[0], ship[1], self.x, self.y) - ship[2]) % 360.0)
@@ -306,6 +399,60 @@ class Encounter:
             f.draw(glow)
         for h in self.hits:
             h.draw(glow)
+        if ship is not None:
+            self._her_shields(glow, ship)
+            if self.alive:
+                for t0 in self.kbeams:
+                    age = self.t - t0
+                    if 0 <= age < BEAM_TIME:
+                        self._disruptor(glow, ship, age)
+        for b in self.bolts:
+            if not b.done and self.t >= b.t:
+                self._bolt(glow, b, ship_scale)
+        for f in self.her_flares:
+            f.draw(glow)
+
+    def _her_shields(self, glow: pygame.Surface, ship: tuple[float, float, float]) -> None:
+        """Her shields snap up as the cloak falls, and hold a faint shimmer until the fight is over."""
+        u = self.t - SHIELDS_UP
+        if u < 0:
+            return
+        end = (self.boom_at or 1e9) + 1.5
+        fade = 1.0 if self.t < end else max(0.0, 1.0 - (self.t - end) / 0.8)
+        if fade <= 0:
+            return
+        snap = max(0.0, 1.0 - u / 0.5)                  # the moment they come up: a bright ring
+        r = self.her_bubble * (0.85 + 0.15 * min(1.0, u / 0.25))
+        ring(glow, ship[0], ship[1], r, r, SHIELD, (0.18 + 0.6 * snap) * fade, 1)
+        if snap > 0:
+            add_light(glow, ship[0], ship[1], r * 1.1, SHIELD, 0.25 * snap)
+
+    def _disruptor(self, glow: pygame.Surface, ship: tuple[float, float, float], age: float) -> None:
+        """A green bolt from the cruiser's nose, stopped dead on her shields."""
+        p0 = self._klingon_point(0.0, 37.6)
+        dx, dy = ship[0] - p0[0], ship[1] - p0[1]
+        d = math.hypot(dx, dy) or 1.0
+        stop = max(0.0, d - self.her_bubble)
+        k = max(0.0, 1.0 - age / BEAM_TIME)
+        k = k * k * (3 - 2 * k)
+        g = 0.4 + 0.6 * self.scale
+        head = min(1.0, age / 0.12)                    # it races out to her shields
+        p1 = (p0[0] + dx / d * stop * head, p0[1] + dy / d * stop * head)
+        core = theme.mix(DISRUPTOR_COL, (255, 255, 255), 0.5)
+        for width, lvl in ((13, 0.12), (7, 0.28), (3, 0.6)):
+            pygame.draw.line(glow, blast_level(DISRUPTOR_COL, lvl * k), p0, p1, max(1, round(width * g)))
+        pygame.draw.line(glow, blast_level(core, 0.9 * k), p0, p1, 1)
+        add_light(glow, p0[0], p0[1], max(4, 22 * self.scale), DISRUPTOR_COL, k)
+
+    def _bolt(self, glow: pygame.Surface, b: _Bolt, scale: float) -> None:
+        g = 0.4 + 0.6 * scale
+        for (x0, y0, t0), (x1, y1, _) in zip(b.trail, b.trail[1:]):
+            k = 1.0 - (self.t - t0) / TRAIL
+            pygame.draw.line(glow, blast_level(KTORP_COL, 0.3 * k * k), (x0, y0), (x1, y1), max(1, int(12 * k * g)))
+            pygame.draw.line(glow, blast_level(KTORP_COL, 0.9 * k * k), (x0, y0), (x1, y1), max(1, int(4 * k * g)))
+        pulse = 0.8 + 0.2 * math.sin(self.t * 30.0)
+        add_light(glow, b.pos[0], b.pos[1], max(10, 40 * g), KTORP_COL, pulse)
+        add_light(glow, b.pos[0], b.pos[1], max(4, 13 * g), theme.mix(KTORP_COL, (255, 255, 255), 0.8), 1.0)
 
     def _ship(self, surf: pygame.Surface, glow: pygame.Surface, img: pygame.Surface) -> None:
         """The cruiser, shimmering into view while the cloak falls."""
