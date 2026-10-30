@@ -109,6 +109,8 @@ class MenuScene:
                 self.start(self.presets[self.preset_i].setup())
             elif self.page == "main" and ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self._quick()
+            elif self.page == "main" and ev.key == pygame.K_k:
+                self.flybys.summon()               # a Klingon on demand, for anyone who wants to see one
             elif self.page == "main" and ev.key in (pygame.K_c, pygame.K_h, pygame.K_F1):
                 self.open_manual("coach" if ev.key == pygame.K_c else "index" if ev.key == pygame.K_h else "controls")
 

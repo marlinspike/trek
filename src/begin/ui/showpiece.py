@@ -34,6 +34,7 @@ TORP_LIFE = 4.5           # seconds before a torpedo is forgotten (long gone off
 BEAM_TIME = 0.75          # seconds a phaser shot lasts
 ENCOUNTER_ODDS = 0.25     # chance that a distant pass meets a Klingon
 ENCOUNTER_FAR = 0.42      # only passes drawn at this scale or smaller (she is far off)
+ENCOUNTER_EVERY = 4       # passes at most between Klingons; the first pass always meets one
 KLINGON_SPRITE = "klingon-battlecruiser.png"
 KLINGON_SCALE = 0.9       # the Klingon's scale relative to hers (it is a little smaller)
 KLINGON_BUBBLE = 38.0     # shield radius, hull units
@@ -374,6 +375,8 @@ class Flybys:
         self.clock = 0.0                      # seconds since the menu opened, for the lights
         self.encounter_odds = ENCOUNTER_ODDS
         self.encounter: Encounter | None = None
+        self.since = ENCOUNTER_EVERY          # passes since the last Klingon: the first pass meets one
+        self.hurry = False                    # a Klingon was asked for: the next pass follows at once
         klingon_sprite()                      # loaded now, not in the middle of a pass
         self.size = (1600, 900)
 
@@ -383,11 +386,16 @@ class Flybys:
         w, h = self.size
         r = self.rng
         # a different vantage point each pass, from close by to far off; even odds of near and far
-        scale = math.exp(r.uniform(math.log(SCALE_FAR), math.log(SCALE_NEAR)))
+        due = self.since >= ENCOUNTER_EVERY - 1
+        if due:                                                    # a Klingon is due: she is drawn far off
+            scale = r.uniform(0.27, 0.38)
+        else:
+            scale = math.exp(r.uniform(math.log(SCALE_FAR), math.log(SCALE_NEAR)))
+        self.since += 1
         reach = 420 * scale + 60                                   # far enough that she is wholly off screen
         travel = r.uniform(0, 360)
         tx, ty = math.sin(math.radians(travel)), -math.cos(math.radians(travel))
-        mid = (r.uniform(0.42, 0.86) * w, r.uniform(0.25, 0.75) * h)
+        mid = (r.uniform(0.42, 0.86) * w, r.uniform(0.25, 0.75) * h) if not due else (r.uniform(0.5, 0.7) * w, r.uniform(0.4, 0.6) * h)
         # how far along the line to either edge, plus the sprite's reach
         def to_edge(sx: float, sy: float) -> float:
             ts = []
@@ -402,7 +410,7 @@ class Flybys:
         duration = (a_len + b_len) / speed
         fires: list[tuple[float, str, float]] = []
         roll = r.random()
-        if scale <= ENCOUNTER_FAR and r.random() < self.encounter_odds:
+        if due or (scale <= ENCOUNTER_FAR and r.random() < self.encounter_odds):
             return Pass(start, mid, end, (a_len + b_len) / speed, scale, [], klingon=True)
         if roll < 0.85:
             for n in range(r.choice((1, 1, 2))):
@@ -458,24 +466,38 @@ class Flybys:
             self._meet(p, u)
         if u >= 1.0:
             self.current = None
-            self.wait = self.rng.uniform(2.5, 7.0)
+            self.wait = 0.5 if self.hurry else self.rng.uniform(2.5, 7.0)
+            self.hurry = False
 
     def _meet(self, p: Pass, u: float) -> None:
         """Once she is well on screen, a Klingon decloaks off her beam, ahead of her."""
         w, h = self.size
         x, y, hdg = p.at(u)
-        if not (0.25 <= u <= 0.6 and 80 < x < w - 80 and 80 < y < h - 80):
+        if u > 0.6:
+            p.met = True                        # no room for one this pass
             return
-        p.met = True                            # one meeting per pass, whether or not there is room for it
+        if not (u >= 0.2 and 80 < x < w - 80 and 80 < y < h - 80):
+            return
         a = math.radians(hdg)
         fx, fy, rx, ry = math.sin(a), -math.cos(a), math.cos(a), math.sin(a)
-        reach = 1700.0 * p.scale                # well clear of her, at about her distance
-        for side in self.rng.sample((-1, 1), 2):
-            kx = x + fx * reach * 0.55 + rx * side * reach
-            ky = y + fy * reach * 0.55 + ry * side * reach
-            if 470 < kx < w - 90 and 90 < ky < h - 90:      # on screen and clear of the menu buttons
-                self.encounter = Encounter(kx, ky, p.scale, self.rng, self.sound, w)
-                return
+        for k in (1700.0, 1350.0, 1050.0):      # well clear of her, at about her distance, if there's room
+            reach = k * p.scale
+            for side in self.rng.sample((-1, 1), 2):
+                kx = x + fx * reach * 0.55 + rx * side * reach
+                ky = y + fy * reach * 0.55 + ry * side * reach
+                if 470 < kx < w - 90 and 90 < ky < h - 90:      # on screen and clear of the menu buttons
+                    p.met = True
+                    self.since = 0
+                    self.encounter = Encounter(kx, ky, p.scale, self.rng, self.sound, w)
+                    return
+
+    def summon(self) -> None:
+        """A Klingon on demand: her next pass meets one, with only a moment's wait for it."""
+        if self.current is not None and self.current.klingon and not self.current.met:
+            return                              # this pass already has one coming
+        self.since = ENCOUNTER_EVERY
+        self.wait = min(self.wait, 0.5)
+        self.hurry = True
 
     def _fire(self, p: Pass, kind: str, off: float) -> None:
         x, y, hdg = p.at(min(1.0, p.t / p.duration))

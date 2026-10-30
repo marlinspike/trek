@@ -29,7 +29,7 @@ def test_a_flyby_crosses_fires_and_draws() -> None:
     played: list[str] = []
     f = Flybys(seed=3, sound=lambda name, level, pan: played.append(name))
     kinds: set[str] = set()
-    for _ in range(4000):
+    for _ in range(12000):
         f.update(0.05, surf.get_size())
         kinds |= {s.kind for s in f.shots}
         if f.shots:
@@ -131,3 +131,23 @@ def test_a_klingon_decloaks_and_is_destroyed_on_a_distant_pass() -> None:
             break
     assert seen and boomed and f.encounter is None              # it decloaked, blew up, and the scene cleared
     assert scale <= 0.42 * 0.9 + 1e-9                          # only ever on a distant pass
+
+
+def test_the_first_klingon_comes_early_and_k_summons_another() -> None:
+    surf = _display()
+    f = Flybys()
+    t, first = 0.0, None
+    while t < 30 and first is None:
+        f.update(0.05, surf.get_size())
+        t += 0.05
+        if f.encounter is not None:
+            first = t
+    assert first is not None and first < 20                     # seen within seconds of the menu opening
+    while f.encounter is not None:
+        f.update(0.05, surf.get_size())
+    f.summon()                                                   # her next pass meets another
+    t = 0.0
+    while t < 90 and f.encounter is None:
+        f.update(0.05, surf.get_size())
+        t += 0.05
+    assert f.encounter is not None
