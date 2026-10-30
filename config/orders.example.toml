@@ -1,0 +1,41 @@
+# Your named tactical orders. Copy this file to orders.toml (in this folder) and write your own.
+#
+# In battle, `execute order beta-1` (or just `beta-1`) runs an order's steps in turn, exactly as if you
+# typed them at the console. `orders` lists them; `belay` stops the one running.
+#
+# A step is any console line, an order to an officer ("spock, you have the conn"), or `wait N` to hold
+# for N cycles of battle time. "their", "the target" and "the enemy" mean the ship you have targeted
+# when the step runs. A step the console doesn't understand is put into console commands by the
+# language model when the battle starts (and remembered in orders.cache.json); without a model, write
+# steps in console syntax. Anything that won't work is reported when the battle starts.
+#
+# Order matters: a helm order ends evasive manoeuvres, so put `evasive` after the course you want.
+#
+# A name is letters, digits, '-' and '_'. An order cannot run another order.
+
+[beta-1]
+note = "Turn away, fan the torpedoes behind us, hand Spock the fight and send Seven after their shields"
+steps = [
+    "helm 180 speed 5",
+    "fire all torpedoes spread 10",
+    "spock, you have the conn",
+    "seven, disable their shields",
+]
+
+[alpha-2]
+note = "Shields up, close on the target and open up with everything"
+steps = [
+    "raise all",
+    "pursue the target warp 6",
+    "wait 3",
+    "fire all phasers",
+    "fire all torpedoes spread 6",
+]
+
+[omega]
+note = "Break off: run from the target, dodging torpedoes, and let Scotty see to the hull"
+steps = [
+    "elude the target warp 8",
+    "evasive",
+    "scotty, manage repairs",
+]

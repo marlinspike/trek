@@ -136,6 +136,9 @@ VERBS: dict[str, tuple[str, ...]] = {
     "crew": ("crew", "bridge", "officers"),
     "ask": ("ask", "say"),
     "translate": ("translate", "interpret", "english"),
+    "execute": ("execute", "exec"),
+    "orders": ("orders", "plans"),
+    "belay": ("belay",),
 }
 
 WEAPONS = {
@@ -183,6 +186,7 @@ HELP = [
     "Special:  design tachyon|deflector · tachyon <ship>|<bearing> <range> · pulse · conn <officer>|captain",
     "          disable|cripple <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> · disable off",
     "          destroy <ships> · bait <ship>   (standing objectives and tricks for Seven)",
+    "Orders:   execute order <name> | <name>   (a named order from config/orders.toml) · orders (list them) · belay (stop one running)",
     "Other:    key F<n>|^<x> <commands; separated; by semicolons> · translate on|off|always · help · quit",
 ]
 
@@ -1173,6 +1177,23 @@ class Parser:
 
     def _v_quit(self, tok: _Tokens, res: ParseResult) -> None:
         res.actions.append(("quit", None))
+
+    def _v_execute(self, tok: _Tokens, res: ParseResult) -> None:
+        """`execute [order] <name>`: run one of the captain's named orders (config/orders.toml)."""
+        tok.take_word("order", "plan")
+        name = " ".join(tok.rest()).strip()
+        if not name:
+            raise ParseError("Execute which order? Type 'orders' to list them.")
+        res.actions.append(("execute", name))
+
+    def _v_orders(self, tok: _Tokens, res: ParseResult) -> None:
+        tok.rest()
+        res.actions.append(("orders", None))
+
+    def _v_belay(self, tok: _Tokens, res: ParseResult) -> None:
+        """`belay [that|order]`: stop the named order that is running."""
+        tok.rest()
+        res.actions.append(("belay", None))
 
     def _v_translate(self, tok: _Tokens, res: ParseResult) -> None:
         """`translate on|off|always`: plain-English console input through the language model [E]."""

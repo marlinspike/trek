@@ -9,6 +9,7 @@ the accumulator; orders can still be given while paused.
 from __future__ import annotations
 
 import math
+import time
 from functools import partial
 from dataclasses import dataclass
 from typing import Callable
@@ -19,6 +20,7 @@ from ..battle import Battle
 from ..console import reports
 from .hit_report import HitReport
 from ..console.parser import VERBS, ParseContext, ParseResult, parse
+from ..console.orders import OrderBook, OrderRun, aim
 from ..console.translator import Translation, Translator
 from ..core.angles import bearing, norm360
 from ..sim.allies import AllyStanding
@@ -86,6 +88,9 @@ class LogLine:
 
 
 FKEYS = {getattr(pygame, f"K_F{n}"): f"F{n}" for n in (2, 3, 4, 5, 6, 7, 8, 10, 11, 12)}
+
+
+ORDER_TRANSLATE_WAIT = 8.0     # seconds a named order waits for a step's translation before skipping it
 
 
 class BattleScene:
@@ -164,6 +169,14 @@ class BattleScene:
 
                 service = LLMService(provider)
             self.bridge = Bridge(battle.crew, self.hidden, service, seed=battle.setup.seed, chatter=chatter)
+        from ..paths import config_dir
+
+        self.orders = OrderBook.load(config_dir())
+        self.order_run: OrderRun | None = None
+        if provider is not None and self.orders.orders:
+            from ..llm.service import LLMService
+
+            self.orders.llm = LLMService(provider, workers=1)
         self.layout(size)
         self._frame_all()
         self._log("Battle stations. The simulation is paused: press Space to begin.", theme.CAUTION)
@@ -171,6 +184,7 @@ class BattleScene:
             self._log(battle.setup.description, theme.TEXT_DIM)
         if llm_note:
             self._log(llm_note, theme.TEXT_DIM)
+        self._order_problems(self.orders.prepare(self._would_run, self._translation_brief(), self._target_id()))
 
     # ------------------------------------------------------------ layout
 
@@ -326,6 +340,9 @@ class BattleScene:
         if self.translator is not None and self.translator.busy():
             for answer in self.translator.poll(self._would_run):
                 self._translated(answer)
+        if self.orders.busy():
+            self._order_problems(self.orders.poll(self._would_run, self._target_id()))
+        self._advance_order()
         if self.toast:
             msg, col, t = self.toast
             self.toast = (msg, col, t - dt) if t - dt > 0 else None
@@ -593,6 +610,9 @@ class BattleScene:
         if self.player_id is None:
             self._log("No ship under command.", theme.CAUTION)
             return
+        if translate and echo == "> " and self.orders.find(text) is not None:
+            self._execute_order(text)       # a named order, called by name alone
+            return
         if self.bridge is not None:
             hit = self.bridge.addressed(text)
             if hit is not None:
@@ -711,6 +731,73 @@ class BattleScene:
             self._conn_command(val)
         elif name == "translate":
             self._translate_mode(val)
+        elif name == "execute":
+            self._execute_order(str(val))
+        elif name == "orders":
+            self._show(self.orders.listing(), None)
+        elif name == "belay":
+            self._belay()
+
+    # ------------------------------------------------------------ named orders
+
+    def _target_id(self) -> int | None:
+        p = self.player
+        return p.target if p is not None else None
+
+    def _order_problems(self, problems: list[str]) -> None:
+        for p in problems:
+            self._log(f"Named order {p}", theme.CAUTION)
+
+    def _execute_order(self, name: str) -> None:
+        order = self.orders.find(name)
+        if order is None:
+            known = ", ".join(self.orders.orders) or "none yet"
+            self._log(f"No named order '{name}' (yours: {known}). See 'help orders'.", theme.CAUTION)
+            return
+        if self.order_run is not None and not self.order_run.done:
+            self._log(f"Order {self.order_run.order.name} belayed.", theme.TEXT_DIM)
+        self._log(f"Executing order {order.name}" + (f": {order.note}" if order.note else "."), theme.FRIEND)
+        self.order_run = OrderRun(order)
+        self._advance_order()
+
+    def _belay(self) -> None:
+        run = self.order_run
+        if run is None or run.done:
+            self._log("No named order is running.", theme.TEXT_DIM)
+            return
+        left = len(run.order.steps) - run.index
+        self._log(f"Order {run.order.name} belayed ({left} step{'s' if left != 1 else ''} not run).", theme.CAUTION)
+        self.order_run = None
+
+    def _advance_order(self) -> None:
+        """Run the running order's steps until one says wait (or waits on its translation)."""
+        run = self.order_run
+        while run is not None and not run.done and self.order_run is run:
+            if self.world.tick < run.resume_tick:
+                return
+            step = run.order.steps[run.index]
+            if step.is_wait:
+                run.resume_tick = self.world.tick + round(step.wait * self.world.rules.ticks_per_cycle)
+                run.index += 1
+                continue
+            line = self.orders.lines.get(step.text)
+            if line is not None and line.pending:
+                if run.held_since is None:
+                    run.held_since = time.monotonic()
+                if time.monotonic() - run.held_since < ORDER_TRANSLATE_WAIT:
+                    return      # still being translated: the order waits for it
+                self._log(f"» {step.text}   (skipped: no translation yet)", theme.CAUTION)
+            elif line is not None and line.error and not line.commands:
+                self._log(f"» {step.text}   (skipped: {line.error})", theme.CAUTION)
+            else:
+                target = self._target_id()
+                for c in (line.commands if line is not None and line.commands else [step.text]):
+                    self._run_one(aim(c, target), translate=False, echo="» ")
+            run.held_since = None
+            run.index += 1
+        if run is not None and run.done and self.order_run is run:
+            self.order_run = None
+            self._log(f"Order {run.order.name} complete.", theme.TEXT_DIM)
 
     # ------------------------------------------------------------ plain English
 
@@ -912,6 +999,7 @@ class BattleScene:
             self.bridge.close()
         if self.translator is not None:
             self.translator.close()
+        self.orders.close()
 
     def _chart(self, opts: dict[str, object]) -> None:
         show = True

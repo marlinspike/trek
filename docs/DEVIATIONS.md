@@ -107,6 +107,10 @@ A Federation-only helm order (`evasive`, from the faction's `orders` list in `fa
 
 Begin has no morale. Here every crew has spirits from 0 to 100 (`sim/systems/morale.py`), starting at the race's level in `factions.toml` (Federation 80, Klingon 85, Romulan 75, Orion 60) and shaken by damage, crew losses, destroyed systems, collapsing shields and friendly losses, scaled by the race's steadiness (Klingon 0.6 to Orion 1.3). Damage dealt, kills, repairs and the captain's `address crew` raise it; out of the fight it drifts back. Its effects are deliberately modest, because crew losses already slow repairs: ±25% repair speed, ±15% tube loading, ±15% point defense and aimed fire at the extremes, none at 50. AI captains with a shaken crew retreat sooner and surrender more readily. In 32-seed AI-vs-AI runs the win rates barely moved, because the bigger Federation torpedoes already decide most presets.
 
+## Named tactical orders [E]
+
+Begin's key macros (`key F2 ...`) bind a line of commands to a key. Named orders go further: a list of console lines written in `config/orders.toml` (gitignored; `config/orders.example.toml` is committed and loaded until the player writes their own), run by `execute order <name>` or the name alone (`console/orders.py`). Steps run through the same path as typed lines, so officer orders and station rules apply. `wait N` holds for N cycles of battle time; "their", "the target" and "the enemy" become the current target when the step runs; `belay` stops the order, and starting another belays the first. Every step is checked against the parser when the battle starts. With a language model, a step the parser rejects is translated once (the target written as `#T`), checked, and kept in `config/orders.cache.json`; without one it is reported then and skipped if run. An order cannot run another order, and steps have no conditions.
+
 ## Scenarios and setup
 
 - **Presets** (`content/data/presets.toml`) are our own scenarios. Balance runs set their fleets: each preset is fought by AI captains on both sides many times, and fleets are adjusted until the result is in a sensible range.
