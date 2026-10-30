@@ -25,8 +25,8 @@ from ..console.translator import Translation, Translator
 from ..core.angles import bearing, norm360
 from ..sim.allies import AllyStanding
 from ..sim.commands import (
-    AddressCrew, AllyOrder, Command, FirePhasers, FireTorpedoes, LaunchProbe, Pursue, Scan, SelectTarget, SetBanks, SetHelm,
-    SetPointDefense, SetShields,
+    AddressCrew, AllyOrder, CeaseFire, Command, FirePhasers, FireTorpedoes, LaunchProbe, Pursue, Scan, SelectTarget, SetBanks, SetHelm,
+    SetPointDefense, SetShields, offensive_fire,
 )
 from ..sim.events import CommandRejected, Event, Message, ObjectiveEnded, ProjectCompleted, ScanCompleted, Tone
 from ..sim.observation import Observation
@@ -647,6 +647,12 @@ class BattleScene:
                 return
         res = parse(text, ParseContext(self.player_id, self.world.observe(self.side)))
         tr = self.translator
+        if any(isinstance(c, CeaseFire) for c in res.commands):
+            if tr is not None and tr.busy():
+                tr.drop_pending()       # nothing still being interpreted may open fire after this
+                self._log("  (interpretation dropped)", theme.TEXT_DIM)
+            self._execute(text, res)    # at once: never waits on a language model
+            return
         if (translate and tr is not None and not any(n == "translate" for n, _ in res.actions)
                 and tr.wants(res.error is None, _exact_verb(text) or len(text.split()) >= 2)):
             tr.submit(text, self._translation_brief(), res.error)
@@ -793,8 +799,7 @@ class BattleScene:
     def _belay(self) -> None:
         run = self.order_run
         if run is None or run.done:
-            self._log("No named order is running.", theme.TEXT_DIM)
-            return
+            return          # nothing to belay but the cease fire that came with it
         left = len(run.order.steps) - run.index
         self._log(f"Order {run.order.name} belayed ({left} step{'s' if left != 1 else ''} not run).", theme.CAUTION)
         self.order_run = None
@@ -954,13 +959,15 @@ class BattleScene:
         if self.player is not None and self.player.conn == officer.id:
             allowed |= set(STATION_COMMANDS)   # in command of the bridge
         for cmd in res.commands:
-            if isinstance(cmd, ManageRepairs):
-                continue       # any officer can be asked to direct the repair crews
+            if isinstance(cmd, (ManageRepairs, CeaseFire)):
+                continue       # any officer can be asked to direct the repair crews, or told to cease fire
             st = cmd.station if isinstance(cmd, DelegateStation) else station_of(cmd)
             if st is None or st not in allowed:
                 return "That is not my station, Captain."
         from ..sim.commands import SetObjective
 
+        if self.player is not None and self.player.hold_fire and any(offensive_fire(c) for c in res.commands):
+            return "We are holding fire on your order, Captain. Say 'open fire' to release it."
         for cmd in res.commands:
             cmd.source = officer.title
             if isinstance(cmd, SetObjective):

@@ -90,6 +90,10 @@ _BRIDGE_RELEASE = re.compile(r"\b(i have the (bridge|conn|ship)|i'?ll take (the 
                              r"i'?m taking (the bridge|the conn|command)|i have command|i relieve you|"
                              r"(the )?captain'?s? on the bridge|give me (the bridge|the conn|command))\b")
 _RELEASE = re.compile(r"\b(stand down|i have (the|it)|i'?ll (take|handle) (it|the)|i relieve you|belay)\b")
+# "seven, cease fire" / "stop firing" / "belay that" / "stand down": every weapon stops and her objectives end [E]
+_CEASE = re.compile(r"\b(cease ?fire|hold (your )?fire|stop (firing|shooting|the attack|attacking|that|it|this)|"
+                    r"belay|stand down|cancel (that|it|this|your|the)|abort|break (it )?off|call (it )?off|knock it off|"
+                    r"never ?mind)\b|^\s*stop\W*$")
 # "disable the Klingons' shields", "knock out Gorkon's torpedoes", "cancel that objective"
 _DISABLE = re.compile(r"\b(disable|disarm|cripple|knock out|take out|neutrali[sz]e|shut down|destroy|eliminate|"
                       r"finish off|kill|sink|blow up)\b")
@@ -198,6 +202,8 @@ class Bridge:
             if err:
                 return [self._say(officer, err, "caution")]
             return self.handover_lines(officer, turn == "take")
+        if _CEASE.search(low):
+            return self.cease(officer, low, run)
         if _REPAIRS_RELEASE.search(low) or _REPAIRS_TAKE.search(low):
             taking = not _REPAIRS_RELEASE.search(low)
             err = run(f"repair auto {officer.id}" if taking else "repair manual", officer)
@@ -247,6 +253,17 @@ class Bridge:
         if taking:
             return [self._line(officer, "bridge") or self._say(officer, "Aye, Captain. I have the bridge.")]
         return [self._line(officer, "bridge_released") or self._say(officer, "The bridge is yours, Captain.")]
+
+    def cease(self, officer: OfficerProfile, low: str, run: RunCommand) -> list[Utterance]:
+        """The captain tells an officer to stop: no language model, no delay. Every weapon ceases fire and the
+        officers' objectives end; "stand down" also hands back their station."""
+        err = run("cease fire", officer)
+        if err:
+            return [self._say(officer, err, "caution")]
+        if "stand down" in low:
+            run(f"assume {officer.station}", officer)    # not delegated is fine: the cease fire is what matters
+            return [self._say(officer, "Standing down. Weapons are cold, Captain.")]
+        return [self._say(officer, "Ceasing fire, Captain.")]
 
     def objective(self, officer: OfficerProfile, line: str, run: RunCommand) -> list[Utterance]:
         """The captain sets the officer a standing objective; they say how they'll go about it."""

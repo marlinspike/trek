@@ -28,7 +28,7 @@ from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, ManageRepairs, Evasive, AddressCrew, SetShields, SetTubes, Surrender,
-    DeflectorPulse, EndObjective, FireAtPoint, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
+    CeaseFire, OpenFire, DeflectorPulse, EndObjective, FireAtPoint, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
 from ..sim.ship import HULL, TARGETABLE_GROUPS, BankRole, FireMode, Kind, PDDoctrine, RepairTarget
@@ -68,6 +68,9 @@ VERBS: dict[str, tuple[str, ...]] = {
     "address": ("address", "rally", "speech"),
     "morale": ("morale", "spirits"),
     "stop": ("stop", "allstop", "halt"),
+    "cease": ("cease", "ceasefire"),
+    "hold": ("hold", "holdfire"),
+    "open": ("open", "openfire"),
     "fire": ("fire", "f", "shoot"),
     "fp": ("fp",),
     "ft": ("ft",),
@@ -170,6 +173,7 @@ HELP = [
     "          enable|disable [all] banks [<list>] · spread <s> · role banks <list> offense|flex|defense",
     "Torps:    fire [all] torpedoes [<list>] [spread <deg>]   (fir tor al, torp 1 2, fire all tor spread 10) · lock [all] tubes [<list>] on <ship> [dispersion <d>]",
     "          turn tubes [<list>] to <mark> · load [all] tubes [<list>] [prox] <p> · unload [all] tubes [<list>] · enable|disable tubes",
+    "Hold:     cease fire · hold fire · stop firing   (every weapon stops and officers' objectives end; point defense stays on) · open fire",
     "Probes:   fire [all] probes [<list>] at <ship> | course <c> · load launchers [<list>] [prox] <p> [time] <t> · unload launchers",
     "          turn probe <code>|all probes [course] <c> · lock probe <code>|all probes on <ship> · detonate <code>|all · status probes",
     "Shields:  raise|lower|drop [shields] <list>|all · reenforce <n>|off",
@@ -428,7 +432,26 @@ class Parser:
         res.commands.append(self._cmd(SetHelm, warp=tok.number("warp")))
 
     def _v_stop(self, tok: _Tokens, res: ParseResult) -> None:
+        if tok.take_word("firing", "fire", "shooting", "weapons"):
+            res.commands.append(self._cmd(CeaseFire))     # "stop firing": cease fire, not all stop [E]
+            return
         res.commands.append(self._cmd(SetHelm, warp=0.0))
+
+    # cease fire [E] ----------------------------------------------------
+    def _v_cease(self, tok: _Tokens, res: ParseResult) -> None:
+        """`cease fire`: every weapon stops, officers' objectives end, until you fire or say open fire."""
+        tok.take_word("fire", "firing")
+        res.commands.append(self._cmd(CeaseFire))
+
+    def _v_hold(self, tok: _Tokens, res: ParseResult) -> None:
+        if not tok.take_word("fire", "firing") and tok.peek() is not None:
+            raise ParseError("Hold what? 'hold fire' stops every weapon.")
+        res.commands.append(self._cmd(CeaseFire))
+
+    def _v_open(self, tok: _Tokens, res: ParseResult) -> None:
+        if not tok.take_word("fire") and tok.peek() is not None:
+            raise ParseError("Open what? 'open fire' lifts a cease fire.")
+        res.commands.append(self._cmd(OpenFire))
 
     def _pursue(self, tok: _Tokens, res: ParseResult, elude: bool) -> None:
         target = self.resolve_ship(tok)
@@ -1195,9 +1218,10 @@ class Parser:
         res.actions.append(("orders", None))
 
     def _v_belay(self, tok: _Tokens, res: ParseResult) -> None:
-        """`belay [that|order]`: stop the named order that is running."""
+        """`belay [that|order]`: stop the named order that is running, and cease fire."""
         tok.rest()
         res.actions.append(("belay", None))
+        res.commands.append(self._cmd(CeaseFire))      # and whatever the officers had going
 
     def _v_hud(self, tok: _Tokens, res: ParseResult) -> None:
         """`hud detail|simple`: every number on the panels, or only what matters (hover a panel to see the rest)."""

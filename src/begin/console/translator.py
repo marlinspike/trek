@@ -99,6 +99,14 @@ class Translator:
         self._pending[rid] = req
         self._sent[rid] = time.monotonic()
 
+    def drop_pending(self) -> None:
+        """Forget every line still being interpreted: its answer is ignored when it comes (a cease fire)."""
+        for _ in self._pending:
+            self._drop_last_user()
+        self._pending.clear()
+        self._sent.clear()
+        self.awaiting = False
+
     def poll(self, validate: Validate, now: float | None = None) -> list[Translation]:
         """Translations that have arrived since the last frame, and any given up as too slow; never blocks."""
         out: list[Translation] = []

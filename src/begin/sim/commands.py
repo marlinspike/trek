@@ -1095,6 +1095,44 @@ class SetObjective(Command):
 
 
 @dataclass(kw_only=True)
+class CeaseFire(Command):
+    """`cease fire` [E]: stop every weapon. Officers' objectives end, a bait volley is called off,
+    and neither officers nor the fire computer may fire again until the captain fires or says open fire.
+    Point defense keeps shooting down torpedoes."""
+
+    name: ClassVar[str] = "cease fire"
+    needs_crew: ClassVar[bool] = False
+
+    def apply(self, world: World, ship: Ship) -> None:
+        from .events import ObjectiveEnded
+
+        ship.hold_fire = True
+        ship.pending_volley = None
+        ending, ship.objectives = ship.objectives, []
+        for o in ending:
+            world.emit(ObjectiveEnded(world.tick, ship.id, o.officer, o.goal, o.group, o.targets, "cancelled",
+                                      "cease fire"))
+
+
+@dataclass(kw_only=True)
+class OpenFire(Command):
+    """`open fire` / `weapons free` [E]: lift a cease fire."""
+
+    name: ClassVar[str] = "open fire"
+    needs_crew: ClassVar[bool] = False
+
+    def apply(self, world: World, ship: Ship) -> None:
+        ship.hold_fire = False
+
+
+def offensive_fire(cmd: Command) -> bool:
+    """A command that fires on someone: what a cease fire stops (point defense isn't)."""
+    if isinstance(cmd, FirePhasers):
+        return not cmd.defensive
+    return isinstance(cmd, (FireTorpedoes, FireSpecialRound, FireAtPoint, LaunchProbe))
+
+
+@dataclass(kw_only=True)
 class EndObjective(Command):
     """Finish, give up or cancel objectives: one group, or all of them when `group` is empty [E]."""
 

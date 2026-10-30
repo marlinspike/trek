@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Iterable, Protocol
 from ..content.schema import ContentDB
 from ..core.rng import Rng
 from .allies import MOVEMENT_ORDERS, WEAPON_ORDERS, AllyStanding
-from .commands import AllyOrder, Authority, Command, Rejected
+from .commands import AllyOrder, Authority, Command, Rejected, offensive_fire
 from .events import CommandRejected, Event, Message, ShipStatusChanged, SubsystemDamaged, Tone
 from .factory import build_ship
 from .ordnance import Probe, Torpedo
@@ -242,6 +242,8 @@ class World:
             return reason
         assert ship is not None
         cmd.apply(self, ship)
+        if ship.hold_fire and cmd.issuer >= Authority.CAPTAIN and offensive_fire(cmd):
+            ship.hold_fire = False          # the captain firing is weapons free again
         if cmd.issuer >= Authority.CAPTAIN:
             until = self.tick + int(self.rules.captain_hold_cycles * self.rules.ticks_per_cycle)
             for ch in cmd.channels():
@@ -249,6 +251,9 @@ class World:
         return None
 
     def _held(self, cmd: Command) -> str | None:
+        ship = self.ships.get(cmd.ship_id)
+        if ship is not None and ship.hold_fire and cmd.issuer < Authority.CAPTAIN and offensive_fire(cmd):
+            return "Holding fire on the captain's order."
         for ch in cmd.channels():
             h = self._holds.get((cmd.ship_id, ch))
             if h is None:
