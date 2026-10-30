@@ -156,6 +156,7 @@ TIP_STATIONS = {
     "Scan the target": "science", "Their shields": "science", "Turn a fresh shield toward them": "helm",
     "Cloaked ship nearby": "science", "Tachyon round ready": "tactical", "Deflector pulse ready": "science", "Seven's objective": "science", "Bait their point defense": "tactical", "Let Seven disable it": "science",
     "Engines running hot": "engineering", "Power is running out": "engineering", "Badly damaged": "engineering",
+    "Dodge them": "helm", "Fan the salvo": "tactical", "Rally the crew": "engineering", "Patch the hull": "engineering",
 }
 
 
@@ -187,6 +188,11 @@ def tips(ctx: HelpContext) -> list[Tip]:
             f"{n} enemy {'weapon is' if n == 1 else 'weapons are'} inbound. Point defense is **{doctrine}**. "
             "Turning so a strong shield faces the threat, or running at right angles to its course, also helps.",
             *(["pd aggressive"] if doctrine in ("off", "conservative") else []))
+        fac = ctx.content.factions.get(s.cls.faction)
+        torps = [o for o in threats if o.kind != "probe"]
+        if torps and fac is not None and "evasive" in fac.orders and not s.evasive:
+            tip(1, "Dodge them", "Evasive manoeuvres keep your course or pursuit and jink out of the way of each "
+                "torpedo that would hit, then carry on. Any helm order you give ends it.", "evasive")
 
     c = obs.contact(s.target) if s.target is not None else None
     if c is None:
@@ -227,6 +233,9 @@ def tips(ctx: HelpContext) -> list[Tip]:
                         f"{name} is inside your {cur.name} envelope ({lo:,.0f}–{hi:,.0f}). {loaded} tube"
                         f"{'s are' if loaded != 1 else ' is'} loaded. Torpedoes fired at a manoeuvring target miss more "
                         "the farther they travel, so shots from the nearer half of the envelope hit best.", "fire all torpedoes")
+                    if loaded > 1 and c.warp > 1.5 and d > lo + (hi - lo) * 0.4:
+                        tip(3, "Fan the salvo", f"{name} is moving fast. A spread fans the salvo around where it will "
+                            "be, so a turn doesn't take it clear of every round.", "fire all torpedoes spread 10")
                 # better torpedo for this fight?
                 better = [f for f in fits if f[3] and f[0].id != cur.id and f[0].damage > cur.damage]
                 if better and not (lo <= d <= hi * 0.8):
@@ -339,6 +348,14 @@ def tips(ctx: HelpContext) -> list[Tip]:
     if cap > 0 and s.battery_charge() < cap * 0.2 and s.power.net < 0:
         tip(1, "Power is running out", "Batteries are below 20% and draining. Lower shields facing away from the "
             "enemy, or disable some banks, until the reactors catch up.", "lower 4 5 6")
+    if s.morale < 35:
+        tip(2, "Rally the crew", f"Morale is {s.morale:.0f} of 100. A shaken crew repairs, loads and aims more slowly. "
+            "A word from the captain lifts it, and so do hits and kills.",
+            "address crew Steady. We have the better ship and the better crew.")
+    if s.structure_max * 0.35 <= s.structure < s.structure_max * 0.7 and s.repair_priority is None and not s.repairs_by:
+        tip(4, "Patch the hull", f"Hull at {s.structure / s.structure_max:.0%}. The crews patch it slowly in a fight "
+            "and up to 75% in space. Make it their priority, or let your engineer run the repairs.",
+            "repair hull", "geordi, manage repairs")
     if s.structure < s.structure_max * 0.35:
         tip(2, "Badly damaged", "Hull below 35%. Consider breaking off, docking with a base for repairs, "
             "or beaming to an ally.", "repair all", "fleet")
@@ -384,6 +401,30 @@ Six shields each cover 60°. When the one facing the enemy weakens, turn to brin
 
 ### 6. Mind the engines and the power
 Above cruise warp the drives heat up, and past the limit they take damage. Firing and shields drain the batteries.
+
+### 7. Dodge, and fan your shots
+A Federation helm can jink out of the way of incoming torpedoes and then carry on with your course. Against a fast \
+target, fan the salvo so a turn doesn't take it clear of every round. See [[helm]] and [[torpedoes]].
+```console
+evasive
+fire all torpedoes spread 10
+```
+
+### 8. Let the crew help
+Hand a station to its officer, or the whole bridge. Geordi La Forge can run the repairs, and a word from you lifts a \
+shaken crew. See [[crew]], [[repair]] and [[morale]].
+```console
+delegate tactical
+geordi, manage repairs
+address crew Steady. We have the better ship.
+```
+
+### 9. Plan ahead
+Write a named order before the fight in `config/orders.toml` and run it with one word. See [[orders]].
+```console
+orders
+execute order beta-1
+```
 
 ### In the battle
 Type `coach` or press **H** and pick **Coach**: this page then reads your actual fight and lists the most urgent \

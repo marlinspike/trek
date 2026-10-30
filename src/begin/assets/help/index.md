@@ -17,6 +17,18 @@ This manual covers every command, how each weapon works, and how to win. Open it
 - [[fire|Fire]]: everything you can shoot, and how.
 - [[weapons-guide|Choosing weapons]]: torpedo and probe types compared, with live numbers.
 
+## What the remake adds
+
+Begin's commands all work as written. On top of them:
+
+- [[crew|Bridge officers]] who run stations for you, [[conn|take the whole bridge]], and [[talking|talk back]], with traits and a response style you can change.
+- [[orders|Named tactical orders]]: a battle plan written before the fight, run with one word.
+- [[plain-english|Orders in plain English]] with a language model; exact commands and short forms like `tor al` always run at once.
+- [[repair|Hull repairs]] and an engineer who can direct the crews, [[morale|crew morale]] and `address crew`, and [[helm|evasive manoeuvres]].
+- [[sound|Sound]] with a choice of phaser and torpedo sounds, or your own WAV files.
+- [[after-battle|The battle assessment]], with the officer who did the most.
+- The [[coach]], which also runs a training session from the main menu before your first battle.
+
 ## Using this manual
 
 - Type anywhere in this window to search. Press **Enter** to open the best match.

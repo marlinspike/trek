@@ -188,3 +188,22 @@ def test_the_coach_and_manual_open_from_the_main_menu(content) -> None:  # type:
     assert "training run" in body and "fire all torpedoes" in body and "{{" not in body
     menu.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE, mod=0, unicode=""))
     assert menu.page == "main"
+
+
+def test_the_coach_covers_the_newer_orders(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.battle import build_battle
+    from begin.help.coach import tips
+    from begin.presets import load_presets
+
+    b = build_battle(content, next(p for p in load_presets() if p.id == "dreadnought-duel").setup())
+    me = b.world.ships[b.player_ship_id]
+    me.morale = 20
+    me.structure = me.structure_max * 0.5
+    found = {t.title: t for t in tips(HelpContext(content, b.world.observe(0), me))}
+    assert "address crew" in found["Rally the crew"].commands[0]
+    assert found["Patch the hull"].commands == ["repair hull", "geordi, manage repairs"]
+    me.repair_priority = None
+    me.repairs_by = "geordi"
+    assert "Patch the hull" not in {t.title for t in tips(HelpContext(content, b.world.observe(0), me))}
+    body = expand("{{coach}}", HelpContext(content))
+    assert "evasive" in body and "geordi, manage repairs" in body and "execute order beta-1" in body
