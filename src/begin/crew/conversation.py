@@ -119,6 +119,7 @@ class Bridge:
         self.crew = crew
         self.hidden = hidden
         self.llm = llm
+        self.hold_voices = False      # the captain is waiting on the model: say remarks as written
         self.rng = random.Random(seed ^ 0x5EB)
         self.chatter = chatter
         self.relationships = Relationships.from_settings(hidden)
@@ -461,7 +462,7 @@ class Bridge:
 
     def _voice(self, o: OfficerProfile, canned: str, obs: Observation) -> bool:
         """With a model, an officer's remark in their own words, never the same twice; False to say it as written."""
-        if self.llm is None or self.llm.busy(LINE_TAG + o.id):
+        if self.llm is None or self.hold_voices or self.llm.busy(LINE_TAG + o.id):
             return False
         rel = self.relationships.get(o.id)
         s = obs.own(self.crew.ship_id)

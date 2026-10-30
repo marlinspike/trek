@@ -109,6 +109,30 @@ def test_unclear_orders_get_a_question_and_the_answer_is_understood(scene) -> No
     assert not sc.translator.awaiting
 
 
+def test_a_parsed_command_runs_at_once_even_while_the_computer_waits_for_an_answer(scene) -> None:  # type: ignore[no-untyped-def]
+    sc = scene
+    fake = _hook(sc, '{"commands": [], "say": "", "clarify": "Which ship, Captain?"}')
+    sc.run_console("go after him")
+    _settle(sc)
+    assert sc.translator.awaiting
+    sc.run_console("tor al")                 # short for fire all torpedoes: no model, no waiting
+    assert len(fake.seen) == 1 and not sc.translator.awaiting and not sc.translator.busy()
+    assert not any(t.endswith("interpreting") for t in _log(sc)[-3:])
+
+
+def test_a_slow_model_is_given_up_on_and_the_captain_told(scene) -> None:  # type: ignore[no-untyped-def]
+    from begin.console import translator
+
+    sc = scene
+    _hook(sc, '{"commands": ["raise all"]}')
+    tr = sc.translator
+    tr.llm.submit = lambda *a, **k: 999          # type: ignore[method-assign]   # never answers
+    sc.run_console("make us harder to hit")
+    assert tr.busy()
+    late = [t for t in tr.poll(sc._would_run, now=time.monotonic() + translator.TIMEOUT + 1)]
+    assert len(late) == 1 and "took longer than 20 seconds" in (late[0].error or "") and not tr.busy()
+
+
 def test_a_rejected_command_gets_one_correction(scene) -> None:  # type: ignore[no-untyped-def]
     sc = scene
     fake = _hook(sc, '{"commands": ["frobnicate the warp core"]}', '{"commands": ["raise all"]}')
@@ -119,7 +143,7 @@ def test_a_rejected_command_gets_one_correction(scene) -> None:  # type: ignore[
     fake2 = _hook(sc, '{"commands": ["frobnicate"]}', '{"commands": ["frobnicate again"]}')
     sc.run_console("do the thing")
     _settle(sc)
-    assert len(fake2.seen) == 2 and any(t.startswith("Not understood") for t in _log(sc))
+    assert len(fake2.seen) == 2 and any("not interpreted" in t for t in _log(sc))
 
 
 def test_the_model_never_ends_the_battle_on_its_own_reading(scene) -> None:  # type: ignore[no-untyped-def]
@@ -147,7 +171,7 @@ def test_failures_and_modes(scene) -> None:  # type: ignore[no-untyped-def]
     _hook(sc, LLMError("down"))
     sc.run_console("make it so, number one")
     _settle(sc)
-    assert any(t.startswith("Not understood (down)") for t in _log(sc))
+    assert "'make it so, number one' not interpreted: down. Type 'help' for the commands." in _log(sc)
     fake = _hook(sc, '{"commands": ["lower all"]}', mode="off")
     sc.run_console("bring us about")
     assert fake.seen == [] and "Unknown command 'bring'. Type 'help' for the list." in _log(sc)

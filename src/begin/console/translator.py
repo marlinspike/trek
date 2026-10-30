@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -27,6 +28,7 @@ MODES = ("off", "fallback", "always")
 TAG = "console"
 MAX_COMMANDS = 6
 HISTORY = 12          # messages kept, so "the closer one" can answer a clarifying question
+TIMEOUT = 20.0        # seconds: an interpretation that takes longer is given up, and the captain told
 # commands a misunderstanding must never trigger: these are only suggested
 GUARDED = re.compile(r"^\s*(quit|exit|self\b|selfdestruct|sd\b|destruct|surrender|transport|beam)\b", re.I)
 
@@ -63,16 +65,21 @@ class Translator:
         self.awaiting = False                        # the last answer was a clarifying question
         self.history: list[Message] = []
         self._pending: dict[int, _Request] = {}
+        self._sent: dict[int, float] = {}            # when each request went, to give up on a slow one
 
     # ------------------------------------------------------------ routing
 
-    def wants(self, parsed_ok: bool, exact_verb: bool) -> bool:
-        """Should this line go to the model? `exact_verb`: its first word is a console verb spelled in full."""
+    def wants(self, parsed_ok: bool, plainly_a_command: bool) -> bool:
+        """Should this line go to the model? `plainly_a_command`: it reads as a console command (a full verb, or
+        several words), not a one-word answer like "2"."""
         if self.mode == "off":
             return False
         if self.mode == "always":
             return True
-        if self.awaiting and not (parsed_ok and exact_verb):
+        if parsed_ok and plainly_a_command:
+            self.awaiting = False      # the captain moved on: a command that parses runs at once
+            return False
+        if self.awaiting:
             return True   # probably the answer to our question, even if it happens to parse ("2")
         return not parsed_ok
 
@@ -90,11 +97,22 @@ class Translator:
     def _send(self, req: _Request) -> None:
         rid = self.llm.submit(TAG, system_prompt(req.brief), list(self.history))
         self._pending[rid] = req
+        self._sent[rid] = time.monotonic()
 
-    def poll(self, validate: Validate) -> list[Translation]:
-        """Translations that have arrived since the last frame; never blocks."""
+    def poll(self, validate: Validate, now: float | None = None) -> list[Translation]:
+        """Translations that have arrived since the last frame, and any given up as too slow; never blocks."""
         out: list[Translation] = []
+        now = time.monotonic() if now is None else now
+        for rid in [r for r, t in self._sent.items() if now - t > TIMEOUT]:
+            req = self._pending.pop(rid, None)
+            self._sent.pop(rid, None)
+            if req is not None:
+                self._drop_last_user()
+                self.awaiting = False
+                out.append(Translation(req.text, error=f"the model took longer than {TIMEOUT:.0f} seconds, so "
+                                       "nothing was run"))
         for r in self.llm.poll():
+            self._sent.pop(r.request_id, None)
             req = self._pending.pop(r.request_id, None)
             if req is None:
                 continue

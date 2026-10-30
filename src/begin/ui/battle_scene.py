@@ -353,6 +353,9 @@ class BattleScene:
         if self.translator is not None and self.translator.busy():
             for answer in self.translator.poll(self._would_run):
                 self._translated(answer)
+        if self.bridge is not None:
+            # while the captain waits on an interpretation, officers' remarks don't queue at the model ahead of it
+            self.bridge.hold_voices = self.translator is not None and self.translator.busy()
         if self.orders.busy():
             self._order_problems(self.orders.poll(self._would_run, self._target_id()))
         self._advance_order()
@@ -641,7 +644,7 @@ class BattleScene:
         res = parse(text, ParseContext(self.player_id, self.world.observe(self.side)))
         tr = self.translator
         if (translate and tr is not None and not any(n == "translate" for n, _ in res.actions)
-                and tr.wants(res.error is None, _exact_verb(text))):
+                and tr.wants(res.error is None, _exact_verb(text) or len(text.split()) >= 2)):
             tr.submit(text, self._translation_brief(), res.error)
             self._log("  … interpreting", theme.TEXT_DIM)
             return
@@ -855,7 +858,7 @@ class BattleScene:
         if t.say:
             self._log(f"Computer: {t.say}", theme.TEXT)
         if t.error:
-            self._log(f"Not understood ({t.error}). Type 'help' for the commands.", theme.CAUTION)
+            self._log(f"'{t.text}' not interpreted: {t.error}. Type 'help' for the commands.", theme.CAUTION)
             self.toast = (f"Couldn't work out '{t.text}'", theme.CAUTION, 3.0)
             return
         if t.clarify:

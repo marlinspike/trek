@@ -34,7 +34,9 @@ The model never ends the battle, self-destructs, surrenders or changes ships on 
 
 Talking to an officer ("spock, ...") still goes to that officer, as before. The model can also pass a question on to an officer for you.
 
-The battle doesn't wait while the model thinks: a local model may take a few seconds, so pause first if you need time.
+The exact console always wins, even while the computer is waiting for your answer to a question: a command it recognises, abbreviations included (`tor al`, `pha al`), runs at once and the question is dropped. Only a lone word or number, like `2` or `gorkon`, is taken as your answer.
+
+The battle doesn't wait while the model thinks: a local model may take a few seconds, so pause first if you need time. While it works, the officers say their remarks as written rather than queueing at the model ahead of you. If it hasn't answered in 20 seconds the console gives up, says so, and runs nothing; type the command yourself, or check the model is running.
 
 ## Switching it
 
