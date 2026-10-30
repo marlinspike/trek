@@ -25,6 +25,7 @@ class Settings:
     keys: dict[str, str] = field(default_factory=dict)         # Begin 2.0 `key` macros: "F5" -> "fire all phasers 10"
     volume: float = 0.6                                        # sound effects, 0 to 1
     muted: bool = False                                        # M in battle
+    sounds: dict[str, str] = field(default_factory=dict)       # which version of a sound: {"phaser": "b", "torpedo": "c"}
 
     @staticmethod
     def path() -> Path:

@@ -4,10 +4,11 @@ Everything you set for the game lives in this folder. Only this README and the e
 
 | File | What it holds |
 |---|---|
-| `settings.json` | Window size, speed, sound (`volume` 0 to 1, `muted`), officer chatter, Custom battle choices and the officers' language model. The game writes it; `begin --llm ...` edits the `llm` part. Copy `settings.example.json` to start one by hand. |
+| `settings.json` | Window size, speed, sound (`volume` 0 to 1, `muted`, and `sounds`: which version of the phaser and torpedo sounds, a, b or c), officer chatter, Custom battle choices and the officers' language model. The game writes it; `begin --llm ...` edits the `llm` part. Copy `settings.example.json` to start one by hand. |
 | `officers.toml` | Your officers' traits, a few words each ("dry wit", "coolly confident"), and each one's `response_style` (how they answer: length, tone, register). With a language model they shape how each officer talks. Copy `officers.example.toml` to start. |
 | `orders.toml` | Your named tactical orders: a name and a list of console lines, such as `beta-1`. In battle, `execute order beta-1` runs them. Copy `orders.example.toml` to start; until you do, the examples are loaded. |
 | `orders.cache.json` | The game's own note of how the language model put your plain-English order steps into console commands, so it doesn't ask again. Safe to delete. |
+| `sounds/` | Your own sound effects, as WAV files named for the sound they replace: `phaser.wav`, `torpedo.wav`, and the others listed in `help sound`. Each one replaces the game's own. |
 | `begin2.key` | Begin 2.0 key macros, one per line, such as `F2 fire all torpedoes`. |
 | `help/` | Manual pages of your own. A `.md` file here replaces the bundled page with the same name; new files become new pages. |
 

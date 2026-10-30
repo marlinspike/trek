@@ -188,7 +188,7 @@ HELP = [
     "          disable|cripple <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> · disable off",
     "          destroy <ships> · bait <ship>   (standing objectives and tricks for Seven)",
     "Orders:   execute order <name> | <name>   (a named order from config/orders.toml) · orders (list them) · belay (stop one running)",
-    "Sound:    sound on|off|<0-100>   (M mutes)",
+    "Sound:    sound on|off|<0-100>   sound phaser|torpedo a|b|c   (M mutes)",
     "Other:    key F<n>|^<x> <commands; separated; by semicolons> · translate on|off|always · help · quit",
 ]
 
@@ -1198,7 +1198,7 @@ class Parser:
         res.actions.append(("belay", None))
 
     def _v_sound(self, tok: _Tokens, res: ParseResult) -> None:
-        """`sound on|off|<0-100>`: the battle's sound effects (M mutes too)."""
+        """`sound on|off|<0-100>`, `sound phaser b`: the battle's sound effects and which version (M mutes too)."""
         first = tok.toks[0] if tok.toks else ""
         w = tok.next()
         if first == "mute" and w is None:
@@ -1209,8 +1209,14 @@ class Parser:
             res.actions.append(("sound", w))
         elif _is_num(w) and 0 <= float(w) <= 100:
             res.actions.append(("sound", float(w)))
+        elif w in ("phaser", "phasers", "torpedo", "torpedoes", "launch"):
+            which = "phaser" if w.startswith("phaser") else "torpedo"
+            v = tok.next()
+            if v is not None and v not in ("a", "b", "c"):
+                raise ParseError(f"sound {which} a, b or c: the three versions of the {which} sound.")
+            res.actions.append(("sound", (which, v)))
         else:
-            raise ParseError("sound on, sound off, or sound <0-100> for the volume.")
+            raise ParseError("sound on, sound off, sound <0-100> for the volume, or sound phaser|torpedo a|b|c.")
 
     def _v_translate(self, tok: _Tokens, res: ParseResult) -> None:
         """`translate on|off|always`: plain-English console input through the language model [E]."""

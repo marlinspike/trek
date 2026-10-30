@@ -126,8 +126,23 @@ def test_response_styles_come_from_the_data_and_the_players_config(tmp_path) -> 
     mine = load_officers(traits_file=f)
     assert mine["seven"].response_style == "long, florid answers"
     assert mine["worf"].response_style == shipped["worf"].response_style      # left out: the game's own
-    brief = Bridge.character(SimpleNamespace(recent={}), mine["seven"])   # type: ignore[arg-type]
-    assert "How you respond: long, florid answers." in brief
+    assert "YOUR VOICE, above all else: long, florid answers." in Bridge.style(mine["seven"])
+    assert Bridge.style(SimpleNamespace(response_style="")) == ""          # type: ignore[arg-type]
+
+
+def test_officers_json_never_shows_as_speech() -> None:
+    from begin.console.translator import parse_answer
+    from begin.crew.conversation import spoken
+
+    twice = '{"say": "Shields holding.", "commands": []}\n{"say": "Shields holding.", "commands": []}'
+    assert parse_reply(twice) == ("Shields holding.", [])
+    fenced = 'Sure.\n```json\n{"say": "Firing.", "commands": ["fire all phasers"]}\n```'
+    assert parse_reply(fenced) == ("Firing.", ["fire all phasers"])
+    cut = '{"say": "I like it\\u2014don\'t let me get too comfortable.", "commands": ['
+    assert parse_reply(cut) == ("I like it\u2014don't let me get too comfortable.", [])
+    assert spoken('Aye, Captain. {"oops": 1, ') == "Aye, Captain."
+    assert parse_reply("Plain words, Captain.") == ("Plain words, Captain.", [])
+    assert parse_answer(twice)[0] == "Shields holding."
 
 def test_parse_reply() -> None:
     assert parse_reply('Sure. {"say": "Firing.", "commands": ["fire all torpedoes"]}') == ("Firing.", ["fire all torpedoes"])

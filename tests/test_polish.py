@@ -31,11 +31,35 @@ def test_a_ship_breaking_up_leaves_shards_and_embers_and_damaged_ships_spark() -
 
 
 def test_every_sound_is_made_without_clipping() -> None:
-    for name, make in audio.SOUNDS.items():
+    makers = list(audio.SOUNDS.items()) + [(f"{n}-{v}", f) for n, vs in audio.VARIANTS.items() for v, f in vs.items()]
+    for name, make in makers:
         x = make()
         assert len(x) > 1000, name
         peak = max(abs(v) for v in x)
         assert 3000 < peak < 32767, (name, peak)
+
+
+def test_versions_and_the_players_own_sounds(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    folder = tmp_path / "sounds"
+    folder.mkdir()
+    audio.write_wav(folder / "Torpedo.wav", audio.launch_b())
+    (folder / "notes.txt").write_text("not a sound")
+    (folder / "warp.wav").write_bytes(b"")                 # not one of the game's sounds: ignored
+    assert audio.own_sounds(folder) == {"launch": folder / "Torpedo.wav"}
+    assert audio.own_sounds(tmp_path / "missing") == {}
+
+    made: list[object] = []
+    monkeypatch.setattr(pygame.mixer, "get_init", lambda: (22050, -16, 2))
+    monkeypatch.setattr(pygame.mixer, "set_num_channels", lambda n: None)
+    monkeypatch.setattr(pygame.mixer, "Sound", lambda *a, **k: made.append(k.get("buffer") or a[0]) or str(len(made)))
+    a = audio.Audio(0.5, choice={"phaser": "c", "torpedo": "b", "shield": "z"}, folder=folder)
+    assert a.choice == {"phaser": "c", "launch": "b"} and a.own == {"launch": folder / "Torpedo.wav"}
+    assert str(folder / "Torpedo.wav") in made                       # the player's file replaced the launch
+    assert audio._samples("phaser", True, "c") in made
+    a.choose("phaser", "b")
+    assert made[-1] == audio._samples("phaser", True, "b")
+    a.choose("torpedo", "a")                                         # remembered, but their own file still plays
+    assert a.settings() == {"phaser": "b", "torpedo": "a"} and made[-1] == audio._samples("phaser", True, "b")
 
 
 def test_without_a_device_the_battle_is_silent_and_never_fails(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -84,6 +108,9 @@ def test_sound_commands(content) -> None:  # type: ignore[no-untyped-def]
     assert parse("volume 40", ctx).actions == [("sound", 40.0)]
     assert parse("mute", ctx).actions == [("sound", "off")]
     assert parse("sound loud", ctx).error is not None
+    assert parse("sound phaser b", ctx).actions == [("sound", ("phaser", "b"))]
+    assert parse("sound torpedoes", ctx).actions == [("sound", ("torpedo", None))]
+    assert parse("sound torpedo z", ctx).error is not None
 
 
 def test_the_standout_officer_is_the_one_who_did_most() -> None:
@@ -127,4 +154,6 @@ def test_the_end_screen_and_red_alert_draw(content) -> None:  # type: ignore[no-
     sc.draw(surf)
     sc.run_console("sound 30")
     assert sc.audio.volume == pytest.approx(0.3)
+    sc.run_console("sound torpedo c")
+    assert sc.audio.choice.get("launch") == "c" and "version c" in sc.log[-1].text
     sc.close()

@@ -302,8 +302,8 @@ class Bridge:
         tick = ctx.obs.tick if ctx.obs is not None else asked
         if tick - asked > VOICE_STALE * (ctx.obs.rules.ticks_per_cycle if ctx.obs is not None else 10):
             return []
-        line = (text or "").strip().strip('"').strip()
-        if not line or len(line) > 240 or line.startswith("{"):
+        line = spoken(text or "")
+        if not line or len(line) > 240:
             line = canned
         return [self._say(o, line)]
 
@@ -445,13 +445,19 @@ class Bridge:
         if o.traits:
             out += (f" Your character traits: {', '.join(o.traits)}. Let them colour how you speak and how you are "
                     "with the captain; they never change how well you do your job.")
-        if o.response_style:
-            out += f" How you respond: {o.response_style}. Keep to it in every answer and remark."
         said = list(self.recent.get(o.id, ()))
         if said:
             out += (" Things you have said lately (never repeat them or their wording; find a fresh way to say "
                     "it): " + " | ".join(said[-8:]))
         return out
+
+    @staticmethod
+    def style(o: OfficerProfile) -> str:
+        """The officer's response style, said last and plainly so even a small model keeps to it."""
+        if not o.response_style:
+            return ""
+        return (f"YOUR VOICE, above all else: {o.response_style}. Every word you say must sound like this; "
+                "a reply in a plain, neutral voice is wrong.")
 
     def _voice(self, o: OfficerProfile, canned: str, obs: Observation) -> bool:
         """With a model, an officer's remark in their own words, never the same twice; False to say it as written."""
@@ -463,7 +469,8 @@ class Bridge:
         system = (self.character(o) + f" Your relationship with the captain: {rel.mood}.{mood} You are on the bridge in "
                   "the middle of a starship battle. Say ONE short remark (at most 20 words) to the effect of the line "
                   "below, in your own voice and words, keeping every name and number exactly. Reply with the "
-                  "remark only, no quotes or stage directions. Variation " + str(self.rng.randrange(10 ** 6)) + ".")
+                  "remark only, no quotes, JSON or stage directions. Variation " + str(self.rng.randrange(10 ** 6))
+                  + ". " + self.style(o)).strip()
         rid = self.llm.submit(LINE_TAG + o.id, system, [{"role": "user", "content": canned}])
         self._voicing[rid] = (o.id, obs.tick, canned)
         return True
@@ -490,7 +497,9 @@ class Bridge:
             "",
             "What the ship knows right now:",
             situation(ctx),
-        ])
+            "",
+            self.style(o),
+        ]).strip()
 
     # ------------------------------------------------------------ chatter
 
@@ -802,21 +811,49 @@ def is_question(low: str) -> bool:
         r"(what|why|how|which|where|when|who|should|can|could|would|is|are|do|does|did)\b", low))
 
 
-def parse_reply(text: str) -> tuple[str, list[str]]:
-    """The model's JSON reply → (spoken text, commands). Plain text is accepted as speech."""
-    m = re.search(r"\{.*\}", text, re.S)
-    if m:
+_SAY = re.compile(r'"say"\s*:\s*"((?:\\.|[^"\\])*)', re.S)
+
+
+def first_object(text: str) -> dict[str, object] | None:
+    """The first JSON object in a model's answer, even with prose, code fences or a second copy around it."""
+    dec = json.JSONDecoder()
+    i = text.find("{")
+    while i >= 0:
         try:
-            data = json.loads(m.group(0))
+            data, _ = dec.raw_decode(text, i)
         except ValueError:
             data = None
         if isinstance(data, dict):
-            say = str(data.get("say", "")).strip()
-            cmds = data.get("commands") or []
-            if not isinstance(cmds, list):
-                cmds = [cmds]
-            return say, [c for c in (clean_command(str(x)) for x in cmds) if c][:4]
-    return text.strip().strip('"'), []
+            return data
+        i = text.find("{", i + 1)
+    return None
+
+
+def spoken(text: str) -> str:
+    """What to show as speech from an answer that may be JSON, broken JSON, or plain words."""
+    data = first_object(text)
+    if data is not None:
+        return str(data.get("say", "")).strip()
+    m = _SAY.search(text)                       # broken or cut-off JSON: rescue the words, never show the braces
+    if m:
+        try:
+            return str(json.loads('"' + m.group(1).rstrip("\\") + '"')).strip()
+        except ValueError:
+            return m.group(1).replace('\\"', '"').strip()
+    if "{" in text and '"' in text and ":" in text:
+        text = text[:text.find("{")]           # some other JSON-ish tail: keep only the words before it
+    return text.strip().strip("`").strip().strip('"').strip()
+
+
+def parse_reply(text: str) -> tuple[str, list[str]]:
+    """The model's JSON reply → (spoken text, commands). Plain text is accepted as speech."""
+    data = first_object(text)
+    if data is None:
+        return spoken(text), []
+    cmds = data.get("commands") or []
+    if not isinstance(cmds, list):
+        cmds = [cmds]
+    return str(data.get("say", "")).strip(), [c for c in (clean_command(str(x)) for x in cmds) if c][:4]
 
 
 def situation(ctx: HelpContext) -> str:
@@ -934,4 +971,4 @@ def _plain(md: str) -> str:
     return re.sub(r"\*\*|`", "", md).strip()
 
 
-__all__ = ["Bridge", "COMMAND_SYNTAX", "STATION_REPORTS", "Utterance", "parse_reply", "situation"]
+__all__ = ["Bridge", "COMMAND_SYNTAX", "STATION_REPORTS", "Utterance", "first_object", "parse_reply", "situation", "spoken"]

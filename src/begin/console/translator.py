@@ -184,17 +184,11 @@ def system_prompt(brief: str) -> str:
 
 def parse_answer(text: str) -> tuple[str, list[str], str]:
     """The model's JSON → (say, commands, clarifying question). Plain text is taken as speech."""
-    from ..crew.conversation import clean_command
+    from ..crew.conversation import clean_command, first_object, spoken
 
-    m = re.search(r"\{.*\}", text, re.S)
-    data = None
-    if m:
-        try:
-            data = json.loads(m.group(0))
-        except ValueError:
-            data = None
-    if not isinstance(data, dict):
-        return text.strip().strip('"'), [], ""
+    data = first_object(text)
+    if data is None:
+        return spoken(text), [], ""
     cmds = data.get("commands") or []
     if not isinstance(cmds, list):
         cmds = [cmds]

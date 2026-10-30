@@ -100,7 +100,7 @@ class BattleScene:
     def __init__(self, battle: Battle, size: tuple[int, int], on_exit: Callable[[], None],
                  keys: dict[str, str] | None = None, hidden: dict[str, object] | None = None,
                  llm: dict[str, object] | None = None, chatter: bool = True, volume: float = 0.6,
-                 muted: bool = False) -> None:
+                 muted: bool = False, sounds: dict[str, str] | None = None) -> None:
         self.battle = battle
         self.world = battle.world
         self.player_id = battle.player_ship_id
@@ -177,7 +177,9 @@ class BattleScene:
 
         self.orders = OrderBook.load(config_dir())
         self.order_run: OrderRun | None = None
-        self.audio = Audio(volume, muted)
+        self.audio = Audio(volume, muted, sounds, config_dir() / "sounds")
+        for problem in self.audio.problems:
+            self._log(f"Couldn't use your sound {problem}", theme.TEXT_DIM)
         self._was_alert = False
         self.deeds: list[Event] = []          # objectives and projects finished: the officers' record for the debrief
         if provider is not None and self.orders.orders:
@@ -1180,6 +1182,19 @@ class BattleScene:
 
     def _sound(self, val: object) -> None:
         a = self.audio
+        if isinstance(val, tuple):
+            which, variant = val
+            name = "launch" if which == "torpedo" else which
+            if variant is not None:
+                a.choose(name, variant)
+            a.muted = False
+            a._last.pop(name, None)
+            a.play(name, time.monotonic())          # a sample, so the captain hears what they picked
+            pick = a.choice.get(name, "a")
+            self._log(f"{which.capitalize()} sound: your own {a.own[name].name}." if name in a.own else
+                      f"{which.capitalize()} sound: version {pick} of a, b, c. 'sound {which} b' tries another; "
+                      "it's kept for next time.", theme.TEXT_DIM)
+            return
         if val is None:
             pass
         elif val == "on":
