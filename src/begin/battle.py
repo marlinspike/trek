@@ -6,6 +6,7 @@ Custom Battle (the setup screen), and by headless tests and tournaments.
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from dataclasses import dataclass, field
 
@@ -17,6 +18,7 @@ from .core.rng import Rng
 from .crew.characters import load_officers
 from .crew.officers import Crew, default_crew
 from .paths import config_dir
+from .sim.arrivals import Arrival
 from .sim.rules import DEFAULT_RULES, Rules
 from .sim.ship import PDDoctrine, Ship
 from .sim.world import World
@@ -49,6 +51,8 @@ class BattleSetup:
     title: str = "Battle"
     description: str = ""
     rules: Rules = DEFAULT_RULES
+    arrivals: list[Arrival] = field(default_factory=list)   # waves and reinforcements that join later [E]
+    personalities: dict[int, dict[str, float]] = field(default_factory=dict)  # side -> captains' leanings (a tour's memory) [E]
 
     @property
     def player_side(self) -> int:
@@ -82,6 +86,20 @@ class Battle:
             cap = _crew_in_command(w, ship.id)
             self.captains[ship.id] = cap
             w.add_controller(cap)
+
+    def commission(self, ship: Ship) -> None:
+        """A ship that warped in mid-battle gets a computer and a captain of her own navy [E]."""
+        w = self.world
+        faction = w.content.factions[ship.faction]
+        ship.pd_doctrine = PDDoctrine(faction.doctrine.point_defense)
+        comp = ShipComputer(ship.id, ship.side, w.rng.derive(f"computer:{ship.id}"), phase=ship.id % 2)
+        self.computers[ship.id] = comp
+        w.add_controller(comp)
+        prng = w.rng.derive(f"captain:{ship.id}")
+        cap = AICaptain(ship.id, ship.side, Personality.roll(faction, prng, self.setup.personalities.get(ship.side)),
+                        prng, phase=ship.id % 2)
+        self.captains[ship.id] = cap
+        w.add_controller(cap)
 
     def transfer_command(self, new_id: int) -> str | None:
         """Begin's `beam <ally>`: the player moves to a functional ally within transporter range.
@@ -174,7 +192,8 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
                 player_ship = ship.id
                 continue
             prng = world.rng.derive(f"captain:{ship.id}")
-            pers = Personality.roll(faction, prng, spec.personality)
+            leanings = {**setup.personalities.get(fleet.side, {}), **(spec.personality or {})}
+            pers = Personality.roll(faction, prng, leanings or None)
             cap = AICaptain(ship.id, fleet.side, pers, prng, phase=ship.id % 2)
             captains[ship.id] = cap
             world.add_controller(cap)
@@ -185,6 +204,8 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
         world.add_controller(crew)
     battle = Battle(world, setup, player_ship, captains, computers, crew)
     world.on_capture = battle.adopt
+    world.on_arrival = battle.commission
+    world.arrivals = [dataclasses.replace(a, ship_ids=[]) for a in setup.arrivals]
     return battle
 
 

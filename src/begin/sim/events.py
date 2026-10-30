@@ -194,3 +194,11 @@ class ProjectCompleted(Event):
     ship_id: int
     project: str
     tube: int | None       # where a designed round was loaded
+
+
+@dataclass(slots=True)
+class ShipArrived(Event):
+    """A ship dropped out of warp into the battle: a wave of attackers or reinforcements [E]."""
+    ship_id: int
+    kind: str              # "wave" | "reinforcement"
+    origin: tuple[float, float] = (0.0, 0.0)   # where the warp streak starts

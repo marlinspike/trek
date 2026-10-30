@@ -22,6 +22,7 @@ their tachyon detector. The captain's orders still win, as above.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field, replace
 from typing import Iterable
 
@@ -33,7 +34,7 @@ from ..sim.commands import (
     Authority, Command, ConfigureAutoload, ControlProbe, Evasive, FirePhasers, FireTorpedoes, LaunchProbe, LoadTubes,
     LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak, SetFireMode, SetHelm,
     SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, StartProject, TurnMounts,
-    FireSpecialRound, DeflectorPulse, SetObjective, EndObjective, FireAtPoint,
+    FireSpecialRound, DeflectorPulse, SetObjective, EndObjective, FireAtPoint, Dock,
 )
 from ..sim.allies import AllyStanding
 from ..sim.observation import ContactView, Observation
@@ -44,7 +45,7 @@ from .helm import HelmPlan, incoming, plan_helm, support_range, threatened
 from .objectives import Planner
 
 STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
-    "helm": (SetHelm, Pursue, Evasive),
+    "helm": (SetHelm, Pursue, Evasive, Dock),
     "tactical": (SelectTarget, LockWeapons, TurnMounts, FirePhasers, SetPhaserSpread, SetBanks, FireTorpedoes, FireAtPoint,
                  ConfigureAutoload, LoadTubes, SetTubes, LaunchProbe, ControlProbe, SetFireMode, SetPointDefense,
                  FireSpecialRound),
@@ -52,6 +53,9 @@ STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
     "science": (Scan, StartProject, DeflectorPulse, SetObjective, EndObjective),
 }
 
+OUTNUMBERED_RANGE = 15000.0   # hostile ships this close count against us when the officer judges the odds
+TEMPERED_AGGRESSION = 0.55
+OUTNUMBERED_DOCK = 0.3        # damage at which an outnumbered officer takes her in to a friendly base    # the boldest an officer flies when outnumbered or badly hurt [E]
 APPROACH_SLACK = 3000.0   # beyond the supporting range by more than this, the helm just closes
 EVASIVE_SETTLE = 2.0      # cycles clear of torpedoes before evasive manoeuvres return to the captain's course
 HULL_URGENT = 0.5         # below this share of the hull, patching it comes before spreading the work
@@ -96,10 +100,32 @@ class OfficerBrain(AICaptain):
     def _cmd(self, cls: type[Command], ship: Ship, **kw: object) -> Command:
         return cls(ship_id=ship.id, issuer=Authority.OFFICER, source=self.title or self.station, **kw)  # type: ignore[arg-type]
 
+    def outnumbered(self, obs: Observation, ship: Ship) -> bool:
+        near = [c for c in obs.hostile_contacts() if c.visible and c.cls is not None and not c.cls.is_base
+                and c.distance_to(ship.x, ship.y) < OUTNUMBERED_RANGE]
+        friends = [s for s in obs.own_ships() if not s.cls.is_base and math.hypot(s.x - ship.x, s.y - ship.y) < OUTNUMBERED_RANGE]
+        return len(near) > len(friends)
+
+    def dock_threshold(self, obs: Observation, ship: Ship) -> float:
+        """Outnumbered, the officer takes her in to the base sooner."""
+        return OUTNUMBERED_DOCK if self.outnumbered(obs, ship) else super().dock_threshold(obs, ship)
+
+    def helm_aggression(self, obs: Observation, ship: Ship) -> float:
+        """An officer at the helm weighs the odds [E]: however bold (Worf), they weave and close with care
+        when outnumbered or when the hull is going, instead of charging in."""
+        aggr = self.personality.aggression
+        hull = ship.structure / max(1.0, ship.structure_max)
+        if hull < 0.6 or self.outnumbered(obs, ship):
+            return min(aggr, TEMPERED_AGGRESSION)
+        return aggr
+
     def _strategy(self, obs: Observation, ship: Ship) -> list[Command]:
         """Pick a target only when the captain has none; never retreat, surrender or self-destruct."""
         out: list[Command] = []
         self.retreating = False
+        if self.station in ("helm", "bridge"):
+            # [E] the officer flying the ship takes her to a friendly base for repairs when she is badly hurt
+            self._plan_repairs(obs, ship, self.damage_ratio(ship), obs.ally_order(ship.id), out)
         captains = obs.contact(ship.target) if ship.target is not None else None
         if captains is not None:
             best = captains
