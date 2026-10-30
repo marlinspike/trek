@@ -23,14 +23,16 @@ if TYPE_CHECKING:
 
 
 def _efficiency(world: World, ship: Ship) -> tuple[float, bool]:
-    """How fast the crews work (0 when they can't), and whether the ship is docked."""
+    """How fast the crews work (0 when they can't), and whether the ship is docked. Morale speeds or slows
+    them a little [E]."""
     if ship.crew <= 0:
         return 0.0, False
+    spirit = 1.0 + world.rules.morale_repair * ship.morale_factor
     host = world.ships.get(ship.docked_to) if ship.docked_to is not None else None
     if host is not None:
-        return max(host.cls.docked_repair_ratio, 0.0) * 2.0, True  # [M] docked ships repair twice as fast
+        return max(host.cls.docked_repair_ratio, 0.0) * 2.0 * spirit, True  # [M] docked ships repair twice as fast
     eff = ship.crew / max(1, ship.cls.crew)
-    return (eff if eff >= 0.1 else 0.0), False
+    return (eff * spirit if eff >= 0.1 else 0.0), False
 
 
 def in_battle(world: World, ship: Ship) -> bool:

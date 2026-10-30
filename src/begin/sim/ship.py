@@ -366,6 +366,10 @@ class Ship:
     boarder_side: int = -1
     self_destruct: float = -1.0        # cycles remaining, -1 = off
     repair_priority: RepairTarget | None = None
+    morale: float = 75.0               # the crew's spirits, 0..100 [E] (sim/systems/morale.py)
+    morale_base: float = 75.0          # what it settles back to once out of the fight
+    steadiness: float = 1.0            # × how much damage and losses shake the crew (race)
+    last_address: int = -10**9         # tick of the captain's last address to the crew
     evasive: bool = False              # the helm dodges incoming torpedoes on its own (Federation drill) [E]
     evasive_resume: tuple[float, float, HelmMode, int | None] | None = None   # the captain's order to go back to
     repairs_by: str = ""               # officer id directing the repair crews; "" = the captain [E]
@@ -439,6 +443,11 @@ class Ship:
         if self.computer is None:
             return self.base_sophistication * 0.5
         return self.base_sophistication * (0.35 + 0.65 * self.computer.health)
+
+    @property
+    def morale_factor(self) -> float:
+        """Crew morale as -1 (broken, 0) .. 0 (50) .. +1 (high, 100) [E]."""
+        return max(-1.0, min(1.0, (self.morale - 50.0) / 50.0))
 
     def can_move(self) -> bool:
         return self.max_attainable_warp > 0.0

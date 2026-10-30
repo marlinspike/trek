@@ -944,6 +944,43 @@ class SetRepairPriority(Command):
 
 
 @dataclass(kw_only=True)
+class AddressCrew(Command):
+    """The captain speaks to the crew (remake extension): morale rises by how rousing it was.
+
+    `rousing` is 0..1.5: 1 for an ordinary address, judged by the language model when there is one.
+    A second address within `morale_address_cycles` would ring hollow and is refused.
+    """
+
+    text: str = ""
+    rousing: float = 1.0
+    name: ClassVar[str] = "address"
+
+    def validate(self, world: World, ship: Ship) -> None:
+        r = world.rules
+        since = (world.tick - ship.last_address) / r.ticks_per_cycle
+        if since < r.morale_address_cycles:
+            raise Rejected(f"The crew heard from you {since:.0f} cycles ago; another speech so soon would ring hollow "
+                           f"(wait {r.morale_address_cycles - since:.0f} more).")
+
+    def validate_now(self, world: World, ship: Ship) -> str | None:
+        """The refusal, if any, before the speech is judged."""
+        try:
+            self.validate(world, ship)
+        except Rejected as r:
+            return str(r)
+        return None
+
+    def apply(self, world: World, ship: Ship) -> None:
+        from .systems.morale import adjust
+
+        ship.last_address = world.tick
+        adjust(world, ship, world.rules.morale_address * max(0.0, min(1.5, self.rousing)), "address")
+
+    def describe(self) -> str:
+        return "address to the crew"
+
+
+@dataclass(kw_only=True)
 class ManageRepairs(Command):
     """Let an officer direct the repair crews, or take them back (remake extension)."""
 

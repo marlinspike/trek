@@ -73,6 +73,8 @@ def test_attack_sets_target_and_cancels_movement(content) -> None:  # type: igno
 
 def test_withdraw_stays_out_of_torpedo_range(content) -> None:  # type: ignore[no-untyped-def]
     b = _battle(content, enemy_at=(2000.0, 6000.0))
+    z = ship(b, "Zantha")
+    z.structure = z.structure_max = 1e6     # the fight goes on long enough to see the Agena get clear
     order(b, "tell agena withdraw")
     b.world.run(40)
     a, z = ship(b, "Agena"), ship(b, "Zantha")

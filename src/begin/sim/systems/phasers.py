@@ -127,7 +127,7 @@ def fire_bank(
             # member is set off with a chance that grows with the energy delivered
             p_kill = min(rules.beam_kill_max, rules.beam_kill_base + dmg * rules.beam_kill_per_damage)
             if defensive:
-                p_kill *= rules.pd_kill_scale
+                p_kill *= rules.pd_kill_scale * (1.0 + rules.morale_accuracy * ship.morale_factor)
             killed = sum(1 for _ in range(t.salvo) if world.rng.unit() < p_kill)
             if killed >= t.salvo:
                 t.detonate = True
@@ -166,7 +166,7 @@ def fire_bank(
         aim = None
         if selector and other.id == target_id:
             acc = targeting_accuracy(world, ship, other, selector, d, spread)
-            aim = Aim(selector, acc)
+            aim = Aim(selector, min(1.0, acc * (1.0 + world.rules.morale_accuracy * ship.morale_factor)))
         apply_damage(world, other, dmg, ox, oy, DamageKind.PHASER, ship.id, aim)
         ev.hits.append(other.id)
         if other.id == target_id:

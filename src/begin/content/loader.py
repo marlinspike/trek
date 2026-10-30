@@ -157,6 +157,8 @@ def load_content(data_dir: Path = DATA_DIR) -> ContentDB:
             pd_discipline=float(f["computer"].get("pd_discipline", 0.7)),
             captains=CaptainModel(**{k: float(v) for k, v in cm.items()}),
             orders=tuple(str(o) for o in f.get("orders", [])),
+            morale_start=float(f.get("morale", {}).get("start", 75.0)),
+            morale_steadiness=float(f.get("morale", {}).get("steadiness", 1.0)),
             **_weapon_colors(f),
         )
 

@@ -409,3 +409,20 @@ __all__ = [
     "banks_lines", "chart_lines", "damage_lines", "fleet_lines", "group_lines", "launchers_lines", "library_lines",
     "probes_lines", "report_lines", "scan_lines", "shields_lines", "tubes_lines",
 ]
+
+
+MORALE_WORDS = ("broken", "shaken", "steady", "confident", "high")
+
+
+def morale_words(morale: float) -> str:
+    """The crew's spirits in a word [E]."""
+    return MORALE_WORDS[min(4, int(morale // 20))]
+
+
+def morale_lines(obs: Observation) -> list[str]:
+    """Morale aboard our own ships [E]; the enemy's spirits can only be guessed from how they fight."""
+    out = ["Crew morale (0-100; 50 is neither help nor hindrance):"]
+    for s in obs.own_ships():
+        out.append(f"  {s.name:<16} {s.morale:5.0f}  {morale_words(s.morale)}"
+                   f"   (usually {s.morale_base:.0f})")
+    return out

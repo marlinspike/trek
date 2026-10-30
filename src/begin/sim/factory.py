@@ -63,6 +63,7 @@ def build_ship(
         structure_max=cls.mass * rules.hull_per_mass + rules.hull_base,
         torps_remaining=cls.torps_carried, probes_remaining=cls.probes_carried,
         base_sophistication=faction.computer_sophistication,
+        morale=faction.morale_start, morale_base=faction.morale_start, steadiness=faction.morale_steadiness,
     )
 
     ship.reactors = [Reactor(_sid(Kind.REACTOR, i), Kind.REACTOR, i, p)

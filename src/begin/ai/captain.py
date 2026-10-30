@@ -130,7 +130,9 @@ class AICaptain:
         out: list[Command] = []
         p = self.personality
         dmg = self.damage_ratio(ship)
-        threshold = p.bravery * AI_RETREAT_DAMAGE * p.doctrine.retreat_threshold_scale
+        # [E] a shaken crew makes a captain quicker to break off, a keen one slower
+        threshold = (p.bravery * AI_RETREAT_DAMAGE * p.doctrine.retreat_threshold_scale
+                     * (1.0 + obs.rules.morale_nerve * ship.morale_factor))
         if not self.retreating and dmg > threshold:
             self.retreating = True
             self._log(obs, f"morale broken: damage {dmg:.2f} > {threshold:.2f}; retreating")
@@ -151,7 +153,8 @@ class AICaptain:
 
         # surrender when beaten and unable to run
         if (self.retreating and not ship.can_move() and dmg > 0.7 and not self.last_stand
-                and self.rng.unit() < 0.05 * p.doctrine.surrender_willingness * (1.0 - p.bravery * 0.5)):
+                and self.rng.unit() < 0.05 * p.doctrine.surrender_willingness * (1.0 - p.bravery * 0.5)
+                * (1.0 - 0.5 * ship.morale_factor)):
             self._log(obs, "striking colours")
             out.append(self._cmd(Surrender, ship))
             return out

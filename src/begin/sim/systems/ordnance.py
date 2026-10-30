@@ -415,7 +415,7 @@ def blast(
         dmg = total * math.sqrt(1.0 - d / radius)
         aim = None
         if selector and target == s.id and att is not None:
-            aim = Aim(selector, 0.25 * att.sophistication)
+            aim = Aim(selector, 0.25 * att.sophistication * (1.0 + rules.morale_accuracy * att.morale_factor))
         for _ in range(max(1, salvo)):
             if not s.exists:
                 break

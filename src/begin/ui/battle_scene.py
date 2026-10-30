@@ -23,7 +23,7 @@ from ..console.translator import Translation, Translator
 from ..core.angles import bearing, norm360
 from ..sim.allies import AllyStanding
 from ..sim.commands import (
-    AllyOrder, Command, FirePhasers, FireTorpedoes, LaunchProbe, Pursue, Scan, SelectTarget, SetBanks, SetHelm,
+    AddressCrew, AllyOrder, Command, FirePhasers, FireTorpedoes, LaunchProbe, Pursue, Scan, SelectTarget, SetBanks, SetHelm,
     SetPointDefense, SetShields,
 )
 from ..sim.events import CommandRejected, Event, Message, ScanCompleted, Tone
@@ -321,6 +321,8 @@ class BattleScene:
         self.ui.mouse = pygame.mouse.get_pos()
         if self.bridge is not None and self.bridge.llm is not None:
             self._speak(self.bridge.poll(self._help_context(), self._officer_run))
+            for cmd in self.bridge.take_addresses():
+                self.issue(cmd)
         if self.translator is not None and self.translator.busy():
             for answer in self.translator.poll(self._would_run):
                 self._translated(answer)
@@ -622,9 +624,19 @@ class BattleScene:
         for name, val in res.actions:
             self._action(name, val)
         for cmd in res.commands:
+            if isinstance(cmd, AddressCrew) and self.bridge is not None and self.player is not None:
+                err = cmd.validate_now(self.world, self.player)
+                if err:
+                    self._log(f"Unable to comply: {err}", theme.CAUTION)
+                    continue
+                if self.bridge.judge_address(cmd, self._help_context()):
+                    self._log("  … the crew listens", theme.TEXT_DIM)
+                    continue      # the model judges how it lands; the morale follows when it answers
             reason = self.issue(cmd)
             if reason is None:
                 self._log(f"  {cmd.describe()}: acknowledged", theme.TEXT_DIM)
+                if isinstance(cmd, AddressCrew) and self.bridge is not None:
+                    self._speak(self.bridge.address_reaction(cmd))
         if res.commands and self.bridge is not None:
             self.bridge.captain_ran(text, self.world.tick, self.world.rules.ticks_per_cycle)
 
@@ -850,6 +862,11 @@ class BattleScene:
             self._log(f"{u.speaker}: {u.text}", tone.get(u.tone, theme.CREW))
             for c in u.commands:
                 self._log(f"    › {c}", theme.TEXT_DIM)
+
+    def address_crew(self) -> None:
+        """Open the console ready for a speech to the crew."""
+        self.console = "address crew "
+        self.console_focus = True
 
     def address(self, name: str) -> None:
         """Open the console ready to speak to an officer."""

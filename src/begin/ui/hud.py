@@ -113,6 +113,22 @@ def hull_diagram(surf: pygame.Surface, ship: Ship, box: pygame.Rect, show_shield
                 ui.add(pygame.Rect(int(lx) - 12, int(ly) - 8, 24, 16), on_click or (lambda: None), f"Shield {i + 1}: {state}")
 
 
+def _morale_tag(surf: pygame.Surface, hud: BattleScene, ship: Ship, at: tuple[int, int], hover: pygame.Rect) -> None:
+    """Crew morale as a word and a number, coloured, with a tooltip saying what it does."""
+    from ..console.reports import morale_words
+
+    m = ship.morale
+    col = theme.health_color(m / 100.0)
+    theme.text(surf, f"{morale_words(m)} {m:.0f}", at, col, 11)
+    f = ship.morale_factor
+    r = hud.world.rules
+    effect = ("no effect on the crew's work" if abs(f) < 0.05 else
+              f"repairs {r.morale_repair * f:+.0%}, torpedo loading {r.morale_reload * f:+.0%}, "
+              f"point defense and aim {r.morale_accuracy * f:+.0%}")
+    hud.ui.add(hover, lambda: None, f"Morale {m:.0f} of 100 ({morale_words(m)}): {effect}. Damage and losses lower it; "
+                                    "hits, kills, repairs and 'address crew' raise it.")
+
+
 def diagram_legend(surf: pygame.Surface, x: int, y: int) -> None:
     """What the damage diagram's marks mean."""
     items: list[tuple[str, theme.Color, str]] = [
@@ -175,6 +191,7 @@ class OwnShipPanel(Panel):
         yy += 18
         crew_col = theme.health_color(ship.crew / max(1, ship.cls.crew))
         _kv(surf, x, yy, "Crew", f"{ship.crew} / {ship.cls.crew}", crew_col)
+        _morale_tag(surf, hud, ship, (x + 92 + 92, yy + 1), pygame.Rect(x, yy, rect.right - x - 8, 16))
         yy += 18
         hf = max(0.0, ship.structure) / ship.structure_max
         _kv(surf, x, yy, "Hull", f"{hf * 100:5.1f}%", theme.health_color(hf))
@@ -518,7 +535,7 @@ class CrewPanel(Panel):
     """The bridge officers: who runs each station, with a toggle to hand it over or take it back."""
 
     title = "Bridge crew"
-    min_height = 150
+    min_height = 172
     weight = 0.0
 
     def tab_label(self, hud: BattleScene) -> str:
@@ -544,6 +561,15 @@ class CrewPanel(Panel):
             btn = pygame.Rect(rect.right - 106, y, 94, rh - 3)
             hud.ui.button(surf, btn, "Take bridge", lambda: hud.run_console("I have the bridge"),
                           f"Take the bridge back from {holder.name}", active=True, accent=theme.CREW, size=11)
+        y += rh
+        theme.text(surf, "Morale", (rect.x + 12, y + 3), theme.TEXT_DIM, 12)
+        _morale_tag(surf, hud, ship, (rect.x + 100, y + 4), pygame.Rect(rect.x + 100, y, rect.width - 214, rh - 2))
+        since = (hud.world.tick - ship.last_address) / hud.world.rules.ticks_per_cycle
+        ready = since >= hud.world.rules.morale_address_cycles
+        hud.ui.button(surf, pygame.Rect(rect.right - 106, y, 94, rh - 3), "Address crew",
+                      lambda: hud.address_crew(), "Speak to the crew: type what you say after 'address crew'"
+                      if ready else f"The crew heard you {since:.0f} cycles ago", enabled=ready, accent=theme.CREW,
+                      size=11)
         y += rh
         for k, (station, o) in enumerate(bridge.crew.officers.items()):
             ry = y + k * rh

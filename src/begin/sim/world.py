@@ -38,6 +38,7 @@ from .systems import sensors as sensors_sys
 from .systems.helm import move_ship, update_helm
 from .systems.ordnance import blast, fly_ordnance, resolve_detonations
 from .systems.power import update_power, warp_budget
+from .systems.morale import update_morale
 from .systems.repair import update_repair
 
 if TYPE_CHECKING:
@@ -101,6 +102,7 @@ class World:
 
     events: list[Event] = field(default_factory=list)          # since last take_events()
     step_events: list[Event] = field(default_factory=list)     # produced by the last step
+    morale_events: list[Event] = field(default_factory=list)   # not yet weighed by the morale system [E]
     command_log: list[LoggedCommand] = field(default_factory=list)
     ally_orders: dict[int, AllyStanding] = field(default_factory=dict)
     torpedo_pressure: dict[int, float] = field(default_factory=dict)
@@ -164,6 +166,7 @@ class World:
     def emit(self, ev: Event) -> None:
         self.events.append(ev)
         self.step_events.append(ev)
+        self.morale_events.append(ev)
 
     def take_events(self) -> list[Event]:
         out = self.events
@@ -333,6 +336,7 @@ class World:
                 if len(s.trail) > 24:
                     del s.trail[0]
         self._complete_scans()
+        update_morale(self, dt)
         for k in list(self.torpedo_pressure):
             self.torpedo_pressure[k] *= 1.0 - 0.2 * dt
             if self.torpedo_pressure[k] < 0.05:

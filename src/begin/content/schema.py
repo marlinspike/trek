@@ -248,6 +248,9 @@ class Faction:
     torpedo_color: tuple[int, int, int] = (255, 120, 80)
     # [E] special helm and bridge orders this race's crews are drilled in, e.g. "evasive"
     orders: tuple[str, ...] = ()
+    # [E] crew morale: spirits at the start of a battle (0..100), and how much damage and losses shake them
+    morale_start: float = 75.0
+    morale_steadiness: float = 1.0
 
 
 @dataclass(slots=True)

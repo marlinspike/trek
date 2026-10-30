@@ -137,6 +137,16 @@ class HullRepaired(Event):
 
 
 @dataclass(slots=True)
+class MoraleShift(Event):
+    """A ship's morale crossed into another band (each 20 points) [E]."""
+
+    ship_id: int
+    morale: float
+    rising: bool
+    cause: str = ""
+
+
+@dataclass(slots=True)
 class ShipStatusChanged(Event):
     ship_id: int
     status: str

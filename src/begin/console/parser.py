@@ -27,7 +27,7 @@ from ..sim.allies import ORDER_WORDS, SHIP_ORDERS, AllyStanding
 from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
-    SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, ManageRepairs, Evasive, SetShields, SetTubes, Surrender,
+    SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, ManageRepairs, Evasive, AddressCrew, SetShields, SetTubes, Surrender,
     DeflectorPulse, EndObjective, FireAtPoint, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
@@ -65,6 +65,8 @@ VERBS: dict[str, tuple[str, ...]] = {
     "pursue": ("pursue", "chase", "follow"),
     "elude": ("elude", "evade", "flee"),
     "evasive": ("evasive", "evasion", "jink"),
+    "address": ("address", "rally", "speech"),
+    "morale": ("morale", "spirits"),
     "stop": ("stop", "allstop", "halt"),
     "fire": ("fire", "f", "shoot"),
     "fp": ("fp",),
@@ -156,6 +158,7 @@ FILLER = {"with", "the", "to", "at", "on", "of", "and", "set", "please", "by", "
 HELP = [
     "Helm:     helm <course> [warp] <w> · pursue|elude <ship> [warp] <w> · warp <w> · stop · <course> <warp>",
     "          evasive [off]   (Federation: the helm dodges incoming torpedoes until your next helm order)",
+    "Crew:     address crew <your words>   (a speech to the crew lifts morale; once a minute at most) · morale (how the crews feel)",
     "Display:  range|display|scan <range> · chart [on|off|all|<ship>|by name|distance|nation] · report",
     "Status:   status [damage|banks|tubes|launchers|probes|shields|fleet] · damage · banks · tubes · launchers · shields · fleet · group",
     "Phasers:  fire [all] phasers [<list>] [spread] <s> · lock [all] banks [<list>] on <ship> · turn banks [<list>] to <mark>",
@@ -436,6 +439,22 @@ class Parser:
             self._v_evasive(tok, res)    # 'evade' with no ship to run from: evasive manoeuvres
             return
         self._pursue(tok, res, True)
+
+    def _v_address(self, tok: _Tokens, res: ParseResult) -> None:
+        """address [crew|ship] <words>: the captain speaks to the crew; morale rises."""
+        tok.take_word("crew", "ship", "the")
+        tok.take_word("crew")
+        words = tok.raw.split(None, 1)[1] if len(tok.raw.split(None, 1)) > 1 else ""
+        for lead in ("the crew", "crew", "ship", "the ship"):
+            if words.lower().startswith(lead):
+                words = words[len(lead):]
+                break
+        tok.rest()
+        res.commands.append(self._cmd(AddressCrew, text=words.strip(" :,-\"'")))
+
+    def _v_morale(self, tok: _Tokens, res: ParseResult) -> None:
+        tok.rest()
+        res.display.extend(reports.morale_lines(self.obs))
 
     def _v_evasive(self, tok: _Tokens, res: ParseResult) -> None:
         """evasive [manoeuvres|action] [on|off]: the helm dodges incoming torpedoes until the next navigation order."""

@@ -33,10 +33,12 @@ from ..help.coach import HelpContext, tips
 from ..llm.providers.base import Message
 from ..llm.service import LLMService
 from ..sim.events import (
-    ContactChanged, Event, HullHit, ObjectiveEnded, PhaserFired, ProjectCompleted, ScanCompleted, ShipStatusChanged, SubsystemRepaired, TorpedoLaunched,
+    ContactChanged, Event, HullHit, MoraleShift, ObjectiveEnded, PhaserFired, ProjectCompleted, ScanCompleted, ShipStatusChanged, SubsystemRepaired, TorpedoLaunched,
 )
 from ..sim.observation import Observation
 from ..sim.ship import HULL, KIND_LABEL, Kind, Ship, repair_words
+from ..sim.commands import AddressCrew
+from ..console.reports import morale_words
 from .characters import (
 )
 from ..sim.objectives import DISABLE_GROUPS
@@ -63,8 +65,16 @@ CALLOUT_GAP = 4.0
 CALLOUT_REPEAT = {"bait": 20.0, "salvo": 20.0, "between": 20.0, "phasers": 30.0, "close": 10.0, "open": 10.0,
                   "fight": 15.0, "hunt": 20.0, "evade": 5.0}   # seconds before the same kind of step is said again
 
+ADDRESS_TAG = "\0address"   # the model's verdict on the captain's speech, not an officer's answer
+MORALE_GAP = 20.0           # seconds between remarks on the crew's spirits
 REPAIR_REPORT_DAMAGE = 25   # % damage before a system is worth reporting
 REPAIR_GAP = 12.0           # seconds between repair reports
+
+MORALE_CAUSES = {
+    ("damage", False): " after that damage", ("loss", False): " after losing a ship", ("shield", False): "",
+    ("hits", True): " with every hit we land", ("kill", True): " after that kill", ("repairs", True): " as repairs come in",
+    ("address", True): " after your words",
+}
 
 _PRAISE = re.compile(r"\b(thanks?|thank you|well done|good (job|work|shooting)|nice|great|excellent|bravo)\b")
 _RUDE = re.compile(r"\b(stupid|idiot|useless|incompetent|shut up|moron|fool)\b")
@@ -123,6 +133,9 @@ class Bridge:
         self._repair_band = 4                      # quarter of the hull last reported
         self._repair_said = -999                   # tick of the last repair report
         self._repair_prio: object = None           # the priority last announced by the officer managing repairs
+        self._address_pending: AddressCrew | None = None   # a speech the model is judging
+        self._addresses: list[AddressCrew] = []              # judged speeches, ready to take effect
+        self._morale_said = -999
         self._threats = 0
         self._llm_note_given = False
         self._conn_target: int | None = None
@@ -261,12 +274,64 @@ class Bridge:
                 out.append(self._say(o, text.format(**fill)))
         return out
 
+    # ------------------------------------------------------------ the captain's address
+
+    def judge_address(self, cmd: AddressCrew, ctx: HelpContext) -> bool:
+        """Ask the model how rousing the captain's words are; False when there is no model (an ordinary speech)."""
+        if self.llm is None or self._address_pending is not None or not cmd.text:
+            return False
+        self._address_pending = cmd
+        system = ("You judge a starship captain's address to the crew in the middle of a space battle. Score how "
+                  "rousing it is from 0 to 1.5: 1 is a competent, ordinary address; 1.5 is truly stirring and fits the "
+                  "moment; 0.3 or less is flat, rude, confusing or demoralising. Then give the first officer's one-line "
+                  "remark on how the crew took it, in character. Reply only with JSON: "
+                  '{"score": <number>, "reaction": "<one line>"}\n\nThe situation:\n' + situation(ctx))
+        self.llm.submit(ADDRESS_TAG, system, [{"role": "user", "content": cmd.text}])
+        return True
+
+    def take_addresses(self) -> list[AddressCrew]:
+        out, self._addresses = self._addresses, []
+        return out
+
+    def address_reaction(self, cmd: AddressCrew, said: str = "") -> list[Utterance]:
+        """The first officer remarks on how the crew took the captain's words."""
+        o = self.find("spock") or self.crew.officer("science") or next(iter(self.officers()), None)
+        if o is None:
+            return []
+        if not said:
+            if cmd.rousing >= 1.2:
+                said = "The crew is with you, Captain. I have rarely seen them so resolved."
+            elif cmd.rousing >= 0.8:
+                said = "The crew heard you, Captain. Spirits are up."
+            else:
+                said = "The crew heard you, Captain. I am not certain it helped."
+        return [self._say(o, said)]
+
+    def _judged(self, text: str | None) -> list[Utterance]:
+        cmd, self._address_pending = self._address_pending, None
+        if cmd is None:
+            return []
+        said = ""
+        if text:
+            try:
+                m = re.search(r"\{.*\}", text, re.S)
+                data = json.loads(m.group(0)) if m else {}
+                cmd.rousing = max(0.0, min(1.5, float(data.get("score", 1.0))))
+                said = str(data.get("reaction", "")).strip()
+            except (ValueError, TypeError):
+                cmd.rousing = 1.0
+        self._addresses.append(cmd)
+        return self.address_reaction(cmd, said)
+
     def poll(self, ctx: HelpContext, run: RunCommand) -> list[Utterance]:
         """LLM answers that have arrived since the last frame."""
         if self.llm is None:
             return []
         out: list[Utterance] = []
         for r in self.llm.poll():
+            if r.tag == ADDRESS_TAG:
+                out.extend(self._judged(r.text))
+                continue
             officer = next((o for o in self.officers() if o.id == r.tag), None)
             if officer is None:
                 continue
@@ -396,6 +461,7 @@ class Bridge:
         out = self._objective_reports(events, s, obs)   # asked-for work is always reported
         out.extend(self._callouts(s, obs))
         out.extend(self._repair_reports(s, obs))
+        out.extend(self._morale_remarks(events, s, obs))
         if not self.chatter:
             return out
         delegated = s.delegated
@@ -477,6 +543,29 @@ class Bridge:
             out.append(self._say(o, a.doing.rstrip(".") + "."))
         out.extend(self._knockouts(s, obs))
         return out
+
+    def _morale_remarks(self, events: Iterable[Event], s: Ship, obs: Observation) -> list[Utterance]:
+        """The first officer says when the crew's spirits shift sharply (a band of 20 points)."""
+        shifts = [ev for ev in events if isinstance(ev, MoraleShift) and ev.ship_id == s.id and ev.cause != "rest"]
+        if not shifts or obs.tick - self._morale_said < MORALE_GAP * obs.rules.ticks_per_cycle:
+            return []
+        o = self.find("spock") or self.crew.officer("science")
+        if o is None:
+            return []
+        ev = shifts[-1]
+        self._morale_said = obs.tick
+        word = morale_words(ev.morale)
+        why = MORALE_CAUSES.get((ev.cause, ev.rising), "")
+        if ev.rising:
+            text = f"Morale is rising, Captain{why}: the crew is {word} ({ev.morale:.0f})."
+        else:
+            text = f"Captain, the crew is {word}{why} (morale {ev.morale:.0f})."
+            if ev.morale < 40 and obs.tick - s.last_address >= obs.rules.morale_address_cycles * obs.rules.ticks_per_cycle:
+                text += " A word from you might steady them."
+        u = self._say(o, text, "crew" if ev.rising else "caution")
+        if not ev.rising:
+            u.commands = ["address crew "]
+        return [u]
 
     def _repair_reports(self, s: Ship, obs: Observation) -> list[Utterance]:
         """Spock (or the engineer) says when systems or the hull need repairs and offers to direct the crews;
@@ -689,7 +778,8 @@ def situation(ctx: HelpContext) -> str:
     if s is None or obs is None:
         return "No ship."
     lines = [
-        f"Our ship: {s.name}, {s.cls.name}. Hull {_pct(s.structure, s.structure_max)}, crew {s.crew}/{s.cls.crew}. "
+        f"Our ship: {s.name}, {s.cls.name}. Hull {_pct(s.structure, s.structure_max)}, crew {s.crew}/{s.cls.crew}, "
+        f"morale {s.morale:.0f}/100 ({morale_words(s.morale)}). "
         f"Course {s.course:.0f}, warp {s.warp:.1f} (max attainable {s.max_attainable_warp:.1f}). "
         f"Stations run by officers: {', '.join(sorted(s.delegated)) or 'none'}.",
         STATION_REPORTS["engineering"](s, obs),

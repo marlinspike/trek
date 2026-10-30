@@ -221,7 +221,8 @@ def _charge_weapons(world: World, ship: Ship, pool: float, dt: float) -> tuple[f
         frac = pay / cost if cost > 0 else 1.0
         pool -= pay
         spent += pay
-        t.charge = min(100.0, t.charge + 100.0 / max(spec.charge_time, 0.01) * dt * frac)
+        spirit = 1.0 + rules.morale_reload * ship.morale_factor   # [E] a keen crew loads faster
+        t.charge = min(100.0, t.charge + 100.0 / max(spec.charge_time, 0.01) * dt * frac * spirit)
         if t.charge >= 100.0 - 1e-6:
             prox = t.load_prox if t.load_prox > 0 else spec.max_prox
             prox = max(rules.prox_floor, min(spec.max_prox, prox))

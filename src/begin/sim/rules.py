@@ -96,6 +96,25 @@ class Rules:
     hull_field_limit: float = 0.75            # crews in space patch the hull to this; a base restores the rest
     battle_quiet_cycles: float = 15.0         # cycles without a hull hit before repairs speed up again
     battle_enemy_range: float = 12000.0       # an enemy ship this close also counts as "in battle"
+    # crew morale [E] (sim/systems/morale.py): points per event, before the race's steadiness
+    morale_hull_loss: float = 60.0            # × the share of the hull lost in one hit
+    morale_crew_loss: float = 80.0            # × the share of the crew lost
+    morale_system_lost: float = 1.5           # a system destroyed
+    morale_shield_down: float = 2.0           # a shield collapses
+    morale_ally_lost: float = 8.0             # a ship of our side destroyed or surrendered
+    morale_damage_dealt: float = 25.0         # × the share of an enemy's hull we knock off
+    morale_enemy_lost: float = 6.0            # an enemy ship destroyed, disabled or surrendered (whole side)
+    morale_kill_bonus: float = 6.0            # more for the ship that did it
+    morale_repaired: float = 1.0              # a system back in service
+    morale_hull_patched: float = 2.0          # each quarter of the hull patched
+    morale_recovery: float = 0.5              # per cycle back toward the race's usual spirits, out of the fight
+    morale_address: float = 8.0               # the captain's address to the crew, × how rousing it was
+    morale_address_cycles: float = 60.0       # cycles before another address does any good
+    # what morale does: ± these shares at 100 or 0 (none at 50)
+    morale_repair: float = 0.25               # repair speed
+    morale_reload: float = 0.15               # torpedo tube loading speed
+    morale_accuracy: float = 0.15             # point defense and aimed fire
+    morale_nerve: float = 0.30                # AI captains' damage threshold before retreating
 
     # engagement [E]
     escape_distance: float = 60000.0
