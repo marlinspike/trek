@@ -1077,7 +1077,7 @@ class SetObjective(Command):
         if self.goal == "disable" and self.group not in DISABLE_GROUPS:
             raise Rejected(f"Can't disable '{self.group}'. Choose from: {', '.join(DISABLE_GROUPS)}.")
         if not self.targets:
-            raise Rejected("Disable it on which ships?")
+            raise Rejected(f"{self.goal.capitalize()} which ships?")
         for t in self.targets:
             s = world.ships.get(t)
             if s is None or not s.exists or s.side == ship.side:

@@ -4,6 +4,8 @@ Efficiency is the surviving crew fraction (the host's docked repair ratio
 while docked). A repair priority multiplies its class by 4 and every other
 class by 0.5 (Begin 2.0). Begin 2.0 rebuilt destroyed items only while docked;
 here the crew rebuilds them in space too, at the same rate, starting from 100% [E].
+A system hit by aimed fire repairs at `aimed_repair` × the rate in space until it
+is whole again, so a captain can knock systems out and keep them out [E].
 
 The hull is repaired too [E]: slowly in battle, faster once the fighting is
 over, and fastest at a base. Crews in space patch the hull to
@@ -72,6 +74,8 @@ def update_repair(world: World, ship: Ship, dt: float) -> None:
             continue
         mult = 1.0 if prio is None else (4.0 if sub.kind == prio else 0.5)
         rate = cls.repair.rate(REPAIR_CLASS[sub.kind]) * mult * eff
+        if sub.aimed_hit and not docked:
+            rate *= world.rules.aimed_repair   # aimed fire wrecks the parts crews can't patch in space [E]
         sub.repair_progress += rng.uniform(0.0, 2.0) * rate * dt
         whole = int(sub.repair_progress)
         if whole <= 0:
@@ -80,6 +84,7 @@ def update_repair(world: World, ship: Ship, dt: float) -> None:
         sub.damage = max(0, sub.damage - whole)
         if sub.damage == 0:
             sub.repair_progress = 0.0
+            sub.aimed_hit = False
             world.emit(SubsystemRepaired(world.tick, ship.id, sub.sid, sub.label))
             world.emit(Message(world.tick, f"Repairs completed on {ship.name}'s {sub.label.lower()}.",
                                Tone.GOOD, speaker="Engineering", ship_id=ship.id,

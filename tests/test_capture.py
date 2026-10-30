@@ -142,3 +142,64 @@ def test_aimed_torpedoes_carry_the_aim_even_when_they_do_not_home(content) -> No
     seen = [e for e in w.take_events() if isinstance(e, SubsystemDamaged) and e.ship_id == kl.id]
     assert any(e.targeted for e in seen)                                  # the warheads went for her weapons
     assert kl.exists and kl.structure > hull * 0.3                        # and at the aimed share of hull damage
+
+
+def test_a_system_hit_by_aimed_fire_is_slow_to_repair(content) -> None:  # type: ignore[no-untyped-def]
+    w1, f1, k1 = _pair(content)
+    w2, f2, k2 = _pair(content)
+    for k in (k1, k2):
+        for sh in k.shields:
+            sh.up = False
+    k1.banks[0].damage = 40                        # a stray hit
+    k2.banks[0].damage = 40
+    k2.banks[0].aimed_hit = True                   # the gunners went for it
+    w1.run(20.0)
+    w2.run(20.0)
+    assert k2.banks[0].damage > k1.banks[0].damage + 5
+    k2.banks[0].damage = 1
+    w2.run(10.0)
+    assert k2.banks[0].damage == 0 and not k2.banks[0].aimed_hit     # whole again, and the mark is gone
+
+
+def test_capture_order_parses_from_the_console_and_from_an_officer(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.crew.conversation import _CAPTURE
+    from begin.sim.commands import SetObjective
+
+    w, fed, kl = _pair(content)
+    res = parse("capture votek", ParseContext(fed.id, w.observe(0)))
+    assert res.error is None, res.error
+    cmd = next(c for c in res.commands if isinstance(c, SetObjective))
+    assert (cmd.goal, cmd.group, cmd.targets) == ("capture", "crew", (kl.id,))
+    assert w.execute(cmd) is None and fed.objectives[0].describe({kl.id: "Votek"}) == "capture Votek"
+    for said in ("worf, capture the votek", "seize her", "take her intact", "take the votek as a prize"):
+        assert _CAPTURE.search(said), said
+    assert not _CAPTURE.search("take out the votek")
+
+
+def test_an_officer_boards_a_helpless_ship_and_takes_her(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.crew.objectives import Planner, plan_capture
+    from begin.sim.commands import Scan, SetObjective
+    from begin.sim.objectives import Objective
+
+    w, fed, kl = _pair(content)
+    kl.crew = 30
+    kl.shields[2].damage = 100                     # one generator gone: a hole to beam through
+    kl.shields[2].up = False
+    kl.shields[2].effective = 0.0
+    for b in kl.banks:
+        b.damage = 50
+    for t in kl.tubes:
+        t.damage = 50
+    assert w.execute(Scan(ship_id=fed.id, target=kl.id)) is None
+    w.run(3.0)
+    assert w.execute(SetObjective(ship_id=fed.id, goal="capture", group="crew", targets=(kl.id,))) is None
+    p = Planner("worf", "Lt. Worf")
+    o: Objective = fed.objectives[0]
+    for _ in range(int(12 * w.rules.ticks_per_cycle)):
+        for cmd in plan_capture(p, w.observe(0), fed, o, None):
+            w.execute(cmd)
+        w.step()
+        if kl.side == fed.side:
+            break
+    assert kl.side == fed.side                                     # she's ours
+    assert p.tally.get("parties", 0) >= 1 and all(sh.up for sh in fed.shields if not sh.destroyed)

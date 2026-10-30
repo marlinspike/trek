@@ -2,8 +2,8 @@
 title: Disabling or taking out enemy ships
 category: Crew
 order: 2
-aliases: disable, cripple, disarm, knock out, objective, disable shields, disable weapons, disable torpedoes, disable phasers, destroy, eliminate, take out, bait, fire bait
-summary: Ask Seven to knock out the shields, phasers, torpedoes, engines or sensors of one ship or several, or to take ships out altogether, and she works out how.
+aliases: disable, cripple, disarm, knock out, objective, capture, seize, take her intact, prize, disable shields, disable weapons, disable torpedoes, disable phasers, destroy, eliminate, take out, bait, fire bait
+summary: Ask Seven to knock out the shields, phasers, torpedoes, engines or sensors of one ship or several, to take ships out altogether, or to capture one, and she works out how.
 see: crew, targeting, conn, deflector
 ---
 Tell Seven what you want knocked out, and on whom. She makes a plan, carries it out, reports each ship as its systems go down, and tells you when the job is done or can't be done.
@@ -13,6 +13,7 @@ seven, disable the Klingons' shields
 seven, knock out Gorkon's torpedoes
 seven disarm them
 seven, take out the Wraith
+worf, capture the Votek
 disable gorkon zantha phasers
 destroy wraith
 disable off
@@ -34,6 +35,16 @@ disable off
 - **Bait.** Against a trigger-happy defense she fires one torpedo first. Their point defense pours several phaser banks onto it, and the rest of the salvo arrives a second later while those banks are still recharging. Klingon and Orion crews fall for it, and so does any crew that has lost a lot of people (a scan tells her). Disciplined Romulan and Federation crews send one bank per torpedo and keep the rest charged, so against them she uses the ring burst instead.
 
 - **She says what she is doing** as she goes, the activity panel at the top left of the map shows her current step and the scan results, and when the job is done she sums up what it took: "That took 8 bait volleys, 2 salvos, 80 torpedoes in all, 3 phaser volleys and 8 scans, in 66 seconds." See [[conn]] for how an officer at the helm flies to give her the shots.
+
+## Capturing a ship
+
+"Capture the Votek", "seize her" or "take her intact" (or `capture votek`) asks the officer to take the ship and keep her. They go about it in three stages, and say which one they are on:
+
+1. **Open a shield.** Aimed phasers and torpedoes on her shield generators until one of her shields is down. Torpedoes stop once her hull is half gone, so she isn't blown apart.
+2. **Thin her crew.** Phasers only, aimed at her life support, through the open shield. They steer to keep that gap toward us when we are close, unless you are flying yourself.
+3. **Board.** Once 60 or fewer of her crew are left, they hold fire, close to transporter range off her open side, lower our facing shield just while each boarding party beams across, and raise it again. The job is done when she joins our side.
+
+Fly close, or give Spock the helm (`conn spock` or `delegate helm`): the officer working the order only steers once she is close, and won't chase her across the map. Klingons are fanatical and may ram or blow themselves up when beaten, so watch the range. `capture off` cancels.
 
 ## Baiting yourself
 

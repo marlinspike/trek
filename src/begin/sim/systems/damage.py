@@ -157,7 +157,8 @@ def _hull_remake(
     # armour (2.0 Armadillo) soaks hull damage before structure [R gate, E pool]
     hull_dmg = dmg
     if aim is not None:
-        hull_dmg *= rules.aimed_structure     # precision fire goes into her systems, not her spine [E]
+        # precision fire goes into her systems or her crew decks, not her spine [E]
+        hull_dmg *= rules.crew_deck_structure if aim.selector == CREW_DECKS else rules.aimed_structure
     if ship.armour > 0:
         soak = min(ship.armour, hull_dmg * 0.6)
         ship.armour -= soak
@@ -243,6 +244,7 @@ def _hit_subsystem(world: World, ship: Ship, sub: Subsystem, targeted: bool) -> 
     amount = 5 + rng.irange(0, 25)
     if targeted:
         amount += 10
+        sub.aimed_hit = True   # gunners hit what holds it together, not just its casing [E]
     if sub.kind == Kind.REACTOR:
         # [R] 25% of reactor hits destroy it outright, otherwise double damage
         sub.damage = 100 if rng.chance(0.25) else min(100, sub.damage + amount * 2)

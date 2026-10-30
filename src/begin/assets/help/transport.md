@@ -31,6 +31,8 @@ From the screen: the **Board** button in the Target panel sends the default part
 
 ## Taking a ship
 
+`capture <ship>`, or "Worf, capture the Votek", has an officer do all of this for you (see [[disable]]). By hand:
+
 1. `target <ship>`, `spread 10`, and close in. `aim shields` and fire until one of her shield generators is destroyed. That hole stays open; a shield you merely knock down comes back within a few cycles.
 2. `aim life support` and keep firing. Her crew falls quickly, and her hull holds. When it is gone she is adrift (derelict) with her shields down.
 3. `lower`, then `board <ship>`. A derelict falls to your boarders at once. A ship with crew left fights them first.
