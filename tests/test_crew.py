@@ -285,15 +285,15 @@ def test_talking_to_officers_offline(scene) -> None:  # type: ignore[no-untyped-
     assert any("phaser" in t.lower() for t in _said(sc, "Worf"))
     sc.run_console("spock, what do you recommend?")
     assert _said(sc, "Spock")
-    sc.run_console("scotty, take engineering")
+    sc.run_console("geordi, take engineering")
     assert "engineering" in sc.player.delegated
-    sc.run_console("scotty, stand down")
+    sc.run_console("geordi, stand down")
     assert "engineering" not in sc.player.delegated
     sc.run_console("worf, helm 90 warp 3")
     assert any("not my station" in t for t in _said(sc, "Worf"))
     sc.run_console("worf, raise all")
     assert any("not my station" in t for t in _said(sc, "Worf"))
-    sc.run_console("scotty, raise all")
+    sc.run_console("geordi, raise all")
     assert all(sh.up for sh in sc.player.shields)
     before = sc.bridge.relationships.get("worf").rapport
     sc.run_console("worf, you are useless")
@@ -311,19 +311,19 @@ def test_llm_answers_carry_out_orders_for_the_right_station(scene) -> None:  # t
     sc, surf = scene
     fake = _Fake('{"say": "Shields up, and I will try the helm.", "commands": ["raise all", "helm 90 warp 2"]}')
     sc.bridge.llm = LLMService(fake)
-    sc.run_console("scotty, shields up and turn us around")
-    assert sc.bridge.llm.busy("scotty")
+    sc.run_console("geordi, shields up and turn us around")
+    assert sc.bridge.llm.busy("geordi")
     end = time.time() + 5
-    while sc.bridge.llm.busy("scotty") and time.time() < end:
+    while sc.bridge.llm.busy("geordi") and time.time() < end:
         sc.update(0.0)
         time.sleep(0.01)
     sc.update(0.0)
-    said = _said(sc, "Scott")
+    said = _said(sc, "La Forge")
     assert any("Shields up" in t for t in said)
     assert all(sh.up for sh in sc.player.shields)
     assert any("not my station" in t for t in said)       # helm is Spock's
     system, messages = fake.seen[0]
-    assert "Montgomery Scott" in system and messages[-1]["content"].startswith("shields up")
+    assert "Geordi La Forge" in system and messages[-1]["content"].startswith("shields up")
     sc.close()
 
 
@@ -560,7 +560,7 @@ def test_officers_can_be_addressed_without_a_comma(scene) -> None:  # type: igno
     for text, who, rest in [("seven take the bridge", "seven", "take the bridge"), ("Sev status", "seven", "status"),
                             ("SPOCK you have the conn", "spock", "you have the conn"),
                             ("seven of nine report", "seven", "report"), ("worf, fire", "worf", "fire"),
-                            ("scotty raise all", "scotty", "raise all")]:
+                            ("geordi raise all", "geordi", "raise all")]:
         hit = b.addressed(text)
         assert hit is not None and hit[0].id == who and hit[1] == rest, text
     for command in ("scan derango", "sc derango", "status", "fire all torpedoes", "seven"[:2] + " 90"):

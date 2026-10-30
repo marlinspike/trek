@@ -2,7 +2,7 @@
 title: Bridge officers
 category: Crew
 order: 0
-aliases: crew, bridge, officers, delegate, dg, assume, takeback, station, stations, spock, worf, scotty, scott, seven, seven of nine, chatter
+aliases: crew, bridge, officers, delegate, dg, assume, takeback, station, stations, spock, worf, geordi, la forge, laforge, seven, seven of nine, chatter
 summary: Hand a station to its officer, take it back, and hear what your crew thinks.
 see: conn, talking, llm, controls
 ---
@@ -12,7 +12,7 @@ Four officers stand by on your bridge. Each one can run a **station** for you, s
 |---|---|---|
 | Helm | Commander Spock | course and speed: closing, opening the range, weaving |
 | Tactical | Lieutenant Worf | targets, phasers, torpedoes, probes, point defense |
-| Engineering | Lieutenant Commander Scott | shields, reinforcing, repair priorities, cloak |
+| Engineering | Lieutenant Commander Geordi La Forge | shields, reinforcing, repair priorities, cloak |
 | Science | Seven of Nine | scanning the target and every other contact |
 
 ```console
@@ -37,10 +37,10 @@ crew
 - Officers never retreat, surrender, self-destruct, beam across or give orders to allies. Those decisions are yours.
 - If you beam to another ship, your officers come with you. Their stations go back to you until you hand them over again.
 
-Each officer has a personality. Worf is aggressive and closes for the kill; Spock holds a careful range; Scott spends repair effort where it matters most; Seven scans everything, efficiently.
+Each officer has a personality. Worf is aggressive and closes for the kill; Spock holds a careful range; Geordi spends repair effort where it matters most; Seven scans everything, efficiently.
 
 ## Chatter
 
-Your officers comment on the battle: Worf when torpedoes go out, Scott when the hull or the engines are in trouble, Seven when new contacts appear. `crew chatter off` quiets them, and `crew chatter on` brings them back.
+Your officers comment on the battle: Worf when torpedoes go out, Geordi when the hull or the engines are in trouble, Seven when new contacts appear. `crew chatter off` quiets them, and `crew chatter on` brings them back.
 
 To ask them questions or give them orders in plain words, see [[talking|Talking to your officers]].

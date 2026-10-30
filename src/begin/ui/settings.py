@@ -42,6 +42,9 @@ class Settings:
             if hasattr(s, k):
                 setattr(s, k, tuple(v) if k == "window" else v)
         s.keys.update(read_key_file(settings_dir() / "begin2.key"))
+        rapport = s.hidden.get("rapport")
+        if isinstance(rapport, dict) and "scotty" in rapport:
+            rapport.setdefault("geordi", rapport.pop("scotty"))     # Geordi La Forge took over engineering   # retired: officers' traits (config/officers.toml) shape how they talk
         return s
 
     def save(self) -> None:

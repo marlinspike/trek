@@ -11,16 +11,16 @@ Start a line with an officer's name (a comma after it is optional, and the first
 ```console
 spock, what do you recommend?
 worf, status
-scotty, take engineering
+geordi, take engineering
 seven, scan gorkon
 worf, fire all torpedoes
 ask spock how do we beat this ship
 ```
 
-- Officers answer to their name, rank-free nicknames (`scotty`, `seven`) and their station (`tactical, status`).
+- Officers answer to their name, rank-free nicknames (`geordi`, `seven`) and their station (`tactical, status`).
 - **Reports.** "status", "report" or "sitrep" gets a report on that officer's station.
 - **Advice.** "what do you recommend?", "advice" or any other question gets that officer's best idea for their stations, with the command to carry it out. Spock advises on everything.
-- **Orders.** Any console command works, as long as it belongs to that officer's station: Worf will fire, Scott will raise shields, but Worf won't steer.
+- **Orders.** Any console command works, as long as it belongs to that officer's station: Worf will fire, Geordi will raise shields, but Worf won't steer.
 - **Stations.** "take the helm", "take over" or "you have the conn" delegates the officer's station; "stand down" or "I have the conn" takes it back.
 
 ## Rapport

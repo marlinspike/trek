@@ -4,7 +4,7 @@
 
 * ask an officer anything: `ask worf status`, `spock, what do you recommend?`;
 * give an officer an order in plain words or as a console command:
-  `worf, fire all torpedoes`, `scotty, take engineering`;
+  `worf, fire all torpedoes`, `geordi, take engineering`;
 * hear the officers react to the battle (chatter), each in their own voice.
 
 With no LLM configured the officers answer from the battle state: reports
@@ -105,7 +105,7 @@ _ADVICE = re.compile(r"\b(advice|advise|recommend|suggest|what (should|do you|no
 
 
 def _could_be_officer(word: str) -> bool:
-    """A lone first word names an officer only if it can't also be a console command ('sc' is scan, not Scott)."""
+    """A lone first word names an officer only if it can't also be a console command ('sc' is scan, not a name starting sc)."""
     from ..console.parser import VERBS
 
     if len(word) < 3:

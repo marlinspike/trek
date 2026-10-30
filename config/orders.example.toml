@@ -33,9 +33,9 @@ steps = [
 ]
 
 [omega]
-note = "Break off: run from the target, dodging torpedoes, and let Scotty see to the hull"
+note = "Break off: run from the target, dodging torpedoes, and let Geordi see to the hull"
 steps = [
     "elude the target warp 8",
     "evasive",
-    "scotty, manage repairs",
+    "geordi, manage repairs",
 ]

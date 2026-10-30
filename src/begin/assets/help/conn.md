@@ -3,7 +3,7 @@ title: Giving an officer the bridge
 category: Crew
 order: 1
 aliases: conn, take the bridge, you have the bridge, i have the bridge, command, the conn, hand over command
-summary: Let Spock, Seven, Worf or Scott command the whole ship, and take it back whenever you like.
+summary: Let Spock, Seven, Worf or La Forge command the whole ship, and take it back whenever you like.
 see: crew, talking, tachyon
 ---
 Any of your officers can take command of the whole ship. They run every station at once, with their own personality, while you watch, step in on the decisions you care about, or take the bridge back.
@@ -22,7 +22,7 @@ conn captain
 
 ## Who fights how
 
-The officer in command uses their own judgement and temperament: Worf closes fast and hits hard, Spock keeps a careful, calculated range, Scott looks after the ship first, and Seven is efficient and relentless. They pick a target only when you haven't, and they never retreat, surrender or self-destruct.
+The officer in command uses their own judgement and temperament: Worf closes fast and hits hard, Spock keeps a careful, calculated range, Geordi looks after the ship first, and Seven is efficient and relentless. They pick a target only when you haven't, and they never retreat, surrender or self-destruct.
 
 Spock and Seven will also go after cloaked ships on their own: if an enemy vanishes, they build a [[tachyon]] detector and fire it where the ship should be.
 
