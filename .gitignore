@@ -16,3 +16,4 @@ runs/
 config/*
 !config/README.md
 !config/settings.example.json
+!config/officers.example.toml

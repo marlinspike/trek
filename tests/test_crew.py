@@ -10,7 +10,7 @@ import pytest
 
 from begin.battle import build_battle
 from begin.crew.characters import (
-    Relationship, Relationships, load_officers,
+    Relationship, Relationships, load_officers, read_traits,
 )
 from begin.crew.conversation import parse_reply, situation
 from begin.crew.officers import STATION_COMMANDS, station_of
@@ -30,6 +30,7 @@ def test_officer_roster() -> None:
     assert {o.station for o in officers.values()} == {"helm", "tactical", "engineering", "science"}
     for o in officers.values():
         assert o.persona and o.lines.get("ack") and o.lines.get("unknown")
+        assert o.traits                  # every officer ships with a few words on how they come across
 
 
 def test_station_commands_do_not_overlap() -> None:
@@ -100,6 +101,16 @@ def test_rapport_round_trip_and_moods() -> None:
     back = Relationships.from_settings(hidden)
     assert back.get("worf").mood == "warm" and back.get("seven").mood == "resentful"
     assert back.get("worf").negotiation_modifier() > 0 > back.get("seven").negotiation_modifier()
+
+
+def test_traits_come_from_the_players_config(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    f = tmp_path / "officers.toml"
+    f.write_text('[seven]\ntraits = ["warm", "playful"]\n[worf]\ntraits = "stern, proud"\n[nobody]\nx = 1\n')
+    assert read_traits(f) == {"seven": ("warm", "playful"), "worf": ("stern", "proud")}
+    officers = load_officers(traits_file=f)
+    assert officers["seven"].traits == ("warm", "playful") and officers["worf"].traits == ("stern", "proud")
+    assert officers["spock"].traits == load_officers()["spock"].traits      # untouched officers keep theirs
+    assert read_traits(tmp_path / "missing.toml") == {}
 
 def test_parse_reply() -> None:
     assert parse_reply('Sure. {"say": "Firing.", "commands": ["fire all torpedoes"]}') == ("Firing.", ["fire all torpedoes"])
@@ -421,10 +432,12 @@ def test_seven_rapport_floor_holds(content) -> None:  # type: ignore[no-untyped-
 
     b = build_battle(content, load_presets()[0].setup())
     assert b.crew is not None
+    bridge = Bridge(b.crew, {"rapport": {"seven": {"rapport": -0.9}}})
     rel = bridge.relationships.get("seven")
     assert rel.rapport == 1.0 and rel.mood == "devoted"
     rel.nudge(-0.5)
     assert rel.rapport == 1.0
+    seven = bridge.find("seven")
     assert bridge.relationships.get("spock").floor == -1.0
 
 
@@ -594,3 +607,50 @@ def test_seven_takes_out_a_ship_and_baits_klingons(scene) -> None:  # type: igno
     sc.run_console("seven, take out derango's shields")    # naming systems means disable
     assert any(x.goal == "disable" and x.group == "shields" for x in sc.player.objectives)
     sc.draw(surf)
+
+
+class _Voice:
+    """A model that rewords each remark, and records what it was told."""
+
+    name = "voice"
+
+    def __init__(self) -> None:
+        self.systems: list[str] = []
+        self.n = 0
+
+    def complete(self, system: str, messages: list[dict[str, str]]) -> str:
+        self.systems.append(system)
+        self.n += 1
+        return f"Reworded {self.n}: {messages[-1]['content']}"
+
+
+def test_with_a_model_officers_put_remarks_in_their_own_words(content) -> None:  # type: ignore[no-untyped-def]
+    import time
+
+    from begin.crew.conversation import Bridge
+    from begin.help.coach import HelpContext
+    from begin.llm.service import LLMService
+    from begin.presets import load_presets
+
+    b = build_battle(content, load_presets()[0].setup())
+    assert b.crew is not None
+    fake = _Voice()
+    bridge = Bridge(b.crew, {}, LLMService(fake, workers=1))
+    w = b.world
+    me = w.ships[b.player_ship_id]
+    ctx = HelpContext(content, w.observe(me.side), me)
+    seven = bridge.find("seven")
+    assert seven is not None
+    bridge.recent["seven"] = __import__("collections").deque(["Sensors are operational, Captain."])
+    out: list = []
+    bridge._maybe(out, ctx.obs, "science", "scan", 1.0, target="Derango")
+    assert out == []                                  # nothing canned: the model is asked
+    said: list = []
+    end = time.time() + 5
+    while not said and time.time() < end:
+        said = bridge.poll(ctx, lambda line, o: None)
+        time.sleep(0.01)
+    assert said and said[0].text.startswith("Reworded 1:") and "Derango" in said[0].text
+    system = fake.systems[0]
+    assert "Sensors are operational, Captain." in system and "never repeat" in system
+    assert "coolly confident" in system and "Variation" in system

@@ -1,0 +1,19 @@
+# Your officers' traits. Copy this file to officers.toml (in this folder) and edit it.
+#
+# Each officer's traits are a few words on how they come across. With a language model set up, the
+# officers' lines are written fresh in their own voice, coloured by these traits. Traits change how an
+# officer talks, never how well they do the job. An officer you leave out keeps the traits the game ships with.
+#
+# Officers: spock, worf, scotty, seven
+
+[spock]
+traits = ["precise and emphatic", "dry wit", "unflappable"]
+
+[worf]
+traits = ["honour-bound", "blunt", "impatient for battle", "fiercely loyal"]
+
+[scotty]
+traits = ["warm", "worried for his engines", "Scottish idiom", "miracle worker"]
+
+[seven]
+traits = ["highly effective", "efficient", "coolly confident", "ex-Borg precision"]

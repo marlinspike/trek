@@ -16,6 +16,7 @@ from .content.schema import ContentDB
 from .core.rng import Rng
 from .crew.characters import load_officers
 from .crew.officers import Crew, default_crew
+from .paths import config_dir
 from .sim.rules import DEFAULT_RULES, Rules
 from .sim.ship import PDDoctrine
 from .sim.world import World
@@ -155,7 +156,7 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
             world.add_controller(cap)
     crew = None
     if player_ship is not None:
-        crew = Crew(player_ship, setup.player_side, content, default_crew(load_officers()), world.rng.derive("crew"),
+        crew = Crew(player_ship, setup.player_side, content, default_crew(load_officers(traits_file=config_dir() / "officers.toml")), world.rng.derive("crew"),
                     phase=1)
         world.add_controller(crew)
     return Battle(world, setup, player_ship, captains, computers, crew)

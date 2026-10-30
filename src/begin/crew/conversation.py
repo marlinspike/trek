@@ -25,6 +25,7 @@ import json
 import math
 import random
 import re
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Callable, Iterable
 
@@ -39,8 +40,7 @@ from ..sim.observation import Observation
 from ..sim.ship import HULL, KIND_LABEL, Kind, Ship, repair_words
 from ..sim.commands import AddressCrew
 from ..console.reports import morale_words
-from .characters import (
-)
+from .characters import OfficerProfile, Relationships
 from ..sim.objectives import DISABLE_GROUPS
 from . import collaborations
 from .officers import STATION_NAMES, Crew
@@ -65,6 +65,8 @@ CALLOUT_GAP = 4.0
 CALLOUT_REPEAT = {"bait": 20.0, "salvo": 20.0, "between": 20.0, "phasers": 30.0, "close": 10.0, "open": 10.0,
                   "fight": 15.0, "hunt": 20.0, "evade": 5.0}   # seconds before the same kind of step is said again
 
+LINE_TAG = "\0line:"         # an officer's remark being put in their own words
+VOICE_STALE = 6.0           # seconds after which a remark is no longer worth saying
 ADDRESS_TAG = "\0address"   # the model's verdict on the captain's speech, not an officer's answer
 MORALE_GAP = 20.0           # seconds between remarks on the crew's spirits
 REPAIR_REPORT_DAMAGE = 25   # % damage before a system is worth reporting
@@ -123,6 +125,8 @@ class Bridge:
         for o in crew.officers.values():
             if o.rapport_floor > -1.0:
                 self.relationships.get(o.id).hold_at_least(o.rapport_floor)
+        self.recent: dict[str, deque[str]] = {}          # officer -> what they said lately, so the model varies it
+        self._voicing: dict[int, tuple[str, int, str]] = {}   # request -> (officer, tick asked, the canned line)
         self.history: dict[str, list[Message]] = {}
         self.suggested: dict[str, tuple[int, list[str]]] = {}   # officer -> (tick, commands)
         self.asking: dict[str, bool] = {}   # officer -> the pending LLM request is a question, not an order
@@ -289,6 +293,20 @@ class Bridge:
         self.llm.submit(ADDRESS_TAG, system, [{"role": "user", "content": cmd.text}])
         return True
 
+    def _voiced(self, rid: int, text: str | None, ctx: HelpContext) -> list[Utterance]:
+        """An officer's remark in their own words; too late, and the moment has passed; failed, the line as written."""
+        oid, asked, canned = self._voicing.pop(rid, ("", 0, ""))
+        o = self.find(oid) if oid else None
+        if o is None:
+            return []
+        tick = ctx.obs.tick if ctx.obs is not None else asked
+        if tick - asked > VOICE_STALE * (ctx.obs.rules.ticks_per_cycle if ctx.obs is not None else 10):
+            return []
+        line = (text or "").strip().strip('"').strip()
+        if not line or len(line) > 240 or line.startswith("{"):
+            line = canned
+        return [self._say(o, line)]
+
     def take_addresses(self) -> list[AddressCrew]:
         out, self._addresses = self._addresses, []
         return out
@@ -332,6 +350,9 @@ class Bridge:
             if r.tag == ADDRESS_TAG:
                 out.extend(self._judged(r.text))
                 continue
+            if r.tag.startswith(LINE_TAG):
+                out.extend(self._voiced(r.request_id, r.text, ctx))
+                continue
             officer = next((o for o in self.officers() if o.id == r.tag), None)
             if officer is None:
                 continue
@@ -361,7 +382,6 @@ class Bridge:
         return out
 
     def offline(self, o: OfficerProfile, low: str, ctx: HelpContext, run: RunCommand) -> list[Utterance]:
-        rel = self.relationships.get(o.id)
         out: list[Utterance] = []
         if not low or _GREET.match(low):
             out.append(self._line(o, "greeting") or self._say(o, "Captain."))
@@ -369,8 +389,6 @@ class Bridge:
             out.append(self._line(o, "rude") or self._say(o, "Understood, Captain."))
         elif _PRAISE.search(low) and not _ADVICE.search(low):
             out.append(self._line(o, "thanks") or self._say(o, "Thank you, Captain."))
-            if fl:
-                out.append(self._say(o, fl))
         elif _RELEASE.search(low):
             err = run(f"assume {o.station}", o)
             out.append(self._say(o, err, "caution") if err else (self._line(o, "released") or self._say(o, "Aye.")))
@@ -390,9 +408,6 @@ class Bridge:
                 out.append(self._line(o, "unknown") or self._say(o, "I don't follow, Captain."))
             else:
                 out.append(self._say(o, err, "caution"))
-        if intensity and self.rng.random() < intensity / 25.0 and out and out[-1].tone == "crew":
-            if fl:
-                out.append(self._say(o, fl))
         return out
 
     def advice(self, o: OfficerProfile, ctx: HelpContext) -> list[Utterance]:
@@ -424,11 +439,38 @@ class Bridge:
 
     # ------------------------------------------------------------ the LLM brief
 
+    def character(self, o: OfficerProfile) -> str:
+        """Who the officer is for the model: the persona, their traits, and what they said lately."""
+        out = o.persona
+        if o.traits:
+            out += (f" Your character traits: {', '.join(o.traits)}. Let them colour how you speak and how you are "
+                    "with the captain; they never change how well you do your job.")
+        said = list(self.recent.get(o.id, ()))
+        if said:
+            out += (" Things you have said lately (never repeat them or their wording; find a fresh way to say "
+                    "it): " + " | ".join(said[-8:]))
+        return out
+
+    def _voice(self, o: OfficerProfile, canned: str, obs: Observation) -> bool:
+        """With a model, an officer's remark in their own words, never the same twice; False to say it as written."""
+        if self.llm is None or self.llm.busy(LINE_TAG + o.id):
+            return False
+        rel = self.relationships.get(o.id)
+        s = obs.own(self.crew.ship_id)
+        mood = f" The crew's morale is {morale_words(s.morale)}." if s is not None else ""
+        system = (self.character(o) + f" Your relationship with the captain: {rel.mood}.{mood} You are on the bridge in "
+                  "the middle of a starship battle. Say ONE short remark (at most 20 words) to the effect of the line "
+                  "below, in your own voice and words, keeping every name and number exactly. Reply with the "
+                  "remark only, no quotes or stage directions. Variation " + str(self.rng.randrange(10 ** 6)) + ".")
+        rid = self.llm.submit(LINE_TAG + o.id, system, [{"role": "user", "content": canned}])
+        self._voicing[rid] = (o.id, obs.tick, canned)
+        return True
+
     def system_prompt(self, o: OfficerProfile, ctx: HelpContext) -> str:
         rel = self.relationships.get(o.id)
         stations = ", ".join(STATION_NAMES[s] for s in o.advises)
         return "\n".join([
-            o.persona,
+            self.character(o),
             "",
             "Setting: the captain is speaking to you on the bridge during a real-time battle in a 2D tactical "
             "starship game. Courses are compass bearings (0 = up the map, 90 = right). Distances are in units; "
@@ -708,11 +750,14 @@ class Bridge:
         u = self._line(o, event, **fill)
         if u is not None:
             self._last_line[o.id] = self._last_any = obs.tick
-            out.append(u)
+            if not self._voice(o, u.text, obs):
+                out.append(u)
 
     # ------------------------------------------------------------ bits
 
     def _say(self, o: OfficerProfile, text: str, tone: str = "crew") -> Utterance:
+        if tone == "crew":
+            self.recent.setdefault(o.id, deque(maxlen=12)).append(text)
         return Utterance(o.id, o.name, text, tone)
 
     def _line(self, o: OfficerProfile, event: str, **fill: object) -> Utterance | None:

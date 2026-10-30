@@ -2,7 +2,7 @@
 title: Talking to your officers
 category: Crew
 order: 1
-aliases: ask, say, talk, conversation, question, rapport, relationship
+aliases: ask, say, talk, conversation, question, rapport, relationship, traits, character, personality, voice
 summary: Ask an officer for a report or advice, or give an order in plain words.
 see: crew, llm, coach
 ---
@@ -30,5 +30,18 @@ Each officer remembers how you treat them, from one battle to the next. Thanks a
 ## Offline and LLM answers
 
 Without any setup, officers answer from what your sensors know: reports, the [[coach]]'s advice for their station, and their own lines. To have them answer in their own words, connect a language model: see [[llm|Officers and language models]]. Either way they only know what your side knows.
+
+## Traits, and never the same line twice
+
+Each officer has a few **traits**, words on how they come across: Spock is "precise and emphatic, dry wit, unflappable", and Seven is "highly effective, efficient, coolly confident, ex-Borg precision". With a language model, the traits colour everything an officer says. Their remarks during the battle are written fresh each time, in their voice, from what is happening, and the model is shown what they said lately so it doesn't repeat itself. Two battles never sound the same. Traits change how an officer talks, not how well they fight. Without a model, officers use their written lines.
+
+Make the officers your own in `config/officers.toml` (copy `config/officers.example.toml`):
+
+```toml
+[worf]
+traits = ["honour-bound", "blunt", "quietly proud of his captain"]
+```
+
+The game passes your traits to your model as you wrote them.
 
 Officer lines are in `src/begin/content/data/officers.toml`. Edit them, change a personality, or swap in a different officer for a station.
