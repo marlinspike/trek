@@ -55,13 +55,16 @@ def facts_of(run: TourRun, battle: Battle, fight: Fight, outcome: str, captured:
     escaped = [s.name for s in enemies if s.status == ShipStatus.ESCAPED]
     surrendered = [s.name for s in enemies if s.status == ShipStatus.SURRENDERED]
     st = flag.stats if flag is not None else None
-    enemy_classes = sorted({f"{w.content.factions[s.faction].name} {s.cls.name.lower()}" for s in enemies})
+    kinds: dict[str, int] = {}
+    for s in enemies:
+        k = f"{w.content.factions[s.faction].name} {s.cls.name.lower()}"
+        kinds[k] = kinds.get(k, 0) + 1
     disabled = sum(s.stats.subsystems_disabled for s in ours)
-    objectives = [ev for ev in getattr(battle, "deeds", []) if isinstance(ev, ObjectiveEnded)]
+    objectives = [ev for ev in battle.deeds if isinstance(ev, ObjectiveEnded)]
     f: dict[str, Any] = {
         "stop": fight.stop.title, "system": fight.stop.system, "outcome": outcome,
         "cycles": round(w.time), "stardate": run.state.stardate(),
-        "enemy": ", ".join(enemy_classes) or "none sighted",
+        "enemy": _force(kinds) or "no enemy",
         "destroyed": destroyed, "escaped": escaped, "surrendered": surrendered, "captured": captured, "lost": lost,
         "flagship": flag.name if flag else "", "standout": standout,
         "hull": round(max(0.0, flag.structure / max(1.0, flag.structure_max)), 3) if flag else 0.0,
@@ -85,6 +88,24 @@ def facts_of(run: TourRun, battle: Battle, fight: Fight, outcome: str, captured:
                      for i in fight.ship_ids[1:] if i in w.ships],
     }
     return f
+
+
+NUMBERS = ("no", "a", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten")
+
+
+def _force(kinds: dict[str, int]) -> str:
+    """{"Klingon frigate": 2, "Klingon battle cruiser": 1} -> "two Klingon frigates and a Klingon battle cruiser"."""
+    parts = []
+    for k, n in sorted(kinds.items(), key=lambda kv: -kv[1]):
+        if n == 1:
+            parts.append(("an " if k[0].lower() in "aeiou" else "a ") + k)
+        else:
+            parts.append(f"{NUMBERS[n] if n < len(NUMBERS) else n} {k}s")
+    return _list(parts)
+
+
+def _n(n: int, word: str) -> str:
+    return f"{n} {word}{'' if n == 1 else 's'}"
 
 
 def _list(names: list[str]) -> str:
@@ -117,10 +138,11 @@ def station_entries(f: dict[str, Any]) -> dict[str, str]:
             s += f" Only {f['torps_left']} torpedoes remain; I recommend we husband them."
     out["spock"] = s
     # Worf: the weapons record
-    w = (f"Phasers struck {f['phasers']} times. "
-         + (f"Torpedoes found their mark {f['torpedoes']} times." if f["torpedoes"] != "none" else "We fired no torpedoes."))
+    w = (f"Our phasers hit with {f['phasers']} shots. " if f["phasers"] != "none" else "Our phasers were not fired. ")
+    w += (f"{f['torpedoes'][0].upper()}{f['torpedoes'][1:]} torpedoes found their mark." if f["torpedoes"] != "none"
+          else "We fired no torpedoes.")
     if f["intercepts"]:
-        w += f" Point defense destroyed {f['intercepts']} incoming rounds."
+        w += f" Point defense destroyed {_n(f['intercepts'], 'incoming round')}."
     if f["captured"]:
         w += f" Our boarding parties took {_list(f['captured'])}. A worthy prize."
     elif f["destroyed"]:
@@ -139,16 +161,17 @@ def station_entries(f: dict[str, Any]) -> dict[str, str]:
     else:
         g += " Nothing we can't patch on the way."
     if f["crew_lost"]:
-        g += f" We lost {f['crew_lost']} crew. The repair crews are feeling it."
+        g += f" We lost {f['crew_lost']} crew across the squadron. The repair crews are feeling it."
     if hull < 0.75:
         g += " We can patch her to about 75% out here. Anything past that needs a starbase."
     out["geordi"] = g
     # Seven: sensors and findings
     v = f"Sensor logs for the engagement are complete."
     if f["scans"]:
-        v += f" {f['scans']} detailed scans were taken; their data is filed for the next encounter."
+        v += (f" {_n(f['scans'], 'detailed scan')} {'was' if f['scans'] == 1 else 'were'} taken; the data is filed "
+              f"for the next encounter.")
     if f["objectives"]:
-        v += f" {f['objectives']} assigned objectives were achieved."
+        v += f" {_n(f['objectives'], 'assigned objective')} {'was' if f['objectives'] == 1 else 'were'} achieved."
     if f["escaped"]:
         v += f" {_list(f['escaped'])} will report our tactics to their command. Adaptation is to be expected."
     else:
@@ -198,8 +221,10 @@ def captain_draft(f: dict[str, Any]) -> str:
         t += "We broke off the engagement. "
     if f["lost"]:
         t += f"We lost {_list(f['lost'])}; their crews will be remembered. "
-    if f["crew_lost"]:
-        t += f"{f['crew_lost']} of our people did not come home. "
+        if f["crew_lost"]:
+            t += f"In all, {f['crew_lost']} of our people did not come home. "
+    elif f["crew_lost"]:
+        t += f"We lost {_n(f['crew_lost'], 'crewman' if f['crew_lost'] == 1 else 'crew member')}. "
     if f["standout"]:
         t += f"{f['standout']} "
     t += f"The {f['flagship']} stands at {_pct(f['hull'])} hull with {f['torps_left']} torpedoes in the magazine."

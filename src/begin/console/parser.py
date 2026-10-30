@@ -145,6 +145,7 @@ VERBS: dict[str, tuple[str, ...]] = {
     "belay": ("belay",),
     "sound": ("sound", "volume", "audio", "mute"),
     "hud": ("hud", "detail"),
+    "request": ("request", "reinforcements", "summon"),
 }
 
 WEAPONS = {
@@ -235,6 +236,7 @@ HELP = [
     "          destroy <ships> · bait <ship>   (standing objectives and tricks for Seven)",
     "Orders:   execute order <name> | <name>   (a named order from config/orders.toml) · orders (list them) · belay (stop one running)",
     "Display:  hud detail|simple   (simple: hover a panel for its numbers)",
+    "Tour:     request reinforcements   (on a tour of duty: Starfleet sends a ship, which arrives after a delay)",
     "Sound:    sound on|off|<0-100>   sound phaser|torpedo a-d   (M mutes)",
     "Other:    key F<n>|^<x> <commands; separated; by semicolons> · translate on|off|always · help · quit",
 ]
@@ -1269,6 +1271,12 @@ class Parser:
         tok.rest()
         res.actions.append(("belay", None))
         res.commands.append(self._cmd(CeaseFire))      # and whatever the officers had going
+
+    def _v_request(self, tok: _Tokens, res: ParseResult) -> None:
+        """`request reinforcements` [E]: on a tour of duty, ask Starfleet for a ship; she arrives after the stop's ETA."""
+        tok.take_word("reinforcements", "reinforcement", "backup", "help", "support", "assistance", "starfleet")
+        tok.rest()
+        res.actions.append(("reinforcements", None))
 
     def _v_hud(self, tok: _Tokens, res: ParseResult) -> None:
         """`hud detail|simple`: every number on the panels, or only what matters (hover a panel to see the rest)."""

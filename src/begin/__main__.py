@@ -6,6 +6,7 @@ Extra options exist for development and testing:
   --screenshot PATH      render headlessly after --cycles of simulated time and save a PNG
   --tournament N         run N headless AI-vs-AI quick battles and print a summary
   --balance N            fight every preset N times, AI on both sides, and print win rates
+  --tour-test N          fly every tour of duty N times with the officers in command, and print how they went
   --llm KEY=VALUE ...    save the officers' language model settings (e.g. provider=ollama model=lfm3 think=off)
   --llm-test             ask Spock one question through the configured model and print the answer
 """
@@ -28,6 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--zoom", type=float, default=None, help="for screenshots: map zoom (pixels per unit)")
     ap.add_argument("--tournament", type=int)
     ap.add_argument("--balance", type=int)
+    ap.add_argument("--tour-test", type=int, metavar="N")
     ap.add_argument("--llm", nargs="+", metavar="KEY=VALUE")
     ap.add_argument("--llm-test", nargs="?", const="Spock, what do you recommend?", metavar="QUESTION")
     args = ap.parse_args(argv)
@@ -48,6 +50,12 @@ def main(argv: list[str] | None = None) -> int:
         from .tools.balance import run_balance
 
         run_balance(args.balance)
+        return 0
+
+    if args.tour_test:
+        from .tools.tours import run_tours
+
+        run_tours(args.tour_test)
         return 0
 
     if args.tournament:

@@ -68,10 +68,11 @@ class TourRun:
         """A fresh tour: the flagship and the escorts you picked, every ship named and crewed."""
         rng = random.Random(seed)
         used = {flagship_name}
+        captains: set[str] = set()
         squadron = [ShipRecord(tour.flagship, flagship_name, role="flagship")]
         for cid in escorts:
             squadron.append(ShipRecord(cid, _name(content, cid, used, rng), role="escort",
-                                       captain=_captain(content, cid, rng)))
+                                       captain=_captain(content, cid, rng, captains)))
         state = TourState(tour.id, squadron, calls_left=tour.reinforcement_calls, seed=seed)
         return TourRun(tour, state, content)
 
@@ -249,7 +250,7 @@ class TourRun:
             if late <= 0:
                 mine.ships.append(ShipSpec(cid, name=name))
                 active.append(ShipRecord(cid, name, role="reinforcement", joined=stop.id,
-                                         captain=_captain(self.content, cid, rng)))
+                                         captain=_captain(self.content, cid, rng, {r.captain for r in self.state.squadron})))
             else:
                 px, py = stop.player_center
                 called.append(Arrival(side=0, ships=(cid,), kind="reinforcement", at=late, at_x=px, at_y=py - 12000.0,
@@ -395,9 +396,14 @@ def _name(content: ContentDB, cid: str, used: set[str], rng: random.Random) -> s
     return name
 
 
-def _captain(content: ContentDB, cid: str, rng: random.Random) -> str:
+def _captain(content: ContentDB, cid: str, rng: random.Random, used: set[str] | None = None) -> str:
+    """A captain for a ship that joins the squadron: one not already commanding another of its ships."""
     faction = content.factions[content.classes[cid].faction]
-    return rng.choice(list(faction.captain_names)) if faction.captain_names else ""
+    names = [n for n in faction.captain_names if used is None or n not in used] or list(faction.captain_names)
+    name = rng.choice(names) if names else ""
+    if used is not None and name:
+        used.add(name)
+    return name
 
 
 __all__ = ["Fight", "TourRun"]

@@ -18,7 +18,7 @@ import pygame
 from ..content.schema import Faction
 from ..core.angles import norm180
 from ..content.schema import HullDef
-from ..sim.events import Detonation, Event, HullHit, ShieldHit, ShipStatusChanged
+from ..sim.events import Detonation, Event, HullHit, ShieldHit, ShipArrived, ShipStatusChanged
 from ..sim.factory import SHIELD_FACINGS
 from ..sim.observation import ContactView, Observation, OrdnanceView
 from ..sim.ship import Ship
@@ -143,6 +143,11 @@ class TacticalView:
                     [float(ev.sector), 0.0, power, 1.0 if ev.collapsed else 0.0, ev.strength])
             elif isinstance(ev, HullHit) and ev.ship_id in visible and ev.amount > 0:
                 self._strike(obs, ev)
+            elif isinstance(ev, ShipArrived):
+                me = self._seen(obs, ev.ship_id)
+                if me is not None:
+                    col = theme.FRIEND if me[5] else theme.HOSTILE
+                    self.effects.warp_in(ev.origin[0], ev.origin[1], me[0], me[1], theme.mix(col, (255, 255, 255), 0.3))
             elif isinstance(ev, ShipStatusChanged) and ev.status == "destroyed":
                 w = self._wreck(ev.ship_id)
                 if w is not None:

@@ -19,6 +19,7 @@ from .crew.characters import load_officers
 from .crew.officers import Crew, default_crew
 from .paths import config_dir
 from .sim.arrivals import Arrival
+from .sim.events import Event
 from .sim.rules import DEFAULT_RULES, Rules
 from .sim.ship import PDDoctrine, Ship
 from .sim.world import World
@@ -70,6 +71,7 @@ class Battle:
     captains: dict[int, AICaptain]
     computers: dict[int, ShipComputer]
     crew: Crew | None = None          # the player's bridge officers (delegated stations)
+    deeds: list[Event] = field(default_factory=list)   # objectives and projects finished (the UI's record, for a tour's log)
 
     def adopt(self, ship: Ship) -> None:
         """A captured ship joins her new side: a fresh ship computer, and a captain from the prize crew.

@@ -12,7 +12,7 @@ import math
 import time
 from functools import partial
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Protocol
 
 import pygame
 
@@ -97,6 +97,12 @@ RED_ALERT_FLOOR, RED_ALERT_PULSE, RED_ALERT_PERIOD = 0.22, 0.38, 1.8   # border 
 ORDER_TRANSLATE_WAIT = 8.0     # seconds a named order waits for a step's translation before skipping it
 
 
+class TourLink(Protocol):
+    """What a battle on a tour of duty can ask of the tour (a `TourRun`)."""
+
+    def reinforcement_arrival(self, battle: Battle, player_ship: Ship | None) -> tuple[object | None, str]: ...
+
+
 class BattleScene:
     def __init__(self, battle: Battle, size: tuple[int, int], on_exit: Callable[[], None],
                  keys: dict[str, str] | None = None, hidden: dict[str, object] | None = None,
@@ -107,6 +113,8 @@ class BattleScene:
         self.player_id = battle.player_ship_id
         self.side = battle.setup.player_side if battle.setup.player_side >= 0 else 0
         self.on_exit = on_exit
+        self.exit_label = "Return to menu"
+        self.tour: TourLink | None = None     # on a tour of duty: Starfleet answers `request reinforcements`
         self.ui = UI()
         self.paused = True
         self.speed = 1.0
@@ -768,11 +776,34 @@ class BattleScene:
             self._belay()
         elif name == "sound":
             self._sound(val)
+        elif name == "reinforcements":
+            self._reinforcements()
         elif name == "hud":
             if val is not None:
                 self.hud_detail = val == "detail"
             self._log("Panels show every number." if self.hud_detail else
                       "Panels show what matters; hover one for its numbers. 'hud detail' shows them all.", theme.TEXT_DIM)
+
+    def _reinforcements(self) -> None:
+        if self.tour is None:
+            self._log("Starfleet sends reinforcements only on a tour of duty (main menu, Tour of duty).", theme.CAUTION)
+            return
+        if self.world.outcome.over:
+            self._log("The battle is over.", theme.TEXT_DIM)
+            return
+        arrival, msg = self.tour.reinforcement_arrival(self.battle, self.player)
+        self._log(msg, theme.GOOD if arrival is not None else theme.CAUTION)
+
+    def _inbound(self) -> list[tuple[str, float]]:
+        """Starfleet's ships on their way, with their ETAs, for the map."""
+        out = []
+        for a in self.world.arrivals:
+            if a.tag == "starfleet" and not a.arrived and a.side == self.side:
+                eta = a.eta(self.world)
+                if eta is not None:
+                    names = ", ".join(f"USS {n}" for n in a.names if n) or "Starfleet"
+                    out.append((names, eta))
+        return out
 
     # ------------------------------------------------------------ named orders
 
@@ -1255,6 +1286,14 @@ class BattleScene:
         theme.text(surf, self.battle.setup.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
         theme.text(surf, f"range {self.display_range():,.0f}  ·  F1 controls", (r.right - 14, r.y + 28), theme.TEXT_FAINT,
                    11, anchor="topright")
+        y = r.y + 48
+        for names, eta in self._inbound():
+            # reinforcements on the way: a countdown that pulses as they get close
+            close = eta < 15
+            pulse = 0.5 + 0.5 * math.sin(time.monotonic() * math.tau / 0.9) if close else 1.0
+            col = theme.mix(theme.TEXT_DIM, theme.GOOD, 0.4 + 0.6 * pulse)
+            theme.text(surf, f"{names}  ·  ETA {eta:4.0f} cycles", (r.right - 14, y), col, 13, "mono", anchor="topright")
+            y += 20
 
     def _draw_conn_banner(self, surf: pygame.Surface, top: int) -> None:
         """Who has the conn, when it isn't the captain; click it to take the bridge back."""
@@ -1539,8 +1578,8 @@ class BattleScene:
                              f"phaser hits {st.phaser_hits}/{st.phaser_shots}  torps {st.torpedo_hits}/{st.torpedoes_fired}  "
                              f"intercepts {st.ordnance_intercepted}", (r.x + 200, y), theme.TEXT_DIM, 11, "mono")
             y += 18
-        self.ui.button(surf, pygame.Rect(r.right - 184, r.bottom - 46, 160, 30), "Return to menu", self.on_exit, size=13)
-        self.ui.button(surf, pygame.Rect(r.right - 352, r.bottom - 46, 160, 30), "Review the field",
+        self.ui.button(surf, pygame.Rect(r.right - 224, r.bottom - 46, 200, 30), self.exit_label, self.on_exit, size=13)
+        self.ui.button(surf, pygame.Rect(r.right - 392, r.bottom - 46, 160, 30), "Review the field",
                        lambda: setattr(self, "overlay", None), size=13)
 
 
