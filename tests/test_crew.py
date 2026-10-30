@@ -708,3 +708,46 @@ def test_with_a_model_officers_put_remarks_in_their_own_words(content) -> None: 
     system = fake.systems[0]
     assert "Sensors are operational, Captain." in system and "never repeat" in system
     assert "coolly confident" in system and "Variation" in system
+
+
+class _Replies:
+    """A model that gives the answers it was handed, one per request."""
+    name = "fake"
+
+    def __init__(self, *replies: str) -> None:
+        self.replies = list(replies)
+        self.seen: list[str] = []
+
+    def complete(self, system: str, messages: list[dict[str, str]]) -> str:
+        self.seen.append(system)
+        return self.replies.pop(0) if self.replies else '{"say": "", "commands": []}'
+
+
+def _settle(sc, tag: str) -> None:  # type: ignore[no-untyped-def]
+    end = time.time() + 5
+    while time.time() < end:
+        sc.update(0.0)
+        if not sc.bridge.llm.busy(tag):
+            sc.update(0.0)
+            if not sc.bridge.llm.busy(tag):
+                return
+        time.sleep(0.01)
+
+
+def test_small_talk_always_gets_an_answer(scene) -> None:  # type: ignore[no-untyped-def]
+    sc, _ = scene
+    fake = _Replies('{"say": "", "commands": []}', '{"say": "Your taste in music is irrelevant, Captain.", "commands": []}')
+    sc.bridge.llm = LLMService(fake)
+    sc.run_console("seven, what do you think of my taste in music")
+    _settle(sc, "seven")
+    said = _said(sc, "Seven of Nine")
+    assert any("taste in music is irrelevant" in t for t in said)        # an empty answer is asked for again
+    assert "Always say something in reply" in fake.seen[0]
+    assert "nothing to say aloud" in fake.seen[1]
+
+    sc.bridge.llm = LLMService(_Replies())                                # a model that never says anything
+    sc.run_console("seven, tell me about Borg cuisine")
+    _settle(sc, "seven")
+    last = _said(sc, "Seven of Nine")[-1]
+    assert last.removeprefix("Seven of Nine:").strip() not in ("…", "")     # she still answers, in her own canned words
+    sc.close()

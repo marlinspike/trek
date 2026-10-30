@@ -135,6 +135,7 @@ class Bridge:
         self.history: dict[str, list[Message]] = {}
         self.suggested: dict[str, tuple[int, list[str]]] = {}   # officer -> (tick, commands)
         self.asking: dict[str, bool] = {}   # officer -> the pending LLM request is a question, not an order
+        self._nudged: set[str] = set()      # officers whose empty answer has been asked for again
         self._last_line: dict[str, int] = {}
         self._last_any = -999
         self._hull_band = 4
@@ -384,6 +385,19 @@ class Bridge:
                 out.extend(self.offline(officer, question.lower(), ctx, run))
                 continue
             say, commands = parse_reply(r.text)
+            if not say and not commands and officer.id not in self._nudged:
+                # the model said nothing at all: ask once more for a spoken answer before giving up on it
+                self._nudged.add(officer.id)
+                self.llm.submit(officer.id, self.system_prompt(officer, ctx) + "\n\n" + NUDGE, hist)
+                continue
+            if not say and not commands:
+                if hist and hist[-1]["role"] == "user":
+                    hist.pop()
+                self._nudged.discard(officer.id)
+                self.asking.pop(officer.id, None)
+                out.append(self._line(officer, "unknown") or self._say(officer, "I don't follow, Captain."))
+                continue
+            self._nudged.discard(officer.id)
             hist.append({"role": "assistant", "content": json.dumps({"say": say, "commands": commands})})
             u = self._say(officer, say or "…")
             out.append(u)
@@ -508,6 +522,8 @@ class Bridge:
             + f"Your relationship with the captain: {rel.mood}.",
             "Answer with ONE JSON object and nothing else:",
             '{"say": "<what you say aloud, at most three short sentences>", "commands": ["<console command>", ...]}',
+            "Always say something in reply. The captain may simply talk to you, about the battle or anything else: "
+            "then answer in character, in conversation, and leave the command list empty. "
             "Put commands in the list only when the captain orders you to act; when the captain asks a question, "
             "the list holds what you recommend, and the captain decides. Use only commands for your stations, "
             "written exactly in this console syntax:",
@@ -830,6 +846,10 @@ def is_question(low: str) -> bool:
 
 
 _SAY = re.compile(r'"say"\s*:\s*"((?:\\.|[^"\\])*)', re.S)
+
+
+NUDGE = ("Your last answer had nothing to say aloud. Reply now, in character, with at least one short sentence "
+         "in \"say\".")
 
 
 def first_object(text: str) -> dict[str, object] | None:
