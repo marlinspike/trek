@@ -51,7 +51,10 @@ class UI:
         pygame.draw.rect(surf, bg, rect, border_radius=3)
         pygame.draw.rect(surf, accent if (active or hover) and enabled else theme.BORDER, rect, 1, border_radius=3)
         col = theme.TEXT if enabled else theme.TEXT_FAINT
-        theme.text(surf, label, rect.center, col, size, "display", anchor="center")
+        # command labels in the display face; data (long, or a list of facts joined by ·) stays in the text face
+        face = "display" if len(label) <= 20 and "·" not in label else "ui"
+        theme.text(surf, label, rect.center, col, size, face, weight="medium" if face == "ui" else "regular",
+                   anchor="center")
         if enabled:
             self.add(rect, action, tooltip, right)
         elif tooltip and rect.collidepoint(self.mouse):

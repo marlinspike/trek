@@ -159,7 +159,7 @@ class MenuScene:
         if self.page == "main":
             self.flybys.draw(surf)
         theme.text(surf, "BEGIN", (80, 48), theme.FRIEND, 66, "display", weight="semibold")
-        theme.text(surf, "A tactical starship simulation · a remake of Begin 2", (84, 150), theme.TEXT_DIM, 16)
+        theme.text(surf, "A tactical starship simulation · a remake of Begin 2", (84, 146), theme.TEXT_DIM, 17, "display")
         if self.page == "main":
             self._main(surf)
         elif self.page == "presets":

@@ -80,13 +80,14 @@ _FONT_FILES = {
     ("ui", "semibold"): "Inter-SemiBold.ttf",
     ("mono", "regular"): "JetBrainsMono-Regular.ttf",
     ("mono", "medium"): "JetBrainsMono-Medium.ttf",
-    ("display", "regular"): "Antonio-Regular.ttf",
-    ("display", "medium"): "Antonio-Medium.ttf",
-    ("display", "semibold"): "Antonio-SemiBold.ttf",
+    ("display", "regular"): "BarlowCondensed-Medium.ttf",
+    ("display", "medium"): "BarlowCondensed-Medium.ttf",
+    ("display", "semibold"): "BarlowCondensed-SemiBold.ttf",
 }
-# Antonio, the condensed display face for titles, headings, menus and buttons, is drawn larger than
-# the size asked for so its caps stand as tall as Inter's would.
-_SCALE = {"display": 1.18}
+# Barlow Condensed, the display face for titles, headings, menus and short buttons, is drawn a little
+# larger than the size asked for (so it stands as tall as Inter) and spaced out, console-style.
+_SCALE = {"display": 1.15}
+_TRACK = {"display": 0.07}       # extra space between letters, as a fraction of the size
 
 
 def _usable(f: pygame.font.Font) -> bool:
@@ -104,7 +105,7 @@ def _fallback(size: int) -> pygame.font.Font:
 
 @lru_cache(maxsize=64)
 def font(size: int, family: str = "ui", weight: str = "regular") -> pygame.font.Font:
-    """Bundled fonts (Inter for text, JetBrains Mono for figures, Antonio for titles and buttons),
+    """Bundled fonts (Inter for text, JetBrains Mono for figures, Barlow Condensed for titles and buttons),
     falling back to pygame's default."""
     name = _FONT_FILES.get((family, weight)) or _FONT_FILES[(family, "regular")]
     try:
@@ -117,16 +118,36 @@ def font(size: int, family: str = "ui", weight: str = "regular") -> pygame.font.
 
 
 def _has_glyphs(f: pygame.font.Font, s: str) -> bool:
-    """Antonio covers Latin text and punctuation, but no arrows or symbols (U+2190 on); SDL draws a
-    box for a missing glyph rather than saying so, hence the range check."""
+    """The display face covers Latin text and punctuation, but no arrows or symbols (U+2190 on); SDL
+    draws a box for a missing glyph rather than saying so, hence the range check."""
     return all(ord(c) < 0x2190 for c in s)
+
+
+@lru_cache(maxsize=1024)
+def _tracked(s: str, color: Color, size: int, family: str, weight: str) -> pygame.Surface:
+    """A line drawn a letter at a time with extra space between the letters."""
+    f = font(size, family, weight)
+    gap = round(size * _TRACK[family])
+    glyphs = [f.render(c, True, color) for c in s]
+    w = sum(g.get_width() for g in glyphs) + gap * max(0, len(s) - 1)
+    out = pygame.Surface((max(1, w), f.get_height()), pygame.SRCALPHA)
+    x = 0
+    for g in glyphs:
+        out.blit(g, (x, 0))
+        x += g.get_width() + gap
+    return out
 
 
 def render(s: str, color: Color, size: int = 14, family: str = "ui", weight: str = "regular") -> pygame.Surface:
     """Render a line of text, never raising: a string the font can't measure falls back to the default font."""
     f = font(size, family, weight)
     if family == "display" and not _has_glyphs(f, s):
-        f = font(size, "ui", weight)              # a symbol Antonio lacks: the whole label in Inter
+        f = font(size, "ui", weight)              # a symbol the display face lacks: the whole label in Inter
+    elif family in _TRACK and f is not _fallback(size):
+        try:
+            return _tracked(s, tuple(color), size, family, weight)    # type: ignore[arg-type]
+        except pygame.error:
+            pass
     try:
         return f.render(s, True, color)
     except pygame.error:
@@ -151,6 +172,8 @@ def text_width(s: str, size: int = 14, family: str = "ui", weight: str = "regula
         f = font(size, family, weight)
         if family == "display" and not _has_glyphs(f, s):
             f = font(size, "ui", weight)
+        elif family in _TRACK:
+            return f.size(s)[0] + round(size * _TRACK[family]) * max(0, len(s) - 1)
         return f.size(s)[0]
     except pygame.error:
         return _fallback(size).size(s)[0]
