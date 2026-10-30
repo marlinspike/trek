@@ -76,11 +76,52 @@ class Pop:
 
 
 @dataclass
+class Debris:
+    """A piece of a ship that broke up: a short bright shard, tumbling and dimming as it drifts."""
+    x: float
+    y: float
+    vx: float
+    vy: float
+    angle: float
+    spin: float
+    length: float          # pixels
+    color: theme.Color
+    life: float
+    age: float = 0.0
+
+
+@dataclass
+class Glow:
+    """The soft light of a ship's reactor letting go, under the blast ring."""
+    x: float
+    y: float
+    radius: float          # world units
+    color: theme.Color
+    life: float = 0.6
+    age: float = 0.0
+
+
+@dataclass
+class Ripple:
+    """A cloak engaging or failing: the space around the ship shivers in a wavering ring."""
+    x: float
+    y: float
+    vanishing: bool
+    life: float = 1.1
+    age: float = 0.0
+    phase: float = 0.0
+
+
+@dataclass
 class Effects:
     beams: list[Beam] = field(default_factory=list)
     rings: list[Ring] = field(default_factory=list)
     sparks: list[Spark] = field(default_factory=list)
     pops: list[Pop] = field(default_factory=list)
+    debris: list[Debris] = field(default_factory=list)
+    glows: list[Glow] = field(default_factory=list)
+    embers: list[Spark] = field(default_factory=list)
+    ripples: list[Ripple] = field(default_factory=list)
     rng: random.Random = field(default_factory=lambda: random.Random(7))
 
     def ingest(self, events: list[Event], player_side: int, visible: set[int], friendly: set[int],
@@ -103,7 +144,10 @@ class Effects:
                     col = theme.mix(f.torpedo_color if f is not None else UNKNOWN_WEAPON, (255, 255, 255), 0.25)
                 else:
                     col = theme.BLAST if ev.source != "ship" else (255, 230, 190)
-                self.rings.append(Ring(ev.x, ev.y, max(ev.radius, 150.0), col, life=1.1 if ev.source == "ship" else 0.8))
+                big = ev.source in ("ship", "destruct")      # a ship's flash is its own soft glow, not a hard disc
+                self.rings.append(Ring(ev.x, ev.y, max(ev.radius, 150.0), col, life=1.1 if big else 0.8, core=not big))
+                if ev.source in ("ship", "destruct"):
+                    self._breakup(ev.x, ev.y, max(ev.radius, 300.0))
                 n = 26 if ev.source in ("ship", "destruct") else 12
                 for _ in range(n):
                     a = self.rng.uniform(0, math.tau)
@@ -118,6 +162,35 @@ class Effects:
                 self._fizzle(ev.x, ev.y, 90.0)
             elif isinstance(ev, ShipStatusChanged) and ev.status == "destroyed":
                 pass  # the breakup Detonation carries the visuals
+
+    def _breakup(self, x: float, y: float, radius: float) -> None:
+        """A ship coming apart: a flash, a ring of shards flung outward, and embers that linger."""
+        self.glows.append(Glow(x, y, radius * 0.6, (255, 236, 200), life=0.7))
+        hull = (205, 208, 218)
+        for _ in range(self.rng.randint(9, 14)):
+            a = self.rng.uniform(0, math.tau)
+            sp = self.rng.uniform(0.25, 0.7) * radius
+            self.debris.append(Debris(x, y, math.sin(a) * sp, math.cos(a) * sp, self.rng.uniform(0, math.tau),
+                                      self.rng.uniform(-6, 6), self.rng.uniform(3, 8), hull, self.rng.uniform(2.2, 3.6)))
+        for _ in range(18):
+            a = self.rng.uniform(0, math.tau)
+            sp = self.rng.uniform(0.05, 0.4) * radius
+            self.embers.append(Spark(x + math.sin(a) * radius * 0.1, y + math.cos(a) * radius * 0.1,
+                                     math.sin(a) * sp, math.cos(a) * sp, EMBER, self.rng.uniform(1.4, 3.0)))
+
+    def ripple(self, x: float, y: float, vanishing: bool) -> None:
+        self.ripples.append(Ripple(x, y, vanishing, phase=self.rng.uniform(0, math.tau)))
+
+    def smoulder(self, x: float, y: float, hull: float, dt: float, zoom: float) -> None:
+        """A badly hurt ship sheds the odd spark: more of them the worse the damage."""
+        rate = 1.0 + 7.0 * max(0.0, 0.5 - hull) / 0.5      # sparks per second
+        if self.rng.random() >= rate * dt or len(self.sparks) > 400:
+            return
+        a = self.rng.uniform(0, math.tau)
+        sp = self.rng.uniform(15.0, 45.0) / max(zoom, 1e-4)      # a few pixels a second at any zoom
+        off = self.rng.uniform(2.0, 9.0) / max(zoom, 1e-4)
+        self.sparks.append(Spark(x + math.sin(a) * off, y + math.cos(a) * off, math.sin(a) * sp, math.cos(a) * sp,
+                                 self.rng.choice((EMBER, (255, 214, 140), (255, 240, 220))), self.rng.uniform(0.25, 0.6)))
 
     def _fizzle(self, x: float, y: float, radius: float) -> None:
         """A round shot down: a small dull flash and a puff of grey debris, no fireball."""
@@ -142,11 +215,68 @@ class Effects:
             s.y += s.vy * dt
             s.vx *= 0.96
             s.vy *= 0.96
+        for d in self.debris:
+            d.age += dt
+            d.x += d.vx * dt
+            d.y += d.vy * dt
+            d.angle += d.spin * dt
+        for g in self.glows:
+            g.age += dt
+        for rp in self.ripples:
+            rp.age += dt
+        self.ripples = [rp for rp in self.ripples if rp.age < rp.life]
+        for e in self.embers:
+            e.age += dt
+            e.x += e.vx * dt
+            e.y += e.vy * dt
+            drag = math.exp(-1.2 * dt)
+            e.vx *= drag
+            e.vy *= drag
+        self.debris = [d for d in self.debris if d.age < d.life]
+        self.glows = [g for g in self.glows if g.age < g.life]
+        self.embers = [e for e in self.embers if e.age < e.life]
         self.beams = [b for b in self.beams if b.age < b.life]
         self.rings = [r for r in self.rings if r.age < r.life]
         self.sparks = [s for s in self.sparks if s.age < s.life]
 
     def draw(self, surf: pygame.Surface, cam: Camera, overlay: pygame.Surface) -> None:
+        for g in self.glows:
+            t = g.age / g.life
+            sx, sy = cam.to_screen(g.x, g.y)
+            rad = int(min(300.0, max(6.0, g.radius * cam.zoom * (0.7 + 0.5 * t))))
+            light = pygame.Surface((rad * 2, rad * 2))
+            fade = (1 - t) ** 2
+            for step in range(GLOW_STEPS):   # nested discs, outermost first: a gaussian of light
+                share = 1 - step / GLOW_STEPS
+                k = fade * math.exp(-5.0 * share * share)
+                pygame.draw.circle(light, tuple(min(255, int(c * k)) for c in g.color), (rad, rad), max(1, int(rad * share)))
+            surf.blit(light, (int(sx) - rad, int(sy) - rad), special_flags=pygame.BLEND_RGB_ADD)
+        for rp in self.ripples:
+            t = rp.age / rp.life
+            sx, sy = cam.to_screen(rp.x, rp.y)
+            # vanishing: the ring closes in on the ship; appearing: it spreads out from her
+            base = 14 + (34 * (1 - t) if rp.vanishing else 34 * t)
+            for k in range(2):
+                pts = []
+                for j in range(40):
+                    a = j / 40 * math.tau
+                    wob = 1 + 0.08 * math.sin(a * 6 + rp.phase + rp.age * 9 + k) * (1 - t)
+                    rr = (base + k * 6) * wob
+                    pts.append((sx + math.cos(a) * rr, sy + math.sin(a) * rr))
+                alpha = int(120 * math.sin(math.pi * t) / (1 + k))
+                if alpha > 3:
+                    pygame.draw.lines(overlay, (*CLOAK, alpha), True, pts, 1)
+        for shard in self.debris:
+            t = shard.age / shard.life
+            sx, sy = cam.to_screen(shard.x, shard.y)
+            hx, hy = math.cos(shard.angle) * shard.length / 2, math.sin(shard.angle) * shard.length / 2
+            hot = theme.mix((255, 220, 170), shard.color, min(1.0, t * 3))
+            pygame.draw.line(surf, theme.mix(hot, theme.BG, t ** 1.3), (sx - hx, sy - hy), (sx + hx, sy + hy), 2 if t < 0.4 else 1)
+        for e in self.embers:
+            t = e.age / e.life
+            sx, sy = cam.to_screen(e.x, e.y)
+            col = theme.mix(theme.mix((255, 210, 120), EMBER, min(1.0, t * 2)), theme.BG, t ** 1.5)
+            pygame.draw.circle(surf, col, (int(sx), int(sy)), 1)
         for b in self.beams:
             t = 1.0 - b.age / b.life
             p0 = cam.to_screen(b.x0, b.y0)
@@ -191,6 +321,9 @@ class Effects:
 
 UNKNOWN_WEAPON = (215, 215, 215)   # a ship we can't identify
 FIZZLE = (150, 150, 150)           # a round shot down before it could go off properly
+EMBER = (255, 132, 60)
+CLOAK = (170, 225, 215)            # the shimmer of a cloak engaging or dropping
+GLOW_STEPS = 28             # burning fragments of a ship
 
 
 def _bolts(surf: pygame.Surface, col: theme.Color, a: tuple[float, float], b: tuple[float, float], width: int,

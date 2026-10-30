@@ -9,6 +9,7 @@ the simulation runs at 10 ticks per cycle.
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -24,6 +25,13 @@ from . import theme
 from .camera import Camera
 from .effects import Effects
 from .hulls import draw_hull, hull_pixel_scale
+
+SHIELD_FLASH = 0.7        # seconds a shield hit shimmers
+TRAIL_POINT = 0.25        # cycles between the points of an engine trail
+TRAIL_BANDS = 4           # strokes per wake, each fainter toward the tail
+STAR_TILE = 512           # pixels: the starfield repeats at this size
+STAR_LAYERS = ((0.004, 110, 0.4), (0.009, 50, 0.6), (0.016, 20, 0.85))   # (parallax px/unit, stars per tile, brightness)
+SMOULDER_BELOW = 0.5      # hull fraction below which a ship trails sparks
 
 Pose = tuple[float, float, float]  # x, y, course
 
@@ -69,7 +77,12 @@ def faction_seen(obs: Observation, sid: int | None) -> Faction | None:
 class TacticalView:
     cam: Camera
     effects: Effects = field(default_factory=Effects)
-    shield_flashes: dict[int, list[list[float]]] = field(default_factory=dict)  # ship -> [[sector, age]]
+    shield_flashes: dict[int, list[list[float]]] = field(default_factory=dict)  # ship -> [[sector, age, power, collapsed]]
+    _burning: list[tuple[float, float, float]] = field(default_factory=list)   # (x, y, hull fraction) seen damaged this frame
+    trails: dict[int, list[tuple[float, float, float]]] = field(default_factory=dict)   # ship -> [(x, y, time)]
+    _cloaked: dict[int, bool] = field(default_factory=dict)     # how each ship looked last frame, to see it vanish
+    _stars: list[pygame.Surface] = field(default_factory=list)
+    _sounds: list[tuple[str, float, float]] = field(default_factory=list)   # (sound, x, y) seen this frame
     show_arcs: bool = False
     hover_world: tuple[float, float] | None = None
     _overlay: pygame.Surface | None = None
@@ -81,12 +94,16 @@ class TacticalView:
         self.effects.ingest(events, obs.side, visible, friendly, lambda sid: faction_seen(obs, sid))
         for ev in events:
             if isinstance(ev, ShieldHit) and ev.ship_id in visible:
-                self.shield_flashes.setdefault(ev.ship_id, []).append([float(ev.sector), 0.0])
+                power = 0.35 + 0.65 * min(1.0, (ev.absorbed + ev.penetrated) / 40.0)
+                self.shield_flashes.setdefault(ev.ship_id, []).append(
+                    [float(ev.sector), 0.0, power, 1.0 if ev.collapsed else 0.0])
 
     def update(self, dt: float) -> None:
         self.effects.update(dt)
+        for x, y, frac in self._burning:
+            self.effects.smoulder(x, y, frac, dt, self.cam.zoom)
         for sid in list(self.shield_flashes):
-            fl = [f for f in self.shield_flashes[sid] if f[1] + dt < 0.6]
+            fl = [f for f in self.shield_flashes[sid] if f[1] + dt < SHIELD_FLASH]
             for f in fl:
                 f[1] += dt
             if fl:
@@ -106,6 +123,7 @@ class TacticalView:
         overlay = self._overlay
         overlay.fill((0, 0, 0, 0))
         self._label_rects = []
+        self._burning = []
         clip = surf.get_clip()
         surf.set_clip(r)
         pygame.draw.rect(surf, theme.BG, r)
@@ -122,7 +140,9 @@ class TacticalView:
             if p:
                 cam.cx, cam.cy = p[0], p[1]
 
+        self._starfield(surf)
         self._grid(surf)
+        self._trails(overlay, obs, pose)
         if me is not None and me.exists:
             p = pose(me.id)
             if p:
@@ -150,7 +170,7 @@ class TacticalView:
         for c in obs.contacts().values():
             p = pose(c.id)
             if p:
-                self._contact(surf, c, p, c.id == target_id, selected_sub)
+                self._contact(surf, c, p, c.id == target_id, selected_sub, overlay)
 
         # target link
         if me is not None and target_id is not None:
@@ -158,11 +178,103 @@ class TacticalView:
             if pm and pt:
                 self._dashed(surf, theme.dim(theme.HOSTILE, 0.75), cam.to_screen(pm[0], pm[1]), cam.to_screen(pt[0], pt[1]), 6, 6)
 
+        self._ripples(obs, pose)
         self.effects.draw(surf, cam, overlay)
         surf.blit(overlay, (0, 0))
         self._scale_bar(surf)
-        pygame.draw.rect(surf, theme.BORDER, r, 1)
+        pygame.draw.rect(surf, theme.border(), r, 1)
         surf.set_clip(clip)
+
+    def _starfield(self, surf: pygame.Surface) -> None:
+        """Faint stars far beyond the battle, drifting a little against the grid as the view pans."""
+        if not self._stars:
+            rng = random.Random(1701)
+            for _, count, bright in STAR_LAYERS:
+                tile = pygame.Surface((STAR_TILE, STAR_TILE))
+                for _ in range(count):
+                    level = bright * rng.uniform(0.35, 1.0)
+                    tint = rng.choice(((200, 215, 255), (255, 240, 220), (230, 235, 255)))
+                    col = tuple(int(c * level * 0.8) for c in tint)
+                    x, y = rng.randrange(STAR_TILE), rng.randrange(STAR_TILE)
+                    tile.set_at((x, y), col)
+                    if level > 0.7:
+                        dim = tuple(c // 3 for c in col)
+                        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                            tile.set_at(((x + dx) % STAR_TILE, (y + dy) % STAR_TILE), dim)
+                tile.set_colorkey((0, 0, 0), pygame.RLEACCEL)   # mostly empty: blits skip the dark runs
+                self._stars.append(tile)
+        cam = self.cam
+        r = cam.rect
+        for (parallax, _, _), tile in zip(STAR_LAYERS, self._stars):
+            ox = int(-cam.cx * parallax) % STAR_TILE
+            oy = int(cam.cy * parallax) % STAR_TILE
+            y = r.top - STAR_TILE + oy
+            while y < r.bottom:
+                x = r.left - STAR_TILE + ox
+                while x < r.right:
+                    surf.blit(tile, (x, y))
+                    x += STAR_TILE
+                y += STAR_TILE
+
+    def _trails(self, overlay: pygame.Surface, obs: Observation, pose: Callable[[int], Pose | None]) -> None:
+        """Engine wakes: where each ship has just been, longer the faster it goes."""
+        now = obs.time
+        seen: dict[int, tuple[float, theme.Color]] = {}
+        for s in obs.own_ships():
+            if s.exists and not s.cloaked:
+                seen[s.id] = (s.warp, theme.FRIEND if s.id == self.cam.follow else theme.ALLY)
+        for c in obs.contacts().values():
+            if c.visible:
+                seen[c.id] = (c.warp, theme.HOSTILE if c.identified else theme.UNKNOWN)
+        for sid in list(self.trails):
+            if sid not in seen:
+                del self.trails[sid]
+        cam = self.cam
+        for sid, (warp, col) in seen.items():
+            p = pose(sid)
+            if p is None:
+                continue
+            pts = self.trails.setdefault(sid, [])
+            if pts and now < pts[-1][2]:
+                pts.clear()          # time went backwards: a new battle in the same view
+            if not pts or now - pts[-1][2] >= TRAIL_POINT:
+                pts.append((p[0], p[1], now))
+            span = 1.0 + 0.8 * warp                        # cycles of wake kept
+            while pts and now - pts[0][2] > span:
+                pts.pop(0)
+            if warp < 0.2 or len(pts) < 2 or not cam.visible(p[0], p[1], 400):
+                continue
+            path = [cam.to_screen(x, y) for x, y, _ in pts] + [cam.to_screen(p[0], p[1])]
+            n = len(path) - 1
+            strength = min(1.0, 0.35 + warp / 10)
+            wake = theme.mix(col, (235, 240, 255), 0.35)
+            for band in range(TRAIL_BANDS):     # a few strokes, fading toward the tail
+                lo, hi = n * band // TRAIL_BANDS, n * (band + 1) // TRAIL_BANDS
+                alpha = int(95 * strength * ((band + 1) / TRAIL_BANDS) ** 1.5)
+                if hi > lo and alpha > 3:
+                    pygame.draw.lines(overlay, (*wake, alpha), False, path[lo:hi + 1], 2 if band == TRAIL_BANDS - 1 else 1)
+
+    def _ripples(self, obs: Observation, pose: Callable[[int], Pose | None]) -> None:
+        """A ship that cloaks or decloaks in sight bends the light around it for a moment."""
+        now: dict[int, bool] = {}
+        for s in obs.own_ships():
+            if s.exists:
+                now[s.id] = s.cloaked
+        for c in obs.contacts().values():
+            # lost at close range with a cloak suspected: it vanished in front of us
+            now[c.id] = not c.visible and c.cloaked_hint
+        for sid, hidden in now.items():
+            was = self._cloaked.get(sid)
+            if was is not None and was != hidden:
+                p = pose(sid)
+                if p is not None:
+                    self.effects.ripple(p[0], p[1], vanishing=hidden)
+                    self._sounds.append(("cloak", p[0], p[1]))
+        self._cloaked = now
+
+    def take_sounds(self) -> list[tuple[str, float, float]]:
+        out, self._sounds = self._sounds, []
+        return out
 
     def _grid(self, surf: pygame.Surface) -> None:
         cam = self.cam
@@ -226,10 +338,13 @@ class TacticalView:
                 pygame.draw.polygon(overlay, (*col, 60), pts, 1)
 
     def _shield_ring(self, surf: pygame.Surface, ship_id: int, sx: float, sy: float, course: float, rad: float,
-                     strengths: list[tuple[float, bool]] | None) -> None:
-        flashes = {int(f[0]): f[1] for f in self.shield_flashes.get(ship_id, [])}
+                     strengths: list[tuple[float, bool]] | None, overlay: pygame.Surface | None = None) -> None:
+        flashes = {int(f[0]): f for f in self.shield_flashes.get(ship_id, [])}
         for i, facing in enumerate(SHIELD_FACINGS):
-            fl = flashes.get(i)
+            hit = flashes.get(i)
+            fl = hit[1] if hit is not None else None
+            if hit is not None and overlay is not None:
+                self._shimmer(overlay, ship_id, i, sx, sy, course + facing, rad, hit)
             if strengths is None and fl is None:
                 continue
             if strengths is not None:
@@ -241,12 +356,43 @@ class TacticalView:
             else:
                 col = theme.SHIELD
             if fl is not None:
-                col = theme.mix((255, 255, 255), col, fl / 0.6)
+                col = theme.mix((255, 255, 255), col, fl / SHIELD_FLASH)
             a0 = math.radians(90 - (course + facing + 26))
             a1 = math.radians(90 - (course + facing - 26))
             rect = pygame.Rect(0, 0, rad * 2, rad * 2)
             rect.center = (int(sx), int(sy))
             pygame.draw.arc(surf, col, rect, a0, a1, 2 if fl is None else 3)
+
+    @staticmethod
+    def _shimmer(overlay: pygame.Surface, ship_id: int, sector: int, sx: float, sy: float, facing: float,
+                 rad: float, hit: list[float]) -> None:
+        """A hit on a shield: the arc ripples outward and glitters, brightest where the blow landed."""
+        age, power, collapsed = hit[1], hit[2], hit[3] > 0
+        t = age / SHIELD_FLASH
+        fade = (1.0 - t) ** 1.5 * power
+        col = theme.ALERT if collapsed else theme.mix((235, 245, 255), theme.SHIELD, 0.4)
+        for k in range(3):
+            r = rad + 2 + (k * 3 + 6 * t) * (1.0 + 0.4 * k)
+            half = 14 + 12 * t + 4 * k
+            rect = pygame.Rect(0, 0, int(r * 2), int(r * 2))
+            rect.center = (int(sx), int(sy))
+            a0, a1 = math.radians(90 - (facing + half)), math.radians(90 - (facing - half))
+            alpha = int(150 * fade / (1 + k))
+            if alpha > 4:
+                if collapsed and k == 0:   # a failing shield breaks up rather than ripples
+                    for j in range(4):
+                        b0 = a0 + (a1 - a0) * j / 4
+                        if (j + int(age * 30)) % 2 == 0:
+                            pygame.draw.arc(overlay, (*col, alpha), rect, b0, b0 + (a1 - a0) / 4, 2)
+                else:
+                    pygame.draw.arc(overlay, (*col, alpha), rect, a0, a1, 2 if k == 0 else 1)
+        rng = random.Random(ship_id * 31 + sector * 7 + int(age * 24))
+        for _ in range(int(3 + 5 * power)):
+            b = math.radians(facing + rng.uniform(-20, 20))
+            r = rad + rng.uniform(-1.5, 4.0 + 6 * t)
+            alpha = int(220 * fade * rng.uniform(0.4, 1.0))
+            if alpha > 4:
+                pygame.draw.circle(overlay, (255, 255, 255, alpha), (int(sx + math.sin(b) * r), int(sy - math.cos(b) * r)), 1)
 
     def _links(self, surf: pygame.Surface, overlay: pygame.Surface, obs: Observation,
                pose: Callable[[int], Pose | None], player_id: int | None, selected_ally: int | None) -> None:
@@ -314,7 +460,9 @@ class TacticalView:
         draw_hull(surf, s.cls.hull, sx, sy, p[2], k, color)
         strengths = [(sh.effective if not sh.destroyed else 0.0, sh.up and not sh.destroyed and sh.effective > 0.5)
                      for sh in s.shields]
-        self._shield_ring(surf, s.id, sx, sy, p[2], 62 * k, strengths)
+        self._shield_ring(surf, s.id, sx, sy, p[2], 62 * k, strengths, overlay)
+        if s.alive and s.structure < s.structure_max * SMOULDER_BELOW:
+            self._burning.append((p[0], p[1], s.structure / s.structure_max))
         label = s.name if s.alive else f"{s.name} — {s.status.value}"
         if s.alive and s.docked_to is not None:
             label += " · docked"
@@ -340,7 +488,8 @@ class TacticalView:
                 pygame.draw.line(surf, theme.ALLY, (cx, cy), (cx - dx * 7, cy), 1)
                 pygame.draw.line(surf, theme.ALLY, (cx, cy), (cx, cy - dy * 7), 1)
 
-    def _contact(self, surf: pygame.Surface, c: ContactView, p: Pose, targeted: bool, sub: str | None) -> None:
+    def _contact(self, surf: pygame.Surface, c: ContactView, p: Pose, targeted: bool, sub: str | None,
+                 overlay: pygame.Surface | None = None) -> None:
         cam = self.cam
         if not cam.visible(p[0], p[1], 200):
             return
@@ -355,7 +504,9 @@ class TacticalView:
                 L = 18 + c.warp * 6
                 pygame.draw.line(surf, theme.dim(color, 0.45), (sx, sy), (sx + math.sin(a) * L * 1.5, sy - math.cos(a) * L * 1.5))
             draw_hull(surf, c.cls.hull, sx, sy, p[2], k, color, fill_alpha=0.22 if c.visible else 0.08)
-            self._shield_ring(surf, c.id, sx, sy, p[2], 62 * k, None)
+            self._shield_ring(surf, c.id, sx, sy, p[2], 62 * k, None, overlay)
+            if c.visible and c.scan is not None and c.scan.structure_frac < SMOULDER_BELOW:
+                self._burning.append((p[0], p[1], c.scan.structure_frac))   # we've seen how badly she's hurt
             rad = 40 * k
         else:
             rad = 10

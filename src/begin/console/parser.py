@@ -139,6 +139,7 @@ VERBS: dict[str, tuple[str, ...]] = {
     "execute": ("execute", "exec"),
     "orders": ("orders", "plans"),
     "belay": ("belay",),
+    "sound": ("sound", "volume", "audio", "mute"),
 }
 
 WEAPONS = {
@@ -187,6 +188,7 @@ HELP = [
     "          disable|cripple <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> · disable off",
     "          destroy <ships> · bait <ship>   (standing objectives and tricks for Seven)",
     "Orders:   execute order <name> | <name>   (a named order from config/orders.toml) · orders (list them) · belay (stop one running)",
+    "Sound:    sound on|off|<0-100>   (M mutes)",
     "Other:    key F<n>|^<x> <commands; separated; by semicolons> · translate on|off|always · help · quit",
 ]
 
@@ -1194,6 +1196,21 @@ class Parser:
         """`belay [that|order]`: stop the named order that is running."""
         tok.rest()
         res.actions.append(("belay", None))
+
+    def _v_sound(self, tok: _Tokens, res: ParseResult) -> None:
+        """`sound on|off|<0-100>`: the battle's sound effects (M mutes too)."""
+        first = tok.toks[0] if tok.toks else ""
+        w = tok.next()
+        if first == "mute" and w is None:
+            res.actions.append(("sound", "off"))
+        elif w is None:
+            res.actions.append(("sound", None))
+        elif w in ("on", "off"):
+            res.actions.append(("sound", w))
+        elif _is_num(w) and 0 <= float(w) <= 100:
+            res.actions.append(("sound", float(w)))
+        else:
+            raise ParseError("sound on, sound off, or sound <0-100> for the volume.")
 
     def _v_translate(self, tok: _Tokens, res: ParseResult) -> None:
         """`translate on|off|always`: plain-English console input through the language model [E]."""

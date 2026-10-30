@@ -44,6 +44,7 @@ see: console, keys
 | **C** | Centre on your ship and follow it |
 | **Q** | Show phaser arcs |
 | **I** | Damage view |
+| **M** | Sound on or off. See [[sound]]. |
 | Mouse wheel over the log | Scroll the console log |
 
 ## Console and help

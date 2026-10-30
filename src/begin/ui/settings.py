@@ -23,6 +23,8 @@ class Settings:
     hidden: dict[str, object] = field(default_factory=dict)    # state the game keeps for itself (officer rapport)
     chatter: bool = True                                       # officers comment on the battle
     keys: dict[str, str] = field(default_factory=dict)         # Begin 2.0 `key` macros: "F5" -> "fire all phasers 10"
+    volume: float = 0.6                                        # sound effects, 0 to 1
+    muted: bool = False                                        # M in battle
 
     @staticmethod
     def path() -> Path:

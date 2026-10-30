@@ -111,6 +111,20 @@ Begin has no morale. Here every crew has spirits from 0 to 100 (`sim/systems/mor
 
 Begin's key macros (`key F2 ...`) bind a line of commands to a key. Named orders go further: a list of console lines written in `config/orders.toml` (gitignored; `config/orders.example.toml` is committed and loaded until the player writes their own), run by `execute order <name>` or the name alone (`console/orders.py`). Steps run through the same path as typed lines, so officer orders and station rules apply. `wait N` holds for N cycles of battle time; "their", "the target" and "the enemy" become the current target when the step runs; `belay` stops the order, and starting another belays the first. Every step is checked against the parser when the battle starts. With a language model, a step the parser rejects is translated once (the target written as `#T`), checked, and kept in `config/orders.cache.json`; without one it is reported then and skipped if run. An order cannot run another order, and steps have no conditions.
 
+## Look and sound [E]
+
+Begin drew its display in text and simple vectors and had no sound effects. The remake keeps its restrained look and adds a few effects, all in `ui/effects.py`, `ui/tactical.py` and `ui/audio.py`:
+
+- A shield that takes a hit ripples and glitters along the struck arc; a failing one breaks up in red.
+- A destroyed ship goes in a soft flash with shards and embers that drift and fade. A ship below half hull sheds the odd spark: always ours, theirs only once a scan has shown the damage, so it gives nothing away.
+- Ships leave a faint engine wake whose length grows with warp. There is a faint parallax starfield behind the grid.
+- A ship that cloaks or decloaks in view wavers in a ripple, as does one that vanished in view and is then caught by a tachyon pulse.
+- The panel borders pulse red while the ship is at red alert: hit lately, or an enemy within 12,000.
+- The end-of-battle assessment adds your ship's record and a standout officer (`crew/review.py`). It counts the officer's orders carried out, from the command log, plus objectives seen through and projects finished.
+- Sound is synthesised at start-up, so there are no sound files. It plays only for what the player can see, panned and attenuated by where it happens on the map. `volume` and `muted` live in `config/settings.json`; M mutes and `sound on|off|<0-100>` sets it.
+
+In the 14-ship Fleet Action, frame time with the effects is within about a millisecond of what it was without them.
+
 ## Scenarios and setup
 
 - **Presets** (`content/data/presets.toml`) are our own scenarios. Balance runs set their fleets: each preset is fought by AI captains on both sides many times, and fleets are adjusted until the result is in a sensible range.

@@ -41,7 +41,8 @@ class App:
     def start_battle(self, setup: BattleSetup) -> BattleScene:
         battle = build_battle(self.content, setup)
         scene = BattleScene(battle, self.screen.get_size(), self.back_to_menu, keys=self.settings.keys,
-                            hidden=self.settings.hidden, llm=self.settings.llm, chatter=self.settings.chatter)
+                            hidden=self.settings.hidden, llm=self.settings.llm, chatter=self.settings.chatter,
+                            volume=self.settings.volume, muted=self.settings.muted)
         scene.speed = float(self.settings.speed) if float(self.settings.speed) in (0.25, 0.5, 1.0, 2.0, 4.0) else 1.0
         self.scene = scene
         return scene
@@ -49,6 +50,8 @@ class App:
     def back_to_menu(self) -> None:
         if isinstance(self.scene, BattleScene):
             self.settings.speed = self.scene.speed
+            self.settings.muted = self.scene.audio.muted
+            self.settings.volume = self.scene.audio.volume
             self.scene.close()
             self.settings.save()
         self.menu.page = "main"

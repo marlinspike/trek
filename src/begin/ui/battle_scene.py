@@ -28,15 +28,16 @@ from ..sim.commands import (
     AddressCrew, AllyOrder, Command, FirePhasers, FireTorpedoes, LaunchProbe, Pursue, Scan, SelectTarget, SetBanks, SetHelm,
     SetPointDefense, SetShields,
 )
-from ..sim.events import CommandRejected, Event, Message, ScanCompleted, Tone
+from ..sim.events import CommandRejected, Event, Message, ObjectiveEnded, ProjectCompleted, ScanCompleted, Tone
 from ..sim.observation import Observation
 from ..sim.scoring import Assessment
 from ..sim.ship import BankRole, Kind, Ship
 from . import officer_view, theme
+from .audio import Audio
 from .camera import Camera
 from ..crew.conversation import Bridge, Utterance
 from ..crew.officers import STATION_COMMANDS, Activity, station_of
-from ..sim.systems.repair import under_repair
+from ..sim.systems.repair import in_battle, under_repair
 from ..help.coach import HelpContext
 from .manual import ManualView
 from .hud import (
@@ -74,6 +75,7 @@ CONTROLS = [
     ("F2-F8, F10-F12, Ctrl+key", "Run a 'key' macro you defined in the console"),
     ("Wheel over the log", "Scroll the console log"),
     ("I", "Damage assessment (inspect own ship)"),
+    ("M", "Sound on / off"),
     ("F1 or H", "This reference"),
     ("Esc", "Close overlay / battle menu"),
 ]
@@ -90,13 +92,15 @@ class LogLine:
 FKEYS = {getattr(pygame, f"K_F{n}"): f"F{n}" for n in (2, 3, 4, 5, 6, 7, 8, 10, 11, 12)}
 
 
+RED_ALERT_FLOOR, RED_ALERT_PULSE, RED_ALERT_PERIOD = 0.22, 0.38, 1.8   # border tint and its pulse (seconds)
 ORDER_TRANSLATE_WAIT = 8.0     # seconds a named order waits for a step's translation before skipping it
 
 
 class BattleScene:
     def __init__(self, battle: Battle, size: tuple[int, int], on_exit: Callable[[], None],
                  keys: dict[str, str] | None = None, hidden: dict[str, object] | None = None,
-                 llm: dict[str, object] | None = None, chatter: bool = True) -> None:
+                 llm: dict[str, object] | None = None, chatter: bool = True, volume: float = 0.6,
+                 muted: bool = False) -> None:
         self.battle = battle
         self.world = battle.world
         self.player_id = battle.player_ship_id
@@ -173,6 +177,9 @@ class BattleScene:
 
         self.orders = OrderBook.load(config_dir())
         self.order_run: OrderRun | None = None
+        self.audio = Audio(volume, muted)
+        self._was_alert = False
+        self.deeds: list[Event] = []          # objectives and projects finished: the officers' record for the debrief
         if provider is not None and self.orders.orders:
             from ..llm.service import LLMService
 
@@ -311,6 +318,10 @@ class BattleScene:
         events = self.world.take_events()
         self.obs = self.world.observe(self.side)
         self.view.ingest(events, self.obs)
+        self.deeds.extend(ev for ev in events if isinstance(ev, (ObjectiveEnded, ProjectCompleted)))
+        if self.audio.available:
+            visible = {s.id for s in self.obs.own_ships()} | {c.id for c in self.obs.contacts().values() if c.visible}
+            self.audio.events(events, time.monotonic(), self._heard_at, visible, self._beam_style, self._ship_at)
         self._crew_react(events)
         self.hits.attacker = self.player_id
         self.hits.ingest(events, self.world.tick)
@@ -523,6 +534,9 @@ class BattleScene:
             dx = {pygame.K_LEFT: step, pygame.K_RIGHT: -step}.get(k, 0)
             dy = {pygame.K_UP: step, pygame.K_DOWN: -step}.get(k, 0)
             self.cam.pan_pixels(dx, dy)
+        elif k == pygame.K_m:
+            muted = self.audio.toggle_mute()
+            self.toast = ("Sound off (M)" if muted else "Sound on (M)", theme.TEXT_DIM, 1.5)
         elif k == pygame.K_F9:
             self.omniscient = not self.omniscient
         elif p is None:
@@ -737,6 +751,8 @@ class BattleScene:
             self._show(self.orders.listing(), None)
         elif name == "belay":
             self._belay()
+        elif name == "sound":
+            self._sound(val)
 
     # ------------------------------------------------------------ named orders
 
@@ -1098,6 +1114,11 @@ class BattleScene:
     def draw(self, surf: pygame.Surface) -> None:
         self.ui.begin_frame()
         surf.fill((5, 9, 18))
+        alert = self._red_alert()
+        theme.set_alert(alert)
+        if alert > 0 and not self._was_alert:
+            self.audio.play("alert", time.monotonic(), 0.0, 0.8)
+        self._was_alert = alert > 0
         tick_len = 1.0 / self.world.rules.ticks_per_cycle
         alpha = 1.0 if self.paused else max(0.0, min(1.0, self.acc / tick_len))
         obs = self.world.observe(self.side)
@@ -1124,6 +1145,59 @@ class BattleScene:
             pygame.draw.rect(surf, col, r, 1, border_radius=4)
             theme.text(surf, msg, r.center, col, 13, anchor="center")
         self.ui.draw_tooltip(surf)
+        theme.set_alert(0.0)
+        for name, x, y in self.view.take_sounds():
+            heard = self._heard_at(x, y)
+            if heard is not None:
+                self.audio.play(name, time.monotonic(), *heard)
+
+    # ------------------------------------------------------------ sound
+
+    def _heard_at(self, x: float, y: float) -> tuple[float, float] | None:
+        """(pan, level) for something at a map point: full in view, fading off its edges, silent far away."""
+        sx, sy = self.cam.to_screen(x, y)
+        r = self.map_rect
+        dx = (sx - r.centerx) / max(1, r.width / 2)
+        dy = (sy - r.centery) / max(1, r.height / 2)
+        out = max(abs(dx), abs(dy))
+        if out > 2.0:
+            return None
+        level = 0.8 if out <= 1.0 else 0.8 * (2.0 - out)
+        return max(-0.8, min(0.8, dx * 0.7)), level
+
+    def _ship_at(self, sid: int) -> tuple[float, float] | None:
+        s = self.obs.own(sid)
+        if s is not None:
+            return s.x, s.y
+        c = self.obs.contact(sid)
+        return (c.x, c.y) if c is not None else None
+
+    def _beam_style(self, sid: int) -> str:
+        from .tactical import faction_seen
+
+        f = faction_seen(self.obs, sid)
+        return f.phaser_style if f is not None else "beam"
+
+    def _sound(self, val: object) -> None:
+        a = self.audio
+        if val is None:
+            pass
+        elif val == "on":
+            a.muted = False
+        elif val == "off":
+            a.muted = True
+        else:
+            a.volume = max(0.0, min(1.0, float(val) / 100))   # type: ignore[arg-type]
+            a.muted = False
+        state = "no audio device" if not a.available else "muted" if a.muted else f"volume {a.volume * 100:.0f}"
+        self._log(f"Sound: {state}. M mutes; 'sound <0-100>' sets the volume.", theme.TEXT_DIM)
+
+    def _red_alert(self) -> float:
+        """How red the panel borders are right now: a slow pulse while the ship is in a fight, else 0."""
+        p = self.player
+        if p is None or not p.alive or self.world.outcome.over or not in_battle(self.world, p):
+            return 0.0
+        return RED_ALERT_FLOOR + RED_ALERT_PULSE * (0.5 + 0.5 * math.sin(time.monotonic() * math.tau / RED_ALERT_PERIOD))
 
     def _map_overlay_text(self, surf: pygame.Surface) -> None:
         r = self.map_rect
@@ -1132,6 +1206,9 @@ class BattleScene:
         col = theme.CAUTION if self.paused else theme.GOOD
         theme.text(surf, f"Cycle {t:7.1f}", (r.x + 14, r.y + 10), theme.TEXT, 14, "mono")
         theme.text(surf, state, (r.x + 130, r.y + 10), col, 14, "mono", weight="medium")
+        if theme.border() != theme.BORDER:
+            theme.text(surf, "RED ALERT", (r.x + 180, r.y + 12), theme.mix(theme.TEXT_DIM, theme.ALERT, 0.8), 11,
+                       weight="semibold")
         if self.paused and not self.world.outcome.over:
             # hard to miss: nothing moves, charges or reloads while paused
             msg = "PAUSED  ·  press Space to run"
@@ -1198,7 +1275,7 @@ class BattleScene:
     def _bottom(self, surf: pygame.Surface) -> None:
         r = self.bottom_rect
         pygame.draw.rect(surf, theme.BG_PANEL, r, border_radius=4)
-        pygame.draw.rect(surf, theme.BORDER, r, 1, border_radius=4)
+        pygame.draw.rect(surf, theme.border(), r, 1, border_radius=4)
         # time controls
         x = r.x + 10
         y = r.y + 8
@@ -1365,16 +1442,52 @@ class BattleScene:
                        theme.health_color(1 - d / 100, d >= 100), 12, "mono")
 
     def _debrief(self, surf: pygame.Surface) -> None:
+        """The end of the battle: how it went, your ship's record, the officer who stood out, every ship's tally."""
         w = self.world
         res = self.assessment.sides(w)
         score = self.assessment.score(w, self.side)
-        r = self._modal(surf, 760, 470, "Battle assessment", theme.CAUTION)
+        rows = list(w.ships.values())[:9]
+        r = self._modal(surf, 800, 330 + 46 * len(res) + 18 * len(rows), "Battle assessment", theme.CAUTION)
         verdict = self.assessment.verdict(score)
-        theme.text(surf, w.outcome.reason or "The engagement is over.", (r.x + 24, r.y + 40), theme.TEXT, 16, weight="semibold")
-        theme.text(surf, verdict, (r.x + 24, r.y + 66), theme.CAUTION, 14)
-        theme.text(surf, f"Score {score:+.1f}   ·   {w.time:.0f} cycles", (r.right - 24, r.y + 42), theme.TEXT, 14, "mono",
+        theme.text(surf, w.outcome.reason or "The engagement is over.", (r.x + 24, r.y + 40), theme.TEXT, 18, weight="semibold")
+        theme.text(surf, verdict, (r.x + 24, r.y + 68), theme.CAUTION, 14)
+        theme.text(surf, f"Score {score:+.1f}   ·   {w.time:.0f} cycles", (r.right - 24, r.y + 44), theme.TEXT, 14, "mono",
                    anchor="topright")
-        y = r.y + 104
+        y = r.y + 100
+        me = w.ships.get(self.player_id) if self.player_id is not None else None
+        if me is not None:
+            st = me.stats
+            card = pygame.Rect(r.x + 16, y, r.width - 32, 72)
+            pygame.draw.rect(surf, theme.BG_PANEL_HI, card, border_radius=4)
+            theme.text(surf, f"{me.name} · {me.status.value}", (card.x + 12, card.y + 8), theme.FRIEND, 14, weight="medium")
+            hull = max(0.0, me.structure / me.structure_max)
+            stats = [("hull", f"{hull:.0%}", theme.health_color(hull)),
+                     ("crew", f"{me.crew}/{me.cls.crew}", theme.TEXT),
+                     ("morale", f"{reports.morale_words(me.morale)} {me.morale:.0f}", theme.health_color(me.morale / 100)),
+                     ("phasers", _ratio(st.phaser_hits, st.phaser_shots), theme.TEXT),
+                     ("torpedoes", _ratio(st.torpedo_hits, st.torpedoes_fired), theme.TEXT),
+                     ("dealt", f"{st.damage_dealt:,.0f}", theme.GOOD),
+                     ("taken", f"{st.damage_taken:,.0f}", theme.CAUTION),
+                     ("kills", str(st.kills), theme.TEXT)]
+            col_w = (card.width - 24) / len(stats)
+            for k, (label, val, colr) in enumerate(stats):
+                x = card.x + 12 + k * col_w
+                theme.text(surf, label, (x, card.y + 32), theme.TEXT_FAINT, 10)
+                theme.text(surf, val, (x, card.y + 46), colr, 13, "mono")
+            y = card.bottom + 14
+        crew = self.battle.crew
+        best = None
+        if crew is not None and self.player_id is not None:
+            from ..crew.review import standout
+
+            best = standout(crew.officers.values(), self.player_id, w.command_log, self.deeds)
+        if best is not None:
+            theme.text(surf, "STANDOUT OFFICER", (r.x + 24, y), theme.TEXT_DIM, 10, weight="semibold")
+            theme.text(surf, best.line(), (r.x + 24, y + 15), theme.CREW, 13)
+        elif crew is not None:
+            theme.text(surf, "You fought the ship yourself: your officers gave no orders of their own.", (r.x + 24, y + 8),
+                       theme.TEXT_DIM, 12)
+        y += 44
         for side, sr in sorted(res.items()):
             name = w.side_names.get(side, f"Side {side}")
             col = theme.FRIEND if side == self.side else theme.HOSTILE
@@ -1384,7 +1497,7 @@ class BattleScene:
                        (r.x + 24, y + 20), theme.TEXT_DIM, 12)
             y += 46
         y += 6
-        for s in list(w.ships.values())[:9]:
+        for s in rows:
             st = s.stats
             col = theme.FRIEND if s.side == self.side else theme.HOSTILE
             theme.text(surf, f"{s.name} ({s.cls.abbrev})", (r.x + 24, y), col, 12)
@@ -1396,6 +1509,9 @@ class BattleScene:
         self.ui.button(surf, pygame.Rect(r.right - 352, r.bottom - 46, 160, 30), "Review the field",
                        lambda: setattr(self, "overlay", None), size=13)
 
+
+def _ratio(hits: int, shots: int) -> str:
+    return f"{hits}/{shots}"
 
 
 def _exact_verb(text: str) -> bool:

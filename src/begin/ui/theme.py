@@ -147,10 +147,23 @@ def bar(surf: pygame.Surface, rect: pygame.Rect, frac: float, color: Color, bg: 
         pygame.draw.rect(surf, color, r, border_radius=2)
 
 
+_alert = 0.0      # 0..1: how far panel borders are tinted red this frame (red alert)
+
+
+def set_alert(level: float) -> None:
+    """Red alert: the panels' borders take on this much of the alert colour (0 = none)."""
+    global _alert
+    _alert = max(0.0, min(1.0, level))
+
+
+def border() -> Color:
+    return mix(BORDER, ALERT, _alert) if _alert > 0 else BORDER
+
+
 def panel(surf: pygame.Surface, rect: pygame.Rect, title: str | None = None, accent: Color = FRIEND) -> int:
     """Draw a panel frame; returns the y where content should start."""
     pygame.draw.rect(surf, BG_PANEL, rect, border_radius=4)
-    pygame.draw.rect(surf, BORDER, rect, 1, border_radius=4)
+    pygame.draw.rect(surf, border(), rect, 1, border_radius=4)
     if title:
         pygame.draw.line(surf, accent, (rect.x + 10, rect.y + 1), (rect.x + 34, rect.y + 1), 2)
         text(surf, title.upper(), (rect.x + 10, rect.y + 7), TEXT_DIM, 11, weight="semibold")
@@ -158,4 +171,4 @@ def panel(surf: pygame.Surface, rect: pygame.Rect, title: str | None = None, acc
     return rect.y + 8
 
 
-__all__ = [n for n in dir() if n.isupper()] + ["bar", "dim", "font", "health_color", "mix", "panel", "render", "text", "text_width"]
+__all__ = [n for n in dir() if n.isupper()] + ["bar", "border", "set_alert", "dim", "font", "health_color", "mix", "panel", "render", "text", "text_width"]
