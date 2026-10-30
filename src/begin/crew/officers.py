@@ -37,7 +37,7 @@ from ..sim.commands import (
 )
 from ..sim.allies import AllyStanding
 from ..sim.observation import ContactView, Observation
-from ..sim.ship import Kind, Ship
+from ..sim.ship import HULL, Kind, RepairTarget, Ship
 from .characters import STATIONS, OfficerProfile
 from ..sim.systems.ordnance import suggested_prox
 from .helm import HelmPlan, incoming, plan_helm, support_range, threatened
@@ -53,6 +53,7 @@ STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
 }
 
 APPROACH_SLACK = 3000.0   # beyond the supporting range by more than this, the helm just closes
+HULL_URGENT = 0.5         # below this share of the hull, patching it comes before spreading the work
 
 STATION_NAMES = {"helm": "Helm", "tactical": "Tactical", "engineering": "Engineering", "science": "Science"}
 
@@ -245,8 +246,9 @@ class OfficerBrain(AICaptain):
         return []
 
 
-def repair_priority(ship: Ship, obs: Observation) -> Kind | None:
-    """Engines if we can't move, then the shield facing the target, weapons, power; else spread the work."""
+def repair_priority(ship: Ship, obs: Observation) -> RepairTarget | None:
+    """Engines if we can't move, then the shield facing the target, weapons, power, then a badly holed hull;
+    else spread the work."""
     def hurt(subs: Iterable[object]) -> bool:
         return any(getattr(s, "damage", 0) > 0 and not getattr(s, "destroyed", False) for s in subs)
 
@@ -266,6 +268,8 @@ def repair_priority(ship: Ship, obs: Observation) -> Kind | None:
         return Kind.PHASER if banks >= tubes else Kind.TUBE
     if hurt(ship.reactors) or hurt(ship.batteries):
         return Kind.REACTOR
+    if ship.structure < ship.structure_max * HULL_URGENT:
+        return HULL
     return None
 
 
@@ -313,6 +317,22 @@ class Crew:
                 return o
         hits = [o for o in everyone if any(a.startswith(q) for a in (o.id, o.name.lower(), *o.aliases))]
         return hits[0] if len(hits) == 1 else None
+
+    def repair_officer(self, ship: Ship) -> OfficerProfile | None:
+        """The officer directing the repair crews, if the captain handed them over ("auto": Spock, or the
+        engineer when there is no Spock aboard)."""
+        if not ship.repairs_by:
+            return None
+        if ship.repairs_by == "auto":
+            return self.find("spock") or self.officer("engineering") or self.officer("science")
+        return self.find(ship.repairs_by) or self.officer("engineering")
+
+    def _repairs(self, obs: Observation, ship: Ship) -> list[Command]:
+        """An officer the captain asked to manage repairs points the crews, whatever stations they run."""
+        prof = self.repair_officer(ship)
+        if prof is None or "engineering" in ship.delegated:
+            return []          # nobody asked, or the engineering station already does it
+        return self._brain("bridge", ship, prof)._engineering(obs, ship)
 
     def _objectives(self, obs: Observation, ship: Ship) -> list[Command]:
         """Officers working on what the captain asked of them, whether or not they run a station."""
@@ -382,7 +402,7 @@ class Crew:
         ship = obs.own(self.ship_id)
         if ship is None or not ship.alive or ship.crew <= 0:
             return []
-        out = self._objectives(obs, ship)
+        out = self._objectives(obs, ship) + self._repairs(obs, ship)
         if not ship.delegated:
             return out
         commander = self.find(ship.conn) if ship.conn else None

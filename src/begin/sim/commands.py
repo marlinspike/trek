@@ -18,7 +18,7 @@ from enum import IntEnum
 from typing import TYPE_CHECKING, ClassVar
 
 from ..core.angles import bearing, in_arc, norm360
-from .ship import BankRole, FireMode, HelmMode, Kind, PDDoctrine, Ship, ShipStatus, TARGETABLE_GROUPS, Tube
+from .ship import BankRole, FireMode, HelmMode, Kind, PDDoctrine, RepairTarget, Ship, ShipStatus, TARGETABLE_GROUPS, Tube
 
 if TYPE_CHECKING:
     from .world import World
@@ -888,7 +888,7 @@ class ReinforceShield(Command):
 
 @dataclass(kw_only=True)
 class SetRepairPriority(Command):
-    kind: Kind | None
+    kind: RepairTarget | None
     name: ClassVar[str] = "repair"
 
     def channels(self) -> tuple[str, ...]:
@@ -896,6 +896,21 @@ class SetRepairPriority(Command):
 
     def apply(self, world: World, ship: Ship) -> None:
         ship.repair_priority = self.kind
+        if self.issuer >= Authority.CAPTAIN:
+            ship.repairs_by = ""     # the captain's own priority takes the repairs back from an officer
+
+
+@dataclass(kw_only=True)
+class ManageRepairs(Command):
+    """Let an officer direct the repair crews, or take them back (remake extension)."""
+
+    officer: str = ""      # officer id; "" = the captain directs repairs
+    name: ClassVar[str] = "repairs"
+    needs_crew: ClassVar[bool] = False
+
+    def apply(self, world: World, ship: Ship) -> None:
+        ship.repairs_by = self.officer
+        world.release_holds(ship.id, "engineering.priority")
 
 
 # which holds a station covers when it is handed to (or taken back from) an officer

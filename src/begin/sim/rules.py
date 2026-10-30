@@ -89,6 +89,13 @@ class Rules:
     subsystem_rolls_per_damage: float = 0.1   # Begin: n = damage / 10
     targeted_max_accuracy: float = 0.85
     weapons_need_full_repair: bool = True     # [R] banks/tubes must be at 0% damage to charge/load
+    # hull repairs [E]: share of the hull patched per cycle by a full crew, out of the fight
+    hull_repair_rate: float = 0.004           # about 4 minutes to patch a badly holed hull
+    hull_repair_under_fire: float = 0.25      # × the rate while in battle (hit lately, or an enemy close)
+    hull_repair_docked: float = 0.03          # per cycle at a base, × the base's repair ratio
+    hull_field_limit: float = 0.75            # crews in space patch the hull to this; a base restores the rest
+    battle_quiet_cycles: float = 15.0         # cycles without a hull hit before repairs speed up again
+    battle_enemy_range: float = 12000.0       # an enemy ship this close also counts as "in battle"
 
     # engagement [E]
     escape_distance: float = 60000.0

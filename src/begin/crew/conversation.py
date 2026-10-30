@@ -36,7 +36,7 @@ from ..sim.events import (
     ContactChanged, Event, HullHit, ObjectiveEnded, PhaserFired, ProjectCompleted, ScanCompleted, ShipStatusChanged, SubsystemRepaired, TorpedoLaunched,
 )
 from ..sim.observation import Observation
-from ..sim.ship import Ship
+from ..sim.ship import HULL, KIND_LABEL, Kind, Ship, repair_words
 from .characters import (
 )
 from ..sim.objectives import DISABLE_GROUPS
@@ -63,6 +63,9 @@ CALLOUT_GAP = 4.0
 CALLOUT_REPEAT = {"bait": 20.0, "salvo": 20.0, "between": 20.0, "phasers": 30.0, "close": 10.0, "open": 10.0,
                   "fight": 15.0, "hunt": 20.0, "evade": 5.0}   # seconds before the same kind of step is said again
 
+REPAIR_REPORT_DAMAGE = 25   # % damage before a system is worth reporting
+REPAIR_GAP = 12.0           # seconds between repair reports
+
 _PRAISE = re.compile(r"\b(thanks?|thank you|well done|good (job|work|shooting)|nice|great|excellent|bravo)\b")
 _RUDE = re.compile(r"\b(stupid|idiot|useless|incompetent|shut up|moron|fool)\b")
 _GREET = re.compile(r"^(hello|hi|hey|greetings|report in)\b")
@@ -80,6 +83,11 @@ _DISABLE = re.compile(r"\b(disable|disarm|cripple|knock out|take out|neutrali[sz
                       r"finish off|kill|sink|blow up)\b")
 _KILL_VERBS = ("take out", "destroy", "eliminate", "finish off", "kill", "sink", "blow up", "knock out")
 _FIRING = re.compile(r"^\s*(fire\b|tachyon\s+\S)")  # an order to fire the round, not to design one
+# "spock, manage repairs" / "repairs are yours"; "I'll handle repairs" takes them back [E]
+_REPAIRS_TAKE = re.compile(r"\b(manage|handle|run|direct|see to|take (care of|over)|look after|oversee|in charge of|"
+                           r"prioriti[sz]e)\b[^.]*\brepairs?\b|\brepairs? (are|is) (yours|up to you)\b")
+_REPAIRS_RELEASE = re.compile(r"\b(i'?ll|i will|let me) (manage|handle|direct|run|do) (the )?repairs?\b|"
+                              r"\brepairs? (are|is) mine\b|\b(stop|quit) (managing|directing) (the )?repairs?\b")
 _STATUS = re.compile(r"\b(status|report|sitrep|situation|how are|how's|condition)\b")
 _ADVICE = re.compile(r"\b(advice|advise|recommend|suggest|what (should|do you|now|next)|ideas?|options?|thoughts?|opinion)\b")
 
@@ -111,6 +119,10 @@ class Bridge:
         self._last_line: dict[str, int] = {}
         self._last_any = -999
         self._hull_band = 4
+        self._repair_seen: set[str] = set()        # damaged systems already reported
+        self._repair_band = 4                      # quarter of the hull last reported
+        self._repair_said = -999                   # tick of the last repair report
+        self._repair_prio: object = None           # the priority last announced by the officer managing repairs
         self._threats = 0
         self._llm_note_given = False
         self._conn_target: int | None = None
@@ -168,6 +180,15 @@ class Bridge:
             if err:
                 return [self._say(officer, err, "caution")]
             return self.handover_lines(officer, turn == "take")
+        if _REPAIRS_RELEASE.search(low) or _REPAIRS_TAKE.search(low):
+            taking = not _REPAIRS_RELEASE.search(low)
+            err = run(f"repair auto {officer.id}" if taking else "repair manual", officer)
+            if err:
+                return [self._say(officer, err, "caution")]
+            self._repair_said = -999
+            if not taking:
+                return [self._say(officer, "The repair crews are yours, Captain.")]
+            return [self._say(officer, "Understood. I will direct the repair crews and tell you what I am doing.")]
         m = _DISABLE.search(low)
         if m is not None:
             rest = low[m.end():]
@@ -374,6 +395,7 @@ class Bridge:
                 self._names[c.id] = _name(obs, c.id)
         out = self._objective_reports(events, s, obs)   # asked-for work is always reported
         out.extend(self._callouts(s, obs))
+        out.extend(self._repair_reports(s, obs))
         if not self.chatter:
             return out
         delegated = s.delegated
@@ -455,6 +477,52 @@ class Bridge:
             out.append(self._say(o, a.doing.rstrip(".") + "."))
         out.extend(self._knockouts(s, obs))
         return out
+
+    def _repair_reports(self, s: Ship, obs: Observation) -> list[Utterance]:
+        """Spock (or the engineer) says when systems or the hull need repairs and offers to direct the crews;
+        once directing them, says where he sends them. Spoken even with chatter off, like callouts."""
+        tpc = obs.rules.ticks_per_cycle
+        manager = self.crew.repair_officer(s)
+        if manager is not None:
+            prio = s.repair_priority
+            if prio != self._repair_prio and obs.tick - self._repair_said >= REPAIR_GAP * tpc / 2:
+                self._repair_prio = prio
+                self._repair_said = obs.tick
+                where = ("the hull" if prio == HULL else f"the {KIND_LABEL[prio].lower()}s" if isinstance(prio, Kind)
+                         else "every damaged system")
+                return [self._say(manager, f"Repair crews to {where}.")]
+            return []
+        self._repair_prio = s.repair_priority
+        reporter = self.find("spock") or self.crew.officer("engineering")
+        if reporter is None or not s.alive:
+            return []
+        damaged = {sub.sid: sub for sub in s.subsystems() if sub.damage >= REPAIR_REPORT_DAMAGE}
+        new = [damaged[sid] for sid in damaged if sid not in self._repair_seen]
+        self._repair_seen &= set(damaged)
+        hull = max(0.0, s.structure) / max(1.0, s.structure_max)
+        band = int(hull * 4)
+        worse_hull = band < self._repair_band
+        if not new and not worse_hull:
+            self._repair_band = band     # repaired back up: a later drop is news again
+            return []
+        if obs.tick - self._repair_said < REPAIR_GAP * tpc:
+            return []
+        self._repair_said = obs.tick
+        self._repair_seen |= {sub.sid for sub in new}
+        self._repair_band = band
+        parts = []
+        if new:
+            worst = sorted(new, key=lambda sub: -sub.damage)
+            names = ", ".join(f"{sub.label.lower()} {'destroyed' if sub.destroyed else f'{sub.damage}%'}"
+                              for sub in worst[:3])
+            more = f" and {len(worst) - 3} more" if len(worst) > 3 else ""
+            parts.append(f"{names}{more} need repairs")
+        if worse_hull or hull < 0.75:
+            parts.append(f"hull at {hull * 100:.0f}%")
+        text = "Captain, " + "; ".join(parts) + ". Shall I direct the repair crews?"
+        u = self._say(reporter, text)
+        u.commands = [f"repair auto {reporter.id}"]
+        return [u]
 
     def _knockouts(self, s: Ship, obs: Observation) -> list[Utterance]:
         """'Wraith: 3 of 6 shields out.' as each scan shows another of the asked-for systems down."""
@@ -690,7 +758,7 @@ def _engineering_report(s: Ship, obs: Observation) -> str:
     if weakest is not None:
         out += f" Weakest shield is {weakest.index + 1} at {weakest.effective:.0f}%."
     if damaged:
-        out += f" {damaged} systems damaged; repairs on {s.repair_priority.value if s.repair_priority else 'everything'}."
+        out += f" {damaged} systems damaged; repairs on {repair_words(s.repair_priority, 'everything')}."
     return out
 
 

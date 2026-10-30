@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterator
+from typing import Iterator, Literal
 
 from ..content.schema import MountDef, ShipClass
 
@@ -39,6 +39,17 @@ DAMAGE_WEIGHT: dict[Kind, float] = {
     Kind.SENSORS: 0.10, Kind.CLOAK: 0.10, Kind.IMPULSE: 0.05, Kind.TRACTOR: 0.05,
     Kind.COMPUTER: 0.08,
 }
+
+# A repair priority is a kind of subsystem, or the hull itself [E].
+HULL: Literal["hull"] = "hull"
+RepairTarget = Kind | Literal["hull"]
+
+
+
+def repair_words(p: RepairTarget | None, default: str = "all systems") -> str:
+    """A repair priority in plain words: 'shield', 'hull', or the default when there is none."""
+    return default if p is None else p.value if isinstance(p, Kind) else p
+
 
 # Which repair-rate column of the class repairs each kind [R].
 REPAIR_CLASS: dict[Kind, str] = {
@@ -354,7 +365,9 @@ class Ship:
     boarders: int = 0
     boarder_side: int = -1
     self_destruct: float = -1.0        # cycles remaining, -1 = off
-    repair_priority: Kind | None = None
+    repair_priority: RepairTarget | None = None
+    repairs_by: str = ""               # officer id directing the repair crews; "" = the captain [E]
+    last_hull_hit: int = -10**9        # tick the hull last took damage: field repairs slow down under fire [E]
     delegated: set[str] = field(default_factory=set)  # bridge stations run by officers (crew/stations.py)
     pending_volley: tuple[int, int | None, str | None, int] | None = None  # bait follow-up: (tick, target, subsystem, issuer) [E]
     deflector_ready: bool = False      # the dish is set up for tachyon pulses [E]
@@ -463,6 +476,6 @@ class Ship:
 
 __all__ = [
     "Battery", "BankRole", "FireMode", "PDDoctrine", "BattleStats", "DAMAGE_WEIGHT", "Drive", "HelmMode", "KIND_LABEL", "Kind",
-    "Launcher", "LoadedProbe", "LoadedTorpedo", "PhaserBank", "PowerReport", "REPAIR_CLASS",
-    "Reactor", "Shield", "Ship", "ShipStatus", "Subsystem", "TARGETABLE_GROUPS", "Tube",
+    "HULL", "Launcher", "LoadedProbe", "LoadedTorpedo", "PhaserBank", "PowerReport", "REPAIR_CLASS",
+    "Reactor", "RepairTarget", "repair_words", "Shield", "Ship", "ShipStatus", "Subsystem", "TARGETABLE_GROUPS", "Tube",
 ]

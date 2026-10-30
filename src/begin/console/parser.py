@@ -27,11 +27,11 @@ from ..sim.allies import ORDER_WORDS, SHIP_ORDERS, AllyStanding
 from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
-    SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, Surrender,
+    SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, ManageRepairs, SetShields, SetTubes, Surrender,
     DeflectorPulse, EndObjective, FireAtPoint, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
-from ..sim.ship import TARGETABLE_GROUPS, BankRole, FireMode, Kind, PDDoctrine
+from ..sim.ship import HULL, TARGETABLE_GROUPS, BankRole, FireMode, Kind, PDDoctrine, RepairTarget
 from . import reports
 
 
@@ -141,12 +141,12 @@ WEAPONS = {
     "launcher": ("probes", "probe", "pr", "launchers", "launcher", "la"),
 }
 
-REPAIR_KINDS: dict[str, Kind | None] = {
+REPAIR_KINDS: dict[str, RepairTarget | None] = {
     "all": None, "none": None, "reactors": Kind.REACTOR, "batteries": Kind.BATTERY, "drives": Kind.DRIVE,
     "warp": Kind.DRIVE, "engines": Kind.DRIVE, "impulse": Kind.IMPULSE, "sensors": Kind.SENSORS,
     "computer": Kind.COMPUTER, "shields": Kind.SHIELD, "phasers": Kind.PHASER, "banks": Kind.PHASER,
     "tubes": Kind.TUBE, "torpedoes": Kind.TUBE, "launchers": Kind.LAUNCHER, "probes": Kind.LAUNCHER,
-    "transporters": Kind.TRANSPORTER, "tractor": Kind.TRACTOR, "cloak": Kind.CLOAK,
+    "transporters": Kind.TRANSPORTER, "tractor": Kind.TRACTOR, "cloak": Kind.CLOAK, "hull": HULL,
 }
 
 FILLER = {"with", "the", "to", "at", "on", "of", "and", "set", "please", "by", "using", "for", "a", "an", "from"}
@@ -163,8 +163,9 @@ HELP = [
     "Probes:   fire [all] probes [<list>] at <ship> | course <c> · load launchers [<list>] [prox] <p> [time] <t> · unload launchers",
     "          turn probe <code>|all probes [course] <c> · lock probe <code>|all probes on <ship> · detonate <code>|all · status probes",
     "Shields:  raise|lower|drop [shields] <list>|all · reenforce <n>|off",
-    "Ship:     beam|transport <ally> (change ships) · beam <ship> <crew> · board <ship> [<crew>] · repair <system>|all",
+    "Ship:     beam|transport <ally> (change ships) · beam <ship> <crew> · board <ship> [<crew>] · repair <system>|hull|all",
     "          tractor <ship>|off · dock <base> [on|off] · undock · cloak on|off · self destruct <cycles> · abort · surrender",
+    "Repairs:  repair auto [<officer>] (an officer directs the crews) · repair manual",
     "Allies:   tell|order <ally>|<group#> target|attack|torpedo|phaser|probe <enemy> · hold fire · open fire · disengage",
     "          escort <ally> [at] <range> · course <c> · run · withdraw · cancel · report · approach <ship> <range> · defend <ship>",
     "          stop · dock <base> · undock · tractor <ship> · tow <ship> <dest> · release · board <ship> <n> · join <n> · leave",
@@ -931,6 +932,13 @@ class Parser:
 
     # engineering and specials ----------------------------------------------------
     def _v_repair(self, tok: _Tokens, res: ParseResult) -> None:
+        if tok.take_word("auto", "officer", "delegate"):
+            # an officer directs the crews; with no name, the ship's science officer (Spock) or engineer
+            res.commands.append(self._cmd(ManageRepairs, officer=" ".join(tok.rest()).strip().lower() or "auto"))
+            return
+        if tok.take_word("manual", "captain", "myself"):
+            res.commands.append(self._cmd(ManageRepairs, officer=""))
+            return
         w = tok.next() or "all"
         k = _match(w, {k: (k,) for k in REPAIR_KINDS})
         if k is None:

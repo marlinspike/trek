@@ -44,6 +44,7 @@ PLASMA = (140, 255, 120)
 PROBE = (230, 200, 120)
 BLAST = (255, 200, 140)
 SHIELD = (96, 170, 255)
+REPAIR = (120, 220, 255)      # systems the repair crews are working on
 
 FONT_DIR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
 

@@ -34,11 +34,12 @@ from . import officer_view, theme
 from .camera import Camera
 from ..crew.conversation import Bridge, Utterance
 from ..crew.officers import STATION_COMMANDS, Activity, station_of
+from ..sim.systems.repair import under_repair
 from ..help.coach import HelpContext
 from .manual import ManualView
 from .hud import (
     PD_CYCLE, SUB_GROUPS, ContactsPanel, CrewPanel, FleetPanel, OwnShipPanel, Panel, TabbedPanel, TargetPanel, WeaponsPanel,
-    hull_diagram,
+    diagram_legend, hull_diagram,
 )
 from .tactical import Snapshot, TacticalView
 from .widgets import UI
@@ -807,7 +808,7 @@ class BattleScene:
     def _officer_run(self, line: str, officer: object) -> str | None:
         """Carry out a console line an officer was told (or decided) to run; only their own stations."""
         from ..crew.characters import OfficerProfile
-        from ..sim.commands import DelegateStation
+        from ..sim.commands import DelegateStation, ManageRepairs
 
         assert isinstance(officer, OfficerProfile)
         if self.player_id is None:
@@ -824,6 +825,8 @@ class BattleScene:
         if self.player is not None and self.player.conn == officer.id:
             allowed |= set(STATION_COMMANDS)   # in command of the bridge
         for cmd in res.commands:
+            if isinstance(cmd, ManageRepairs):
+                continue       # any officer can be asked to direct the repair crews
             st = cmd.station if isinstance(cmd, DelegateStation) else station_of(cmd)
             if st is None or st not in allowed:
                 return "That is not my station, Captain."
@@ -1177,9 +1180,18 @@ class BattleScene:
             self.overlay = None
             return
         r = self._modal(surf, 860, 560, f"Damage assessment — {p.name}")
-        hull_diagram(surf, p, pygame.Rect(r.x + 20, r.y + 40, 380, 480))
+        fixing, hull_fixing = under_repair(self.world, p)
+        hull_diagram(surf, p, pygame.Rect(r.x + 20, r.y + 40, 380, 400), repairing=fixing, ui=self.ui)
+        diagram_legend(surf, r.x + 20, r.y + 446)
         x = r.x + 420
         y = r.y + 40
+        hf = max(0.0, p.structure) / p.structure_max
+        hull_note = "  under repair" if hull_fixing else ""
+        theme.text(surf, f"Hull {hf * 100:.0f}%{hull_note}", (x, y), theme.REPAIR if hull_fixing else theme.TEXT_DIM, 12)
+        if hull_fixing and p.docked_to is None and hf < self.world.rules.hull_field_limit:
+            theme.text(surf, f"(crews patch it to {self.world.rules.hull_field_limit * 100:.0f}%; a base does the rest)",
+                       (x + 170, y), theme.TEXT_FAINT, 11)
+        y += 24
         groups: dict[Kind, list] = {}
         for s in p.subsystems():
             groups.setdefault(s.kind, []).append(s)
@@ -1190,6 +1202,9 @@ class BattleScene:
                 col = theme.health_color(s.health, s.destroyed)
                 rr = pygame.Rect(xx, y + 2, 34, 12)
                 theme.bar(surf, rr, s.health, col)
+                if s.sid in fixing:
+                    prio = s.kind == p.repair_priority
+                    pygame.draw.rect(surf, theme.REPAIR, rr.inflate(4, 4), 2 if prio else 1, border_radius=2)
                 if s.damage:
                     theme.text(surf, f"{s.damage}", (rr.centerx, rr.bottom + 1), col, 9, "mono", anchor="midtop")
                 xx += 40
@@ -1197,7 +1212,8 @@ class BattleScene:
                     xx = x + 120
                     y += 26
             y += 28
-        theme.text(surf, "Damaged weapons must be fully repaired before they charge again.  'repair <system>' sets priority.",
+        theme.text(surf, "Outlined: under repair (bold: the priority).  Damaged weapons must be fully repaired before they "
+                         "charge again.  'repair <system>' sets priority.",
                    (r.x + 20, r.bottom - 26), theme.TEXT_FAINT, 11)
 
     def _scan_view(self, surf: pygame.Surface) -> None:

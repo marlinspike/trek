@@ -95,6 +95,10 @@ Torpedo designs have their own table, `ORDNANCE_OVERRIDES`:
 
 The blast radius is a per-design `blast_scale` (1.15) on Begin's formula (yield × 5 × 10). The warheads were scaled by the same factor as the proximity limit (800 / 500 = 1.6): blast radius grows in step with the warhead, so a burst at the widest fuse sits at the same fraction of the blast radius as before (800 of 920 now, 500 of 575 then) and delivers the same share of a 1.6 × bigger warhead. With the bigger warheads the Federation side wins most AI-vs-AI runs (32 seeds: Border Incident 14 → 32, Three-Way 15 → 30, Fleet Action 25 → 31).
 
+## Hull repairs [E]
+
+Begin repairs systems but never the hull. Here damage-control crews also patch it, at `hull_repair_rate` (0.4% of the hull per cycle with a full crew), a quarter of that while in battle (hit in the last 15 cycles, or an enemy ship within 12,000), and only up to 75% in space. Docked at a base the hull is repaired at 3% per cycle × the base's repair ratio, all the way. The hull can be the repair priority (`repair hull`), with the same × 4 / × 0.5 weighting as systems. `repair auto <officer>` hands the priority to an officer, who uses the same choice the engineering station makes. All of these are in `sim/rules.py`.
+
 ## Scenarios and setup
 
 - **Presets** (`content/data/presets.toml`) are our own scenarios. Balance runs set their fleets: each preset is fought by AI captains on both sides many times, and fleets are adjusted until the result is in a sensible range.

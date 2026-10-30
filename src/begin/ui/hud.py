@@ -20,13 +20,15 @@ from ..sim.commands import (
     SetPointDefense, SetShields, Tractor, Transport,
 )
 from ..sim.factory import SHIELD_FACINGS
-from ..sim.ship import BankRole, FireMode, Kind, PDDoctrine, Ship
+from ..sim.ship import BankRole, FireMode, Kind, PDDoctrine, Ship, repair_words
+from ..sim.systems.repair import under_repair
 from ..sim.systems.phasers import bank_bears, bank_ready
 from . import theme
 from .hulls import draw_hull, transform
 
 if TYPE_CHECKING:
     from .battle_scene import BattleScene
+    from .widgets import UI
     from ..sim.observation import ContactView
 
 MODE_LETTER = {FireMode.MANUAL: "M", FireMode.ASSISTED: "A", FireMode.AUTOMATIC: "★"}
@@ -58,17 +60,30 @@ def _kv(surf: pygame.Surface, x: int, y: int, k: str, v: str, vcol: theme.Color 
 
 
 def hull_diagram(surf: pygame.Surface, ship: Ship, box: pygame.Rect, show_shields: bool = True,
-                 highlight: set[Kind] | None = None) -> None:
-    """Top-down damage-assessment diagram: hull, subsystems coloured by health, shield arcs."""
+                 highlight: set[Kind] | None = None, repairing: set[str] | None = None,
+                 ui: UI | None = None, on_click: Callable[[], object] | None = None) -> None:
+    """Top-down damage-assessment diagram: hull, subsystems coloured by health, shield arcs.
+    Systems under repair get a pulsing ring (a bright double one for the repair priority). With `ui`,
+    each system has a tooltip saying what it is and how it stands."""
     k = min(box.width, box.height) / 125.0
     cx, cy = box.centerx, box.centery
     draw_hull(surf, ship.cls.hull, cx, cy, 0.0, k, theme.FRIEND_DIM, fill_alpha=0.18)
+    pulse = 0.55 + 0.45 * math.sin(pygame.time.get_ticks() / 220.0)
     for sub in ship.subsystems():
         (px, py), = transform([sub.pos], cx, cy, 0.0, k)
         col = theme.health_color(sub.health, sub.destroyed)
         r = 3 if sub.kind not in (Kind.REACTOR, Kind.DRIVE) else 4
         if highlight and sub.kind in highlight:
             pygame.draw.circle(surf, theme.CAUTION, (int(px), int(py)), r + 3, 1)
+        fixing = bool(repairing and sub.sid in repairing)
+        if fixing:
+            prio = sub.kind == ship.repair_priority
+            pygame.draw.circle(surf, theme.dim(theme.REPAIR, pulse), (int(px), int(py)), r + (4 if prio else 3),
+                               2 if prio else 1)
+        if ui is not None and sub.kind != Kind.SHIELD:
+            state = "destroyed" if sub.destroyed else "intact" if sub.intact else f"{100 - sub.damage}%"
+            tip = f"{sub.label}: {state}" + (" · under repair" if fixing else "")
+            ui.add(pygame.Rect(int(px) - r - 3, int(py) - r - 3, 2 * r + 6, 2 * r + 6), on_click or (lambda: None), tip)
         if sub.kind == Kind.SHIELD:
             continue
         pygame.draw.circle(surf, col, (int(px), int(py)), r)
@@ -93,6 +108,36 @@ def hull_diagram(surf: pygame.Surface, ship: Ship, box: pygame.Rect, show_shield
             lx, ly = cx + math.sin(mid) * (rad + 11), cy - math.cos(mid) * (rad + 11)
             theme.text(surf, f"{sh.effective:.0f}" if not sh.destroyed else "×", (lx, ly), theme.dim(col, 1.0), 10, "mono",
                        anchor="center")
+            if ui is not None:
+                state = "destroyed" if sh.destroyed else "down" if not sh.up else f"{sh.effective:.0f}%"
+                ui.add(pygame.Rect(int(lx) - 12, int(ly) - 8, 24, 16), on_click or (lambda: None), f"Shield {i + 1}: {state}")
+
+
+def diagram_legend(surf: pygame.Surface, x: int, y: int) -> None:
+    """What the damage diagram's marks mean."""
+    items: list[tuple[str, theme.Color, str]] = [
+        ("dot", theme.health_color(1.0), "intact system"), ("dot", theme.health_color(0.6), "damaged"),
+        ("dot", theme.health_color(0.2), "badly damaged"), ("dot", theme.health_color(0.0, True), "destroyed"),
+        ("ring", theme.REPAIR, "under repair (thick: the priority)"), ("arc", theme.SHIELD, "shields, with strength"),
+    ]
+    theme.text(surf, "Each dot is a system where it sits in the hull. Big dots: reactors and warp drives;",
+               (x, y), theme.TEXT_DIM, 11)
+    theme.text(surf, "small ones: batteries, phasers, tubes, launchers, sensors and the rest. Hover for names.",
+               (x, y + 15), theme.TEXT_DIM, 11)
+    y += 36
+    xx = x
+    for kind, col, label in items:
+        if kind == "dot":
+            pygame.draw.circle(surf, col, (xx + 5, y + 7), 4)
+        elif kind == "ring":
+            pygame.draw.circle(surf, col, (xx + 5, y + 7), 6, 2)
+        else:
+            pygame.draw.arc(surf, col, pygame.Rect(xx - 2, y, 14, 14), 0.4, 2.7, 3)
+        theme.text(surf, label, (xx + 15, y), theme.TEXT_DIM, 11)
+        xx += 15 + theme.text_width(label, 11) + 16
+        if xx > x + 360:
+            xx = x
+            y += 18
 
 
 # ------------------------------------------------------------------ own ship
@@ -115,8 +160,10 @@ class OwnShipPanel(Panel):
             sub += f" · {ship.status.value.upper()}"
         theme.text(surf, sub, (rect.x + 12, y + 20), status_col if not ship.alive else theme.TEXT_DIM, 12)
         box = pygame.Rect(rect.x + 8, y + 40, 168, rect.bottom - y - 48)
-        hull_diagram(surf, ship, box)
-        hud.ui.add(box, lambda: hud.toggle_overlay("damage"), "Damage assessment (I)")
+        fixing, hull_fixing = under_repair(hud.world, ship)
+        hud.ui.add(box, lambda: hud.toggle_overlay("damage"),
+                   "Damage assessment (I). Dots are systems, coloured by health; rings mark repairs.")
+        hull_diagram(surf, ship, box, repairing=fixing, ui=hud.ui, on_click=lambda: hud.toggle_overlay("damage"))
         x = rect.x + 186
         yy = y + 42
         cw = ship.max_attainable_warp
@@ -129,6 +176,8 @@ class OwnShipPanel(Panel):
         yy += 18
         hf = max(0.0, ship.structure) / ship.structure_max
         _kv(surf, x, yy, "Hull", f"{hf * 100:5.1f}%", theme.health_color(hf))
+        if hull_fixing:
+            theme.text(surf, "under repair", (x + 92 + 58, yy + 1), theme.REPAIR, 11)
         yy += 22
         p = ship.power
         theme.text(surf, "Power", (x, yy), theme.TEXT_DIM, 12)
@@ -151,8 +200,20 @@ class OwnShipPanel(Panel):
         yy += 19
         _kv(surf, x, yy, "Magazine", f"{ship.torps_remaining} torp · {ship.probes_remaining} probe")
         yy += 18
-        rp = ship.repair_priority.value if ship.repair_priority else "all systems"
-        _kv(surf, x, yy, "Repairs", rp)
+        rp = repair_words(ship.repair_priority)
+        crew = hud.battle.crew
+        who = crew.repair_officer(ship) if crew is not None and crew.ship_id == ship.id else None
+        n = len(fixing) + (1 if hull_fixing else 0)
+        if n == 0:
+            rp = "nothing to repair"
+        else:
+            rp = f"{n} · {rp}" + (f" · {who.name.split()[0]}" if who is not None else "")
+        _kv(surf, x, yy, "Repairs", rp, theme.REPAIR if n else theme.TEXT_DIM)
+        hud.ui.add(pygame.Rect(x, yy, rect.right - x - 8, 16), lambda: hud.toggle_overlay("damage"),
+                   f"{n} under repair{' including the hull' if hull_fixing else ''}; priority: "
+                   f"{repair_words(ship.repair_priority, 'none')}; "
+                   + (f"{who.name} directs the crews ('repair manual' to take them back)" if who is not None
+                      else "'repair auto' lets an officer direct the crews"))
         yy += 22
         bw = (rect.right - x - 12) // 2 - 3
         anyup = any(s.up for s in ship.shields)

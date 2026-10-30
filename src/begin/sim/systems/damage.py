@@ -153,6 +153,7 @@ def _hull_remake(
         ship.armour -= soak
         hull_dmg -= soak
     ship.structure -= hull_dmg
+    ship.last_hull_hit = world.tick
 
     frac = dmg / max(1.0, ship.structure_max)
     lost = int(round(ship.crew * frac * rng.uniform(0.4, 1.2) * rules.crew_loss_scale))

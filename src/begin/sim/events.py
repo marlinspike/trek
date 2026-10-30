@@ -128,6 +128,15 @@ class SubsystemRepaired(Event):
 
 
 @dataclass(slots=True)
+class HullRepaired(Event):
+    """Another quarter of the hull restored, or the repair work finished [E]."""
+
+    ship_id: int
+    fraction: float
+    done: bool
+
+
+@dataclass(slots=True)
 class ShipStatusChanged(Event):
     ship_id: int
     status: str
