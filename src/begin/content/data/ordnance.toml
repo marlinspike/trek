@@ -5,8 +5,8 @@
 id = "mk7"
 name = "Federation Mark 7"
 velocity = 30.0
-damage = 16.0   # was 10: × 1.6 to match the wider proximity (800 / 500)
-arm_time = 0.4   # was 1.0: arms 1,200 units out, beyond its own 920-unit blast
+damage = 14.4   # was 10: × 1.6 to match the wider proximity (800 / 500), then 10% less at the player's request
+arm_time = 0.4   # was 1.0: arms 1,200 units out, beyond its own 828-unit blast
 max_time_fuse = 6.0
 max_prox = 800.0   # was 500
 homing = false
@@ -14,14 +14,14 @@ speed_variance = 0.07
 warhead_type = 0
 charge_time = 3.0
 load_energy = 10.0
-blast_scale = 1.15   # [E] blast radius 920 instead of 800
+blast_scale = 1.15   # [E] blast radius 828 instead of 720
 
 [[torpedo]]
 id = "mk8"
 name = "Federation Mark 8"
 velocity = 15.0
-damage = 24.0   # was 15: × 1.6 to match the wider proximity (800 / 500)
-arm_time = 0.95   # was 1.0, then 0.6: arms 1,425 units out, beyond its own 1,380-unit blast
+damage = 21.6   # was 15: × 1.6 to match the wider proximity (800 / 500), then 10% less at the player's request
+arm_time = 0.95   # was 1.0, then 0.6: arms 1,425 units out, beyond its own 1,242-unit blast
 max_time_fuse = 6.0
 max_prox = 800.0   # was 500
 homing = false
@@ -29,7 +29,7 @@ speed_variance = 0.05
 warhead_type = 0
 charge_time = 4.0
 load_energy = 15.0
-blast_scale = 1.15   # [E] blast radius 1,380 instead of 1,200
+blast_scale = 1.15   # [E] blast radius 1,242 instead of 1,080
 
 [[torpedo]]
 id = "ktx"
