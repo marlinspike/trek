@@ -1190,9 +1190,9 @@ class BattleScene:
             a.muted = False
             a._last.pop(name, None)
             a.play(name, time.monotonic())          # a sample, so the captain hears what they picked
-            pick = a.choice.get(name, "b" if name == "phaser" else "a")
+            pick = a.choice.get(name, "d")
             self._log(f"{which.capitalize()} sound: your own {a.own[name].name}." if name in a.own else
-                      f"{which.capitalize()} sound: version {pick} of a, b, c. 'sound {which} b' tries another; "
+                      f"{which.capitalize()} sound: version {pick} of a, b, c, d. 'sound {which} b' tries another; "
                       "it's kept for next time.", theme.TEXT_DIM)
             return
         if val is None:

@@ -16,10 +16,12 @@ You hear only what you can see. Each sound comes from where it happened on the m
 | `sound off`, `sound on` | the same, from the console |
 | `sound 40` | set the volume, 0 to 100 |
 | `sound` | say what the sound is set to |
-| `sound phaser b` | use version b of the phaser (a, b or c), and play it |
-| `sound torpedo c` | use version c of the torpedo launch |
+| `sound phaser a` | use version a of the phaser (a, b, c or d), and play it |
+| `sound torpedo b` | use version b of the torpedo launch |
 
-The phaser comes in three versions (b is the standard one): **a** is a bright saw tone with a metallic ring and a shimmer, **b** a harsher square-wave buzz, and **c** two tones a fifth apart, throbbing and gritty. The torpedo launch does too (a is standard): **a** is a deep "thoom", **b** a brighter, quicker "pshew", and **c** a heavy launch with a tone dropping away under it.
+The phaser comes in four versions. **a**, **b** and **c** are rays: noise fed round a tuned feedback loop so the beam sings at one steady pitch and sizzles while it fires (a is a single piercing tone, b is higher and shimmers, c is the ray over d's buzz). **d**, the standard one, is a harsh square-wave buzz.
+
+The torpedo launch does too. **a**, **b** and **c** are energy pulses: a bright burst that drops fast from high to low and rings away (a is the plain pulse, b winds up first and has d's thump under it, c is short and sharp). **d**, the standard one, is a deep "thoom" with a falling whoosh.
 
 ### Your own sounds
 

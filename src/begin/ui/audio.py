@@ -7,7 +7,7 @@ They are kept soft and short, a little under the battle rather than over it,
 and the same kind of sound never stacks more than a few deep.
 
 Volume comes from `volume` in config/settings.json (0 to 1); M mutes. The phaser
-and the torpedo launch come in three versions each (`sounds` in settings.json
+and the torpedo launch come in four versions each (`sounds` in settings.json
 picks one), and a WAV of the player's own in config/sounds/ replaces any sound. Without
 an audio device (a server, the tests) everything here quietly does nothing.
 """
@@ -93,17 +93,7 @@ def _beam(tone: Callable[[float, random.Random], float], seconds: float = 0.7, p
     return _render(seconds, lambda i, _n, _r: shimmer[i], peak, seed)
 
 
-def phaser_a() -> array.array:
-    """A bright saw, ring-modulated against a higher carrier for the metallic sizzle, with a flanged shimmer."""
-    def tone(t: float, rng: random.Random) -> float:
-        p = math.tau * 880 * t
-        saw = _saw(p, 880)
-        ring = saw * math.sin(math.tau * 1530 * t)
-        return 0.55 * saw + 0.6 * ring + rng.uniform(-0.05, 0.05)
-    return _beam(tone, seed=11, flange=0.9)
-
-
-def phaser_b() -> array.array:
+def phaser_buzz() -> array.array:
     """A harsh square tone chopped seventy times a second: a hard electric buzz."""
     def tone(t: float, rng: random.Random) -> float:
         sq = _square(math.tau * 1250 * t, 1250)
@@ -112,15 +102,92 @@ def phaser_b() -> array.array:
     return _beam(tone, seed=12, flange=1.3)
 
 
+def _resonate(x: list[float], pitch: Callable[[float], float], g: float = 0.985, damp: float = 0.35) -> list[float]:
+    """Feed a signal round a short, tuned delay loop: noise in, a ringing pitched tone out, like feedback."""
+    y = [0.0] * len(x)
+    for i, v in enumerate(x):
+        d = RATE / pitch(i / RATE)
+        j = i - d
+        k = int(j)
+        back = 0.0
+        if k >= 1:
+            f = j - k
+            a = y[k] * (1 - f) + y[min(k + 1, i - 1)] * f
+            back = (1 - damp) * a + damp * y[k - 1]       # a touch of damping in the loop: warm, not shrill
+        y[i] = v + g * back
+    return y
+
+
+def _pink(rng: random.Random, n: int) -> list[float]:
+    """Soft-edged noise (most of its energy low), the excitation for the rays."""
+    b0 = b1 = b2 = 0.0
+    out = []
+    for _ in range(n):
+        w = rng.uniform(-1, 1)
+        b0 = 0.997 * b0 + 0.029 * w
+        b1 = 0.985 * b1 + 0.032 * w
+        b2 = 0.950 * b2 + 0.048 * w
+        out.append(b0 + b1 + b2 + 0.05 * w)
+    return out
+
+
+def _highpass(x: list[float], f: float) -> list[float]:
+    """A one-pole high-pass at f Hz."""
+    k = 1 / (1 + math.tau * f / RATE)
+    out = [0.0] * len(x)
+    prev = y = 0.0
+    for i, v in enumerate(x):
+        y = k * (y + v - prev)
+        prev = v
+        out[i] = y
+    return out
+
+
+def _ray(pitches: tuple[float, ...], seconds: float = 0.9, seed: int = 31, wobble: float = 0.004,
+         under: Callable[[], array.array] | None = None, peak: float = 0.34) -> array.array:
+    """A ray: noise fed round tuned feedback loops so it sings at a steady pitch and sizzles, held, then cut."""
+    n = int(RATE * seconds)
+    rng = random.Random(seed)
+    src = _highpass(_highpass(_pink(rng, n), 400), 400)      # nothing low to feed the loop: it sings, not booms
+    mix = [0.0] * n
+    for k, f0 in enumerate(pitches):
+        rate = 5.5 + 1.3 * k
+        def pitch(t: float, f0: float = f0, rate: float = rate) -> float:
+            return f0 * (1 + wobble * math.sin(math.tau * rate * t))      # the faint waver of a live beam
+        loop = _resonate(src, pitch)
+        for i in range(n):
+            mix[i] += loop[i]
+    mix = _highpass(mix, 300)
+    top = max(abs(v) for v in mix) or 1.0
+    hp = prev = 0.0
+    out = []
+    bed = list(under()) if under is not None else []
+    bed_top = max((abs(v) for v in bed), default=1) or 1
+    for i in range(n):
+        t = i / RATE
+        v = math.tanh(2.2 * mix[i] / top)                    # driven: the edge of a beam cutting the air
+        hp = 0.97 * (hp + v - prev)                          # take out the rumble, keep the sizzle
+        prev = v
+        gate = min(1.0, t / 0.01) * min(1.0, (n - i) / (RATE * 0.04))
+        sizzle = rng.uniform(-1, 1) * 0.06 * (0.6 + 0.4 * math.sin(math.tau * 37 * t))
+        bedv = 0.45 * bed[i] / bed_top if i < len(bed) else 0.0
+        out.append((hp + sizzle + bedv) * gate)
+    return _render(seconds, lambda i, _n, _r: out[i], peak, seed)
+
+
+def phaser_a() -> array.array:
+    """A singing ray: one tuned feedback loop, steady and piercing, with a fine sizzle."""
+    return _ray((1180.0,), seed=31)
+
+
+def phaser_b() -> array.array:
+    """A brighter ray: two loops a hair apart, so it shimmers as it beats, higher and thinner."""
+    return _ray((1480.0, 1491.0), seed=32, wobble=0.003)
+
+
 def phaser_c() -> array.array:
-    """Two saws a fifth apart, throbbing at 45 Hz, with grit: thicker and angrier."""
-    def tone(t: float, rng: random.Random) -> float:
-        a = _saw(math.tau * 700 * t, 700)
-        b = _saw(math.tau * 1050 * t, 1050)
-        throb = 0.6 + 0.4 * math.sin(math.tau * 45 * t)
-        grit = rng.uniform(-1, 1) * 0.18 * (0.5 + 0.5 * math.sin(math.tau * 45 * t))
-        return (a + 0.8 * b) * throb + grit
-    return _beam(tone, seed=13, flange=0.6)
+    """The ray over the buzz you liked: the singing loop on top, version d's buzz underneath."""
+    return _ray((990.0, 1485.0), seed=33, under=phaser_buzz)
 
 
 def _comb_tail(x: list[float], wet: float = 0.5) -> list[float]:
@@ -169,34 +236,75 @@ def _torpedo(seconds: float, thump: tuple[float, float, float], sweep: tuple[flo
     return _render(seconds, lambda i, _n, _r: room[i], peak, seed)
 
 
-def launch_a() -> array.array:
+def launch_thoom() -> array.array:
     """"Thoom": a deep thump under a whoosh that falls from bright to dull."""
     return _torpedo(0.9, (90, 45, 9), (2500, 400, 0.45), 0.5, seed=21)
 
 
+def _pulse(seconds: float, f0: float, f1: float, fall: float, seed: int, thoom: float = 0.0,
+           charge: float = 0.0, peak: float = 0.5) -> array.array:
+    """An energy pulse: a bright pitched burst that drops away fast (f0 to f1 over `fall` seconds), rung through a
+    tuned loop so it sings, with a short room behind it. `thoom` lays the launch thump underneath; `charge`
+    gives it a quick rising wind-up first."""
+    n = int(RATE * seconds)
+    rng = random.Random(seed)
+    ph = 0.0
+    burst = []
+    pitch_at: list[float] = []
+    for i in range(n):
+        t = i / RATE
+        if t < charge:
+            f = f1 * (f0 / f1) ** (t / charge)              # winding up to the release
+            amp = 0.35 * t / charge
+        else:
+            u = t - charge
+            f = f0 * (f1 / f0) ** min(1.0, u / fall)
+            amp = min(1.0, u / 0.003) * math.exp(-u * 7.5)
+        pitch_at.append(f)
+        ph += math.tau * f / RATE
+        tone = _saw(ph, f) * 0.6 + math.sin(ph) * 0.6
+        burst.append((math.tanh(1.6 * tone) + rng.uniform(-0.5, 0.5) * math.exp(-t * 30)) * amp)
+    rung = _resonate([v * 0.2 for v in burst], lambda t: pitch_at[min(n - 1, int(t * RATE))], g=0.9, damp=0.4)
+    top = max(abs(v) for v in rung) or 1.0
+    btop = max(abs(v) for v in burst) or 1.0
+    raw = [0.6 * burst[i] / btop + 0.7 * rung[i] / top for i in range(n)]
+    if thoom:
+        base = list(launch_thoom())
+        bt = max(abs(v) for v in base) or 1
+        for i in range(min(n, len(base))):
+            raw[i] += thoom * base[i] / bt
+    room = _comb_tail(raw, wet=0.6)
+    return _render(seconds, lambda i, _n, _r: room[i], peak, seed)
+
+
+def launch_a() -> array.array:
+    """A pulse: a bright burst that drops from high to low in a quarter second and rings away."""
+    return _pulse(0.75, 1900, 260, 0.25, seed=41)
+
+
 def launch_b() -> array.array:
-    """"Pshew": brighter and quicker, a resonant hiss diving down, a lighter thump."""
-    return _torpedo(0.8, (120, 60, 14), (4000, 800, 0.32), 0.18, seed=22)
+    """A heavier pulse: a quick wind-up, then the release, deeper, with the thump you liked under it."""
+    return _pulse(0.85, 1400, 180, 0.3, seed=42, thoom=0.55, charge=0.07)
 
 
 def launch_c() -> array.array:
-    """Heavy: a long low thump, a tone dropping away underneath, and a darker whoosh."""
-    return _torpedo(1.0, (70, 35, 6), (3000, 300, 0.55), 0.35, seed=23, drop=(600, 150, 6))
+    """A short, sharp pulse: higher and quicker, more of a crack."""
+    return _pulse(0.6, 2600, 420, 0.16, seed=43)
 
 
 VARIANTS: dict[str, dict[str, Callable[[], array.array]]] = {
-    "phaser": {"a": phaser_a, "b": phaser_b, "c": phaser_c},
-    "launch": {"a": launch_a, "b": launch_b, "c": launch_c},
+    "phaser": {"a": phaser_a, "b": phaser_b, "c": phaser_c, "d": phaser_buzz},
+    "launch": {"a": launch_a, "b": launch_b, "c": launch_c, "d": launch_thoom},
 }
 ALIASES = {"torpedo": "launch"}       # config/sounds/torpedo.wav is the launch sound
 
 
 def phaser() -> array.array:
-    return phaser_b()          # the captain's pick of the three
+    return phaser_buzz()          # the captain's pick so far (version d)
 
 
 def launch() -> array.array:
-    return launch_a()
+    return launch_thoom()         # the captain's pick so far (version d)
 
 
 def pulse() -> array.array:

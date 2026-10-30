@@ -111,6 +111,7 @@ def test_sound_commands(content) -> None:  # type: ignore[no-untyped-def]
     assert parse("sound phaser b", ctx).actions == [("sound", ("phaser", "b"))]
     assert parse("sound torpedoes", ctx).actions == [("sound", ("torpedo", None))]
     assert parse("sound torpedo z", ctx).error is not None
+    assert parse("sound phaser d", ctx).actions == [("sound", ("phaser", "d"))]
 
 
 def test_the_standout_officer_is_the_one_who_did_most() -> None:

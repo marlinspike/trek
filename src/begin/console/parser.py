@@ -188,7 +188,7 @@ HELP = [
     "          disable|cripple <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> · disable off",
     "          destroy <ships> · bait <ship>   (standing objectives and tricks for Seven)",
     "Orders:   execute order <name> | <name>   (a named order from config/orders.toml) · orders (list them) · belay (stop one running)",
-    "Sound:    sound on|off|<0-100>   sound phaser|torpedo a|b|c   (M mutes)",
+    "Sound:    sound on|off|<0-100>   sound phaser|torpedo a-d   (M mutes)",
     "Other:    key F<n>|^<x> <commands; separated; by semicolons> · translate on|off|always · help · quit",
 ]
 
@@ -1212,11 +1212,11 @@ class Parser:
         elif w in ("phaser", "phasers", "torpedo", "torpedoes", "launch"):
             which = "phaser" if w.startswith("phaser") else "torpedo"
             v = tok.next()
-            if v is not None and v not in ("a", "b", "c"):
-                raise ParseError(f"sound {which} a, b or c: the three versions of the {which} sound.")
+            if v is not None and v not in ("a", "b", "c", "d"):
+                raise ParseError(f"sound {which} a, b, c or d: the versions of the {which} sound.")
             res.actions.append(("sound", (which, v)))
         else:
-            raise ParseError("sound on, sound off, sound <0-100> for the volume, or sound phaser|torpedo a|b|c.")
+            raise ParseError("sound on, sound off, sound <0-100> for the volume, or sound phaser|torpedo a|b|c|d.")
 
     def _v_translate(self, tok: _Tokens, res: ParseResult) -> None:
         """`translate on|off|always`: plain-English console input through the language model [E]."""

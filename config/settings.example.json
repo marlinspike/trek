@@ -4,7 +4,7 @@
   "speed": 1.0,
   "chatter": true,
   "volume": 0.6,
-  "sounds": {"phaser": "b", "torpedo": "a"},
+  "sounds": {"phaser": "d", "torpedo": "d"},
   "llm": {"provider": "ollama", "model": "lfm3", "think": false},
   "keys": {"F5": "fire all phasers 10"}
 }
