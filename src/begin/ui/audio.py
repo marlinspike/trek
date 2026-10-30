@@ -22,7 +22,7 @@ import pygame
 from ..sim.events import Detonation, Event, PhaserFired, ShieldHit, TorpedoLaunched
 
 RATE = 22050
-MIN_GAP = {"phaser": 0.07, "pulse": 0.07, "launch": 0.09, "blast": 0.08, "fizzle": 0.08, "shield": 0.06,
+MIN_GAP = {"phaser": 0.12, "pulse": 0.07, "launch": 0.12, "blast": 0.08, "fizzle": 0.08, "shield": 0.06,
            "breakup": 0.3, "cloak": 0.3, "alert": 2.0}
 CHANNELS = 16
 
@@ -47,12 +47,23 @@ def _render(seconds: float, sample: Callable[[int, int, random.Random], float], 
 
 
 def phaser() -> array.array:
-    """A clean, falling tone with a little shimmer: a beam weapon."""
-    def s(i: int, n: int, _: random.Random) -> float:
+    """A sustained, shimmering beam: a bright tone that slides up to pitch, warbles and buzzes while it holds."""
+    phase = [0.0, 0.0, 0.0]
+
+    def s(i: int, n: int, rng: random.Random) -> float:
         t = i / RATE
-        f = 1250 - 500 * (i / n)
-        return (math.sin(math.tau * f * t) * 0.7 + math.sin(math.tau * f * 1.5 * t) * 0.2) * _env(i, n, 0.04, 1.8)
-    return _render(0.32, s, 0.34)
+        glide = min(1.0, t / 0.05)                               # swoops up to pitch as the beam lights
+        f = 1180 + 300 * glide
+        warble = 1 + 0.035 * math.sin(math.tau * 31 * t)         # the shimmer
+        phase[0] += math.tau * f * warble / RATE
+        phase[1] += math.tau * (f * 1.008) * warble / RATE      # a twin a hair sharp: the beating sparkle
+        phase[2] += math.tau * (f / 2) * warble / RATE
+        tone = math.sin(phase[0]) + 0.8 * math.sin(phase[1]) + 0.45 * math.sin(phase[2])
+        tone += 0.25 * math.sin(3 * phase[0])                    # an edge on it
+        buzz = 0.8 + 0.2 * math.sin(math.tau * 60 * t)           # the energy crackle
+        hold = min(1.0, t / 0.015) * min(1.0, (n - i) / (RATE * 0.15))   # quick attack, held, short tail
+        return (tone * buzz + rng.uniform(-0.08, 0.08)) * hold
+    return _render(0.7, s, 0.32)
 
 
 def pulse() -> array.array:
@@ -67,15 +78,30 @@ def pulse() -> array.array:
 
 
 def launch() -> array.array:
-    """A soft low thump with a breath of air: a torpedo leaving its tube."""
-    state = [0.0]
+    """A torpedo leaving its tube: a rising whoosh of air into a ringing, resonant ping."""
+    low = [0.0, 0.0]
+    WHOOSH, PING = 0.32, 0.12                                    # seconds: the sweep, then when the ping strikes
 
     def s(i: int, n: int, rng: random.Random) -> float:
         t = i / RATE
-        f = 140 - 80 * (i / n)
-        state[0] = state[0] * 0.92 + rng.uniform(-1, 1) * 0.08      # low-passed noise
-        return (math.sin(math.tau * f * t) * 0.8 + state[0] * 1.6) * _env(i, n, 0.02, 1.4)
-    return _render(0.4, s, 0.45, seed=3)
+        out = 0.0
+        if t < WHOOSH:                                           # noise through a resonant filter swept upward
+            fc = 300 + 3200 * (t / WHOOSH) ** 1.6
+            k = 2 * math.sin(math.pi * fc / RATE)
+            hp = rng.uniform(-1, 1) - low[0] - 0.35 * low[1]
+            low[1] += k * hp
+            low[0] += k * low[1]
+            out += low[1] * 0.9 * math.sin(math.pi * t / WHOOSH) ** 0.7
+        if t >= PING:                                            # the ping: bell partials, ringing away
+            u = t - PING
+            ring = math.exp(-u * 4.5)
+            f = 1320 * (1 - 0.04 * min(1.0, u * 3))              # sags a little as it rings
+            out += ring * min(1.0, u / 0.004) * (math.sin(math.tau * f * u) * 0.9
+                                                 + math.sin(math.tau * f * 2.32 * u) * 0.35 * math.exp(-u * 9)
+                                                 + math.sin(math.tau * f * 0.5 * u) * 0.4
+                                                 + math.sin(math.tau * f * 1.006 * u) * 0.5)   # slow shimmer
+        return out
+    return _render(0.85, s, 0.42, seed=3)
 
 
 def blast(seconds: float = 0.9, depth: float = 0.97, seed: int = 4, peak: float = 0.55) -> array.array:
