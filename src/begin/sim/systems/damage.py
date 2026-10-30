@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from ...core.angles import bearing, norm360
 from ..events import HullHit, ShieldHit, SubsystemDamaged
 from ..rules import DamageModel
+from .sensors import assess
 from ..ship import DAMAGE_WEIGHT, TARGETABLE_GROUPS, Kind, Ship, ShipStatus, Subsystem
 
 if TYPE_CHECKING:
@@ -86,6 +87,7 @@ def apply_damage(
     # ---- shields [R]
     remaining = amount
     shield = target.shield_for_bearing(rel)
+    seen = assess(world, att.side, target) if att is not None and att.side != target.side else None
     if shield is not None and shield.up and not shield.destroyed:
         capacity = target.cls.shield_strength * shield.effective / 100.0
         incoming = amount * 4.0 if kind == DamageKind.SHIELD_BORE else amount
@@ -98,15 +100,19 @@ def apply_damage(
         shield.effective = min(shield.effective, shield.strength)
         shield.flash = 0.6
         target.stats.shield_damage_absorbed += absorbed
+        if seen is not None:
+            seen.shields[shield.index] = shield.effective
         if kind == DamageKind.SHIELD_BORE:
             world.emit(ShieldHit(world.tick, target.id, shield.index, absorbed, 0.0,
-                                 was_up and shield.strength <= 1.0, attacker, shield.strength))
+                                 was_up and shield.strength <= 1.0, attacker, shield.effective))
             return 0.0
         remaining = max(0.0, amount - absorbed)
         world.emit(ShieldHit(world.tick, target.id, shield.index, absorbed, remaining,
-                             was_up and shield.strength <= 1.0, attacker, shield.strength))
+                             was_up and shield.strength <= 1.0, attacker, shield.effective))
     elif kind == DamageKind.SHIELD_BORE:
         return 0.0
+    elif shield is not None and seen is not None:
+        seen.shields[shield.index] = 0.0      # it went straight through: that facing is down
     if remaining <= 0.0:
         return 0.0
 
@@ -114,6 +120,8 @@ def apply_damage(
         _hull_classic(world, target, remaining, attacker)
     else:
         _hull_remake(world, target, remaining, rel, attacker, aim)
+    if seen is not None:
+        seen.hull = max(0.0, target.structure / max(1.0, target.structure_max))
     return remaining
 
 

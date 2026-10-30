@@ -140,7 +140,7 @@ class TacticalView:
             if isinstance(ev, ShieldHit) and ev.ship_id in visible:
                 power = 0.35 + 0.65 * min(1.0, (ev.absorbed + ev.penetrated) / 40.0)
                 self.shield_flashes.setdefault(ev.ship_id, []).append(
-                    [float(ev.sector), 0.0, power, 1.0 if ev.collapsed else 0.0])
+                    [float(ev.sector), 0.0, power, 1.0 if ev.collapsed else 0.0, ev.strength])
             elif isinstance(ev, HullHit) and ev.ship_id in visible and ev.amount > 0:
                 self._strike(obs, ev)
             elif isinstance(ev, ShipStatusChanged) and ev.status == "destroyed":
@@ -486,6 +486,8 @@ class TacticalView:
                     continue
                 col = theme.mix(theme.ALERT, theme.SHIELD, st / 100.0)
                 col = theme.dim(col, 0.55)
+            elif hit is not None and len(hit) > 4:
+                col = theme.mix(theme.ALERT, theme.SHIELD, max(0.0, min(100.0, hit[4])) / 100.0)  # as weak as she is
             else:
                 col = theme.SHIELD
             if fl is not None:
@@ -662,8 +664,10 @@ class TacticalView:
                 pygame.draw.line(surf, theme.dim(color, 0.45), (sx, sy), (sx + math.sin(a) * L * 1.5, sy - math.cos(a) * L * 1.5))
             draw_hull(surf, c.cls.hull, sx, sy, p[2], k, color, fill_alpha=0.22 if c.visible else 0.08)
             self._shield_ring(surf, c.id, sx, sy, p[2], 62 * k, None, overlay)
-            if c.visible and c.scan is not None and c.scan.structure_frac < SMOULDER_BELOW:
-                self._burning.append((p[0], p[1], c.scan.structure_frac))   # we've seen how badly she's hurt
+            hurt = (c.assessed.hull if c.assessed is not None and c.assessed.hull is not None
+                    else c.scan.structure_frac if c.scan is not None else None)
+            if c.visible and hurt is not None and hurt < SMOULDER_BELOW:
+                self._burning.append((p[0], p[1], hurt))   # we've seen how badly she's hurt
             rad = 40 * k
         else:
             rad = 10

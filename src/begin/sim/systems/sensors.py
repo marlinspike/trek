@@ -33,6 +33,16 @@ class ScanRecord:
 
 
 @dataclass(slots=True)
+class Assessment:
+    """What a side has seen of a contact's condition from its own hits on it, kept current between scans."""
+
+    tick: int
+    shields: list[float | None]          # % per sector from the last hit on it (None = not hit yet)
+    hull: float | None = None            # structure fraction, once a hit has got through
+    power_out: bool = False              # her life support is failing: the crew has moments left
+
+
+@dataclass(slots=True)
 class Contact:
     ship_id: int
     visible: bool = False
@@ -48,6 +58,7 @@ class Contact:
     haze: float = 0.0            # 0 = exact (inside rated range) .. 1 = at the edge of what sensors can make out
     uncertainty: float = 0.0     # how far off the reported position may be, in world units
     scan: ScanRecord | None = None
+    assessed: Assessment | None = None
 
 
 @dataclass(slots=True)
@@ -228,6 +239,17 @@ def perform_scan(world: World, ship: Ship, target: Ship) -> None:
         c.scan = rec
         c.identified = True
     world.emit(ScanCompleted(world.tick, ship.id, target.id))
+
+
+def assess(world: World, side: int, target: Ship) -> Assessment | None:
+    """The side's running damage assessment of a target it has on sensors (None when it has no contact)."""
+    c = world.intel.get(side, SideIntel(side)).contacts.get(target.id)
+    if c is None or not c.ever:
+        return None
+    if c.assessed is None:
+        c.assessed = Assessment(world.tick, [None] * len(target.shields))
+    c.assessed.tick = world.tick
+    return c.assessed
 
 
 def intel_quality(world: World, side: int, target_id: int) -> float:

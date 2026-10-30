@@ -36,6 +36,8 @@ Begin detects a ship at its rated sensor range multiplied by the ship's reflecti
 
 `Rules.sensor_haze_limit` and `Rules.sensor_haze_error` set the band and the error.
 
+**What your hits show.** In Begin you only learnt an enemy's condition from a scan. Here, each of your hits also shows what it did: the target panel updates the facing you struck and, once a hit gets through, her hull, between scans. A shield with no power behind it reads as down rather than at its old strength, both in the panel and in the hit lines in the log. A ship whose power fails keeps the 1.65 rule (her crew is lost after three cycles without life support), but everyone watching her now sees it: the log says she has lost power, and the target panel says her crew has moments left. Before this change, an enemy outpost or starbase could lose every reactor with its hull still at 90% and then turn up as "derelict" with no warning.
+
 ## Crew projects: the tachyon detector
 
 Begin has no way to find a cloaked ship except waiting for it to fire. In the remake, Spock and Seven of Nine can design a tachyon detector torpedo when you ask them about cloaked ships (or with `design tachyon`). It takes 20 cycles with a full crew, goes into one tube for a single shot, and the tube then goes back to ordinary torpedoes. Fired with `tachyon <bearing> <range>` or `tachyon <ship>`, it bursts at that point and shows every cloaked ship within 6,000 units for 30 cycles. It does no damage. The design is ours, inspired by the tachyon detection grids of the films and series.

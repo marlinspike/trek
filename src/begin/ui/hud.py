@@ -334,18 +334,39 @@ class TargetPanel(Panel):
         self._close_actions(surf, rect, yy + 50, hud, ship, c.id, d)
         self._switch_row(surf, rect, hud, c.id, y - 4)
         sc = c.scan
-        if sc is None:
+        seen = c.assessed
+        if sc is None and seen is None:
             theme.text(surf, "No scan data.", (rect.x + 114, yy + 4), theme.TEXT_FAINT, 12)
             return
-        age = (obs.tick - sc.tick) * obs.rules.dt
+        # our own hits keep the picture current between scans: each one shows that facing and the hull
+        fresh = seen is not None and (sc is None or seen.tick >= sc.tick)
+        n = len(sc.shields) if sc is not None else len(seen.shields) if seen is not None else 0
         x = rect.x + 114
-        for i, v in enumerate(sc.shields):
+        for i in range(n):
+            v: float | None = sc.shields[i] if sc is not None else None
+            if fresh and seen is not None and i < len(seen.shields) and seen.shields[i] is not None:
+                v = seen.shields[i]
             r = pygame.Rect(x + i * 30, yy + 2, 26, 8)
-            theme.bar(surf, r, max(0.0, v) / 100.0, theme.SHIELD if v > 0 else theme.ALERT)
+            if v is None:
+                pygame.draw.rect(surf, theme.TEXT_FAINT, r, 1)
+            else:
+                theme.bar(surf, r, max(0.0, v) / 100.0, theme.mix(theme.ALERT, theme.SHIELD, max(0.0, v) / 100.0)
+                          if v > 0 else theme.ALERT)
             theme.text(surf, str(i + 1), (r.centerx, r.bottom + 2), theme.TEXT_FAINT, 9, anchor="midtop")
-        theme.text(surf, f"crew ~{sc.crew}  hull {sc.structure_frac * 100:.0f}%  banks {sc.charged_banks}  "
-                         f"tubes {sc.loaded_tubes}  ({age:.0f}s old, {sc.confidence * 100:.0f}% conf.)",
-                   (rect.x + 12, yy + 28), theme.TEXT_DIM, 11)
+        hull = seen.hull if fresh and seen is not None and seen.hull is not None else sc.structure_frac if sc else None
+        if seen is not None and seen.power_out:
+            theme.text(surf, "Power out: her life support is failing, the crew has moments left",
+                       (rect.x + 12, yy + 28), theme.ALERT, 11)
+        elif sc is not None:
+            age = (obs.tick - sc.tick) * obs.rules.dt
+            hull_txt = f"hull {hull * 100:.0f}%" if hull is not None else ""
+            theme.text(surf, f"crew ~{sc.crew}  {hull_txt}  banks {sc.charged_banks}  tubes {sc.loaded_tubes}  "
+                             f"(scan {age:.0f}s old, {sc.confidence * 100:.0f}% conf.)",
+                       (rect.x + 12, yy + 28), theme.TEXT_DIM, 11)
+        else:
+            hull_txt = f"hull {hull * 100:.0f}%" if hull is not None else "hull not reached yet"
+            theme.text(surf, f"From our hits: {hull_txt}. Scan for her crew and weapons.",
+                       (rect.x + 12, yy + 28), theme.TEXT_DIM, 11)
         hud.ui.add(pygame.Rect(rect.x, yy - 2, rect.width, 44), lambda: hud.toggle_overlay("scan"), "Open scan view")
 
     @staticmethod

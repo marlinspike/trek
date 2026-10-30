@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from ..events import Message, Tone
 from ..ship import LoadedTorpedo, Ship, ShipStatus
+from .sensors import assess
 
 if TYPE_CHECKING:
     from ..world import World
@@ -31,6 +32,22 @@ def max_attainable_warp(ship: Ship, budget: float) -> float:
         return fallback
     w = min(cls.max_warp, budget / cls.warp_power_use)
     return fallback if w <= 1.0 else w
+
+
+def _seen_dark(world: World, ship: Ship, dark: bool) -> None:
+    """A ship whose power has failed goes dark, plain to every side watching her: she has moments left."""
+    for side, intel in world.intel.items():
+        c = intel.contacts.get(ship.id)
+        if side == ship.side or c is None or not c.visible:
+            continue
+        seen = assess(world, side, ship)
+        if seen is None:
+            continue
+        seen.power_out = dark
+        if dark:
+            world.emit(Message(world.tick, f"{world.label(side, ship.id)} has lost power: her life support is "
+                               f"failing, and her crew will not last {world.rules.life_support_failure_cycles:.0f} "
+                               "cycles.", Tone.CAUTION, ship_id=ship.id, visible_to=frozenset({side})))
 
 
 def update_power(world: World, ship: Ship, dt: float) -> None:
@@ -66,6 +83,8 @@ def update_power(world: World, ship: Ship, dt: float) -> None:
             pool -= need
             life = need
             ship.life_failure_time = 0.0
+            if rep.life_failing:
+                _seen_dark(world, ship, False)
             rep.life_failing = False
         else:
             pool = 0.0
@@ -73,6 +92,7 @@ def update_power(world: World, ship: Ship, dt: float) -> None:
             if not rep.life_failing:
                 world.emit(Message(world.tick, f"{ship.name}: life support is failing!", Tone.ALERT,
                                    ship_id=ship.id, visible_to=frozenset({ship.side})))
+                _seen_dark(world, ship, True)
             rep.life_failing = True
             if ship.life_failure_time >= rules.life_support_failure_cycles:
                 world.lose_all_hands(ship, "life support failure")

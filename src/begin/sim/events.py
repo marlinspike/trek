@@ -99,7 +99,7 @@ class ShieldHit(Event):
     penetrated: float
     collapsed: bool
     attacker: int | None = None
-    strength: float = 0.0  # the shield's strength afterwards, % of design
+    strength: float = 0.0  # what the shield can still absorb afterwards, % of design (0 when it has no power)
 
 
 @dataclass(slots=True)

@@ -18,7 +18,7 @@ from ..content.schema import ContentDB, ShipClass
 from .events import ContactChanged, Event, Message
 from .rules import Rules
 from .ship import Ship
-from .systems.sensors import ScanRecord
+from .systems.sensors import Assessment, ScanRecord
 
 if TYPE_CHECKING:
     from .allies import AllyStanding
@@ -42,6 +42,7 @@ class ContactView:
     age: float                  # cycles since last sensor update
     scan: ScanRecord | None
     cloaked_hint: bool          # we lost it at close range: probably cloaked
+    assessed: Assessment | None = None   # her condition as our own hits have shown it, kept current
     haze: float = 0.0           # 0 = exact; up to 1 beyond rated sensor range
     uncertainty: float = 0.0    # possible position error, world units
 
@@ -130,6 +131,7 @@ class Observation:
                         x=pos[0], y=pos[1], vx=vx, vy=vy, course=c.course, warp=c.warp, age=age,
                         scan=c.scan, cloaked_hint=(not c.visible and s.cls.can_cloak and c.identified),
                         haze=c.haze if c.visible else 0.0, uncertainty=c.uncertainty if c.visible else 0.0,
+                        assessed=c.assessed,
                     )
             self._contacts = out
         return self._contacts
