@@ -9,9 +9,11 @@ import pygame
 
 from ..battle import BattleSetup, FleetSpec, ShipSpec, quick_battle
 from ..content.schema import ContentDB
+from ..help.coach import HelpContext
 from ..presets import Preset, load_presets
 from . import theme
 from .hulls import draw_hull
+from .manual import ManualView
 from .settings import Settings
 from .widgets import UI
 
@@ -41,12 +43,27 @@ class MenuScene:
             "seed": int(cs.get("seed", 1)),
         }
         self.t = 0.0
+        self.manual: ManualView | None = None     # made the first time the coach or manual is opened
+        self._swallow = False
+
+    def open_manual(self, topic: str = "coach") -> None:
+        """The coach and the manual, before any battle: the training run and every page, read at leisure."""
+        if self.manual is None:
+            self.manual = ManualView(lambda: HelpContext(self.content), lambda _cmd: None, self._close_manual)
+        self.manual.open(topic)
+        self.page = "manual"
+        self._swallow = True          # the key that opened it mustn't land in the manual's search box
+        pygame.key.start_text_input()
+
+    def _close_manual(self) -> None:
+        self.page = "main"
 
     def layout(self, size: tuple[int, int]) -> None:
         self.size = size
 
     def update(self, dt: float) -> None:
         self.t += dt
+        self._swallow = False
         self.ui.mouse = pygame.mouse.get_pos()
 
     def handle(self, ev: pygame.event.Event) -> None:
@@ -59,6 +76,16 @@ class MenuScene:
                     h.right()
                 elif ev.button == 1:
                     h.action()
+        elif self.page == "manual" and self.manual is not None and ev.type in (
+                pygame.KEYDOWN, pygame.TEXTINPUT, pygame.MOUSEWHEEL):
+            if ev.type == pygame.KEYDOWN:
+                self.manual.key(ev)
+            elif ev.type == pygame.TEXTINPUT:
+                if not self._swallow:
+                    self.manual.text(ev.text)
+                self._swallow = False
+            else:
+                self.manual.wheel(ev.y, self.ui.mouse)
         elif ev.type == pygame.KEYDOWN:
             if ev.key == pygame.K_ESCAPE:
                 if self.page == "main":
@@ -72,6 +99,8 @@ class MenuScene:
                 self.start(self.presets[self.preset_i].setup())
             elif self.page == "main" and ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self._quick()
+            elif self.page == "main" and ev.key in (pygame.K_c, pygame.K_h, pygame.K_F1):
+                self.open_manual("coach" if ev.key == pygame.K_c else "index" if ev.key == pygame.K_h else "controls")
 
     # ------------------------------------------------------------ actions
 
@@ -111,6 +140,10 @@ class MenuScene:
         self.ui.begin_frame()
         surf.fill(theme.BG)
         w, h = surf.get_size()
+        if self.page == "manual" and self.manual is not None:
+            self.manual.draw(surf, pygame.Rect(24, 24, w - 48, h - 48), self.ui)
+            self.ui.draw_tooltip(surf)
+            return
         # quiet grid backdrop
         off = (self.t * 6) % 80
         for x in range(-80, w + 80, 80):
@@ -135,6 +168,8 @@ class MenuScene:
             ("Quick battle", self._quick, "A seeded random engagement (Enter)"),
             ("Preset battles", lambda: setattr(self, "page", "presets"), "Curated scenarios"),
             ("Custom battle", lambda: setattr(self, "page", "custom"), "Choose fleets"),
+            ("Coach & training", self.open_manual, "How to fight your first battle, before you start (C)"),
+            ("Manual", lambda: self.open_manual("index"), "Every page of the manual (H)"),
             ("About & licensing", lambda: setattr(self, "page", "about"), ""),
             ("Quit", self.quit, "Esc"),
         ]

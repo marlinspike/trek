@@ -24,4 +24,4 @@ Click a **›** line to put that command in the console. Nothing is sent until y
 - **Proximity is a trade.** A wide proximity setting is more likely to explode near the target but does less damage. Tight settings hit hard but need good aim. Against a ship that is turning, open the proximity up.
 - **Heat and power.** Running hot at high warp, or with too little power left for shields, gets flagged with the warp that fixes it.
 
-Type `coach` in the console at any time to open this page.
+Type `coach` in the console at any time to open this page. Before a battle, **Coach & training** on the main menu (or **C**) opens it with the training run; **Manual** (or **H**) opens the whole manual.

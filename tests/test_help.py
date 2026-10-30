@@ -169,3 +169,22 @@ def test_table_cells_keep_links_and_code_whole() -> None:
     from begin.ui.markdown import _cells
 
     assert _cells(" [[phasers|Phasers]] | `a|b` | x ") == [" [[phasers|Phasers]] ", " `a|b` ", " x "]
+
+
+def test_the_coach_and_manual_open_from_the_main_menu(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.ui.menu_scene import MenuScene
+    from begin.ui.settings import Settings
+
+    pygame.init()
+    surf = pygame.display.set_mode((1400, 860))
+    menu = MenuScene(content, Settings(), lambda setup: None, lambda: None)
+    menu.draw(surf)
+    menu.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_c, mod=0, unicode="c"))
+    menu.handle(pygame.event.Event(pygame.TEXTINPUT, text="c"))      # the same key press: not a search
+    assert menu.page == "manual" and menu.manual is not None and menu.manual.topic_id == "coach"
+    assert menu.manual.search == ""
+    menu.draw(surf)
+    body = menu.manual._page_text(menu.manual.topic, HelpContext(content))   # type: ignore[arg-type]
+    assert "training run" in body and "fire all torpedoes" in body and "{{" not in body
+    menu.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE, mod=0, unicode=""))
+    assert menu.page == "main"

@@ -346,12 +346,55 @@ def tips(ctx: HelpContext) -> list[Tip]:
     return out
 
 
+BRIEFING = """> **Coach** You're not in a battle yet, so here is the training run. Once a battle starts, this space reads \
+your fight instead: your target's range against your weapons' envelopes, the best torpedo and proximity setting, \
+your shields, heat and power, with the command for each step.
+
+### Before you start
+Every battle begins **paused**. Nothing moves until you press **Space**, so read the board first. **Enter** opens \
+the console, **H** this manual and **F1** the controls. See [[first-battle]] for the full walkthrough.
+
+### 1. Find and target the enemy
+Enemy ships are red. **Tab** targets the nearest, and the Target panel shows its class and range. In the \
+console, the first few letters of a ship's name are enough (here, a Klingon called Gorkon):
+```console
+target gor
+```
+
+### 2. Close the range
+**W** and **S** change warp, and a right-click on the map sets your course. Or let the helm chase them:
+```console
+pursue gor warp 4
+```
+
+### 3. Torpedoes at long range
+Torpedoes reach far beyond phasers but need room to arm. When the coach says the shot is on, press **T**.
+```console
+fire all torpedoes
+```
+
+### 4. Phasers up close
+Inside phaser range press **F**. Phasers hit far harder the closer you are. See [[phasers]].
+```console
+fire all phasers
+```
+
+### 5. Keep a strong shield toward them
+Six shields each cover 60°. When the one facing the enemy weakens, turn to bring a fresh one round. See [[shields]].
+
+### 6. Mind the engines and the power
+Above cruise warp the drives heat up, and past the limit they take damage. Firing and shields drain the batteries.
+
+### In the battle
+Type `coach` or press **H** and pick **Coach**: this page then reads your actual fight and lists the most urgent \
+thing first. Your officers help too. Try `spock, what do you advise?` (see [[talking]])."""
+
+
 def coach(ctx: HelpContext) -> str:
     """The coach page's live block: the tips as Markdown, with clickable commands."""
     s, obs = ctx.ship, ctx.obs
     if s is None or obs is None:
-        return ("> **Coach** Start a battle and the coach will read the situation: your target's range against "
-                "your weapons' envelopes, the best torpedo and proximity setting, your shields, heat and power.")
+        return BRIEFING
     if not s.alive:
         return "> **Coach** Your ship is out of action. Beam to an ally with `beam <ally>` if one is within 3,000."
     found = tips(ctx)
