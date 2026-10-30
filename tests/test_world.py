@@ -498,8 +498,8 @@ def test_seven_bursts_torpedoes_between_two_close_targets(content) -> None:  # t
 
     w = make_world(content)
     hc = w.add_ship("federation.hc", 0, 0, 0)
-    a = w.add_ship("klingon.bc", 1, -350, 5000)
-    b = w.add_ship("klingon.bc", 1, 350, 5000)
+    a = w.add_ship("klingon.bc", 1, -500, 5000)
+    b = w.add_ship("klingon.bc", 1, 500, 5000)
     charge_all(w, 6)
     w.execute(SetObjective(ship_id=hc.id, group="shields", targets=(a.id, b.id), officer="seven"))
     crew = Crew(hc.id, 0, content, default_crew(load_officers()), Rng(1))

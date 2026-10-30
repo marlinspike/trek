@@ -51,7 +51,7 @@ disable tubes 3 4
 enable all tubes
 ```
 
-> **Coach** A torpedo bursts the moment its target comes within the proximity distance, and its blast fades to nothing at the edge of its reach: 50 × the warhead, so 500 units for a Mark 7. At proximity 500 a Mark 7 bursts right at that edge and barely scratches the target. At 250 it delivers about 70% of its punch, and at 100 about 90%. A wide proximity still catches nimble ships, so the [[coach]] suggests a setting that balances the two (half the blast reach at most).
+> **Coach** A torpedo bursts the moment its target comes within the proximity distance, and its blast fades to nothing at the edge of its reach: 50 × the warhead (a little more for Federation designs), so 920 units for a Mark 7. At proximity 800 a Mark 7 bursts near that edge and barely scratches the target. At 460 it delivers about 70% of its punch, and at 200 nearly 90%. A wide proximity still catches nimble ships, so the [[coach]] suggests a setting that balances the two (half the blast reach at most).
 
 ## Shields soak up hits
 

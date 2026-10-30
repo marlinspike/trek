@@ -90,10 +90,10 @@ Torpedo designs have their own table, `ORDNANCE_OVERRIDES`:
 
 | Torpedo | Change | Why |
 |---|---|---|
-| Federation Mark 7 | arms after 0.4 s, 1,200 units (was 1.0 s, 3,000); blast radius 575 (was 500) | The player's request. Each still arms beyond its own blast, so a ship can't catch itself. In 32-seed AI-vs-AI balance runs the Federation side won more: Fleet Action 17 → 25 of 32, Outpost Assault 20 → 29, Starbase Defense 21 → 27, Pirate Hunt 25 → 30. |
-| Federation Mark 8 | arms after 0.6 s, 900 units (was 1.0 s, 1,500); blast radius 863 (was 750) | As above. |
+| Federation Mark 7 | warhead 16 (was 10); max proximity 800 (was 500); arms after 0.4 s, 1,200 units (was 1.0 s, 3,000); blast radius 920 (was 500) | The player's requests. The arming change alone moved 32-seed AI-vs-AI balance runs toward the Federation (Fleet Action 17 → 25 of 32, Outpost Assault 20 → 29, Starbase Defense 21 → 27, Pirate Hunt 25 → 30). |
+| Federation Mark 8 | warhead 24 (was 15); max proximity 800 (was 500); arms after 0.95 s, 1,425 units (was 1.0 s, 1,500; briefly 0.6 s); blast radius 1,380 (was 750) | As above. The Mark 8 arming time went back up when the bigger warhead's blast outgrew 900 units, so each round still arms beyond its own blast and a ship can't catch itself. |
 
-The blast radius change is a per-design `blast_scale` (1.15) on Begin's formula (yield × 5 × 10); the warhead itself is unchanged, but since blast damage falls off as the square root of the share of the radius travelled, a ship at a given distance from the burst also takes a little more.
+The blast radius is a per-design `blast_scale` (1.15) on Begin's formula (yield × 5 × 10). The warheads were scaled by the same factor as the proximity limit (800 / 500 = 1.6): blast radius grows in step with the warhead, so a burst at the widest fuse sits at the same fraction of the blast radius as before (800 of 920 now, 500 of 575 then) and delivers the same share of a 1.6 × bigger warhead. With the bigger warheads the Federation side wins most AI-vs-AI runs (32 seeds: Border Incident 14 → 32, Three-Way 15 → 30, Fleet Action 25 → 31).
 
 ## Scenarios and setup
 

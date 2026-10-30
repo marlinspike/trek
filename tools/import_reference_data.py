@@ -65,10 +65,14 @@ OVERRIDES: dict[str, dict[str, tuple[Any, str]]] = {
 
 # Torpedo design changes the player asked for, kept here so a re-import doesn't undo them.
 ORDNANCE_OVERRIDES: dict[str, dict[str, tuple[Any, str]]] = {
-    "mk7": {"arm_time": (0.4, "was 1.0: arms 1,200 units out, beyond its own 575-unit blast"),
-            "blast_scale": (1.15, "[E] blast radius 575 instead of 500")},
-    "mk8": {"arm_time": (0.6, "was 1.0: arms 900 units out, beyond its own 863-unit blast"),
-            "blast_scale": (1.15, "[E] blast radius 863 instead of 750")},
+    "mk7": {"damage": (16.0, "was 10: × 1.6 to match the wider proximity (800 / 500)"),
+            "arm_time": (0.4, "was 1.0: arms 1,200 units out, beyond its own 920-unit blast"),
+            "max_prox": (800.0, "was 500"),
+            "blast_scale": (1.15, "[E] blast radius 920 instead of 800")},
+    "mk8": {"damage": (24.0, "was 15: × 1.6 to match the wider proximity (800 / 500)"),
+            "arm_time": (0.95, "was 1.0, then 0.6: arms 1,425 units out, beyond its own 1,380-unit blast"),
+            "max_prox": (800.0, "was 500"),
+            "blast_scale": (1.15, "[E] blast radius 1,380 instead of 1,200")},
 }
 
 REPAIR_FIELDS = {

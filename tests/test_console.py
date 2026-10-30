@@ -34,9 +34,9 @@ def test_terse_autoload(setup) -> None:  # type: ignore[no-untyped-def]
     (c,) = r.commands
     assert isinstance(c, ConfigureAutoload)
     assert c.weapon == "tube" and c.mounts is None and c.ordnance == "mk7" and c.prox == 1200 and c.enabled
-    # the sim gives contextual feedback: MK7's proximity tops out at 500
+    # the sim gives contextual feedback: MK7's proximity tops out at 800
     reason = w.execute(c)
-    assert reason is not None and "500" in reason
+    assert reason is not None and "800" in reason
 
 
 def test_readable_autoload(setup) -> None:  # type: ignore[no-untyped-def]

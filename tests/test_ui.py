@@ -105,7 +105,7 @@ def test_coach_warns_when_proximity_is_wider_than_the_blast(content) -> None:  #
     w = World(content, seed=1)
     me = w.add_ship("federation.dn", 0, 0, 0)
     dr = w.add_ship("klingon.dr", 1, 0, 6000)
-    w.execute(ConfigureAutoload(ship_id=me.id, weapon="tube", prox=500))
+    w.execute(ConfigureAutoload(ship_id=me.id, weapon="tube", prox=800))
     w.execute(SelectTarget(ship_id=me.id, target=dr.id))
     w.step()
     t = next(t for t in tips(HelpContext(content, w.observe(0), me)) if t.title == "Proximity fuse")

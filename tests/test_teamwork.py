@@ -77,7 +77,7 @@ def test_officers_report_what_they_are_doing(content) -> None:  # type: ignore[n
                 assert a.role == "conn" and a.plan is not None and a.doing
     assert kinds["spock"] & {"evade", "close", "open", "hold"}       # flying for Seven, not just weaving in
     assert kinds["seven"] & {"bait", "salvo"} and "load" in kinds["seven"]
-    assert progress.startswith(foe.name) and "shields out" in progress
+    assert progress.startswith(foe.name) and ("shields out" in progress or progress.endswith("gone"))
     pl = crew.planners["seven"]
     assert pl.tally.get("rounds", 0) > 0 and "torpedoes in all" in summary(pl, w.tick, w.rules.ticks_per_cycle)
 
@@ -110,7 +110,8 @@ def test_callouts_panel_and_summary(scene) -> None:  # type: ignore[no-untyped-d
     assert any(t.startswith("Spock: Evading") or t.startswith("Spock: Closing on") for t in said)
     assert any(t.startswith("Seven of Nine: Salvo of") or t.startswith("Seven of Nine: One torpedo") for t in said)
     assert not any(t.startswith("Worf:") for t in said)          # Seven is the one firing, and she says so
-    assert any(t.startswith("Seven of Nine: That took") for t in said)
+    if not any(t.startswith("Wraith has been destroyed") for t in said):   # a heavy salvo can end it first
+        assert any(t.startswith("Seven of Nine: That took") for t in said)
 
 
 def test_without_an_objective_the_officer_flies_the_usual_way_but_still_dodges(content) -> None:  # type: ignore[no-untyped-def]
