@@ -121,7 +121,7 @@ Begin drew its display in text and simple vectors and had no sound effects. The 
 - Ships leave a faint engine wake whose length grows with warp. There is a faint parallax starfield behind the grid (`ui/starfield.py`, shared with the main menu).
 - Phaser beams have a soft glow around the core and a flare where they strike. Torpedoes pulse with a glow and leave a trail that fades over about a second and a half.
 - Choosing a target swings its brackets in from wide and rotated; they close over about a third of a second, then pulse gently while it stays targeted.
-- Titles, headings, menu items, buttons and tabs use Barlow Condensed (SIL OFL), letter-spaced in the manner of a starship console; running text, the console, logs, figures and data buttons (long labels, or facts joined by ·) stay in Inter and JetBrains Mono for legibility. Symbols the display face lacks, such as arrows, fall back to Inter.
+- The title is Goldman (SIL OFL), drawn as gold metal lettering with a bevel, outline and glow; headings, menu items, buttons and tabs use Exo 2 (SIL OFL), letter-spaced in the manner of a starship console; running text, the console, logs, figures and data buttons (long labels, or facts joined by ·) stay in Inter and JetBrains Mono for legibility. Symbols the display face lacks, such as arrows, fall back to Inter.
 - The HUD keeps to the essentials. Hovering the Own Ship panel, or `hud detail`, shows every number. Shown numbers ease toward their new value and flash briefly on a real change (`ui/tween.py`).
 - A ship that cloaks or decloaks in view wavers in a ripple, as does one that vanished in view and is then caught by a tachyon pulse.
 - The panel borders pulse red while the ship is at red alert: hit lately, or an enemy within 12,000.

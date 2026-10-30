@@ -22,6 +22,7 @@ from .widgets import UI
 
 FACTIONS = ["federation", "klingon", "romulan", "orion"]
 STAR_DRIFT = 900.0        # world units per second the menu's view drifts through the stars
+TITLE_SIZE = 84           # pixels: the gold title lettering
 MENU_SOUND = 0.4          # × the player's volume: the menu's flybys are heard, quietly
 
 
@@ -160,8 +161,9 @@ class MenuScene:
         self.stars.draw(surf, surf.get_rect(), self.t * STAR_DRIFT, self.t * STAR_DRIFT * 0.18)
         if self.page == "main":
             self.flybys.draw(surf)
-        theme.text(surf, "BEGIN", (80, 48), theme.FRIEND, 66, "display", weight="semibold")
-        theme.text(surf, "A tactical starship simulation · a remake of Begin 2", (84, 146), theme.TEXT_DIM, 17, "display")
+        title = theme.title_art("BEGIN", TITLE_SIZE)
+        surf.blit(title, (80 - TITLE_SIZE // 3, 40 - TITLE_SIZE // 3))
+        theme.text(surf, "A TACTICAL STARSHIP SIMULATION  ·  A REMAKE OF BEGIN 2", (84, 150), theme.TEXT_DIM, 14, "display")
         if self.page == "main":
             self._main(surf)
         elif self.page == "presets":
@@ -187,9 +189,9 @@ class MenuScene:
             self.ui.button(surf, pygame.Rect(x, y, 300, 44), label.upper(), act, tip, size=16)
             y += 56
         pf = self.custom["player_faction"]
-        self.ui.button(surf, pygame.Rect(x, y + 12, 300, 30), f"Quick battle side: {self.content.factions[pf].name}",
+        self.ui.button(surf, pygame.Rect(x, y + 12, 300, 30), f"QUICK BATTLE SIDE: {self.content.factions[pf].name.upper()}",
                        lambda: self._cycle("player_faction", FACTIONS), "Which faction you command in a quick battle",
-                       size=12)
+                       size=12, face="display")
 
     def _make_audio(self) -> None:
         from ..paths import config_dir

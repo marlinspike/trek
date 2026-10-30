@@ -151,3 +151,14 @@ def test_the_first_klingon_comes_early_and_k_summons_another() -> None:
         f.update(0.05, surf.get_size())
         t += 0.05
     assert f.encounter is not None
+
+
+def test_the_title_is_drawn_as_gold_lettering() -> None:
+    from begin.ui import theme
+
+    _display()
+    art = theme.title_art("BEGIN", 84)
+    box = art.get_bounding_rect()
+    assert box.width > 250 and box.height > 50
+    r, g, b, _ = art.get_at(box.center)
+    assert r > b                                               # warm gold, not the old cyan

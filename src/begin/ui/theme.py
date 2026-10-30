@@ -80,14 +80,15 @@ _FONT_FILES = {
     ("ui", "semibold"): "Inter-SemiBold.ttf",
     ("mono", "regular"): "JetBrainsMono-Regular.ttf",
     ("mono", "medium"): "JetBrainsMono-Medium.ttf",
-    ("display", "regular"): "BarlowCondensed-Medium.ttf",
-    ("display", "medium"): "BarlowCondensed-Medium.ttf",
-    ("display", "semibold"): "BarlowCondensed-SemiBold.ttf",
+    ("display", "regular"): "Exo2-Medium.ttf",
+    ("display", "medium"): "Exo2-Medium.ttf",
+    ("display", "semibold"): "Exo2-SemiBold.ttf",
+    ("title", "regular"): "Goldman-Bold.ttf",
 }
-# Barlow Condensed, the display face for titles, headings, menus and short buttons, is drawn a little
-# larger than the size asked for (so it stands as tall as Inter) and spaced out, console-style.
-_SCALE = {"display": 1.15}
-_TRACK = {"display": 0.07}       # extra space between letters, as a fraction of the size
+# Exo 2, the display face for headings, menus and short buttons, is spaced out a little, console-style.
+# Goldman is only for the game's title, drawn as metal lettering by `title_art`.
+_SCALE: dict[str, float] = {}
+_TRACK = {"display": 0.06, "title": 0.06}       # extra space between letters, as a fraction of the size
 
 
 def _usable(f: pygame.font.Font) -> bool:
@@ -105,7 +106,7 @@ def _fallback(size: int) -> pygame.font.Font:
 
 @lru_cache(maxsize=64)
 def font(size: int, family: str = "ui", weight: str = "regular") -> pygame.font.Font:
-    """Bundled fonts (Inter for text, JetBrains Mono for figures, Barlow Condensed for titles and buttons),
+    """Bundled fonts (Inter for text, JetBrains Mono for figures, Exo 2 for headings and buttons, Goldman for the title),
     falling back to pygame's default."""
     name = _FONT_FILES.get((family, weight)) or _FONT_FILES[(family, "regular")]
     try:
@@ -212,4 +213,52 @@ def panel(surf: pygame.Surface, rect: pygame.Rect, title: str | None = None, acc
     return rect.y + 8
 
 
-__all__ = [n for n in dir() if n.isupper()] + ["bar", "border", "set_alert", "dim", "font", "health_color", "mix", "panel", "render", "text", "text_width"]
+GOLD_METAL = ((0.0, (255, 244, 190)), (0.45, (240, 190, 80)), (0.55, (170, 110, 30)), (1.0, (250, 210, 110)))
+
+
+@lru_cache(maxsize=8)
+def title_art(s: str, size: int, lean: float = 0.15) -> pygame.Surface:
+    """The game's title as metal lettering: a gold sheen banded across the middle, a bevelled top edge,
+    a dark outline and a warm glow. The surface has a margin of `size // 3` round the letters."""
+    m = render(s, (255, 255, 255), size, "title")
+    w, h = m.get_size()
+    if lean:                                     # sheared a row at a time into a forward lean
+        sheared = pygame.Surface((w + int(h * lean), h), pygame.SRCALPHA)
+        for y in range(h):
+            sheared.blit(m, (int((h - y) * lean), y), pygame.Rect(0, y, w, 1))
+        m = sheared
+        w = m.get_width()
+    fill = pygame.Surface((w, h), pygame.SRCALPHA)
+    stops = GOLD_METAL
+    for y in range(h):
+        t = y / max(1, h - 1)
+        for (t0, c0), (t1, c1) in zip(stops, stops[1:]):
+            if t0 <= t <= t1:
+                pygame.draw.line(fill, (*_mix(c0, c1, (t - t0) / (t1 - t0)), 255), (0, y), (w, y))
+                break
+    fill.blit(m, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)        # the sheen, cut to the letters
+    pad = size // 3
+    out = pygame.Surface((w + pad * 2, h + pad * 2), pygame.SRCALPHA)
+    glow = pygame.Surface(out.get_size(), pygame.SRCALPHA)
+    glow.blit(m, (pad, pad))
+    glow.fill((255, 150, 60, 255), special_flags=pygame.BLEND_RGBA_MULT)
+    glow = pygame.transform.gaussian_blur(glow, max(4, h // 10))
+    glow.fill((255, 255, 255, 150), special_flags=pygame.BLEND_RGBA_MULT)
+    out.blit(glow, (0, 0))
+    edge = m.copy()                              # a dark outline a few pixels thick
+    edge.fill((10, 20, 40, 255), special_flags=pygame.BLEND_RGBA_MULT)
+    r = max(2, size // 26)
+    for dx in range(-r, r + 1):
+        for dy in range(-r, r + 1):
+            if dx * dx + dy * dy <= r * r + 1:
+                out.blit(edge, (pad + dx, pad + dy))
+    out.blit(fill, (pad, pad))
+    bevel = m.copy()                             # light catching the top edges of the letters
+    bevel.fill((255, 255, 255, 90), special_flags=pygame.BLEND_RGBA_MULT)
+    bevel.blit(m, (0, max(1, size // 40)), special_flags=pygame.BLEND_RGBA_SUB)
+    out.blit(bevel, (pad, pad))
+    return out
+
+
+__all__ = [n for n in dir() if n.isupper()] + ["bar", "border", "set_alert", "dim", "font", "health_color", "mix", "panel",
+                                                "render", "text", "text_width", "title_art"]

@@ -1,6 +1,6 @@
 # Begin (remake)
 
-![The Enterprise on the main menu, phasers lancing out and a torpedo spread running ahead](docs/screenshots/showpiece.png)
+![The title screen: a Klingon battle cruiser decloaks and the Enterprise's torpedo bursts on its shields](docs/screenshots/title-klingon.png)
 
 A real-time 2D tactical starship simulation in Python and pygame-ce, rebuilt from *Begin: A Tactical Starship Simulation* (Clockwork Software, v1.65 manual with the Begin 2.0 appendix) and the [fireflyk64/begin](https://github.com/fireflyk64/begin) reverse-engineered reconstruction. It is a personal, non-commercial fan project: see [LICENSING.md](LICENSING.md).
 

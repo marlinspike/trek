@@ -43,7 +43,7 @@ class UI:
 
     def button(self, surf: pygame.Surface, rect: pygame.Rect, label: str, action: Callable[[], object],
                tooltip: str = "", active: bool = False, enabled: bool = True, accent: theme.Color = theme.FRIEND,
-               size: int = 12, right: Callable[[], object] | None = None) -> None:
+               size: int = 12, right: Callable[[], object] | None = None, face: str | None = None) -> None:
         hover = rect.collidepoint(self.mouse) and enabled
         bg = theme.BG_PANEL_HI if hover else theme.BG_INPUT
         if active:
@@ -52,7 +52,8 @@ class UI:
         pygame.draw.rect(surf, accent if (active or hover) and enabled else theme.BORDER, rect, 1, border_radius=3)
         col = theme.TEXT if enabled else theme.TEXT_FAINT
         # command labels in the display face; data (long, or a list of facts joined by ·) stays in the text face
-        face = "display" if len(label) <= 20 and "·" not in label else "ui"
+        if face is None:
+            face = "display" if len(label) <= 20 and "·" not in label else "ui"
         theme.text(surf, label, rect.center, col, size, face, weight="medium" if face == "ui" else "regular",
                    anchor="center")
         if enabled:
