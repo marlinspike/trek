@@ -80,7 +80,13 @@ _FONT_FILES = {
     ("ui", "semibold"): "Inter-SemiBold.ttf",
     ("mono", "regular"): "JetBrainsMono-Regular.ttf",
     ("mono", "medium"): "JetBrainsMono-Medium.ttf",
+    ("display", "regular"): "Antonio-Regular.ttf",
+    ("display", "medium"): "Antonio-Medium.ttf",
+    ("display", "semibold"): "Antonio-SemiBold.ttf",
 }
+# Antonio, the condensed display face for titles, headings, menus and buttons, is drawn larger than
+# the size asked for so its caps stand as tall as Inter's would.
+_SCALE = {"display": 1.18}
 
 
 def _usable(f: pygame.font.Font) -> bool:
@@ -98,10 +104,11 @@ def _fallback(size: int) -> pygame.font.Font:
 
 @lru_cache(maxsize=64)
 def font(size: int, family: str = "ui", weight: str = "regular") -> pygame.font.Font:
-    """Bundled fonts (Inter for UI, JetBrains Mono for figures), falling back to pygame's default."""
+    """Bundled fonts (Inter for text, JetBrains Mono for figures, Antonio for titles and buttons),
+    falling back to pygame's default."""
     name = _FONT_FILES.get((family, weight)) or _FONT_FILES[(family, "regular")]
     try:
-        f = pygame.font.Font(str(FONT_DIR / name), size)
+        f = pygame.font.Font(str(FONT_DIR / name), round(size * _SCALE.get(family, 1.0)))
         if _usable(f):
             return f
     except (OSError, pygame.error):
@@ -109,9 +116,17 @@ def font(size: int, family: str = "ui", weight: str = "regular") -> pygame.font.
     return _fallback(size)
 
 
+def _has_glyphs(f: pygame.font.Font, s: str) -> bool:
+    """Antonio covers Latin text and punctuation, but no arrows or symbols (U+2190 on); SDL draws a
+    box for a missing glyph rather than saying so, hence the range check."""
+    return all(ord(c) < 0x2190 for c in s)
+
+
 def render(s: str, color: Color, size: int = 14, family: str = "ui", weight: str = "regular") -> pygame.Surface:
     """Render a line of text, never raising: a string the font can't measure falls back to the default font."""
     f = font(size, family, weight)
+    if family == "display" and not _has_glyphs(f, s):
+        f = font(size, "ui", weight)              # a symbol Antonio lacks: the whole label in Inter
     try:
         return f.render(s, True, color)
     except pygame.error:
@@ -133,7 +148,10 @@ def text(surf: pygame.Surface, s: str, pos: tuple[float, float], color: Color = 
 
 def text_width(s: str, size: int = 14, family: str = "ui", weight: str = "regular") -> int:
     try:
-        return font(size, family, weight).size(s)[0]
+        f = font(size, family, weight)
+        if family == "display" and not _has_glyphs(f, s):
+            f = font(size, "ui", weight)
+        return f.size(s)[0]
     except pygame.error:
         return _fallback(size).size(s)[0]
 
@@ -166,7 +184,7 @@ def panel(surf: pygame.Surface, rect: pygame.Rect, title: str | None = None, acc
     pygame.draw.rect(surf, border(), rect, 1, border_radius=4)
     if title:
         pygame.draw.line(surf, accent, (rect.x + 10, rect.y + 1), (rect.x + 34, rect.y + 1), 2)
-        text(surf, title.upper(), (rect.x + 10, rect.y + 7), TEXT_DIM, 11, weight="semibold")
+        text(surf, title.upper(), (rect.x + 10, rect.y + 5), TEXT_DIM, 11, "display", weight="medium")
         return rect.y + 26
     return rect.y + 8
 

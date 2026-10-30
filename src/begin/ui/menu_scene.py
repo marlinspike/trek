@@ -158,7 +158,7 @@ class MenuScene:
         self.stars.draw(surf, surf.get_rect(), self.t * STAR_DRIFT, self.t * STAR_DRIFT * 0.18)
         if self.page == "main":
             self.flybys.draw(surf)
-        theme.text(surf, "BEGIN", (80, 70), theme.FRIEND, 64, weight="semibold")
+        theme.text(surf, "BEGIN", (80, 48), theme.FRIEND, 66, "display", weight="semibold")
         theme.text(surf, "A tactical starship simulation · a remake of Begin 2", (84, 150), theme.TEXT_DIM, 16)
         if self.page == "main":
             self._main(surf)
@@ -182,7 +182,7 @@ class MenuScene:
             ("Quit", self.quit, "Esc"),
         ]
         for label, act, tip in items:
-            self.ui.button(surf, pygame.Rect(x, y, 300, 44), label, act, tip, size=16)
+            self.ui.button(surf, pygame.Rect(x, y, 300, 44), label.upper(), act, tip, size=16)
             y += 56
         pf = self.custom["player_faction"]
         self.ui.button(surf, pygame.Rect(x, y + 12, 300, 30), f"Quick battle side: {self.content.factions[pf].name}",
@@ -229,7 +229,7 @@ class MenuScene:
             fac = self.content.classes[f["ships"][0]].faction
             col = theme.FRIEND if f.get("player") else theme.HOSTILE
             lab = self.content.factions[fac].name + (" (you)" if f.get("player") else "")
-            theme.text(surf, lab, (r.x + 20, yy), col, 14, weight="medium")
+            theme.text(surf, lab, (r.x + 20, yy), col, 14, "display", weight="medium")
             theme.text(surf, ", ".join(names), (r.x + 200, yy), theme.TEXT_DIM, 13)
             yy += 24 + 0 * side
         self.ui.button(surf, pygame.Rect(r.right - 180, r.bottom - 50, 160, 36), "Start (Enter)",

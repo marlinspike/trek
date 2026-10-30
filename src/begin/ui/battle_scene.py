@@ -1483,7 +1483,7 @@ class BattleScene:
         rows = list(w.ships.values())[:9]
         r = self._modal(surf, 800, 330 + 46 * len(res) + 18 * len(rows), "Battle assessment", theme.CAUTION)
         verdict = self.assessment.verdict(score)
-        theme.text(surf, w.outcome.reason or "The engagement is over.", (r.x + 24, r.y + 40), theme.TEXT, 18, weight="semibold")
+        theme.text(surf, w.outcome.reason or "The engagement is over.", (r.x + 24, r.y + 36), theme.TEXT, 20, "display", weight="semibold")
         theme.text(surf, verdict, (r.x + 24, r.y + 68), theme.CAUTION, 14)
         theme.text(surf, f"Score {score:+.1f}   ·   {w.time:.0f} cycles", (r.right - 24, r.y + 44), theme.TEXT, 14, "mono",
                    anchor="topright")
@@ -1516,7 +1516,7 @@ class BattleScene:
 
             best = standout(crew.officers.values(), self.player_id, w.command_log, self.deeds)
         if best is not None:
-            theme.text(surf, "STANDOUT OFFICER", (r.x + 24, y), theme.TEXT_DIM, 10, weight="semibold")
+            theme.text(surf, "STANDOUT OFFICER", (r.x + 24, y - 2), theme.TEXT_DIM, 11, "display", weight="medium")
             theme.text(surf, best.line(), (r.x + 24, y + 15), theme.CREW, 13)
         elif crew is not None:
             theme.text(surf, "You fought the ship yourself: your officers gave no orders of their own.", (r.x + 24, y + 8),

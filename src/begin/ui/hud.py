@@ -176,7 +176,7 @@ class OwnShipPanel(Panel):
             theme.text(surf, "No ship under command.", (rect.x + 12, y), theme.TEXT_DIM, 13)
             return
         status_col = theme.GOOD if ship.alive else theme.ALERT
-        theme.text(surf, ship.name, (rect.x + 12, y - 2), theme.FRIEND, 17, weight="semibold")
+        theme.text(surf, ship.name, (rect.x + 12, y - 6), theme.FRIEND, 17, "display", weight="semibold")
         sub = f"{ship.cls.name} · {hud.world.content.factions[ship.faction].name}"
         if not ship.alive:
             sub += f" · {ship.status.value.upper()}"
@@ -288,8 +288,8 @@ class TargetPanel(Panel):
             self._contact_list(surf, rect, y, hud)
             return
         col = theme.HOSTILE if c.identified else theme.UNKNOWN
-        theme.text(surf, c.label if c.identified else f"Unidentified contact #{c.id}", (rect.x + 12, y - 2), col, 16,
-                   weight="semibold")
+        theme.text(surf, c.label if c.identified else f"Unidentified contact #{c.id}", (rect.x + 12, y - 6), col, 17,
+                   "display", weight="semibold")
         d = c.distance_to(ship.x, ship.y)
         brg = bearing(c.x - ship.x, c.y - ship.y)
         rel = norm360(brg - ship.course)
@@ -798,14 +798,14 @@ class TabbedPanel(Panel):
         x = rect.x + 6
         for i, t in enumerate(self.tabs):
             label = t.tab_label(hud).upper()
-            w = theme.text_width(label, 11, weight="semibold") + 20
+            w = theme.text_width(label, 11, "display", weight="medium") + 20
             r = pygame.Rect(x, rect.y + 2, w, 22)
             on = i == self.active
             if on:
                 pygame.draw.line(surf, theme.FRIEND, (r.x + 4, rect.y + 1), (r.x + 28, rect.y + 1), 2)
             elif r.collidepoint(hud.ui.mouse):
                 pygame.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=3)
-            theme.text(surf, label, (r.x + 4, rect.y + 7), theme.TEXT if on else theme.TEXT_FAINT, 11, weight="semibold")
+            theme.text(surf, label, (r.x + 4, rect.y + 7), theme.TEXT if on else theme.TEXT_FAINT, 11, "display", weight="medium")
             hud.ui.add(r, partial(setattr, self, "active", i), t.title)
             x += w + 2
         self.tabs[self.active].body(surf, rect, rect.y + 28, hud)

@@ -198,7 +198,7 @@ class ManualView:
         pygame.draw.rect(surf, theme.BG_PANEL, h, border_top_left_radius=8, border_top_right_radius=8)
         pygame.draw.line(surf, theme.BORDER, (h.x, h.bottom), (h.right, h.bottom))
         pygame.draw.line(surf, theme.FRIEND, (h.x + 18, h.y + 1), (h.x + 60, h.y + 1), 2)
-        theme.text(surf, "BEGIN MANUAL", (h.x + 18, h.y + 18), theme.TEXT, 15, weight="semibold")
+        theme.text(surf, "BEGIN MANUAL", (h.x + 18, h.y + 15), theme.TEXT, 16, "display", weight="semibold")
         if t is not None:
             crumb = f"{t.category}  ›  {t.title}"
             theme.text(surf, crumb, (h.x + SIDEBAR_W + 32, h.y + 19), theme.TEXT_DIM, 13)
@@ -240,7 +240,7 @@ class ManualView:
                 y = self._side_item(surf, ui, lst, t, y, show_summary=True)
         else:
             for cat, topics in self.lib.categories():
-                theme.text(surf, cat.upper(), (r.x + 18, y + 8), theme.TEXT_FAINT, 10, weight="semibold")
+                theme.text(surf, cat.upper(), (r.x + 18, y + 6), theme.TEXT_FAINT, 11, "display", weight="medium")
                 y += 28
                 for t in topics:
                     y = self._side_item(surf, ui, lst, t, y)
@@ -281,7 +281,7 @@ class ManualView:
         y0 = r.y + 24 - int(self.scroll)
         prev = surf.get_clip()
         surf.set_clip(r)
-        theme.text(surf, t.title, (r.x + pad, y0), theme.TEXT, 28, weight="semibold")
+        theme.text(surf, t.title, (r.x + pad, y0 - 4), theme.TEXT, 28, "display", weight="semibold")
         if t.summary:
             theme.text(surf, t.summary, (r.x + pad, y0 + 40), theme.TEXT_DIM, 14)
         surf.set_clip(prev)
