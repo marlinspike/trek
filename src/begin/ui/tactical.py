@@ -17,15 +17,17 @@ import pygame
 
 from ..content.schema import Faction
 from ..core.angles import norm180
-from ..sim.events import Event, ShieldHit
+from ..content.schema import HullDef
+from ..sim.events import Detonation, Event, HullHit, ShieldHit, ShipStatusChanged
 from ..sim.factory import SHIELD_FACINGS
 from ..sim.observation import ContactView, Observation, OrdnanceView
 from ..sim.ship import Ship
 from . import theme
 from .camera import Camera
+from .blast import SHIELD as SHIELD_GLOW, Blast, HullHit as HitFlash, ShieldFlare
 from .effects import Effects
 from .showpiece import SPRITE_CENTRE_Y, SPRITE_PX, ship_image, ship_lights
-from .hulls import draw_hull, hull_pixel_scale
+from .hulls import MIN_HULL_PX, draw_hull, hull_pixel_scale
 from .starfield import Starfield
 
 SHIELD_FLASH = 0.7        # seconds a shield hit shimmers
@@ -37,8 +39,37 @@ SHOWPIECE = frozenset({"federation.hc"})
 TORP_TRAIL = 1.4          # cycles of exhaust a torpedo leaves behind it
 TORP_TRAIL_POINT = 0.05   # cycles between the points of a torpedo trail
 LOCK_TIME = 0.35          # seconds the target brackets take to close in
+BLAST_MIN_PX = 12.0       # the fireball of the smallest ship on screen, pixels
+COLLAPSE = (255, 120, 90)  # a shield giving way flares red
 
 Pose = tuple[float, float, float]  # x, y, course
+
+
+def _k(length: float, zoom: float) -> float:
+    """Pixels per hull design unit for a hull `length` world units long (as `hull_pixel_scale`)."""
+    return max(length * zoom, MIN_HULL_PX) / 100.0
+
+
+@dataclass
+class Wreck:
+    """A ship destroyed: the blast stays where she died, and grows or shrinks as the view zooms."""
+    blast: Blast
+    x: float
+    y: float
+    length: float          # her hull, world units
+    k0: float              # pixels per hull unit when she blew
+
+
+@dataclass
+class Strike:
+    """A blow that got through to a ship's hull, on the side it came from, riding along with her."""
+    hit: HitFlash
+    ship: int
+    x: float               # where she was, in case she's gone from view
+    y: float
+    bearing: float         # compass degrees from her centre toward the shot
+    length: float
+    k0: float
 
 
 def lerp_pose(a: Pose | None, b: Pose, t: float) -> Pose:
@@ -95,20 +126,88 @@ class TacticalView:
     torp_trails: dict[int, list[tuple[float, float, float]]] = field(default_factory=dict)   # round -> [(x, y, time)]
     clock: float = 0.0                       # wall-clock seconds, for animation
     _lock: tuple[int | None, float] = (None, 0.0)   # the target the brackets are on, and when they started closing
+    wrecks: list[Wreck] = field(default_factory=list)
+    strikes: list[Strike] = field(default_factory=list)
+    _rng: random.Random = field(default_factory=lambda: random.Random(11))
+    _last: dict[int, tuple[float, float, float, HullDef | None, str | None, bool]] = field(default_factory=dict)  # as last drawn
 
     def ingest(self, events: list[Event], obs: Observation) -> None:
         visible = {s.id for s in obs.own_ships(alive_only=False)} | {c.id for c in obs.contacts().values() if c.visible}
         friendly = {s.id for s in obs.own_ships(alive_only=False)}
         self.effects.ingest(events, obs.side, visible, friendly, lambda sid: faction_seen(obs, sid))
+        fresh: list[Wreck] = []
         for ev in events:
             if isinstance(ev, ShieldHit) and ev.ship_id in visible:
                 power = 0.35 + 0.65 * min(1.0, (ev.absorbed + ev.penetrated) / 40.0)
                 self.shield_flashes.setdefault(ev.ship_id, []).append(
                     [float(ev.sector), 0.0, power, 1.0 if ev.collapsed else 0.0])
+            elif isinstance(ev, HullHit) and ev.ship_id in visible and ev.amount > 0:
+                self._strike(obs, ev)
+            elif isinstance(ev, ShipStatusChanged) and ev.status == "destroyed":
+                w = self._wreck(ev.ship_id)
+                if w is not None:
+                    fresh.append(w)
+            elif isinstance(ev, Detonation) and ev.source in ("ship", "destruct") and fresh:
+                # the breakup goes off where she really was, which sensors may only have had roughly
+                w = min(fresh, key=lambda w: math.hypot(w.x - ev.x, w.y - ev.y))
+                w.x, w.y = ev.x, ev.y
+                fresh.remove(w)
+
+    @staticmethod
+    def _seen(obs: Observation, sid: int | None) -> tuple[float, float, float, HullDef | None, str | None, bool] | None:
+        """Where we see a ship: (x, y, course, hull, class, ours), or None."""
+        if sid is None:
+            return None
+        own = obs.own(sid)
+        if own is not None:
+            return own.x, own.y, own.course, own.cls.hull, own.cls.id, True
+        c = obs.contact(sid)
+        if c is None:
+            return None
+        return c.x, c.y, c.course, c.cls.hull if c.cls is not None else None, c.cls.id if c.cls is not None else None, False
+
+    def _strike(self, obs: Observation, ev: HullHit) -> None:
+        me = self._seen(obs, ev.ship_id)
+        if me is None:
+            return
+        x, y, _, hull, _, _ = me
+        them = self._seen(obs, ev.attacker)
+        bearing = math.degrees(math.atan2(them[0] - x, them[1] - y)) if them is not None else self._rng.uniform(0, 360)
+        length = hull.length if hull is not None else 200.0
+        k0 = _k(length, self.cam.zoom)
+        hit = HitFlash(0.0, 0.0, k0 * (9.0 + 9.0 * min(1.0, ev.amount / 40.0)))
+        hit.start(self._rng)
+        self.strikes.append(Strike(hit, ev.ship_id, x, y, bearing, length, k0))
+
+    def _wreck(self, sid: int) -> Wreck | None:
+        seen = self._last.pop(sid, None)          # a ship destroyed has already dropped off sensors: where we last saw her
+        if seen is None:
+            return None
+        x, y, course, hull, cls_id, ours = seen
+        length = hull.length if hull is not None else 200.0
+        k0 = _k(length, self.cam.zoom)
+        image: pygame.Surface | None = None
+        if cls_id in SHOWPIECE and k0 >= SPRITE_MIN_K:
+            image = ship_image(round(course) % 360, round(k0 / SPRITE_PX, 2))
+        if image is None and hull is not None:      # her outline, filled in, to be torn apart
+            size = int(110 * k0) + 4
+            image = pygame.Surface((size, size), pygame.SRCALPHA)
+            draw_hull(image, hull, size / 2, size / 2, course, k0, theme.FRIEND if ours else theme.HOSTILE, fill_alpha=0.6)
+        blast = Blast(0.0, 0.0, max(BLAST_MIN_PX, 30.0 * k0), seed=self._rng.randrange(1 << 30))
+        blast.start(image)
+        w = Wreck(blast, x, y, length, k0)
+        self.wrecks.append(w)
+        return w
 
     def update(self, dt: float) -> None:
         self.clock += dt
         self.effects.update(dt)
+        for w in self.wrecks:
+            w.blast.update(dt)
+        self.wrecks = [w for w in self.wrecks if not w.blast.done]
+        for st in self.strikes:
+            st.hit.update(dt)
+        self.strikes = [st for st in self.strikes if not st.hit.done]
         for x, y, frac in self._burning:
             self.effects.smoulder(x, y, frac, dt, self.cam.zoom)
         for sid in list(self.shield_flashes):
@@ -196,10 +295,33 @@ class TacticalView:
 
         self._ripples(obs, pose)
         self.effects.draw(surf, cam, overlay)
+        self._fire(surf, pose)
         surf.blit(overlay, (0, 0))
         self._scale_bar(surf)
         pygame.draw.rect(surf, theme.border(), r, 1)
         surf.set_clip(clip)
+
+    def _fire(self, surf: pygame.Surface, pose: Callable[[int], Pose | None]) -> None:
+        """Ships blowing up and blows landing on hulls: burning pieces, then their light added onto the map."""
+        cam = self.cam
+        for w in self.wrecks:
+            if not cam.visible(w.x, w.y, 400):
+                continue
+            s = max(BLAST_MIN_PX, 30.0 * _k(w.length, cam.zoom)) / w.blast.radius
+            w.blast.x, w.blast.y = cam.to_screen(w.x, w.y)
+            w.blast.draw_pieces(surf, s)
+            w.blast.draw(surf, s)
+        for st in self.strikes:
+            p = pose(st.ship)
+            if p is not None:
+                st.x, st.y = p[0], p[1]
+            if not cam.visible(st.x, st.y, 100):
+                continue
+            k = _k(st.length, cam.zoom)
+            sx, sy = cam.to_screen(st.x, st.y)
+            a = math.radians(st.bearing)
+            st.hit.x, st.hit.y = sx + math.sin(a) * 22 * k, sy - math.cos(a) * 22 * k
+            st.hit.draw(surf, k / st.k0)
 
     def _starfield(self, surf: pygame.Surface) -> None:
         """Faint stars far beyond the battle, drifting a little against the grid as the view pans."""
@@ -353,6 +475,9 @@ class TacticalView:
             fl = hit[1] if hit is not None else None
             if hit is not None and overlay is not None:
                 self._shimmer(overlay, ship_id, i, sx, sy, course + facing, rad, hit)
+                # the bubble itself lights up round the blow, added onto the map
+                ShieldFlare(sx, sy, rad, rad, math.radians(course + facing - 90), 0.45 + 0.55 * hit[2],
+                            hit[1], SHIELD_FLASH, COLLAPSE if hit[3] > 0 else SHIELD_GLOW).draw(surf)
             if strengths is None and fl is None:
                 continue
             if strengths is not None:
@@ -467,6 +592,8 @@ class TacticalView:
             return
         sx, sy = cam.to_screen(p[0], p[1])
         k = hull_pixel_scale(s.cls.hull, cam.zoom)
+        if s.alive and not s.cloaked:
+            self._last[s.id] = (p[0], p[1], p[2], s.cls.hull, s.cls.id, True)
         color = theme.FRIEND if s.alive else theme.TEXT_FAINT
         if not is_player and s.alive:
             color = theme.ALLY
@@ -519,6 +646,11 @@ class TacticalView:
         if not cam.visible(p[0], p[1], 200):
             return
         sx, sy = cam.to_screen(p[0], p[1])
+        if c.visible:
+            self._last[c.id] = (p[0], p[1], p[2], c.cls.hull if c.cls is not None else None,
+                                c.cls.id if c.cls is not None else None, False)
+        else:
+            self._last.pop(c.id, None)
         color = theme.HOSTILE if c.identified else theme.UNKNOWN
         if not c.visible:
             color = theme.dim(color, 0.45)

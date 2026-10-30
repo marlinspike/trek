@@ -2,8 +2,9 @@
 destruction of a ship, all drawn additively onto a black "glow" surface that is then added onto the
 scene, plus the burning pieces of the ship drawn straight onto the scene.
 
-Everything here works in pixels and wall-clock seconds, so it serves the menu's vignettes and can be
-driven from the battle map by converting world positions to the screen first.
+Everything here works in pixels and wall-clock seconds. Each effect keeps its moving parts as offsets
+from its own centre, so the battle map can pin one to a point in space by moving its centre to wherever
+that point is on screen this frame, and pass a scale `s` when the view has zoomed since it began.
 """
 
 from __future__ import annotations
@@ -105,26 +106,28 @@ class ShieldFlare:
     strength: float = 1.0     # 1 a torpedo, less for a phaser
     t: float = 0.0
     life: float = 0.9
+    color: tuple[int, int, int] = SHIELD
 
     def draw(self, glow: pygame.Surface) -> None:
         u = self.t / self.life
         fade = (1 - u) ** 1.6 * self.strength
         spread = 0.6 + 2.4 * u                          # the lit arc widens as it fades
-        for j in range(64):
-            a = j / 64 * math.tau
+        steps = 64 if self.rx + self.ry > 80 else 32    # a small bubble needs fewer lights round its rim
+        for j in range(steps):
+            a = j / steps * math.tau
             d = abs((a - self.angle + math.pi) % math.tau - math.pi)
             k = math.exp(-(d / spread) ** 2) * fade
             if k < 0.03:
                 continue
             px = self.x + math.cos(a) * self.rx
             py = self.y + math.sin(a) * self.ry
-            add_light(glow, px, py, 6 + 0.16 * (self.rx + self.ry) * k, SHIELD, 0.9 * k)
+            add_light(glow, px, py, 6 + 0.16 * (self.rx + self.ry) * k, self.color, 0.9 * k)
         hx = self.x + math.cos(self.angle) * self.rx
         hy = self.y + math.sin(self.angle) * self.ry
-        add_light(glow, hx, hy, 0.5 * (self.rx + self.ry) * (0.4 + 0.6 * u), SHIELD, 0.5 * fade)
+        add_light(glow, hx, hy, 0.5 * (self.rx + self.ry) * (0.4 + 0.6 * u), self.color, 0.5 * fade)
         add_light(glow, hx, hy, 10 + 18 * self.strength, (235, 250, 255), fade * (1 - u))
-        ring(glow, self.x, self.y, self.rx, self.ry, SHIELD, 0.45 * fade, 1)
-        add_light(glow, self.x, self.y, max(self.rx, self.ry) * 1.1, SHIELD, 0.12 * fade)     # the whole bubble glimmers
+        ring(glow, self.x, self.y, self.rx, self.ry, self.color, 0.45 * fade, 1)
+        add_light(glow, self.x, self.y, max(self.rx, self.ry) * 1.1, self.color, 0.12 * fade)     # the whole bubble glimmers
 
 
 @dataclass
@@ -141,7 +144,7 @@ class HullHit:
         for _ in range(16):
             a = rng.uniform(0, math.tau)
             sp = rng.uniform(0.6, 2.2) * self.size
-            self.sparks.append([self.x, self.y, math.cos(a) * sp, math.sin(a) * sp, rng.uniform(0.3, 0.7)])
+            self.sparks.append([0.0, 0.0, math.cos(a) * sp, math.sin(a) * sp, rng.uniform(0.3, 0.7)])
 
     def update(self, dt: float) -> None:
         self.t += dt
@@ -151,15 +154,20 @@ class HullHit:
             s[2] *= 0.92
             s[3] *= 0.92
 
-    def draw(self, glow: pygame.Surface) -> None:
+    @property
+    def done(self) -> bool:
+        return self.t >= self.life
+
+    def draw(self, glow: pygame.Surface, s: float = 1.0) -> None:
         u = self.t / self.life
-        add_light(glow, self.x, self.y, self.size * (0.6 + 1.4 * u), mix(FIRE_MID, FIRE_DEEP, u), (1 - u) ** 1.5)
+        size = self.size * s
+        add_light(glow, self.x, self.y, size * (0.6 + 1.4 * u), mix(FIRE_MID, FIRE_DEEP, u), (1 - u) ** 1.5)
         if u < 0.3:
-            add_light(glow, self.x, self.y, self.size * 0.7, FIRE_HOT, 1 - u / 0.3)
+            add_light(glow, self.x, self.y, size * 0.7, FIRE_HOT, 1 - u / 0.3)
         for x, y, _, _, life in self.sparks:
             k = 1 - self.t / life
             if k > 0:
-                add_light(glow, x, y, 3, mix(FIRE_HOT, FIRE_MID, 1 - k), k)
+                add_light(glow, self.x + x * s, self.y + y * s, 3, mix(FIRE_HOT, FIRE_MID, 1 - k), k)
 
 
 # ---------------------------------------------------------------- a ship destroyed
@@ -167,7 +175,7 @@ class HullHit:
 @dataclass
 class _Chunk:
     img: pygame.Surface
-    x: float
+    x: float                  # from the centre of the blast, pixels at scale 1
     y: float
     vx: float
     vy: float
@@ -217,14 +225,14 @@ class Blast:
                     oy = r.centery - h / 2
                     d = math.hypot(ox, oy) or 1.0
                     sp = rng.uniform(0.35, 1.1) * R
-                    self.chunks.append(_Chunk(piece, self.x + ox, self.y + oy,
+                    self.chunks.append(_Chunk(piece, ox, oy,
                                               ox / d * sp + rng.uniform(-0.2, 0.2) * R,
                                               oy / d * sp + rng.uniform(-0.2, 0.2) * R,
                                               0.0, rng.uniform(-200, 200)))
         for _ in range(90):
             a = rng.uniform(0, math.tau)
             sp = rng.uniform(0.3, 3.2) * R
-            self.embers.append([self.x, self.y, math.cos(a) * sp, math.sin(a) * sp, rng.uniform(1.2, 3.4),
+            self.embers.append([0.0, 0.0, math.cos(a) * sp, math.sin(a) * sp, rng.uniform(1.2, 3.4),
                                 rng.random()])
         for _ in range(7):
             a = rng.uniform(0, math.tau)
@@ -255,19 +263,19 @@ class Blast:
             e[2] *= edrag
             e[3] *= edrag
 
-    def draw_pieces(self, surf: pygame.Surface) -> None:
+    def draw_pieces(self, surf: pygame.Surface, s: float = 1.0) -> None:
         """The tumbling pieces of hull, onto the scene (before the light is added)."""
         u = self.t / 2.6
         if u >= 1:
             return
         alpha = int(255 * (1 - u) ** 1.2)
         for c in self.chunks:
-            img = pygame.transform.rotate(c.img, c.angle)
+            img = pygame.transform.rotate(c.img, c.angle) if abs(s - 1) < 0.02 else pygame.transform.rotozoom(c.img, c.angle, s)
             img.set_alpha(alpha)
-            surf.blit(img, img.get_rect(center=(round(c.x), round(c.y))))
+            surf.blit(img, img.get_rect(center=(round(self.x + c.x * s), round(self.y + c.y * s))))
 
-    def draw(self, glow: pygame.Surface) -> None:
-        t, R = self.t, self.radius
+    def draw(self, glow: pygame.Surface, s: float = 1.0) -> None:
+        t, R = self.t, self.radius * s
         # 1. the flash: a blinding white core and a wide bloom that washes the screen
         if t < 0.35:
             k = 1 - t / 0.35
@@ -279,7 +287,7 @@ class Blast:
             if 0 <= u < 1:
                 col = mix(mix(FIRE_HOT, FIRE_MID, u * 2.2), FIRE_DEEP, max(0.0, u * 1.6 - 0.4))
                 rad = R * size * (0.7 + 1.7 * math.sqrt(u))
-                add_light(glow, self.x + dx * (1 + u), self.y + dy * (1 + u), rad, col, (1 - u) ** 1.3)
+                add_light(glow, self.x + dx * s * (1 + u), self.y + dy * s * (1 + u), rad, col, (1 - u) ** 1.3)
         # 3. the shockwave: a flattened ring racing outward, and a fainter one behind it
         for lag, share in ((0.0, 1.0), (0.18, 0.45)):
             u = (t - 0.05 - lag) / 1.5
@@ -290,17 +298,17 @@ class Blast:
         for dx, dy, at in self.secondaries:
             u = (t - at) / 0.5
             if 0 <= u < 1:
-                add_light(glow, self.x + dx, self.y + dy, R * 0.55 * (0.5 + u), mix(FIRE_HOT, FIRE_MID, u), (1 - u) ** 1.5)
+                add_light(glow, self.x + dx * s, self.y + dy * s, R * 0.55 * (0.5 + u), mix(FIRE_HOT, FIRE_MID, u), (1 - u) ** 1.5)
         # 5. the burning pieces glow hot
         u = t / 2.6
         if u < 1:
             for c in self.chunks:
-                add_light(glow, c.x, c.y, max(4.0, c.img.get_width() * 0.6), mix(FIRE_MID, FIRE_DEEP, u), 0.6 * (1 - u))
+                add_light(glow, self.x + c.x * s, self.y + c.y * s, max(4.0, c.img.get_width() * 0.6 * s), mix(FIRE_MID, FIRE_DEEP, u), 0.6 * (1 - u))
         # 6. embers flung far and fading, and the dull red cloud left behind
         for x, y, _, _, life, flick in self.embers:
             k = 1 - t / life
             if k > 0:
-                add_light(glow, x, y, 2 + 3 * k, mix(FIRE_HOT, FIRE_DEEP, 1 - k), k * (0.7 + 0.3 * math.sin(t * 25 + flick * 9)))
+                add_light(glow, self.x + x * s, self.y + y * s, 2 + 3 * k, mix(FIRE_HOT, FIRE_DEEP, 1 - k), k * (0.7 + 0.3 * math.sin(t * 25 + flick * 9)))
         if t > 0.3:
             u = (t - 0.3) / (self.life - 0.3)
             add_light(glow, self.x, self.y, R * (1.6 + 1.2 * u), (120, 40, 30), 0.45 * (1 - u))

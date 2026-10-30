@@ -117,7 +117,7 @@ Begin's key macros (`key F2 ...`) bind a line of commands to a key. Named orders
 Begin drew its display in text and simple vectors and had no sound effects. The remake keeps its restrained look and adds a few effects, all in `ui/effects.py`, `ui/tactical.py` and `ui/audio.py`:
 
 - A shield that takes a hit ripples and glitters along the struck arc; a failing one breaks up in red.
-- A destroyed ship goes in a soft flash with shards and embers that drift and fade. A ship below half hull sheds the odd spark: always ours, theirs only once a scan has shown the damage, so it gives nothing away.
+- A ship destroyed in view blows apart with the same multi-stage blast as the menu's Klingon (`ui/blast.py`): flash, fireball, flattened shockwave, secondary bursts, her hull torn into burning pieces, embers and a lingering red cloud. It stays where she died and scales with the zoom. A blow on a shield lights up the bubble around the point of impact (red when the shield gives way), and a blow that reaches the hull bursts into fire and sparks on the side it came from. A ship below half hull sheds the odd spark: always ours, theirs only once a scan has shown the damage, so it gives nothing away.
 - Ships leave a faint engine wake whose length grows with warp. There is a faint parallax starfield behind the grid (`ui/starfield.py`, shared with the main menu).
 - Phaser beams have a soft glow around the core and a flare where they strike. Torpedoes pulse with a glow and leave a trail that fades over about a second and a half.
 - Choosing a target swings its brackets in from wide and rotated; they close over about a third of a second, then pulse gently while it stays targeted.
