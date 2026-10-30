@@ -18,7 +18,7 @@ From the screen: select the base in the **Fleet** tab (click it on the map) and 
 
 ## While you are docked
 
-- Repairs run twice as fast, and even destroyed systems can be rebuilt.
+- Repairs run twice as fast, destroyed systems included.
 - Your crew does not draw on your own life support.
 - Weapons and explosions cannot reach you: the base shelters you.
 - You move with the base, and you cannot escape the battle on your own.

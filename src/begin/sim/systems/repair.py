@@ -2,7 +2,8 @@
 
 Efficiency is the surviving crew fraction (the host's docked repair ratio
 while docked). A repair priority multiplies its class by 4 and every other
-class by 0.5 (Begin 2.0). Destroyed items can only be rebuilt while docked.
+class by 0.5 (Begin 2.0). Begin 2.0 rebuilt destroyed items only while docked;
+here the crew rebuilds them in space too, at the same rate, starting from 100% [E].
 
 The hull is repaired too [E]: slowly in battle, faster once the fighting is
 over, and fastest at a base. Crews in space patch the hull to
@@ -55,7 +56,7 @@ def under_repair(world: World, ship: Ship) -> tuple[set[str], bool]:
     eff, docked = _efficiency(world, ship)
     if eff <= 0 or not ship.exists:
         return set(), False
-    subs = {s.sid for s in ship.subsystems() if s.damage > 0 and (docked or not s.destroyed)}
+    subs = {s.sid for s in ship.subsystems() if s.damage > 0}
     return subs, 0.0 < ship.structure < hull_limit(world, ship) - 0.05
 
 
@@ -68,8 +69,6 @@ def update_repair(world: World, ship: Ship, dt: float) -> None:
     prio = ship.repair_priority
     for sub in ship.subsystems():
         if sub.damage == 0:
-            continue
-        if sub.destroyed and not (docked and rng.unit() < 0.02 * dt * 10):
             continue
         mult = 1.0 if prio is None else (4.0 if sub.kind == prio else 0.5)
         rate = cls.repair.rate(REPAIR_CLASS[sub.kind]) * mult * eff

@@ -114,7 +114,7 @@ The blast radius is a per-design `blast_scale` (1.15) on Begin's formula (yield 
 
 ## Hull repairs [E]
 
-Begin repairs systems but never the hull. Here damage-control crews also patch it, at `hull_repair_rate` (0.4% of the hull per cycle with a full crew), a quarter of that while in battle (hit in the last 15 cycles, or an enemy ship within 12,000), and only up to 75% in space. Docked at a base the hull is repaired at 3% per cycle × the base's repair ratio, all the way. The hull can be the repair priority (`repair hull`), with the same × 4 / × 0.5 weighting as systems. `repair auto <officer>` hands the priority to an officer, who uses the same choice the engineering station makes. All of these are in `sim/rules.py`.
+Begin 2.0 rebuilt a destroyed system only while docked at a base. Here the crew rebuilds it in space too, at the system's normal repair rate, starting from 100% damage, so a destroyed warp drive (the slowest class to repair) is the longest job aboard. Docked, every repair still runs twice as fast. Begin repairs systems but never the hull. Here damage-control crews also patch it, at `hull_repair_rate` (0.4% of the hull per cycle with a full crew), a quarter of that while in battle (hit in the last 15 cycles, or an enemy ship within 12,000), and only up to 75% in space. Docked at a base the hull is repaired at 3% per cycle × the base's repair ratio, all the way. The hull can be the repair priority (`repair hull`), with the same × 4 / × 0.5 weighting as systems. `repair auto <officer>` hands the priority to an officer, who uses the same choice the engineering station makes. All of these are in `sim/rules.py`.
 
 ## Evasive manoeuvres [E]
 

@@ -26,7 +26,7 @@ repair all
 ## What limits repair
 
 - Repairs go faster with a full crew. A ship that has lost most of its crew repairs slowly, and below a tenth of its crew it cannot repair at all.
-- A **destroyed** system cannot be fixed in space. Dock at a starbase, where repairs run twice as fast and destroyed systems can be rebuilt. See [[dock]].
+- A **destroyed** system is rebuilt by the crew in space, from 100% down, so it takes the longest. At a starbase every repair runs twice as fast. See [[dock]].
 
 ## The hull
 

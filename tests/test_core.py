@@ -130,8 +130,11 @@ def test_heat_destroys_overdriven_drive(content) -> None:  # type: ignore[no-unt
     for d in s.drives:
         d.damage = 60  # damaged drives run hot at any real warp
     w.execute(SetHelm(ship_id=s.id, warp=s.cls.max_warp))
-    w.run(120)
-    assert any(d.destroyed for d in s.drives)
+    burnt = False
+    for _ in range(120 * w.rules.ticks_per_cycle):   # the crew start rebuilding a burnt-out drive at once
+        w.step()
+        burnt = burnt or any(d.destroyed for d in s.drives)
+    assert burnt
 
 
 def test_class_inherits_from_base(tmp_path) -> None:  # type: ignore[no-untyped-def]

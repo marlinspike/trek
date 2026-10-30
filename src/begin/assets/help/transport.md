@@ -36,6 +36,6 @@ From the screen: the **Board** button in the Target panel sends the default part
 3. `lower`, then `board <ship>`. A derelict falls to your boarders at once. A ship with crew left fights them first.
 4. She is yours: a prize crew holds her, and a captain from among them takes her helm. `beam <ship> 60` sends her more crew, since repair crews only work once she has a tenth of her complement. `beam <ship>` takes you aboard to command her yourself, and `repair <system>` sets the repair priority.
 
-If the ship you left helpless is the last enemy, the battle stays open for 60 cycles so you can board her. Destroyed systems can only be rebuilt at a base, and warp drives are the slowest of all to repair, so choose what you shoot.
+If the ship you left helpless is the last enemy, the battle stays open for 60 cycles so you can board her. Her crew can rebuild even destroyed systems, but that takes longest, and warp drives are the slowest of all to repair, so choose what you shoot.
 
 Allies can board for you with `tell <ally> board <ship> <count>`. See [[tell]].

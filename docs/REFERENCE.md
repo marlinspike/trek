@@ -82,7 +82,7 @@ Ship, torpedo, probe and faction numbers live in `src/begin/content/data/*.toml`
 ## 10. Repair
 
 - [M] Damage control repairs automatically; warp drives take longer than phasers; repair slows as crew are lost.
-- [R] Efficiency `e = survivors / crew` (docked: host's `docked_repair_ratio`), skipped below 0.1. Progress per item per cycle = rate × e (2.0: rand(0, 2 × rate × e)); whole points reduce damage%. Destroyed items repair only while docked (2.0), behind a 2%/cycle gate.
+- [R] Efficiency `e = survivors / crew` (docked: host's `docked_repair_ratio`), skipped below 0.1. Progress per item per cycle = rate × e (2.0: rand(0, 2 × rate × e)); whole points reduce damage%. Destroyed items repair only while docked (2.0), behind a 2%/cycle gate. (The remake lets the crew rebuild them in space: see DEVIATIONS.md.)
 - [M] 2.0 adds `Repair <system>` priority (×4 that class, ×0.5 others) and doubles docked repair.
 
 ## 11. Sensors and cloaking (2.0)
