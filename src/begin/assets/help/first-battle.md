@@ -18,6 +18,8 @@ Start a **Quick battle** from the menu. The battle begins paused, so take your t
 
 > **Training** Before your first battle, choose **Coach & training** on the main menu (or press **C**) for the same steps with the commands to type.
 
+> **Tip** The panels keep to the essentials. Hover the mouse over the Own Ship panel for every number, or type `hud detail` to keep them all showing. See [[controls]].
+
 > **Tip** Press **H** at any time and choose **Coach**. It reads the battle and suggests your next move, with the exact command to type.
 
 ```console

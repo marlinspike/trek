@@ -6,7 +6,7 @@ aliases: target, t, tgt, designate, subsystem, subsystems, aim
 summary: Select a target, and aim at a part of it.
 see: lock, scan, fire
 ---
-Your target is the ship your weapons and the fire computer concentrate on. Click a ship, press **Tab**, or use `target`.
+Your target is the ship your weapons and the fire computer concentrate on. Click a ship, press **Tab**, or use `target`. On the map its brackets swing in and close on it, then pulse gently while the lock holds.
 
 ```console
 target gorkon

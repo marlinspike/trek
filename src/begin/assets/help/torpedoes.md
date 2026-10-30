@@ -8,6 +8,8 @@ see: fire, loading, lock, weapons-guide, coach
 ---
 Torpedoes are fired from **tubes**. They fly in a straight line at a fixed speed (plasma torpedoes home in) and explode when they pass within their **proximity** distance of a ship. Unlike phasers, their warhead does not weaken with range, apart from plasma, which fades as it travels.
 
+On the map a torpedo is a pulsing point of light with a fading trail behind it, so you can see where a spread is heading at a glance.
+
 ## The torpedo envelope
 
 A torpedo is harmless until it has flown long enough to **arm**, and it self-destructs when its time fuse runs out. Together these set the band of ranges where a shot can work:

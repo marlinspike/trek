@@ -117,7 +117,10 @@ Begin drew its display in text and simple vectors and had no sound effects. The 
 
 - A shield that takes a hit ripples and glitters along the struck arc; a failing one breaks up in red.
 - A destroyed ship goes in a soft flash with shards and embers that drift and fade. A ship below half hull sheds the odd spark: always ours, theirs only once a scan has shown the damage, so it gives nothing away.
-- Ships leave a faint engine wake whose length grows with warp. There is a faint parallax starfield behind the grid.
+- Ships leave a faint engine wake whose length grows with warp. There is a faint parallax starfield behind the grid (`ui/starfield.py`, shared with the main menu, where a starship drifts slowly across the stars).
+- Phaser beams have a soft glow around the core and a flare where they strike. Torpedoes pulse with a glow and leave a trail that fades over about a second and a half.
+- Choosing a target swings its brackets in from wide and rotated; they close over about a third of a second, then pulse gently while it stays targeted.
+- The HUD keeps to the essentials. Hovering the Own Ship panel, or `hud detail`, shows every number. Shown numbers ease toward their new value and flash briefly on a real change (`ui/tween.py`).
 - A ship that cloaks or decloaks in view wavers in a ripple, as does one that vanished in view and is then caught by a tachyon pulse.
 - The panel borders pulse red while the ship is at red alert: hit lately, or an enemy within 12,000.
 - The end-of-battle assessment adds your ship's record and a standout officer (`crew/review.py`). It counts the officer's orders carried out, from the command log, plus objectives seen through and projects finished.

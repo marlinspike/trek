@@ -2,7 +2,7 @@
 title: Keyboard and mouse
 category: Getting started
 order: 1
-aliases: controls, keyboard, mouse, shortcuts, hotkeys
+aliases: controls, keyboard, mouse, shortcuts, hotkeys, hud, detail, display
 summary: Every key and mouse action in battle.
 see: console, keys
 ---
@@ -57,3 +57,14 @@ see: console, keys
 | **F1** | Open this page |
 | **F2–F8, F10–F12**, **Ctrl+letter** | Run a key macro. See [[keys]]. |
 | **Esc** | Close the open window or text display, or open the battle menu |
+
+## How much the panels show
+
+The panels show what matters at a glance: warp, course, crew, hull, morale, and shield arcs coloured by strength. Hover over the Own ship panel and it shows every number: shield strengths, maximum warp, power in and out, the magazine. Numbers ease to their new value instead of jumping, and flash briefly when they change: brighter for a rise, warmer for a fall.
+
+| Command | What it does |
+|---|---|
+| `hud detail` | always show every number |
+| `hud simple` | back to the essentials (hover a panel for the rest) |
+| `hud` | say which it is |
+

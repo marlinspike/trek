@@ -2,7 +2,7 @@
 
 A real-time 2D tactical starship simulation in Python and pygame-ce, rebuilt from *Begin: A Tactical Starship Simulation* (Clockwork Software, v1.65 manual with the Begin 2.0 appendix) and the [fireflyk64/begin](https://github.com/fireflyk64/begin) reverse-engineered reconstruction. It is a personal, non-commercial fan project: see [LICENSING.md](LICENSING.md).
 
-You command a starship from a top-down tactical map and a Begin-style command console. The simulation keeps Begin's mechanics: six shield sectors, phaser banks that hit harder up close, torpedoes with arming and proximity fuses, heat, power, probes and cloaks. On top of that the remake adds a bridge crew who can fight the ship for you and talk back (optionally through a language model), named battle plans, a coach that reads the fight, crew morale, hull repairs, and synthesised sound and effects.
+You command a starship from a top-down tactical map and a Begin-style command console. The simulation keeps Begin's mechanics: six shield sectors, phaser banks that hit harder up close, torpedoes with arming and proximity fuses, heat, power, probes and cloaks. On top of that the remake adds a bridge crew who can fight the ship for you and talk back (optionally through a language model), named battle plans, a coach that reads the fight, crew morale, hull repairs, and synthesised sound and effects, with a HUD that keeps to the essentials until you ask for more.
 
 ![A close duel: phasers, a shield taking the hit, and the full HUD](docs/screenshots/duel.png)
 
@@ -35,9 +35,9 @@ Useful shortcuts:
 
 ### Before you start
 
-The main menu has quick, preset and custom battles, plus **Coach & training** (or **C**). That opens the coach before any battle, with a short training run: how to find and target the enemy, close the range, use torpedoes at long range and phasers up close, and keep a good shield toward them, each with the command to type. **Manual** (or **H**) opens the whole manual.
+The main menu sits over a slowly drifting starfield, with a starship gliding across it. It has quick, preset and custom battles, plus **Coach & training** (or **C**). That opens the coach before any battle, with a short training run: how to find and target the enemy, close the range, use torpedoes at long range and phasers up close, and keep a good shield toward them, each with the command to type. **Manual** (or **H**) opens the whole manual.
 
-![The main menu](docs/screenshots/menu.png)
+![The main menu, with a ship drifting across the stars](docs/screenshots/menu.png)
 
 ![The coach's training run, opened from the menu before a battle](docs/screenshots/manual-coach.png)
 
@@ -47,13 +47,21 @@ Every battle starts paused. **Space** runs and pauses the clock, and **[** and *
 
 Left-click a contact (or press **Tab**) to target it, and **R** cycles precision aim through propulsion, weapons, shields, power and sensors. Right-click the map to steer there, Shift + right-click a ship to pursue it, **W**/**S** change warp and **A**/**D** turn. **F** fires phasers, **T** torpedoes, **P** launches a probe and **X** scans the target. In the weapons panel, each weapon group can be Manual, Assisted or Automatic, and the **PD** button sets the point-defense doctrine.
 
-The map shows what your sensors know and nothing more. Beams flare, shields ripple along the struck arc, ships leave engine wakes and break up in shards and embers, and the panel borders pulse red at red alert.
+The map shows what your sensors know and nothing more. Phaser beams glow around a bright core, torpedoes pulse as they fly and leave a trail that fades behind them, shields ripple along the struck arc, ships leave engine wakes and break up in shards and embers, and the panel borders pulse red at red alert. When you pick a target, its brackets swing in from wide and close on it, then pulse gently while the lock holds.
+
+![Torpedoes in flight with fading trails, glowing point-defense beams, and the lock closed on the target](docs/screenshots/torpedoes.png)
+
+### How much the HUD shows
+
+The panels show what matters at a glance: warp, course, crew, hull, morale and shield arcs coloured by strength. Course and warp show where they are heading only while they are changing. Hover the mouse over the Own Ship panel to see every number (shield strengths, maximum warp, power in and out, the magazine), or type `hud detail` to keep them all on and `hud simple` to go back. Numbers ease to their new value instead of jumping, and flash briefly when they change: brighter for a rise, warmer for a fall.
+
+![The same moment with `hud detail`: shield strengths, warp limits, power flow and the magazine](docs/screenshots/hud-detail.png)
 
 ### The console
 
 Press **Enter** for a Begin-style console. Every command in the Begin manual works in its documented forms, such as `fire phasers 1 2 3 spread 10`, `lock all tubes on bluefin with a dispersion of 45`, `load launchers 1 prox 500 time 20` and `tell the agena to attack the zantha`. As in Begin, any word can be cut to a unique prefix, so `tor al` fires all torpedoes, and filler words such as "the" and "at" are ignored. The status commands (`report`, `damage`, `banks`, `tubes`, `shields`, `fleet`, `chart` and the rest) print Begin's text displays and keep them live in the corner of the map.
 
-The remake adds `autoload`, `mode`, `pd`, `role`, `target <ship> <subsystem>`, `repair hull`, `evasive` (Federation ships dodge incoming torpedoes and then resume your course), `address crew <words>` to rally a shaken crew, and `key F5 <commands>` to bind a key.
+The remake adds `autoload`, `mode`, `pd`, `hud detail|simple`, `role`, `target <ship> <subsystem>`, `repair hull`, `evasive` (Federation ships dodge incoming torpedoes and then resume your course), `address crew <words>` to rally a shaken crew, and `key F5 <commands>` to bind a key.
 
 ### Bridge officers
 
