@@ -19,7 +19,7 @@ You hear only what you can see. Each sound comes from where it happened on the m
 | `sound phaser b` | use version b of the phaser (a, b or c), and play it |
 | `sound torpedo c` | use version c of the torpedo launch |
 
-The phaser comes in three versions: **a** is a bright saw tone with a metallic ring and a shimmer, **b** a harsher square-wave buzz, and **c** two tones a fifth apart, throbbing and gritty. The torpedo launch does too: **a** is a deep "thoom", **b** a brighter, quicker "pshew", and **c** a heavy launch with a tone dropping away under it.
+The phaser comes in three versions (b is the standard one): **a** is a bright saw tone with a metallic ring and a shimmer, **b** a harsher square-wave buzz, and **c** two tones a fifth apart, throbbing and gritty. The torpedo launch does too (a is standard): **a** is a deep "thoom", **b** a brighter, quicker "pshew", and **c** a heavy launch with a tone dropping away under it.
 
 ### Your own sounds
 

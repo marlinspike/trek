@@ -192,7 +192,7 @@ ALIASES = {"torpedo": "launch"}       # config/sounds/torpedo.wav is the launch 
 
 
 def phaser() -> array.array:
-    return phaser_a()
+    return phaser_b()          # the captain's pick of the three
 
 
 def launch() -> array.array:
