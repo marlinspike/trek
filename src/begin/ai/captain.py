@@ -11,7 +11,13 @@ Remake additions [E]:
   reaction cadence, strategy (target choice, morale) once a cycle;
 * captain competence and creativity gate subsystem targeting, shield
   reinforcement and probe use; doctrine biases weapons, focus and surrender;
-* every decision is written to a trace.
+* every decision is written to a trace;
+* it fights to its ship's strengths (`smart`): it weighs its own banks, tubes,
+  warheads and shields against the target's, closes for phasers only when that
+  is the better trade (or the target's shields or hull are gone), keeps a torpedo
+  boat outside the target's phaser reach, stays out of a stronger enemy's reach
+  when it is the faster ship, and turns a fresh shield toward the enemy when the
+  one facing it fails.
 """
 
 from __future__ import annotations
@@ -61,6 +67,12 @@ AI_KNIFE_FIGHT_RANGE = 1.5       # [E] × phaser range: inside it, fight rather 
 AI_BASE_STANDOFF = 0.6           # [E] × phaser range: the closest an attacker comes to a base
 AI_STANDOFF_OPEN_ANGLE = 70.0     # [E] degrees off dead astern when opening to torpedo standoff
 AI_FANATIC_RAM = 0.9
+# fighting to the ship's strengths [E]
+AI_KITE_MARGIN = 1.3             # × an enemy's phaser range: a torpedo boat keeps at least this far out
+AI_SHIELD_BACK_OFF = 35.0        # % effective on the shield facing the enemy: below it, turn a fresh one toward it
+AI_CLOSE_HYSTERESIS = 1.15       # closing needs odds this much better than standing off, and the reverse
+AI_TORP_HIT = 0.45               # rough chance a torpedo connects; homing ones more often
+AI_TORP_HIT_HOMING = 0.7
 AI_BATTERY_CRAWL = 0.25
 STRENGTH_DIVISOR = 1000.0
 
@@ -91,6 +103,7 @@ class AICaptain:
     last_stand: bool = False
     order_seen: int = -1
     order_done: bool = False   # the current movement order has been carried out (tow delivered, party beamed)
+    smart: bool = True         # [E] fight to the ship's strengths; False keeps Begin's weapon-dominance rule alone
 
     # ------------------------------------------------------------ entry
 
@@ -646,6 +659,21 @@ class AICaptain:
         elif weapon == "torpedo":
             ph_dom, tp_dom = ph_dom, max(tp_dom, 1.0) * 1000.0
 
+        knife_ok = True
+        if self.smart and weapon is None:
+            fresh = self._fresh_shield(obs, ship, c, d, brg)
+            if fresh is not None:
+                return fresh
+            close, stand = self._odds(obs, ship, c)
+            armed = ship.torps_remaining + sum(t.loaded is not None for t in ship.tubes) > 0 and tp_dom > 0
+            quicker = c.cls is not None and ship.max_attainable_warp > c.cls.max_warp
+            if armed and quicker and max(close, stand) < 1.0:
+                ph_dom = 0.0                   # outgunned either way but faster: stay out of its reach, tubes only
+            elif close > stand * AI_CLOSE_HYSTERESIS:
+                ph_dom = max(ph_dom, tp_dom * 2.0, 1.0)
+            elif armed and stand > close * AI_CLOSE_HYSTERESIS:
+                ph_dom = min(ph_dom, tp_dom * 0.5)
+            knife_ok = close >= stand
         if ph_dom > 0 and ph_dom > tp_dom:
             return self._close_for_phasers(obs, ship, c, d, brg)
         if tp_dom > 0:
@@ -654,10 +682,13 @@ class AICaptain:
                 lo, hi = torpedo_envelope(ship, c.x, c.y, c.vx, c.vy, spec.velocity, spec.arm_time,
                                           spec.max_time_fuse, obs.rules.units_per_warp)
                 standoff = lo + (1.0 - p.aggression) * (hi - lo) * 0.6
+                if self.smart and c.cls is not None and c.cls.banks:
+                    # [E] a torpedo boat keeps outside the reach of the target's banks
+                    standoff = max(standoff, min(c.cls.banks_range * AI_KITE_MARGIN, hi * 0.6))
                 # [E] a faster enemy cannot be held off, and one already inside phaser reach must be fought there:
                 # turning away only shows it the weaker shields and the tubes' blind arcs
                 faster = c.cls is not None and c.cls.max_warp >= ship.max_attainable_warp
-                if ph_dom > 0 and d < ship.cls.banks_range * AI_KNIFE_FIGHT_RANGE and (faster or d < lo):
+                if knife_ok and ph_dom > 0 and d < ship.cls.banks_range * AI_KNIFE_FIGHT_RANGE and (faster or d < lo):
                     return self._close_for_phasers(obs, ship, c, d, brg)
                 if d < standoff:
                     # open the range obliquely, not straight away: running dead astern only invites a chase
@@ -665,6 +696,69 @@ class AICaptain:
                     return self._weave(obs, ship, brg + 180.0 - side * AI_STANDOFF_OPEN_ANGLE, d)
                 return self._weave(obs, ship, brg, d)
         return self._helm(obs, ship, ship.course, 0.0)  # helpless: full stop
+
+    # ------------------------------------------------------------ fighting to the ship's strengths [E]
+
+    @staticmethod
+    def phaser_rate(banks: int, charge: float, rate: float, rules: object, frac: float = 0.5) -> float:
+        """Hull-and-shield damage a cycle from a ship's banks at `frac` of their range (the [R] phaser formula)."""
+        mult = getattr(rules, "phaser_dam_mult", 45.0) / getattr(rules, "spread_min", 10.0) * getattr(rules, "phaser_half", 0.5)
+        return banks * charge * mult * math.sqrt(max(0.0, 1.0 - frac)) / max(0.5, rate)
+
+    @staticmethod
+    def torpedo_rate(tubes: int, spec: object, rules: object) -> float:
+        """Expected blast damage a cycle from a ship's tubes: yield × splash, by the chance of a hit, per reload."""
+        if spec is None or tubes <= 0:
+            return 0.0
+        hit = AI_TORP_HIT_HOMING if getattr(spec, "homing", False) else AI_TORP_HIT
+        hit *= min(1.0, getattr(spec, "max_prox", 500.0) / 600.0)
+        blast = getattr(spec, "damage", 0.0) * getattr(rules, "splash_mult", 5.0) * getattr(spec, "blast_scale", 1.0)
+        return tubes * blast * hit / max(0.5, getattr(spec, "charge_time", 3.0))
+
+    @staticmethod
+    def toughness(cls: object, rules: object) -> float:
+        """Roughly how much punishment a class takes: what a shield soaks, plus the hull behind it."""
+        hull = getattr(cls, "mass", 100.0) * getattr(rules, "hull_per_mass", 1.0) + getattr(rules, "hull_base", 0.0)
+        return getattr(cls, "shield_strength", 200.0) * getattr(cls, "shield_absorption", 0.6) + hull + 1.0
+
+    def _odds(self, obs: Observation, ship: Ship, c: ContactView) -> tuple[float, float]:
+        """(our edge closing to phaser range, our edge standing off with torpedoes): damage dealt / taken."""
+        rules = obs.rules
+        spec = obs.content.torpedoes.get(ship.tubes[0].load_ordnance or ship.cls.torpedo) if ship.tubes else None
+        tubes = sum(1 for t in ship.tubes if t.intact) if ship.torps_remaining > 0 or any(
+            t.loaded is not None for t in ship.tubes) else 0
+        my_tp = self.torpedo_rate(tubes, spec, rules)
+        my_ph = self.phaser_rate(sum(1 for b in ship.banks if b.intact), ship.cls.banks_charge, ship.cls.banks_rate, rules)
+        k = c.cls
+        if k is not None:
+            sc = c.scan
+            banks = sc.charged_banks if sc is not None and obs.tick - sc.tick < 3 * rules.ticks_per_cycle else k.banks
+            their_ph = self.phaser_rate(banks, k.banks_charge, k.banks_rate, rules)
+            their_tp = self.torpedo_rate(k.tubes, obs.content.torpedoes.get(k.torpedo), rules)
+        else:
+            their_ph, their_tp = self.phaser_rate(4, 10.0, 3.0, rules), self.torpedo_rate(2, spec, rules)
+        # how much punishment each can take: shields (by how much they soak) and hull
+        tough = self.toughness(ship.cls, rules) / self.toughness(k if k is not None else ship.cls, rules)
+        # up close the tubes still fire, but the arcs and the arming run cost about half of them
+        close = (my_ph + 0.5 * my_tp + 1.0) / (their_ph + 0.5 * their_tp + 1.0) * tough
+        stand = (my_tp + 1.0) / (their_tp + 1.0) * tough
+        # a target that is already broken is worth closing on: shields down where we'd hit, or hull going
+        sc = c.scan
+        if sc is not None and (sc.structure_frac < 0.35 or (sc.shields and max(sc.shields) <= 10.0)):
+            close *= 1.6
+        return close, stand
+
+    def _fresh_shield(self, obs: Observation, ship: Ship, c: ContactView, d: float, brg: float) -> Command | None:
+        """The shield facing the enemy is nearly gone: turn a fresh one toward it (Begin's own advice) [E]."""
+        facing = ship.shield_for_bearing(norm360(brg - ship.course))
+        reach = c.cls.banks_range if c.cls is not None else 2000.0
+        if facing is None or facing.effective >= AI_SHIELD_BACK_OFF or d > reach * AI_KITE_MARGIN * 1.5:
+            return None
+        best = max((sh for sh in ship.shields if sh.up), key=lambda sh: sh.effective, default=None)
+        if best is None or best.effective < facing.effective + 20.0:
+            return None
+        self._log(obs, f"shield {facing.effective:.0f}%: turning shield {best.index + 1} to {c.label}")
+        return self._helm(obs, ship, brg - best.facing, self.combat_speed(ship, obs))
 
 
 __all__ = ["AICaptain", "strength"]
