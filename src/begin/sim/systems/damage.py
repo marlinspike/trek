@@ -18,7 +18,7 @@ from ...core.angles import bearing, norm360
 from ..events import HullHit, ShieldHit, SubsystemDamaged
 from ..rules import DamageModel
 from .sensors import assess
-from ..ship import DAMAGE_WEIGHT, TARGETABLE_GROUPS, Kind, Ship, ShipStatus, Subsystem
+from ..ship import CREW_DECKS, DAMAGE_WEIGHT, TARGETABLE_GROUPS, Kind, Ship, ShipStatus, Subsystem
 
 if TYPE_CHECKING:
     from ..world import World
@@ -156,6 +156,8 @@ def _hull_remake(
 
     # armour (2.0 Armadillo) soaks hull damage before structure [R gate, E pool]
     hull_dmg = dmg
+    if aim is not None:
+        hull_dmg *= rules.aimed_structure     # precision fire goes into her systems, not her spine [E]
     if ship.armour > 0:
         soak = min(ship.armour, hull_dmg * 0.6)
         ship.armour -= soak
@@ -165,6 +167,20 @@ def _hull_remake(
 
     frac = dmg / max(1.0, ship.structure_max)
     lost = int(round(ship.crew * frac * rng.uniform(0.4, 1.2) * rules.crew_loss_scale))
+
+    # subsystem rolls: Begin's n = dmg/10, with the fractional part as a chance; an aimed hit that gets
+    # through always has at least one go at what it was aimed at [E]
+    rolls_f = dmg * rules.subsystem_rolls_per_damage
+    rolls = int(rolls_f) + (1 if rng.unit() < rolls_f - int(rolls_f) else 0)
+    precise = aim is not None
+    if precise:
+        rolls = max(1, rolls)
+    if aim is not None and aim.selector == CREW_DECKS:
+        # fire aimed at life support and the crew decks: each roll that lands kills a slice of the crew [E]
+        landed = sum(1 for _ in range(rolls) if rng.unit() < aim.accuracy)
+        rolls -= landed
+        lost += sum(int(round(ship.cls.crew * rng.uniform(*rules.crew_deck_kill))) for _ in range(landed))
+        aim = None
     lost = min(lost, ship.crew)
     world.emit(HullHit(world.tick, ship.id, dmg, lost, attacker))
     _crew_loss(world, ship, lost, attacker)
@@ -175,9 +191,6 @@ def _hull_remake(
     if ship.status != ShipStatus.ACTIVE and ship.status != ShipStatus.SURRENDERED:
         return
 
-    # subsystem rolls: Begin's n = dmg/10, with the fractional part as a chance
-    rolls_f = dmg * rules.subsystem_rolls_per_damage
-    rolls = int(rolls_f) + (1 if rng.unit() < rolls_f - int(rolls_f) else 0)
     targeted = subsystems_for(ship, aim.selector) if aim is not None else []
     subs = [s for s in ship.subsystems() if not s.destroyed]
     if not subs:
@@ -186,8 +199,16 @@ def _hull_remake(
     for s in subs:
         by_kind.setdefault(s.kind, []).append(s)
     for _ in range(rolls):
-        if targeted and aim is not None and rng.unit() < aim.accuracy:
-            weights = [0.15 + exposure(ship, s, rel) for s in targeted]
+        if precise and (not targeted or aim is None or rng.unit() >= aim.accuracy):
+            # an aimed shot that misses its mark is one stray hit, not a sweep through the ship [E]
+            live = [s for s in subs if not s.destroyed]
+            weights = [DAMAGE_WEIGHT[s.kind] * (0.1 + exposure(ship, s, rel)) for s in live]
+            if live:
+                _hit_subsystem(world, ship, _weighted(rng.unit(), live, weights), False)
+            continue
+        if targeted and aim is not None:
+            # gunners keep after a system they have already hurt, so aimed fire knocks things out one by one
+            weights = [(0.15 + exposure(ship, s, rel)) * (1.0 + s.damage / 25.0) for s in targeted]
             pick = _weighted(rng.unit(), targeted, weights)
             _hit_subsystem(world, ship, pick, True)
             targeted = [s for s in targeted if not s.destroyed]

@@ -38,6 +38,20 @@ Begin detects a ship at its rated sensor range multiplied by the ship's reflecti
 
 **What your hits show.** In Begin you only learnt an enemy's condition from a scan. Here, each of your hits also shows what it did: the target panel updates the facing you struck and, once a hit gets through, her hull, between scans. A shield with no power behind it reads as down rather than at its old strength, both in the panel and in the hit lines in the log. A ship whose power fails keeps the 1.65 rule (her crew is lost after three cycles without life support), but everyone watching her now sees it: the log says she has lost power, and the target panel says her crew has moments left. Before this change, an enemy outpost or starbase could lose every reactor with its hull still at 90% and then turn up as "derelict" with no warning.
 
+**Aimed fire and taking ships.** Begin let you aim at a group of systems, and each roll of a hit that got through went to it or at random. Here:
+- An aimed hit that gets through always has at least one roll at its mark, and keeps after a system it has already hurt, so aimed fire knocks systems out one at a time.
+- A roll that misses its mark is a single stray hit, not Begin's sweep through every kind of system.
+- Aimed fire does 35% of the usual structural damage, so you can cripple a ship without breaking her.
+- There is a new aim point, **life support** (the crew decks): each aimed roll that lands kills 3-8% of her design crew.
+- The console understands "warp core", "life support", "engines", "shield generators" and `aim <system>`. Before this change, `target <ship> warp core` was silently ignored.
+- Transporters beam through any of her shields that is destroyed or under 5%, not only the one facing you.
+- A derelict's shields drop, since there is nobody left to keep them up.
+- Life support draws power for the crew aboard rather than the design crew, so a prize crew can live on a crippled ship.
+- A captured ship gets a new ship computer and a captain from her new side. You can `tell` her what to do or `beam` aboard her.
+- When the last enemy is left derelict or surrendered, the battle stays open for 60 cycles so the player can board her.
+
+In 140 AI battles the results matched the previous build (107 wins against 105).
+
 ## Crew projects: the tachyon detector
 
 Begin has no way to find a cloaked ship except waiting for it to fire. In the remake, Spock and Seven of Nine can design a tachyon detector torpedo when you ask them about cloaked ships (or with `design tachyon`). It takes 20 cycles with a full crew, goes into one tube for a single shot, and the tube then goes back to ordinary torpedoes. Fired with `tachyon <bearing> <range>` or `tachyon <ship>`, it bursts at that point and shows every cloaked ship within 6,000 units for 30 cycles. It does no damage. The design is ours, inspired by the tachyon detection grids of the films and series.

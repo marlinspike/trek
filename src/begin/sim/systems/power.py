@@ -74,11 +74,12 @@ def update_power(world: World, ship: Ship, dt: float) -> None:
     rep.reactor = reactor
     rep.generation = generation
 
-    # life support: design crew / 10 per cycle; three cycles of failure kill the crew
+    # life support: crew / 10 per cycle; three cycles of failure kill the crew. Begin charged the design crew;
+    # we charge those aboard, so a prize crew on a crippled ship needs only a little power [E]
     life = 0.0
     docked = ship.docked_to is not None
     if ship.crew > 0 and not docked:
-        need = cls.crew / 10.0 * dt
+        need = ship.crew / 10.0 * dt
         if pool >= need:
             pool -= need
             life = need

@@ -18,7 +18,7 @@ from .crew.characters import load_officers
 from .crew.officers import Crew, default_crew
 from .paths import config_dir
 from .sim.rules import DEFAULT_RULES, Rules
-from .sim.ship import PDDoctrine
+from .sim.ship import PDDoctrine, Ship
 from .sim.world import World
 
 MAX_OBJECTS = 60  # Begin's ship limit
@@ -67,6 +67,22 @@ class Battle:
     computers: dict[int, ShipComputer]
     crew: Crew | None = None          # the player's bridge officers (delegated stations)
 
+    def adopt(self, ship: Ship) -> None:
+        """A captured ship joins her new side: a fresh ship computer, and a captain from the prize crew.
+
+        On the player's side she is one of your ships: `tell` her what to do, or `beam <her>` to take command.
+        """
+        w = self.world
+        self.captains.pop(ship.id, None)
+        self.computers.pop(ship.id, None)
+        comp = ShipComputer(ship.id, ship.side, w.rng.derive(f"computer:{ship.id}:{w.tick}"), phase=ship.id % 2)
+        self.computers[ship.id] = comp
+        w.add_controller(comp)
+        if ship.id != self.player_ship_id:
+            cap = _crew_in_command(w, ship.id)
+            self.captains[ship.id] = cap
+            w.add_controller(cap)
+
     def transfer_command(self, new_id: int) -> str | None:
         """Begin's `beam <ally>`: the player moves to a functional ally within transporter range.
 
@@ -104,6 +120,14 @@ class Battle:
             self.crew.move_to(new.id)
         self.player_ship_id = new.id
         return None
+
+
+def _crew_in_command(w: World, ship_id: int) -> AICaptain:
+    s = w.ships[ship_id]
+    prng = w.rng.derive(f"captain:{ship_id}:{w.tick}")
+    # the prize crew fights the way their own navy does
+    faction = next((o.faction for o in w.ships.values() if o.side == s.side and o.id != ship_id), s.faction)
+    return AICaptain(ship_id, s.side, Personality.roll(w.content.factions[faction], prng), prng, phase=ship_id % 2)
 
 
 def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
@@ -159,7 +183,9 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
         crew = Crew(player_ship, setup.player_side, content, default_crew(load_officers(traits_file=config_dir() / "officers.toml")), world.rng.derive("crew"),
                     phase=1)
         world.add_controller(crew)
-    return Battle(world, setup, player_ship, captains, computers, crew)
+    battle = Battle(world, setup, player_ship, captains, computers, crew)
+    world.on_capture = battle.adopt
+    return battle
 
 
 # The player's own ship always carries this name when it belongs to the faction (the player's wish).

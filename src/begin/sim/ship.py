@@ -77,7 +77,9 @@ TARGETABLE_GROUPS: dict[str, tuple[Kind, ...]] = {
     "power": (Kind.REACTOR, Kind.BATTERY),
     "sensors": (Kind.SENSORS, Kind.COMPUTER),
     "cloak": (Kind.CLOAK,),
+    "crew": (),          # life support and the crew decks: aimed hits kill crew, not machinery [E]
 }
+CREW_DECKS = "crew"
 
 
 @dataclass(slots=True, eq=False)

@@ -88,6 +88,10 @@ class Rules:
     crew_loss_scale: float = 0.6
     subsystem_rolls_per_damage: float = 0.1   # Begin: n = damage / 10
     targeted_max_accuracy: float = 0.85
+    crew_deck_kill: tuple[float, float] = (0.03, 0.08)   # share of design crew per aimed hit on the crew decks [E]
+    aimed_structure: float = 0.35             # × structural damage from fire aimed at a system [E]
+    shield_gap: float = 5.0                   # a shield under this % lets transporters through [E]
+    prize_window: float = 60.0                # cycles to board a helpless last enemy before the battle ends [E]
     weapons_need_full_repair: bool = True     # [R] banks/tubes must be at 0% damage to charge/load
     # hull repairs [E]: share of the hull patched per cycle by a full crew, out of the fight
     hull_repair_rate: float = 0.004           # about 4 minutes to patch a badly holed hull

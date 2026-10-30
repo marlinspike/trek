@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Iterable, Protocol
+from typing import TYPE_CHECKING, Callable, Iterable, Protocol
 
 from ..content.schema import ContentDB
 from ..core.rng import Rng
@@ -107,6 +107,7 @@ class World:
     ally_orders: dict[int, AllyStanding] = field(default_factory=dict)
     torpedo_pressure: dict[int, float] = field(default_factory=dict)
     side_names: dict[int, str] = field(default_factory=dict)
+    on_capture: Callable[[Ship], None] | None = None           # gives a captured ship to her new side's brains
 
     _next_id: int = 1
     _queue: list[Command] = field(default_factory=list)
@@ -114,6 +115,7 @@ class World:
     _scans: list[PendingScan] = field(default_factory=list)
     _probe_serial: int = 0
     _obs_cache: dict[int, Observation] = field(default_factory=dict)
+    _prize_since: float = -1.0   # when the last enemy was left helpless, waiting to be boarded
 
     def __post_init__(self) -> None:
         self.rng = Rng(self.seed)
@@ -421,6 +423,9 @@ class World:
         ship.stats.crew_lost += ship.crew
         ship.crew = 0
         ship.desired_warp = 0.0
+        for sh in ship.shields:
+            sh.up = False          # nobody left to keep them up: she can be boarded [E]
+            sh.effective = 0.0
         self._set_status(ship, ShipStatus.DERELICT, cause, attacker,
                          f"{ship.name} is adrift: no surviving crew ({cause}).", Tone.ALERT)
         if was_alive:
@@ -672,17 +677,41 @@ class World:
             ship.boarders = 0
             self.say(ship, f"Boarders on {ship.name} have been repelled.", "good", public=True)
         elif ship.crew < 6 and ship.boarders >= 6:
-            old = ship.side
-            ship.side = attacker_side
-            ship.crew = ship.boarders
-            ship.boarders = 0
-            ship.target = None
-            ship.helm_mode = HelmMode.COURSE
-            ship.status = ShipStatus.ACTIVE
-            self.emit(ShipStatusChanged(self.tick, ship.id, ShipStatus.CAPTURED.value, f"captured from side {old}", None))
-            self.emit(Message(self.tick, f"{ship.name} has been captured!", Tone.ALERT, ship_id=ship.id))
+            self._capture(ship, attacker_side)
         elif ship.crew <= 0:
             self.lose_all_hands(ship, "boarders")
+
+    def _capture(self, ship: Ship, side: int) -> None:
+        """The boarders hold the ship: she joins their side with them as her crew [R], under a new captain [E]."""
+        old = ship.side
+        ship.stats.crew_lost += ship.crew          # the last defenders
+        ship.side = side
+        ship.crew = ship.boarders
+        ship.boarders = 0
+        ship.boarder_side = -1
+        ship.target = None
+        ship.target_subsystem = None
+        ship.desired_warp = 0.0
+        ship.helm_mode = HelmMode.COURSE
+        ship.status = ShipStatus.ACTIVE
+        ship.life_failure_time = 0.0
+        ship.repair_priority = None
+        for b in ship.banks:
+            b.lock = None
+        for t in ship.tubes:
+            t.lock = None
+        # her old side's brains let go of her; the new side's take over (see `on_capture`)
+        self.controllers = [c for c in self.controllers if getattr(c, "ship_id", None) != ship.id]
+        self.ally_orders.pop(ship.id, None)
+        for intel in self.intel.values():
+            c = intel.contacts.get(ship.id)
+            if c is not None:
+                c.assessed = None
+        self.emit(ShipStatusChanged(self.tick, ship.id, ShipStatus.CAPTURED.value, f"captured from side {old}", None))
+        self.emit(Message(self.tick, f"{ship.name} has been captured by the {self.side_names.get(side, 'boarders')}! "
+                          f"A prize crew of {ship.crew} holds her.", Tone.ALERT, ship_id=ship.id))
+        if self.on_capture is not None:
+            self.on_capture(ship)
 
     def _escapes(self, dt: float) -> None:
         r = self.rules
@@ -703,10 +732,27 @@ class World:
             else:
                 s.escape_time = 0.0
 
+    def _prize_open(self, alive_sides: set[int]) -> bool:
+        """The last enemy is a derelict or has struck her colours: the victor has a while to board her [E]."""
+        prizes = [s for s in self.ships.values() if s.exists and s.side not in alive_sides
+                  and s.status in (ShipStatus.DERELICT, ShipStatus.SURRENDERED) and not s.cls.is_base]
+        fighting = any(s.boarders > 0 for s in self.ships.values() if s.exists)
+        if (not prizes and not fighting) or self.player_side not in alive_sides:
+            return False
+        if self._prize_since < 0:
+            self._prize_since = self.time
+            names = ", ".join(s.name for s in prizes)
+            if prizes:
+                self.emit(Message(self.tick, f"{names} lies helpless. You have {self.rules.prize_window:.0f} cycles to "
+                                  "board and take her, or the battle ends.", Tone.CAUTION))
+        return fighting or self.time - self._prize_since < self.rules.prize_window
+
     def _check_outcome(self) -> None:
         sides = {s.side for s in self.ships.values() if s.alive}
         all_sides = {s.side for s in self.ships.values()}
         if len(all_sides) < 2 or len(sides) > 1:
+            return
+        if self._prize_open(sides):
             return
         o = self.outcome
         o.over = True

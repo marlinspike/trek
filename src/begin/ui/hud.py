@@ -35,7 +35,17 @@ if TYPE_CHECKING:
 MODE_LETTER = {FireMode.MANUAL: "M", FireMode.ASSISTED: "A", FireMode.AUTOMATIC: "★"}
 MODE_CYCLE = [FireMode.MANUAL, FireMode.ASSISTED, FireMode.AUTOMATIC]
 PD_CYCLE = [PDDoctrine.OFF, PDDoctrine.CONSERVATIVE, PDDoctrine.BALANCED, PDDoctrine.AGGRESSIVE]
-SUB_GROUPS = [None, "propulsion", "weapons", "shields", "power", "sensors"]
+SUB_GROUPS = [None, "shields", "power", "crew", "weapons", "propulsion", "sensors"]
+SUB_LABELS = {None: "hull", "power": "warp core", "crew": "life support", "propulsion": "engines"}
+SUB_TIPS = {
+    None: "Fire at the hull: the fastest way to destroy her",
+    "shields": "Precision fire at her shield generators: a destroyed one leaves a hole to beam through",
+    "power": "Precision fire at her reactors and batteries: without power her life support fails",
+    "crew": "Precision fire at life support and the crew decks: heavy casualties, little damage to the hull",
+    "weapons": "Precision fire at her phasers and torpedo tubes",
+    "propulsion": "Precision fire at her warp drives and impulse engine (slow to repair if you mean to keep her)",
+    "sensors": "Precision fire at her sensors and computer",
+}
 
 
 class Panel:
@@ -315,16 +325,17 @@ class TargetPanel(Panel):
                    (rect.right - 12, y + 52), rng_col, 12, anchor="topright")
         # subsystem targeting
         yy = y + 74
-        theme.text(surf, "Aim at", (rect.x + 12, yy + 4), theme.TEXT_DIM, 12)
-        x = rect.x + 64
+        theme.text(surf, "Aim", (rect.x + 12, yy + 4), theme.TEXT_DIM, 12)
+        x = rect.x + 42
         cur = ship.target_subsystem
         for g in SUB_GROUPS:
-            label = g or "hull"
-            w = theme.text_width(label, 11) + 14
+            label = SUB_LABELS.get(g, g or "hull")
+            w = theme.text_width(label, 10, "display") + 10
             hud.ui.button(surf, pygame.Rect(x, yy, w, 22), label,
                           partial(hud.issue, SelectTarget(ship_id=ship.id, target=c.id, subsystem=g)),
-                          "Precision fire at a subsystem group (R cycles)", active=cur == g, accent=theme.CAUTION, size=11)
-            x += w + 4
+                          SUB_TIPS.get(g, "Precision fire at a subsystem group") + " (R cycles)", active=cur == g,
+                          accent=theme.CAUTION, size=10)
+            x += w + 3
         # scan
         yy += 30
         pend = hud.world.pending_scan(ship.id)
@@ -439,8 +450,8 @@ class TargetPanel(Panel):
         transporters = any(not t.destroyed for t in ship.transporters)
         hud.ui.button(surf, pygame.Rect(x + 98, yy, 92, 22), f"Board ×{n}",
                       (lambda: hud.issue(Transport(ship_id=ship.id, target=tid, count=n))),
-                      f"Beam {n} crew across as a boarding party (range {rules.beam_range:,.0f}). Their shield facing us "
-                      "and ours facing them must be down. Console: 'board <ship> <crew>'",
+                      f"Beam {n} crew across as a boarding party (range {rules.beam_range:,.0f}). One of her shields "
+                      "must be down, and ours facing her. Console: 'board <ship> <crew>'",
                       enabled=transporters, accent=theme.CREW)
         if d <= rules.tractor_range:
             note, col = "in tractor and transporter range", theme.GOOD

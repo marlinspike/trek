@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from ...core.angles import ang_dist, bearing, in_arc, norm360
 from ..events import OrdnanceDestroyed, PhaserFired
 from ..ordnance import Torpedo
-from ..ship import PhaserBank, Ship
+from ..ship import CREW_DECKS, PhaserBank, Ship
 from .damage import Aim, DamageKind, apply_damage, exposure, relative_bearing_from, subsystems_for
 
 if TYPE_CHECKING:
@@ -57,11 +57,14 @@ def targeting_accuracy(world: World, ship: Ship, target: Ship, selector: str, di
     beam width, how well the side knows the target (recent scan), and how
     exposed the selected systems are to this angle of attack.
     """
-    subs = subsystems_for(target, selector)
-    if not subs:
-        return 0.0
     rel = relative_bearing_from(target, ship.x, ship.y)
-    best_exp = max(exposure(target, s, rel) for s in subs)
+    if selector == CREW_DECKS:
+        best_exp = 0.6                    # the crew decks run through the whole hull
+    else:
+        subs = subsystems_for(target, selector)
+        if not subs:
+            return 0.0
+        best_exp = max(exposure(target, s, rel) for s in subs)
     rng_ = ship.cls.banks_range
     soph = 0.55 + 0.45 * ship.sophistication
     sensors = math.sqrt(ship.sensors.health) if ship.sensors is not None else 0.3

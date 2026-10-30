@@ -31,7 +31,7 @@ from ..sim.commands import (
     CeaseFire, OpenFire, DeflectorPulse, EndObjective, FireAtPoint, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
-from ..sim.ship import HULL, TARGETABLE_GROUPS, BankRole, FireMode, Kind, PDDoctrine, RepairTarget
+from ..sim.ship import HULL, BankRole, FireMode, Kind, PDDoctrine, RepairTarget
 from . import reports
 
 
@@ -120,6 +120,7 @@ VERBS: dict[str, tuple[str, ...]] = {
     "surrender": ("surrender",),
     "transport": ("transport", "beam"),
     "board": ("board",),
+    "aim": ("aim",),
     "detonate": ("detonate", "det", "boom"),
     "tell": ("tell", "order"),
     "mode": ("mode", "firemode", "fm"),
@@ -153,12 +154,52 @@ WEAPONS = {
 }
 
 REPAIR_KINDS: dict[str, RepairTarget | None] = {
-    "all": None, "none": None, "reactors": Kind.REACTOR, "batteries": Kind.BATTERY, "drives": Kind.DRIVE,
+    "all": None, "none": None, "reactors": Kind.REACTOR, "power": Kind.REACTOR, "core": Kind.REACTOR, "batteries": Kind.BATTERY, "drives": Kind.DRIVE,
     "warp": Kind.DRIVE, "engines": Kind.DRIVE, "impulse": Kind.IMPULSE, "sensors": Kind.SENSORS,
     "computer": Kind.COMPUTER, "shields": Kind.SHIELD, "phasers": Kind.PHASER, "banks": Kind.PHASER,
     "tubes": Kind.TUBE, "torpedoes": Kind.TUBE, "launchers": Kind.LAUNCHER, "probes": Kind.LAUNCHER,
     "transporters": Kind.TRANSPORTER, "tractor": Kind.TRACTOR, "cloak": Kind.CLOAK, "hull": HULL,
 }
+
+# what you can aim at, in the words a captain would use; two-word names are joined first ("warp core")
+AIM_WORDS: dict[str, tuple[str, ...]] = {
+    "shields": ("shields", "shield", "generators", "shieldgenerators"),
+    "power": ("power", "reactors", "reactor", "warpcore", "core", "batteries", "battery", "antimatter"),
+    "crew": ("lifesupport", "life-support", "crew", "crewdecks", "crewquarters", "quarters", "decks"),
+    "weapons": ("weapons", "weapon", "armament", "guns"),
+    "phasers": ("phasers", "phaser", "banks", "disruptors", "beams"),
+    "torpedoes": ("torpedoes", "tubes", "torps", "torpedo"),
+    "propulsion": ("propulsion", "engines", "engine", "drives", "drive", "warp", "nacelles", "impulse", "warpdrive"),
+    "sensors": ("sensors", "sensor", "computer", "scanners"),
+    "cloak": ("cloak", "cloaking"),
+}
+AIM_HELP = "hull, shields, power (warp core), life support (crew), weapons, phasers, torpedoes, propulsion, sensors, cloak"
+
+
+def _take_aim(tok: _Tokens) -> str | None:
+    """A subsystem group named next ("warp core", "life support", "shields"), consumed; "hull" gives ""."""
+    tok.skip_filler()
+    a, b = tok.peek(), tok.peek(1)
+    if a is None:
+        return None
+    if a in ("hull", "ship"):
+        tok.next()
+        return ""
+    if b is not None:
+        g = _match(a + b, AIM_WORDS, min_len=99)
+        if g is not None:
+            tok.next()
+            tok.next()
+            if tok.peek() in ("system", "systems", "generator", "generators"):
+                tok.next()
+            return g
+    g = _match(a, AIM_WORDS)
+    if g is not None:
+        tok.next()
+        if tok.peek() in ("system", "systems", "generator", "generators"):
+            tok.next()
+    return g
+
 
 FILLER = {"with", "the", "to", "at", "on", "of", "and", "set", "please", "by", "using", "for", "a", "an", "from"}
 
@@ -186,7 +227,7 @@ HELP = [
     "          recover|eject <ship> (bases)",
     "Library:  computer ship <nation> <class> · computer torpedo <class> · computer probe <class>",
     "Remake:   autoload tor|probe [<list>] [<type>] [<prox>] [time <t>] [on|off] · mode phasers|tubes manual|assisted|automatic",
-    "          pd off|conservative|balanced|aggressive [reserve <banks>] · target <ship> [subsystem] · pause · resume · time <x>",
+    "          pd off|conservative|balanced|aggressive [reserve <banks>] · target <ship> [system] · aim <system> · pause · resume · time <x>",
     "Crew:     delegate|assume helm|tactical|engineering|science|all · crew [chatter on|off] · ask <officer> <words>",
     "          <officer>, <words>   e.g. 'worf, fire all torpedoes' · 'spock, what do you recommend?'",
     "Special:  design tachyon|deflector · tachyon <ship>|<bearing> <range> · pulse · conn <officer>|captain",
@@ -359,7 +400,7 @@ class Parser:
             if any(w is None for w in words):
                 continue
             phrase = " ".join(w for w in words if w)
-            exact = [sid for n, sid in table if n == phrase]
+            exact = list({sid for n, sid in table if n == phrase})   # a captured ship is ours and a contact
             hits = exact or list({sid for n, sid in table if n.startswith(phrase)})
             if len(hits) == 1:
                 tok.i += span
@@ -504,16 +545,22 @@ class Parser:
         target = self.resolve_ship(tok)
         sub = None
         tok.skip_filler()
-        t = tok.peek()
-        if t is not None:
-            groups = {g: (g,) for g in TARGETABLE_GROUPS}
-            groups["propulsion"] = ("propulsion", "engines", "drives", "warp")
-            groups["torpedoes"] = ("torpedoes", "tubes", "torps")
-            g = _match(t, groups)
-            if g is not None:
-                tok.next()
-                sub = g
+        if not tok.done():
+            g = _take_aim(tok)
+            if g is None:
+                raise ParseError(f"I don't know the system '{tok.peek()}'. Aim at: {AIM_HELP}.")
+            sub = g or None
         res.commands.append(self._cmd(SelectTarget, target=target, subsystem=sub))
+
+    def _v_aim(self, tok: _Tokens, res: ParseResult) -> None:
+        """`aim [at] <system>`: precision fire at a system of the current target ('aim warp core', 'aim life support')."""
+        g = _take_aim(tok)
+        if g is None:
+            raise ParseError(f"Aim at what? {AIM_HELP}." if tok.done() else
+                             f"I don't know the system '{tok.peek()}'. Aim at: {AIM_HELP}.")
+        if self.ship.target is None:
+            raise ParseError("No target to aim at: 'target <ship>' first.")
+        res.commands.append(self._cmd(SelectTarget, target=self.ship.target, subsystem=g or None))
 
     def _weapon(self, tok: _Tokens, default: str | None = None) -> tuple[str, bool]:
         """Weapon noun, with Begin's optional leading 'all' ('all torpedo tubes', 'all banks', 'tor').
@@ -684,8 +731,8 @@ class Parser:
                     raise ParseError(f"Torpedo tube {v:g} does not exist.")
             elif tok.peek() in FILLER:
                 tok.next()
-            elif _match(tok.peek() or "", {g: (g,) for g in TARGETABLE_GROUPS}) is not None:
-                sub = _match(tok.next() or "", {g: (g,) for g in TARGETABLE_GROUPS})
+            elif (g := _take_aim(tok)) is not None:
+                sub = g or None
             else:
                 target = self.resolve_ship(tok)
         if weapon == "phaser":

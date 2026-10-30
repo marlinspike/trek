@@ -1452,9 +1452,9 @@ class Transport(Command):
             raise Rejected(f"Out of transporter range ({d:,.0f} > {world.rules.beam_range:,.0f}).")
         from .systems.damage import relative_bearing_from
 
-        sh = t.shield_for_bearing(relative_bearing_from(t, ship.x, ship.y))
-        if sh is not None and sh.effective > 0:
-            raise Rejected(f"{t.name}'s facing shield is up.")
+        # Begin beamed through the facing shield only; we beam through any of hers that is fully down [E]
+        if t.shields and all(x.effective >= world.rules.shield_gap for x in t.shields):
+            raise Rejected(f"All of {t.name}'s shields are up: one must be down to beam through.")
         own = ship.shield_for_bearing(relative_bearing_from(ship, t.x, t.y))
         if own is not None and own.effective > 0:
             raise Rejected("Our facing shield must be lowered to transport.")
