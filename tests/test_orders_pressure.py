@@ -305,3 +305,12 @@ def test_a_punctuated_cease_fire_never_waits_on_the_model(content, stop: str) ->
     _flush(sc)
     assert sc.player.hold_fire
     sc.close()
+
+
+@pytest.mark.parametrize("said", ["hail them, stand down and you will live", "hail them and stand down",
+                                  "open a channel, cease fire or be destroyed", "tell agena attack derango and evade",
+                                  "address crew stand down, and be proud of today"])
+def test_words_for_someone_else_are_never_split_into_our_orders(said: str) -> None:
+    from begin.console.parser import plain_order, split_orders
+
+    assert split_orders(said) == [said.strip()] and plain_order(said) == said

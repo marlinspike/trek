@@ -321,8 +321,8 @@ def plain_order(text: str) -> str:
     """A captain's plain words in the console's own: typos of 'their', 'I'll take the helm', 'all stop',
     'hit their shields', 'finish her off'. Anything else is left as it was typed."""
     low = text.strip().lower()
-    if not low or low.split()[0] in _NO_SPLIT:
-        return text          # a message or a macro: the captain's own words, untouched
+    if not low or _SPOKEN.match(low):
+        return text          # a message, a hail or a macro: the captain's own words, untouched
     low = _THEIR_TYPOS.sub("their", low)
     for pat, repl in _REWRITES:
         new = pat.sub(repl, low, count=1)
@@ -340,6 +340,10 @@ def plain_order(text: str) -> str:
 # a later order in the same line starts with a verb: "cease fire and take evasive action", "stand down, I have nav"
 _SPLIT = re.compile(r"\s*(?:[,;]|\band\s+then\b|\bthen\b|\band\b)\s*")
 _NO_SPLIT = ("tell", "order", "key", "address", "ask", "say", "text", "translate", "interpret", "english")
+# words said over a channel to another captain are theirs to hear, never orders to our own bridge:
+# "hail them, stand down and you will live"
+_SPOKEN = re.compile(r"^(?:(?:" + "|".join(_NO_SPLIT) + r"|hail|hailing|channel)\b|"
+                     r"open\s+(?:a\s+)?(?:channel|hailing|frequencies|comms|communications)\b)")
 
 
 def _starts_order(piece: str) -> bool:
@@ -353,7 +357,7 @@ def _starts_order(piece: str) -> bool:
 def split_orders(text: str) -> list[str]:
     """The separate orders in a line, where each after the first plainly starts a new one; else the line."""
     low = text.strip()
-    if not low or low.lower().split()[0] in _NO_SPLIT:
+    if not low or _SPOKEN.match(low.lower()):
         return [low]
     pieces: list[str] = []
     start = 0
