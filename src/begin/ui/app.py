@@ -12,7 +12,7 @@ from ..content import default_content
 from ..tour.run import TourRun
 from .battle_scene import BattleScene
 from .menu_scene import MenuScene
-from .settings import Settings
+from ..settings import Settings
 from .tour_scene import TourScene
 
 TARGET_FPS = 60

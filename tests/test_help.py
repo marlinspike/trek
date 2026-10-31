@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from begin.console.parser import VERBS
+from begin.console.vocab import VERBS
 from begin.help.coach import BLOCKS, HelpContext, expand
 from begin.help.docs import BUNDLED_DIR, HelpLibrary, parse_topic
 
@@ -173,7 +173,7 @@ def test_table_cells_keep_links_and_code_whole() -> None:
 
 def test_the_coach_and_manual_open_from_the_main_menu(content) -> None:  # type: ignore[no-untyped-def]
     from begin.ui.menu_scene import MenuScene
-    from begin.ui.settings import Settings
+    from begin.settings import Settings
 
     pygame.init()
     surf = pygame.display.set_mode((1400, 860))

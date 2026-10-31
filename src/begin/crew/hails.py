@@ -40,7 +40,8 @@ from ..sim.ship import Ship
 from ..sim.systems import disposition
 from ..sim.world import World
 from .characters import OfficerProfile
-from .conversation import Utterance, first_object, spoken
+from ..llm.reply import first_object, spoken
+from .conversation import Utterance
 
 Issue = Callable[[Command], "str | None"]
 

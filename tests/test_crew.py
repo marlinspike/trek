@@ -12,7 +12,8 @@ from begin.battle import build_battle
 from begin.crew.characters import (
     Relationships, load_officers, read_response_styles, read_traits,
 )
-from begin.crew.conversation import parse_reply, situation
+from begin.crew.conversation import situation
+from begin.llm.reply import parse_reply
 from begin.crew.officers import STATION_COMMANDS, station_of
 from begin.help.coach import HelpContext
 from begin.llm.providers.base import LLMConfig, LLMError, config_from_settings, make_provider
@@ -137,7 +138,7 @@ def test_response_styles_come_from_the_data_and_the_players_config(tmp_path) -> 
 
 def test_officers_json_never_shows_as_speech() -> None:
     from begin.console.translator import parse_answer
-    from begin.crew.conversation import spoken
+    from begin.llm.reply import spoken
 
     twice = '{"say": "Shields holding.", "commands": []}\n{"say": "Shields holding.", "commands": []}'
     assert parse_reply(twice) == ("Shields holding.", [])
@@ -153,7 +154,7 @@ def test_officers_json_never_shows_as_speech() -> None:
 def test_retired_hidden_settings_are_dropped(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
     import json
 
-    from begin.ui.settings import Settings
+    from begin.settings import Settings
 
     monkeypatch.setenv("BEGIN_HOME", str(tmp_path))
     (tmp_path / "settings.json").write_text(json.dumps({"hidden": {"old_setting": 9, "rapport": {}}}))
@@ -406,8 +407,8 @@ def test_ollama_think_switch(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_llm_cli_configures_settings(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
-    from begin.llm.cli import configure
-    from begin.ui.settings import Settings
+    from begin.tools.llm import configure
+    from begin.settings import Settings
 
     monkeypatch.setenv("BEGIN_HOME", str(tmp_path))
     configure(["provider=ollama", "model=lfm3", "think=nothink"])
@@ -423,7 +424,8 @@ def test_llm_cli_configures_settings(tmp_path, monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_llm_commands_are_cleaned_and_questions_only_suggest() -> None:
-    from begin.crew.conversation import clean_command, is_question
+    from begin.crew.conversation import is_question
+    from begin.llm.reply import clean_command
 
     assert clean_command("target derango[weapons]") == "target derango weapons"
     assert clean_command("fire all phasers [spread 45]") == "fire all phasers spread 45"
@@ -649,7 +651,7 @@ def test_seven_takes_on_a_disable_objective_and_reports_success(scene) -> None: 
 
 
 def test_seven_takes_out_a_ship_and_baits_klingons(scene) -> None:  # type: ignore[no-untyped-def]
-    from begin.crew.objectives import baitable
+    from begin.sim.objectives import baitable
 
     sc, surf = scene
     foe = next(s for s in sc.world.ships.values() if s.side != sc.player.side)

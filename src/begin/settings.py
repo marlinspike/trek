@@ -6,7 +6,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from ..paths import config_dir
+from .paths import config_dir
 
 
 HIDDEN_KEYS = ("rapport",)      # what the game keeps for itself under "hidden"

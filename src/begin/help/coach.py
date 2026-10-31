@@ -24,6 +24,7 @@ from ..ai.computer import torpedo_envelope
 from ..content.schema import ContentDB, TorpedoDef
 from ..core.angles import bearing, norm360
 from ..sim.systems.ordnance import blast_radius, suggested_prox
+from ..sim.objectives import baitable
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import Ship
 
@@ -310,8 +311,6 @@ def tips(ctx: HelpContext) -> list[Tip]:
     # engines and power
     if (c is not None and c.visible and not s.objectives and s.pending_volley is None
             and sum(1 for t in s.tubes if t.loaded is not None) >= 3):
-        from ..crew.objectives import baitable
-
         if baitable(obs, c) and 3000 < c.distance_to(s.x, s.y) < 8000:
             tip(3, "Bait their point defense", f"**{_contact_name(c)}**'s crew fires everything at the first torpedo it "
                 "sees. Send one, and the rest a second later while its phasers recharge.", "bait")

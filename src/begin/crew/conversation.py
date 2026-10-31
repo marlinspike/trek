@@ -33,6 +33,7 @@ from typing import Callable, Iterable
 from ..core.angles import bearing
 from ..help.coach import HelpContext, tips
 from ..llm.providers.base import Message
+from ..llm.reply import NUDGE, parse_reply, spoken
 from ..llm.service import LLMService
 from ..sim.events import (
     ContactChanged, Event, HullHit, MoraleShift, ObjectiveEnded, PhaserFired, ProjectCompleted, ScanCompleted, ShipStatusChanged, SubsystemRepaired, TorpedoLaunched,
@@ -40,7 +41,9 @@ from ..sim.events import (
 from ..sim.observation import Observation
 from ..sim.ship import HULL, KIND_LABEL, Kind, Ship, repair_words
 from ..sim.commands import AddressCrew
+from ..console.plain import split_orders
 from ..console.reports import morale_words
+from ..console.vocab import DISABLE_WORDS, HAVE_WORDS, VERBS
 from .characters import OfficerProfile, Relationships
 from ..sim.objectives import DISABLE_GROUPS
 from . import collaborations
@@ -146,8 +149,6 @@ def whole_bridge_stand_down(text: str) -> bool:
 
 def _could_be_officer(word: str) -> bool:
     """A lone first word names an officer only if it can't also be a console command ('sc' is scan, not a name starting sc)."""
-    from ..console.parser import VERBS
-
     if len(word) < 3:
         return False
     return not any(sp.startswith(word) for spellings in VERBS.values() for sp in spellings)
@@ -269,8 +270,6 @@ class Bridge:
         low = _POLITE.sub("", said).strip(" ?!.") if (_POLITE.search(said) or not is_question(said)) else said
         low = low or said
         asked = is_question(low)     # "should we disable their shields?" asks for advice: nothing is fired
-        from ..console.parser import split_orders
-
         pieces = [] if asked else split_orders(low)
         if len(pieces) > 1:          # "worf, cease fire and target their engines": each order in turn
             rel.exchanges -= 1
@@ -319,9 +318,7 @@ class Bridge:
         m = None if asked else _DISABLE.search(low)
         if m is not None:
             rest = low[m.end():]
-            from ..console.parser import Parser
-
-            names_systems = any(w.strip(".,!?'\"").removesuffix("'s") in Parser._DISABLE_WORDS for w in rest.split())
+            names_systems = any(w.strip(".,!?'\"").removesuffix("'s") in DISABLE_WORDS for w in rest.split())
             if m.group(1) in _KILL_VERBS and not names_systems:
                 verb = "destroy"     # "take out the Wraith": the whole ship
             else:
@@ -380,8 +377,6 @@ class Bridge:
                 standing_down: bool = False, named: str = "") -> list[Utterance]:
         """The officer hands their station back to the captain (and the bridge, if they have it); `named`, a
         station the captain said they have ("spock, I have weapons"), instead of the officer's own."""
-        from ..console.parser import HAVE_WORDS
-
         station = next((k for k, words in HAVE_WORDS.items() if named in words and k != "all"), "") if named else ""
         if station and station != officer.station:
             err = run(f"assume {station}", officer)
@@ -970,66 +965,11 @@ COMMAND_SYNTAX = """\
   stand down   (cease fire, every objective ends, every station and the bridge back to the captain)"""
 
 
-def clean_command(line: str) -> str:
-    """Small models copy the syntax notation literally: 'target derango[weapons]', 'fire all phasers [spread 45]'."""
-    line = re.sub(r"[\[\]<>`]", " ", line)
-    return " ".join(line.split()).strip(" .;")
-
-
 def is_question(low: str) -> bool:
     """Asking for advice or information, rather than giving an order."""
     low = low.strip()
     return low.endswith("?") or bool(_ADVICE.search(low)) or bool(re.match(
         r"(what|why|how|which|where|when|who|should|can|could|would|is|are|do|does|did)\b", low))
-
-
-_SAY = re.compile(r'"say"\s*:\s*"((?:\\.|[^"\\])*)', re.S)
-
-
-NUDGE = ("Your last answer had nothing to say aloud. Reply now, in character, with at least one short sentence "
-         "in \"say\".")
-
-
-def first_object(text: str) -> dict[str, object] | None:
-    """The first JSON object in a model's answer, even with prose, code fences or a second copy around it."""
-    dec = json.JSONDecoder()
-    i = text.find("{")
-    while i >= 0:
-        try:
-            data, _ = dec.raw_decode(text, i)
-        except ValueError:
-            data = None
-        if isinstance(data, dict):
-            return data
-        i = text.find("{", i + 1)
-    return None
-
-
-def spoken(text: str) -> str:
-    """What to show as speech from an answer that may be JSON, broken JSON, or plain words."""
-    data = first_object(text)
-    if data is not None:
-        return str(data.get("say", "")).strip()
-    m = _SAY.search(text)                       # broken or cut-off JSON: rescue the words, never show the braces
-    if m:
-        try:
-            return str(json.loads('"' + m.group(1).rstrip("\\") + '"')).strip()
-        except ValueError:
-            return m.group(1).replace('\\"', '"').strip()
-    if "{" in text and '"' in text and ":" in text:
-        text = text[:text.find("{")]           # some other JSON-ish tail: keep only the words before it
-    return text.strip().strip("`").strip().strip('"').strip()
-
-
-def parse_reply(text: str) -> tuple[str, list[str]]:
-    """The model's JSON reply → (spoken text, commands). Plain text is accepted as speech."""
-    data = first_object(text)
-    if data is None:
-        return spoken(text), []
-    cmds = data.get("commands") or []
-    if not isinstance(cmds, list):
-        cmds = [cmds]
-    return str(data.get("say", "")).strip(), [c for c in (clean_command(str(x)) for x in cmds) if c][:4]
 
 
 def situation(ctx: HelpContext) -> str:
@@ -1147,4 +1087,4 @@ def _plain(md: str) -> str:
     return re.sub(r"\*\*|`", "", md).strip()
 
 
-__all__ = ["Bridge", "COMMAND_SYNTAX", "STATION_REPORTS", "Utterance", "first_object", "parse_reply", "situation", "spoken"]
+__all__ = ["Bridge", "COMMAND_SYNTAX", "STATION_REPORTS", "Utterance", "situation"]

@@ -20,7 +20,8 @@ import pygame
 from ..battle import Battle
 from ..console import reports
 from .hit_report import HitReport
-from ..console.parser import VERBS, ParseContext, ParseResult, parse
+from ..console.parser import ParseContext, ParseResult, parse
+from ..console.vocab import VERBS
 from ..console.orders import OrderBook, OrderRun, aim
 from ..console.translator import Translation, Translator
 from ..core.angles import bearing, norm360

@@ -16,7 +16,7 @@ from . import theme
 from .showpiece import Flybys
 from .starfield import Starfield
 from .manual import ManualView
-from .settings import Settings
+from ..settings import Settings
 from .widgets import UI
 
 FACTIONS = ["federation", "klingon", "romulan", "orion"]
