@@ -1043,9 +1043,8 @@ class DelegateStation(Command):
         else:
             was = self.station in ship.delegated
             ship.delegated.discard(self.station)
-            if self.station in ("helm", "tactical") and ship.objectives:
-                # an objective flies and fights the ship: the captain taking the helm or the weapons ends it
-                end_objectives(world, ship, list(ship.objectives), "cancelled", f"the captain has the {self.station}")
+            # the officer who had the station stands down (the battle scene ends their objectives); the others keep at
+            # their work: "I have nav" doesn't stop Seven disabling their shields
             if not ship.delegated:
                 ship.conn, ship.conn_saved = "", set()   # every station taken back: the captain has the bridge again
             if was and self.station == "helm" and ship.helm_mode != HelmMode.COURSE:

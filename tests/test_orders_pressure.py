@@ -314,3 +314,64 @@ def test_words_for_someone_else_are_never_split_into_our_orders(said: str) -> No
     from begin.console.parser import plain_order, split_orders
 
     assert split_orders(said) == [said.strip()] and plain_order(said) == said
+
+
+# ------------------------------------------------------------------ allies and the stations
+
+def _hunt(content, seed: int = 1):  # type: ignore[no-untyped-def]
+    pygame.init()
+    from begin.ui import theme
+    from begin.ui.battle_scene import BattleScene
+
+    theme.font.cache_clear()
+    theme._fallback.cache_clear()
+    surf = pygame.display.set_mode((1400, 860))
+    b = build_battle(content, next(p for p in load_presets() if p.id == "pirate-hunt").setup(seed))
+    sc = BattleScene(b, surf.get_size(), lambda: None, hidden={}, llm={})
+    sc.overlay, sc.paused = None, False
+    return sc
+
+
+def test_a_federation_ally_disables_with_us_and_then_spares_them(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.ai.captain import AICaptain
+
+    sc = _hunt(content)
+    me, w = sc.player, sc.world
+    enemies = [s for s in w.ships.values() if s.side != me.side]
+    sc.run_console(f"target #{enemies[0].id}")
+    sc.run_console("delegate helm")
+    sc.run_console("target all their shields")
+    ally = next(c for c in w.controllers if isinstance(c, AICaptain) and c.side == me.side and c.ship_id != me.id)
+    _run(sc, 2.0)
+    assert ally.wishes[1] == {e.id: "shields" for e in enemies}      # the ally aims where we do
+    for _ in range(150 * 20):
+        sc.update(0.05)
+        sc.overlay = None
+        if not me.objectives:
+            break
+    assert me.exists and set(me.spared) == {e.id for e in enemies} and all(e.exists for e in enemies)
+    shots: list[object] = []
+    emit = w.emit
+    w.emit = lambda e: (shots.append(e) if isinstance(e, (PhaserFired, TorpedoLaunched)) and e.ship_id == ally.ship_id
+                        and not getattr(e, "defensive", False) else None, emit(e))[1]
+    _run(sc, 30.0)
+    assert shots == [] and all(e.exists for e in enemies)            # she holds fire on the ships we spared
+    sc.close()
+
+
+def test_other_races_obey_a_disable_by_their_loyalty_and_discipline(content) -> None:  # type: ignore[no-untyped-def]
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from begin.ai.captain import AICaptain
+
+    sc = _hunt(content)
+    ally = next(c for c in sc.world.controllers if isinstance(c, AICaptain) and c.side == sc.player.side
+                and c.ship_id != sc.player.id)
+    klingon = SimpleNamespace(cls=SimpleNamespace(faction="klingon"))
+    ally.personality = replace(ally.personality, loyalty=0.3, discipline=0.3)
+    assert ally.obeys_flagship(sc.world.ships[ally.ship_id])         # Federation: always
+    assert not ally.obeys_flagship(klingon)                          # type: ignore[arg-type]
+    ally.personality = replace(ally.personality, loyalty=0.9, discipline=0.8)
+    assert ally.obeys_flagship(klingon)                              # type: ignore[arg-type]
+    sc.close()
