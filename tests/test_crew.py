@@ -12,7 +12,7 @@ from begin.battle import build_battle
 from begin.crew.characters import (
     Relationships, load_officers, read_response_styles, read_traits,
 )
-from begin.crew.conversation import situation
+from begin.crew.station_reports import situation
 from begin.llm.reply import parse_reply
 from begin.crew.officers import STATION_COMMANDS, station_of
 from begin.help.coach import HelpContext
@@ -424,7 +424,7 @@ def test_llm_cli_configures_settings(tmp_path, monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_llm_commands_are_cleaned_and_questions_only_suggest() -> None:
-    from begin.crew.conversation import is_question
+    from begin.crew.intents import is_question
     from begin.llm.reply import clean_command
 
     assert clean_command("target derango[weapons]") == "target derango weapons"

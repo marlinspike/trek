@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from ...console.orders import OrderRun, aim
 from ...console.parser import ParseContext, parse
 from ...console.translator import Translation
-from ...crew.conversation import situation
+from ...crew.station_reports import situation
 from .. import theme
 from .common import ORDER_TRANSLATE_WAIT
 from .state import SceneState

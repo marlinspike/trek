@@ -10,7 +10,7 @@ import pygame
 
 from ...console import reports
 from ...console.parser import ParseContext, ParseResult, parse
-from ...crew.conversation import whole_bridge_stand_down
+from ...crew.intents import whole_bridge_stand_down
 from ...crew.hails import prisoners_lines
 from ...sim.commands import AddressCrew, CeaseFire, Command, DelegateStation, EndObjective, Evasive, SetHelm, SetObjective, StandDown
 from .. import theme

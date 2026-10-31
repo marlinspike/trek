@@ -10,7 +10,7 @@ import pygame
 
 from ...console.parser import ParseContext, parse
 from ...crew.characters import OfficerProfile
-from ...crew.conversation import Utterance
+from ...crew.utterance import Utterance
 from ...crew.officers import STATION_COMMANDS, Activity, station_of
 from ...sim.commands import CeaseFire, DelegateStation, EndObjective, ManageRepairs, SetObjective, TakeConn, offensive_fire
 from ...sim.events import Event

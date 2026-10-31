@@ -38,8 +38,7 @@ from typing import TYPE_CHECKING
 
 from ..core.angles import bearing, norm360
 from ..sim.commands import (
-    Authority, Command, EndObjective, FireAtPoint, FireBait, FirePhasers, Pursue, Scan, SelectTarget, SetHelm,
-    SetShields, Transport,
+    Authority, Command, EndObjective, FireAtPoint, FireBait, FirePhasers, Pursue, Scan, SelectTarget, SetHelm, SetShields, Transport,
 )
 from ..sim.factory import SHIELD_FACINGS
 from ..sim.objectives import Objective, baitable

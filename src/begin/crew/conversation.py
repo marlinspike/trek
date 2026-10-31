@@ -23,147 +23,52 @@ from __future__ import annotations
 
 import difflib
 import json
-import math
 import random
 import re
 from collections import deque
-from dataclasses import dataclass, field
-from typing import Callable, Iterable
+from typing import Iterable
 
-from ..core.angles import bearing
+from ..console.plain import split_orders
+from ..console.reports import morale_words
+from ..console.vocab import DISABLE_WORDS, HAVE_WORDS
 from ..help.coach import HelpContext, tips
 from ..llm.providers.base import Message
 from ..llm.reply import NUDGE, parse_reply, spoken
 from ..llm.service import LLMService
-from ..sim.events import (
-    ContactChanged, Event, HullHit, MoraleShift, ObjectiveEnded, PhaserFired, ProjectCompleted, ScanCompleted, ShipStatusChanged, SubsystemRepaired, TorpedoLaunched,
-)
-from ..sim.observation import Observation
-from ..sim.ship import HULL, KIND_LABEL, Kind, Ship, repair_words
 from ..sim.commands import AddressCrew
-from ..console.plain import split_orders
-from ..console.reports import morale_words
-from ..console.vocab import DISABLE_WORDS, HAVE_WORDS, VERBS
-from .characters import OfficerProfile, Relationships
-from ..sim.objectives import DISABLE_GROUPS
+from ..sim.observation import Observation
+from ..sim.ship import RepairTarget
 from . import collaborations
+from .characters import OfficerProfile, Relationships
+from .chatter import Chatter
+from .intents import (
+    ADVICE, BRIDGE_RELEASE, BRIDGE_TAKE, CAPTURE, CEASE, DISABLE_ORDER, FIRING, GREET, HONORIFIC, HONORIFIC_WORDS, KILL_VERBS, POLITE,
+    PRAISE, RELEASE, REPAIRS_RELEASE, REPAIRS_TAKE, RUDE, SOFT_ORDER, STAND_DOWN, STATUS, TAKE, TARGET_ORDER, WEAPONS_STATE,
+    could_be_officer, is_question,
+)
 from .officers import STATION_NAMES, Crew
-
-
-@dataclass
-class Utterance:
-    officer: str        # officer id
-    speaker: str        # what the log shows
-    text: str
-    tone: str = "crew"  # crew | caution | dim
-    commands: list[str] = field(default_factory=list)   # suggestions the captain can click or type
-
-
-# runs a console line on behalf of an officer; returns an error, or None when it was carried out
-RunCommand = Callable[[str, OfficerProfile], "str | None"]
-
-# steps worth saying aloud as they start, how long each must last first (seconds), and the gap between callouts
-CALLOUT_KINDS = ("evade", "close", "open", "fight", "bait", "salvo", "between", "phasers", "hunt")
-CALLOUT_SETTLE = {"evade": 0.0, "bait": 0.0, "salvo": 0.0, "between": 0.0, "close": 2.0, "open": 2.0, "fight": 2.0}
-CALLOUT_GAP = 4.0
-CALLOUT_REPEAT = {"bait": 20.0, "salvo": 20.0, "between": 20.0, "phasers": 30.0, "close": 10.0, "open": 10.0,
-                  "fight": 15.0, "hunt": 20.0, "evade": 5.0}   # seconds before the same kind of step is said again
+from .station_reports import STATION_REPORTS, plain, situation
+from .utterance import RunCommand, Utterance
 
 LINE_TAG = "\0line:"         # an officer's remark being put in their own words
 VOICE_STALE = 6.0           # seconds after which a remark is no longer worth saying
 ADDRESS_TAG = "\0address"   # the model's verdict on the captain's speech, not an officer's answer
-MORALE_GAP = 20.0           # seconds between remarks on the crew's spirits
-REPAIR_REPORT_DAMAGE = 25   # % damage before a system is worth reporting
-REPAIR_GAP = 12.0           # seconds between repair reports
 
-MORALE_CAUSES = {
-    ("damage", False): " after that damage", ("loss", False): " after losing a ship", ("shield", False): "",
-    ("hits", True): " with every hit we land", ("kill", True): " after that kill", ("repairs", True): " as repairs come in",
-    ("address", True): " after your words",
-}
 
-_PRAISE = re.compile(r"\b(thanks?|thank you|well done|good (job|work|shooting)|nice|great|excellent|bravo)\b")
-_RUDE = re.compile(r"\b(stupid|idiot|useless|incompetent|shut up|moron|fool)\b")
-_GREET = re.compile(r"^(hello|hi|hey|greetings|report in)\b")
-_TAKE = re.compile(r"\b(take over|take (the |your )?(helm|station|tactical|weapons|engineering|science|sensors)"
-                   r"|you have the (helm|station)|your station|take charge|you'?re in charge|handle it)\b")
-# the whole bridge, not one station [E]
-_BRIDGE_TAKE = re.compile(r"\b(take (the )?(bridge|conn|ship)|you have the (bridge|conn|ship)|take command|"
-                          r"you'?re in command|you have command|command the ship|fight the ship)\b")
-_BRIDGE_RELEASE = re.compile(r"\b(i have the (bridge|conn|ship)|i'?ll take (the bridge|the conn|command)|"
-                             r"i'?m taking (the bridge|the conn|command)|i have command|i relieve you|"
-                             r"(the )?captain'?s? on the bridge|give me (the bridge|the conn|command))\b")
-# "spock, I have the helm" / "I relieve you": the officer's station comes back to the captain, nothing else stops [E]
-_HAVE = r"(helm|nav|navigation|steering|weapons|tactical|fire|phasers|torps|torpedoes|guns|station|science|sensors|engineering|shields)"
-_RELEASE = re.compile(r"\b(i(?: have|'ve got| got) (the )?" + _HAVE + r"|"
-                      r"i have it( from here)?|i relieve you|i'?ll (take|handle) it from here|"
-                      r"i'?ll take (the )?" + _HAVE + r")\b")
-# "seven, cease fire" / "hold fire" / "stop firing": every weapon stops and the objectives end [E]
-_CEASE = re.compile(r"\b(cease ?fire|hold (your )?fire|stop (firing|shooting)|weapons (cold|hold))\b")
-# "spock, stop" / "stand down" / "belay that" / "stop disabling their shields" / "forget the shields": all that, and
-# the officer stops whatever they are doing: their station (and the bridge, if they have it) come back to the captain [E]
-_STAND_DOWN = re.compile(r"\b(stand down|belay|cancel (that|it|this|your|the)|abort|break (it )?off|call (it )?off|"
-                         r"knock it off|never ?mind|stop (the attack|that|it|this|everything|now|there)|"
-                         r"(stop|quit|cease) \w+ing|forget (it|that|the|about)|leave (it|them|her|him) alone|"
-                         r"that'?s enough|(don'?t|do not) (?!stop\b))\b|^\s*(stop|halt|enough)\W*$")
-# "mr worf, ...", "lieutenant worf, ..."
-_HONORIFIC_WORDS = r"(?:(?:mister|mr|ms|miss|lieutenant|lt|commander|cmdr|ensign|chief|doctor|dr)\.?\s+)?"
-_HONORIFIC = re.compile(r"^\s*" + _HONORIFIC_WORDS, re.I)
-_WEAPONS_STATE = re.compile(r"^\s*weapons\s+(?:cold|hold|tight|safe|free|(?:is|are) mine)\b", re.I)
-# "can you target their shields?", "please take out their engines", "I want you to cease fire"
-_POLITE = re.compile(r"^(?:(?:please|can you|could you|would you|will you|go ahead and|i want you to|i need you to|"
-                     r"i'?d like you to|now)\s+)+|\s+(?:please|now|immediately|at once)\W*$")
-_SOFT_ORDER = re.compile(r"^(?:(?:i want|i need|we need|i'?d like)\s+(?:their|her|its|his)\b.*\b(?:down|out|gone|offline)\b|(?:hit|shoot(?: at)?|go after|bring down|take down|knock down|get|blast|pound|hammer|"
-                         r"fire (?:at|on))\s+.*\b(?:their|her|its|his)\b|finish\b|take\s+\S.*\s+out\W*$)")
 _STATION_HANDBACK = {"helm": "the helm is", "tactical": "the weapons station is", "engineering": "engineering is",
                      "science": "the science station is"}
-# "disable the Klingons' shields", "knock out Gorkon's torpedoes", "cancel that objective"
-_DISABLE = re.compile(r"\b(disable|disarm|cripple|knock out|take out|neutrali[sz]e|shut down|destroy|eliminate|"
-                      r"finish off|kill|sink|blow up)\b")
-# "worf, target their shields", "focus fire on their engines", "target all their torps", "target their hull" [E]
-_TARGET = re.compile(r"^\s*(?:target|focus (?:your )?(?:fire )?on|aim (?:at|for))\s+(.+?)\W*$")
-# "worf, capture the Votek" / "seize her" / "take her intact" / "take her as a prize"
-_CAPTURE = re.compile(r"\b(capture|seize|take (her|it|them|the [\w'-]+) (intact|alive|as (a )?prize))\b")
-_KILL_VERBS = ("take out", "destroy", "eliminate", "finish off", "kill", "sink", "blow up", "knock out")
-_FIRING = re.compile(r"^\s*(fire\b|tachyon\s+\S)")  # an order to fire the round, not to design one
-# "spock, manage repairs" / "repairs are yours"; "I'll handle repairs" takes them back [E]
-_REPAIRS_TAKE = re.compile(r"\b(manage|handle|run|direct|see to|take (care of|over)|look after|oversee|in charge of|"
-                           r"prioriti[sz]e)\b[^.]*\brepairs?\b|\brepairs? (are|is) (yours|up to you)\b")
-_REPAIRS_RELEASE = re.compile(r"\b(i'?ll|i will|let me) (manage|handle|direct|run|do) (the )?repairs?\b|"
-                              r"\brepairs? (are|is) mine\b|\b(stop|quit) (managing|directing) (the )?repairs?\b")
-_STATUS = re.compile(r"\b(status|report|sitrep|situation|how are|how's|condition)\b")
-_ADVICE = re.compile(r"\b(advice|advise|recommend|suggest|what (should|do you|now|next)|ideas?|options?|thoughts?|opinion)\b")
 
 
-# "everyone stop", "all hands, stand down", "officers, belay that", "bridge, knock it off": the whole bridge stands down [E]
-_WHOLE_BRIDGE = re.compile(r"^\s*(all (stations|hands|officers|of you)|every ?(one|body)|officers|bridge( crew)?|"
-                           r"crew|people|you all|y'?all)\W*(,\s*)?(please )?(stop|stand down|belay( that)?|"
-                           r"knock it off|cease fire|hold fire|that'?s enough|enough)\b.*$|"
-                           r"^\s*(stop|belay) (everyone|everybody|everything|all)\W*$")
-
-
-def whole_bridge_stand_down(text: str) -> bool:
-    """The captain tells every officer at once to stop what they are doing."""
-    return _WHOLE_BRIDGE.match(text.lower()) is not None
-
-
-def _could_be_officer(word: str) -> bool:
-    """A lone first word names an officer only if it can't also be a console command ('sc' is scan, not a name starting sc)."""
-    if len(word) < 3:
-        return False
-    return not any(sp.startswith(word) for spellings in VERBS.values() for sp in spellings)
-
-
-class Bridge:
+class Bridge(Chatter):
     def __init__(self, crew: Crew, hidden: dict[str, object], llm: LLMService | None = None,
                  seed: int = 0, chatter: bool = True) -> None:
-        self.crew = crew
-        self.hidden = hidden
-        self.llm = llm
-        self.hold_voices = False      # the captain is waiting on the model: say remarks as written
-        self.rng = random.Random(seed ^ 0x5EB)
-        self.chatter = chatter
-        self.relationships = Relationships.from_settings(hidden)
+        self.crew: Crew = crew
+        self.hidden: dict[str, object] = hidden
+        self.llm: LLMService | None = llm
+        self.hold_voices: bool = False      # the captain is waiting on the model: say remarks as written
+        self.rng: random.Random = random.Random(seed ^ 0x5EB)
+        self.chatter: bool = chatter
+        self.relationships: Relationships = Relationships.from_settings(hidden)
         for o in crew.officers.values():
             if o.rapport_floor > -1.0:
                 self.relationships.get(o.id).hold_at_least(o.rapport_floor)
@@ -174,17 +79,17 @@ class Bridge:
         self.asking: dict[str, bool] = {}   # officer -> the pending LLM request is a question, not an order
         self._nudged: set[str] = set()      # officers whose empty answer has been asked for again
         self._last_line: dict[str, int] = {}
-        self._last_any = -999
-        self._hull_band = 4
+        self._last_any: int = -999
+        self._hull_band: int = 4
         self._repair_seen: set[str] = set()        # damaged systems already reported
-        self._repair_band = 4                      # quarter of the hull last reported
-        self._repair_said = -999                   # tick of the last repair report
-        self._repair_prio: object = None           # the priority last announced by the officer managing repairs
+        self._repair_band: int = 4                      # quarter of the hull last reported
+        self._repair_said: int = -999                   # tick of the last repair report
+        self._repair_prio: RepairTarget | None = None   # the priority last announced by the officer managing repairs
         self._address_pending: AddressCrew | None = None   # a speech the model is judging
         self._addresses: list[AddressCrew] = []              # judged speeches, ready to take effect
-        self._morale_said = -999
-        self._threats = 0
-        self._llm_note_given = False
+        self._morale_said: int = -999
+        self._threats: int = 0
+        self._llm_note_given: bool = False
         self._conn_target: int | None = None
         self._disabled_seen: set[tuple[str, int]] = set()
         self._step_said: dict[str, str] = {}     # officer -> the step kind last called out
@@ -204,9 +109,9 @@ class Bridge:
     def addressed(self, text: str) -> tuple[OfficerProfile, str] | None:
         """`worf, fire` / `spock: report` / `seven what do you see` / `mr worf, fire` / `wrof, cease fire`
         → (officer, the rest)."""
-        if _WEAPONS_STATE.match(text):
+        if WEAPONS_STATE.match(text):
             return None          # "weapons cold": an order about the weapons, not to the weapons officer
-        text = _HONORIFIC.sub("", text, count=1)
+        text = HONORIFIC.sub("", text, count=1)
         m = re.match(r"^\s*([a-z][a-z ]{1,24}?)\s*[,:]\s*(.*)$", text, re.I)
         if m:
             o = self.find(m.group(1)) or self._near(m.group(1))
@@ -218,7 +123,7 @@ class Bridge:
             if len(words) < n:
                 continue
             name = " ".join(words[:n]).lower()
-            if n == 1 and not _could_be_officer(name):
+            if n == 1 and not could_be_officer(name):
                 continue
             o = self.find(name)
             if o is not None:
@@ -241,8 +146,8 @@ class Bridge:
                        key=len, reverse=True)
         alt = "|".join(re.escape(n) for n in names)
         # a name after "and"/"then" needs its comma ("... and seven, take the conn"); after a comma it need not
-        cut = re.compile(r"\s*(?:(?:\band\s+then\b|\bthen\b|\band\b)\s*(?=" + _HONORIFIC_WORDS + r"(?:" + alt
-                         + r")\s*[,:])|[,;]\s*(?=" + _HONORIFIC_WORDS + r"(?:" + alt + r")(?:\s*[,:]|\s+[a-z])))", re.I)
+        cut = re.compile(r"\s*(?:(?:\band\s+then\b|\bthen\b|\band\b)\s*(?=" + HONORIFIC_WORDS + r"(?:" + alt
+                         + r")\s*[,:])|[,;]\s*(?=" + HONORIFIC_WORDS + r"(?:" + alt + r")(?:\s*[,:]|\s+[a-z])))", re.I)
         pieces = [p.strip(" ,;") for p in cut.split(text) if p.strip(" ,;")]
         return pieces if len(pieces) > 1 else [text]
 
@@ -267,16 +172,16 @@ class Bridge:
         rel.exchanges += 1
         said = text.lower().strip()
         # "can you target their shields?", "please cease fire": orders, put politely
-        low = _POLITE.sub("", said).strip(" ?!.") if (_POLITE.search(said) or not is_question(said)) else said
+        low = POLITE.sub("", said).strip(" ?!.") if (POLITE.search(said) or not is_question(said)) else said
         low = low or said
         asked = is_question(low)     # "should we disable their shields?" asks for advice: nothing is fired
         pieces = [] if asked else split_orders(low)
         if len(pieces) > 1:          # "worf, cease fire and target their engines": each order in turn
             rel.exchanges -= 1
             return [u for piece in pieces for u in self.ask(officer, piece, ctx, run)]
-        if _PRAISE.search(low):
+        if PRAISE.search(low):
             rel.nudge(0.03)
-        if _RUDE.search(low):
+        if RUDE.search(low):
             rel.nudge(-0.08)
         turn = self.handover(low)
         if turn == "release" and not (ctx.ship is not None and ctx.ship.conn):
@@ -286,8 +191,8 @@ class Bridge:
             if err:
                 return [self._say(officer, err, "caution")]
             return self.handover_lines(officer, turn == "take")
-        if _REPAIRS_RELEASE.search(low) or _REPAIRS_TAKE.search(low):
-            taking = not _REPAIRS_RELEASE.search(low)
+        if REPAIRS_RELEASE.search(low) or REPAIRS_TAKE.search(low):
+            taking = not REPAIRS_RELEASE.search(low)
             err = run(f"repair auto {officer.id}" if taking else "repair manual", officer)
             if err:
                 return [self._say(officer, err, "caution")]
@@ -295,36 +200,36 @@ class Bridge:
             if not taking:
                 return [self._say(officer, "The repair crews are yours, Captain.")]
             return [self._say(officer, "Understood. I will direct the repair crews and tell you what I am doing.")]
-        if _CEASE.search(low):
+        if CEASE.search(low):
             return self.cease(officer, low, run)
-        if _STAND_DOWN.search(low):
+        if STAND_DOWN.search(low):
             return self.stand_down(officer, ctx, run)
-        m = _RELEASE.search(low)
+        m = RELEASE.search(low)
         if m is not None:
             return self.release(officer, ctx, run, named=next((g for g in m.groups()[1:] if g), ""))
-        m = None if asked else _TARGET.match(low)
+        m = None if asked else TARGET_ORDER.match(low)
         if m is not None:      # "worf, target their shields" / "focus fire on their engines": no model, no delay
             return self.objective(officer, f"target {m.group(1)}", run)
-        m = None if asked else _CAPTURE.search(low)
+        m = None if asked else CAPTURE.search(low)
         if m is not None:
             if m.group(1) in ("capture", "seize"):
                 rest = low[m.end():]
             else:
                 rest = "" if m.group(2) in ("her", "it", "them") else m.group(2)   # "her": the current target
             return self.objective(officer, f"capture {rest}", run)
-        if not asked and _SOFT_ORDER.match(low):
+        if not asked and SOFT_ORDER.match(low):
             # "hit their shields", "take down her shields", "finish her off", "take them out": the console's words
             return self.objective(officer, low, run)
-        m = None if asked else _DISABLE.search(low)
+        m = None if asked else DISABLE_ORDER.search(low)
         if m is not None:
             rest = low[m.end():]
             names_systems = any(w.strip(".,!?'\"").removesuffix("'s") in DISABLE_WORDS for w in rest.split())
-            if m.group(1) in _KILL_VERBS and not names_systems:
+            if m.group(1) in KILL_VERBS and not names_systems:
                 verb = "destroy"     # "take out the Wraith": the whole ship
             else:
                 verb = "disarm" if m.group(1) == "disarm" else "cripple"   # both always mean the enemy's systems
             return self.objective(officer, f"{verb} {rest}", run)
-        collab = None if _FIRING.match(low) else collaborations.matching(officer.id, low)
+        collab = None if FIRING.match(low) else collaborations.matching(officer.id, low)
         if collab is not None:
             return self.collaborate(officer, collab, run)
         if self.llm is not None:
@@ -343,9 +248,9 @@ class Bridge:
     def handover(text: str) -> str | None:
         """'take' when the captain gives an officer the bridge, 'release' when taking it back, else None."""
         low = text.lower()
-        if _BRIDGE_RELEASE.search(low):
+        if BRIDGE_RELEASE.search(low):
             return "release"
-        if _BRIDGE_TAKE.search(low):
+        if BRIDGE_TAKE.search(low):
             return "take"
         return None
 
@@ -544,18 +449,18 @@ class Bridge:
 
     def offline(self, o: OfficerProfile, low: str, ctx: HelpContext, run: RunCommand) -> list[Utterance]:
         out: list[Utterance] = []
-        if not low or _GREET.match(low):
+        if not low or GREET.match(low):
             out.append(self._line(o, "greeting") or self._say(o, "Captain."))
-        elif _RUDE.search(low):
+        elif RUDE.search(low):
             out.append(self._line(o, "rude") or self._say(o, "Understood, Captain."))
-        elif _PRAISE.search(low) and not _ADVICE.search(low):
+        elif PRAISE.search(low) and not ADVICE.search(low):
             out.append(self._line(o, "thanks") or self._say(o, "Thank you, Captain."))
-        elif _TAKE.search(low):
+        elif TAKE.search(low):
             err = run(f"delegate {o.station}", o)
             out.append(self._say(o, err, "caution") if err else (self._line(o, "delegated") or self._say(o, "Aye.")))
-        elif _ADVICE.search(low) or low.endswith("?") and not _STATUS.search(low):
+        elif ADVICE.search(low) or low.endswith("?") and not STATUS.search(low):
             out.extend(self.advice(o, ctx))
-        elif _STATUS.search(low):
+        elif STATUS.search(low):
             out.append(self._say(o, self.report(o, ctx)))
         else:
             command = re.sub(r"^(please|now|immediately)\s+|\s+(please|now|immediately)$", "", low).strip()
@@ -573,7 +478,7 @@ class Bridge:
         if not mine:
             return [self._line(o, "nothing") or self._say(o, "Nothing to add, Captain.")]
         best = mine[0]
-        text = _plain(best.text)
+        text = plain(best.text)
         self.suggested[o.id] = (ctx.obs.tick if ctx.obs else 0, list(best.commands))
         u = self._say(o, f"{best.title}. {text}")
         u.commands = list(best.commands)
@@ -663,273 +568,6 @@ class Bridge:
 
     # ------------------------------------------------------------ chatter
 
-    def react(self, events: Iterable[Event], ctx: HelpContext) -> list[Utterance]:
-        """Officers comment on what just happened (rate limited)."""
-        s, obs = ctx.ship, ctx.obs
-        if s is None or obs is None:
-            return []
-        for c in obs.contacts().values():
-            if c.identified:
-                self._names[c.id] = _name(obs, c.id)
-        out = self._objective_reports(events, s, obs)   # asked-for work is always reported
-        out.extend(self._callouts(s, obs))
-        out.extend(self._repair_reports(s, obs))
-        out.extend(self._morale_remarks(events, s, obs))
-        if not self.chatter:
-            return out
-        delegated = s.delegated
-        commander = self.find(s.conn) if s.conn else None
-        if commander is not None and s.target is not None and s.target != self._conn_target:
-            self._maybe(out, obs, "", "bridge_target", 1.0, gap=4.0, officer=commander, target=_name(obs, s.target))
-        self._conn_target = s.target if commander is not None else None
-        for ev in events:
-            if isinstance(ev, ProjectCompleted) and ev.ship_id == s.id:
-                collab = collaborations.for_project(ev.project)
-                if collab is not None and (ev.tube is not None or "{tube}" not in str(collab.done)):
-                    out.extend(self._chorus(collab.done, tube=(ev.tube or 0) + 1))
-                    self._last_any = obs.tick
-            elif isinstance(ev, (TorpedoLaunched, PhaserFired)) and ev.ship_id == s.id and s.objectives:
-                continue   # the officer working the objective says what she is firing and why
-            elif isinstance(ev, TorpedoLaunched) and ev.ship_id == s.id and commander is not None:
-                self._maybe(out, obs, "", "bridge_torpedoes", 0.5, officer=commander)
-            elif isinstance(ev, TorpedoLaunched) and ev.ship_id == s.id and "tactical" in delegated:
-                self._maybe(out, obs, "tactical", "torpedoes", 0.6)
-            elif isinstance(ev, PhaserFired) and ev.ship_id == s.id and "tactical" in delegated:
-                self._maybe(out, obs, "tactical", "phasers", 0.15)
-            elif isinstance(ev, ShipStatusChanged) and ev.status == "destroyed":
-                c = obs.contact(ev.ship_id)
-                if c is not None and not (c.side is not None and c.side == s.side):
-                    self._maybe(out, obs, "tactical", "enemy_destroyed", 0.9, target=_name(obs, ev.ship_id))
-            elif isinstance(ev, HullHit) and ev.ship_id == s.id and s.structure > 0:
-                band = int(4 * max(0.0, s.structure) / max(1.0, s.structure_max))
-                if band < self._hull_band:
-                    self._hull_band = band
-                    self._maybe(out, obs, "engineering", "hull", 1.0,
-                                n=round(100 * max(0.0, s.structure) / max(1.0, s.structure_max)))
-            elif isinstance(ev, ContactChanged) and ev.side == s.side and ev.acquired:
-                c = obs.contact(ev.ship_id)
-                if c is not None and c.visible:
-                    self._maybe(out, obs, "science", "contact", 0.5, target=_name(obs, ev.ship_id))
-            elif isinstance(ev, ContactChanged) and ev.side == s.side and not ev.acquired:
-                # the science officer gives the last fix, so the captain knows where to look
-                c = obs.contact(ev.ship_id)
-                if c is not None and not c.visible and not c.cloaked_hint:
-                    self._maybe(out, obs, "science", "lost", 1.0, gap=4.0, target=_name(obs, ev.ship_id),
-                                bearing=f"{bearing(c.x - s.x, c.y - s.y):.0f}",
-                                range=f"{math.hypot(c.x - s.x, c.y - s.y):,.0f}",
-                                heading=f"{c.course:.0f}", warp=f"{c.warp:.1f}")
-            elif isinstance(ev, ScanCompleted) and ev.ship_id == s.id:
-                self._maybe(out, obs, "science", "scan", 0.7, target=_name(obs, ev.target_id))
-            elif isinstance(ev, SubsystemRepaired) and ev.ship_id == s.id:
-                self._maybe(out, obs, "engineering", "repaired", 0.3, n=ev.label)
-        threats = len([o for o in obs.threats() if math.hypot(o.x - s.x, o.y - s.y) < 8000])
-        if threats > self._threats and "helm" not in s.delegated and not s.evasive:
-            self._maybe(out, obs, "helm", "incoming", 0.5)   # advice: with an officer at the helm, they just dodge
-        self._threats = threats
-        temp = max((d.temp for d in s.drives if not d.destroyed), default=0.0)
-        if temp > obs.rules.temp_limit * 0.85:
-            self._maybe(out, obs, "engineering", "hot", 1.0, gap=20.0)
-        return out
-
-    def _callouts(self, s: Ship, obs: Observation) -> list[Utterance]:
-        """Officers flying the ship or working an objective say what they're doing as they start each step
-        [E], so the captain can follow it: "Evading two torpedoes, coming to 270 warp 6." Rate limited."""
-        out: list[Utterance] = []
-        tpc = obs.rules.ticks_per_cycle
-        for a in self.crew.activity(obs):
-            if a.kind == self._step_said.get(a.officer_id) or a.kind not in CALLOUT_KINDS:
-                if a.kind not in CALLOUT_KINDS:
-                    self._step_said[a.officer_id] = a.kind
-                continue
-            if obs.tick - a.since < CALLOUT_SETTLE.get(a.kind, 1.0) * tpc:
-                continue   # wait until the step has stuck, so a helm that changes its mind doesn't chatter
-            if obs.tick - self._callout_at.get(a.officer_id, -10 ** 9) < CALLOUT_GAP * tpc:
-                continue
-            if obs.tick - self._kind_said.get((a.officer_id, a.kind), -10 ** 9) < CALLOUT_REPEAT.get(a.kind, 0.0) * tpc:
-                self._step_said[a.officer_id] = a.kind   # the same move again: once is enough for a while
-                continue
-            o = self.find(a.officer_id)
-            if o is None:
-                continue
-            self._step_said[a.officer_id] = a.kind
-            self._callout_at[a.officer_id] = self._kind_said[(a.officer_id, a.kind)] = obs.tick
-            out.append(self._say(o, a.doing.rstrip(".") + "."))
-        out.extend(self._knockouts(s, obs))
-        return out
-
-    def _morale_remarks(self, events: Iterable[Event], s: Ship, obs: Observation) -> list[Utterance]:
-        """The first officer says when the crew's spirits shift sharply (a band of 20 points)."""
-        shifts = [ev for ev in events if isinstance(ev, MoraleShift) and ev.ship_id == s.id and ev.cause != "rest"]
-        if not shifts or obs.tick - self._morale_said < MORALE_GAP * obs.rules.ticks_per_cycle:
-            return []
-        o = self.find("spock") or self.crew.officer("science")
-        if o is None:
-            return []
-        ev = shifts[-1]
-        self._morale_said = obs.tick
-        word = morale_words(ev.morale)
-        why = MORALE_CAUSES.get((ev.cause, ev.rising), "")
-        if ev.rising:
-            text = f"Morale is rising, Captain{why}: the crew is {word} ({ev.morale:.0f})."
-        else:
-            text = f"Captain, the crew is {word}{why} (morale {ev.morale:.0f})."
-            if ev.morale < 40 and obs.tick - s.last_address >= obs.rules.morale_address_cycles * obs.rules.ticks_per_cycle:
-                text += " A word from you might steady them."
-        u = self._say(o, text, "crew" if ev.rising else "caution")
-        if not ev.rising:
-            u.commands = ["address crew "]
-        return [u]
-
-    def _repair_reports(self, s: Ship, obs: Observation) -> list[Utterance]:
-        """Spock (or the engineer) says when systems or the hull need repairs and offers to direct the crews;
-        once directing them, says where he sends them. Spoken even with chatter off, like callouts."""
-        tpc = obs.rules.ticks_per_cycle
-        manager = self.crew.repair_officer(s)
-        if manager is not None:
-            prio = s.repair_priority
-            if prio != self._repair_prio and obs.tick - self._repair_said >= REPAIR_GAP * tpc / 2:
-                self._repair_prio = prio
-                self._repair_said = obs.tick
-                where = ("the hull" if prio == HULL else f"the {KIND_LABEL[prio].lower()}s" if isinstance(prio, Kind)
-                         else "every damaged system")
-                return [self._say(manager, f"Repair crews to {where}.")]
-            return []
-        self._repair_prio = s.repair_priority
-        reporter = self.find("spock") or self.crew.officer("engineering")
-        if reporter is None or not s.alive:
-            return []
-        damaged = {sub.sid: sub for sub in s.subsystems() if sub.damage >= REPAIR_REPORT_DAMAGE}
-        new = [damaged[sid] for sid in damaged if sid not in self._repair_seen]
-        self._repair_seen &= set(damaged)
-        hull = max(0.0, s.structure) / max(1.0, s.structure_max)
-        band = int(hull * 4)
-        worse_hull = band < self._repair_band
-        if not new and not worse_hull:
-            self._repair_band = band     # repaired back up: a later drop is news again
-            return []
-        if obs.tick - self._repair_said < REPAIR_GAP * tpc:
-            return []
-        self._repair_said = obs.tick
-        self._repair_seen |= {sub.sid for sub in new}
-        self._repair_band = band
-        parts = []
-        if new:
-            worst = sorted(new, key=lambda sub: -sub.damage)
-            names = ", ".join(f"{sub.label.lower()} {'destroyed' if sub.destroyed else f'{sub.damage}%'}"
-                              for sub in worst[:3])
-            more = f" and {len(worst) - 3} more" if len(worst) > 3 else ""
-            parts.append(f"{names}{more} need repairs")
-        if worse_hull or hull < 0.75:
-            parts.append(f"hull at {hull * 100:.0f}%")
-        text = "Captain, " + "; ".join(parts) + ". Shall I direct the repair crews?"
-        u = self._say(reporter, text)
-        u.commands = [f"repair auto {reporter.id}"]
-        return [u]
-
-    def _knockouts(self, s: Ship, obs: Observation) -> list[Utterance]:
-        """'Wraith: 3 of 6 shields out.' as each scan shows another of the asked-for systems down."""
-        from .objectives import group_state, label
-
-        out: list[Utterance] = []
-        for o in s.objectives:
-            if o.goal != "disable":
-                continue
-            officer = (self.find(o.officer) if o.officer else None) or self.crew.officer("science")
-            if officer is None:
-                continue
-            for t in o.targets:
-                st = group_state(obs.contact(t), o.group)
-                if st is None or st[0] == 0:
-                    continue
-                key = (o.group, t)
-                if st[1] > self._knocked.get(key, 0) and st[1] < st[0] and key not in self._disabled_seen:
-                    what = DISABLE_GROUPS.get(o.group, o.group)
-                    out.append(self._say(officer, f"{label(obs, t, self.crew.names)}: {st[1]} of {st[0]} {what} out."))
-                self._knocked[key] = st[1]
-        return out
-
-    def _objective_reports(self, events: Iterable[Event], s: Ship, obs: Observation) -> list[Utterance]:
-        out = self._objective_progress(s, obs)
-        for ev in events:
-            if not (isinstance(ev, ObjectiveEnded) and ev.ship_id == s.id and ev.outcome != "cancelled"):
-                continue
-            o = (self.find(ev.officer) if ev.officer else None) or self.crew.officer("science")
-            if o is None:
-                continue
-            systems = DISABLE_GROUPS.get(ev.group, ev.group)
-            names = ", ".join(self._names.get(t, f"#{t}") for t in ev.targets)
-            if ev.outcome == "done" and ev.goal == "capture":
-                out.append(self._line(o, "objective_captured", targets=names)
-                           or self._say(o, f"{names} is ours, Captain. The boarding parties hold her."))
-            elif ev.outcome == "done" and ev.goal == "destroy":
-                out.append(self._line(o, "objective_destroyed", targets=names)
-                           or self._say(o, f"{names}: destroyed, Captain."))
-            elif ev.outcome == "done":
-                out.append(self._line(o, "objective_done", targets=names, systems=systems)
-                           or self._say(o, f"Done, Captain: {names} have lost their {systems}."))
-                if ev.goal == "disable":
-                    out.append(self._say(o, "Holding fire on her now. Fire on her yourself, or say 'target her hull' "
-                                            "or 'destroy her', to finish her.", "dim"))
-            else:
-                out.append(self._line(o, "objective_failed", reason=ev.reason)
-                           or self._say(o, f"I can't finish that: {ev.reason}.", "caution"))
-            pl = self.crew.planners.get(o.id)
-            if pl is not None and pl.tally_for[:2] == (ev.goal, ev.group):
-                from .objectives import summary
-
-                out.append(self._say(o, "That took " + summary(pl, obs.tick, obs.rules.ticks_per_cycle), "dim"))
-            self._last_any = obs.tick
-        return out
-
-    def _objective_progress(self, s: Ship, obs: Observation) -> list[Utterance]:
-        """Report each enemy ship as its asked-for systems go down (judged, like the officer does, by scans)."""
-        from .objectives import disabled
-
-        out: list[Utterance] = []
-        for o in s.objectives:
-            if o.goal != "disable":
-                continue   # a ship taken out is reported as it goes
-            officer = (self.find(o.officer) if o.officer else None) or self.crew.officer("science")
-            if officer is None:
-                continue
-            gone = obs.gone()
-            for t in o.targets:
-                key = (o.group, t)
-                if key in self._disabled_seen or not disabled(obs.contact(t), o.group):
-                    continue
-                self._disabled_seen.add(key)
-                left = [x for x in o.targets if x not in gone and not disabled(obs.contact(x), o.group)]
-                if not left:
-                    continue   # the closing report says it
-                more = f"{len(left)} to go."
-                systems = DISABLE_GROUPS.get(o.group, o.group)
-                out.append(self._line(officer, "objective_progress", target=_name(obs, t), systems=systems, left=more)
-                           or self._say(officer, f"{_name(obs, t)}'s {systems} are down. {more}"))
-        return out
-
-    def outcome(self, won: bool | None) -> list[Utterance]:
-        o = self.crew.officer("helm") or next(iter(self.crew.officers.values()), None)
-        if o is None or won is None:
-            return []
-        u = self._line(o, "victory" if won else "defeat")
-        return [u] if u else []
-
-    def _maybe(self, out: list[Utterance], obs: Observation, station: str, event: str, p: float,
-               gap: float = 8.0, officer: OfficerProfile | None = None, **fill: object) -> None:
-        o = officer or self.crew.officer(station)
-        if o is None or event not in o.lines:
-            return
-        tpc = obs.rules.ticks_per_cycle
-        if obs.tick - self._last_line.get(o.id, -10 ** 9) < gap * tpc or obs.tick - self._last_any < 3 * tpc:
-            return
-        if self.rng.random() > p:
-            return
-        u = self._line(o, event, **fill)
-        if u is not None:
-            self._last_line[o.id] = self._last_any = obs.tick
-            if not self._voice(o, u.text, obs):
-                out.append(u)
-
     # ------------------------------------------------------------ bits
 
     def _say(self, o: OfficerProfile, text: str, tone: str = "crew") -> Utterance:
@@ -965,126 +603,7 @@ COMMAND_SYNTAX = """\
   stand down   (cease fire, every objective ends, every station and the bridge back to the captain)"""
 
 
-def is_question(low: str) -> bool:
-    """Asking for advice or information, rather than giving an order."""
-    low = low.strip()
-    return low.endswith("?") or bool(_ADVICE.search(low)) or bool(re.match(
-        r"(what|why|how|which|where|when|who|should|can|could|would|is|are|do|does|did)\b", low))
-
-
-def situation(ctx: HelpContext) -> str:
-    """A compact, factual summary of what the player's side knows (no hidden information)."""
-    s, obs = ctx.ship, ctx.obs
-    if s is None or obs is None:
-        return "No ship."
-    lines = [
-        f"Our ship: {s.name}, {s.cls.name}. Hull {_pct(s.structure, s.structure_max)}, crew {s.crew}/{s.cls.crew}, "
-        f"morale {s.morale:.0f}/100 ({morale_words(s.morale)}). "
-        f"Course {s.course:.0f}, warp {s.warp:.1f} (max attainable {s.max_attainable_warp:.1f}). "
-        f"Stations run by officers: {', '.join(sorted(s.delegated)) or 'none'}.",
-        STATION_REPORTS["engineering"](s, obs),
-        STATION_REPORTS["tactical"](s, obs),
-    ]
-    contacts = sorted((c for c in obs.contacts().values() if c.visible), key=lambda c: c.distance_to(s.x, s.y))
-    for c in contacts[:8]:
-        d = c.distance_to(s.x, s.y)
-        brg = math.degrees(math.atan2(c.x - s.x, c.y - s.y)) % 360
-        what = c.cls.name if c.cls else "unidentified"
-        scan = ""
-        if c.scan is not None:
-            scan = f", scanned: hull {c.scan.structure_frac * 100:.0f}%, shields " + "/".join(
-                f"{max(0, x):.0f}" for x in c.scan.shields)
-        lines.append(f"Contact {_name(obs, c.id)} ({what}): range {d:,.0f}, bearing {brg:.0f}, "
-                     f"course {c.course:.0f}, warp {math.hypot(c.vx, c.vy) / obs.rules.units_per_warp:.1f}{scan}.")
-    allies = [a for a in obs.own_ships() if a.id != s.id and a.alive]
-    if allies:
-        lines.append("Allies: " + ", ".join(f"{a.name} ({a.cls.abbrev}, hull {_pct(a.structure, a.structure_max)})"
-                                            for a in allies[:6]) + ".")
-    threats = [o for o in obs.threats() if math.hypot(o.x - s.x, o.y - s.y) < 10000]
-    if threats:
-        lines.append(f"Incoming enemy ordnance: {len(threats)}.")
-    advice = tips(ctx)[:3]
-    if advice:
-        lines.append("Tactical computer notes: " + " ".join(f"{t.title}: {_plain(t.text)}" for t in advice))
-    return "\n".join(lines)
-
-
 # ------------------------------------------------------------------ station reports (offline answers)
 
-def _helm_report(s: Ship, obs: Observation) -> str:
-    c = obs.contact(s.target) if s.target is not None else None
-    out = f"Course {s.desired_course:.0f}, warp {s.warp:.1f} of {s.max_attainable_warp:.1f} attainable."
-    if c is not None:
-        d = c.distance_to(s.x, s.y)
-        brg = math.degrees(math.atan2(c.x - s.x, c.y - s.y)) % 360
-        out += f" {_name(obs, c.id)} bears {brg:.0f} at {d:,.0f}."
-    return out
 
-
-def _tactical_report(s: Ship, obs: Observation) -> str:
-    parts = []
-    if s.banks:
-        full = s.cls.banks_charge
-        ready = sum(1 for b in s.banks if b.intact and b.charge >= full - 1e-6)
-        parts.append(f"{ready}/{len(s.banks)} phaser banks charged")
-    if s.tubes:
-        loaded = sum(1 for t in s.tubes if t.loaded is not None)
-        parts.append(f"{loaded}/{len(s.tubes)} tubes loaded, {s.torps_remaining} torpedoes left")
-    if s.launchers:
-        parts.append(f"{sum(1 for x in s.launchers if x.loaded)}/{len(s.launchers)} probe launchers ready")
-    parts.append(f"point defense {s.pd_doctrine.value}")
-    tgt = f"Target: {_name(obs, s.target)}." if s.target is not None else "No target selected."
-    return f"{tgt} " + ", ".join(parts) + "."
-
-
-def _engineering_report(s: Ship, obs: Observation) -> str:
-    sh = [x for x in s.shields if not x.destroyed]
-    weakest = min(sh, key=lambda x: x.effective, default=None)
-    temp = max((d.temp for d in s.drives if not d.destroyed), default=0.0)
-    cap = s.battery_capacity()
-    batt = f"batteries {_pct(s.battery_charge(), cap)}" if cap > 0 else "no batteries"
-    damaged = sum(1 for x in s.subsystems() if x.damage > 0)
-    out = f"Hull {_pct(s.structure, s.structure_max)}, {batt}, drive temperature {temp:.0f} of {obs.rules.temp_limit:.0f}."
-    if weakest is not None:
-        out += f" Weakest shield is {weakest.index + 1} at {weakest.effective:.0f}%."
-    if damaged:
-        out += f" {damaged} systems damaged; repairs on {repair_words(s.repair_priority, 'everything')}."
-    return out
-
-
-def _science_report(s: Ship, obs: Observation) -> str:
-    cs = list(obs.contacts().values())
-    seen = [c for c in cs if c.visible]
-    unscanned = [c for c in seen if c.scan is None]
-    out = f"{len(seen)} contacts on sensors, {len(cs) - len(seen)} lost."
-    if unscanned:
-        out += " Not yet scanned: " + ", ".join(_name(obs, c.id) for c in unscanned[:4]) + "."
-    return out
-
-
-STATION_REPORTS: dict[str, Callable[[Ship, Observation], str]] = {
-    "helm": _helm_report, "tactical": _tactical_report, "engineering": _engineering_report, "science": _science_report,
-}
-
-
-def _name(obs: Observation, sid: int | None) -> str:
-    if sid is None:
-        return "nothing"
-    own = obs.own(sid)
-    if own is not None:
-        return own.name
-    c = obs.contact(sid)
-    if c is None:
-        return f"#{sid}"
-    return c.label.split(" (")[0] if c.identified else f"#{sid}"
-
-
-def _pct(v: float, of: float) -> str:
-    return f"{100 * max(0.0, v) / max(1e-9, of):.0f}%"
-
-
-def _plain(md: str) -> str:
-    return re.sub(r"\*\*|`", "", md).strip()
-
-
-__all__ = ["Bridge", "COMMAND_SYNTAX", "STATION_REPORTS", "Utterance", "situation"]
+__all__ = ["Bridge", "COMMAND_SYNTAX"]

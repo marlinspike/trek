@@ -25,10 +25,11 @@ response styles to their model as written.
 from __future__ import annotations
 
 import random
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+import tomllib
 
 from ..content.loader import DATA_DIR, _read
 

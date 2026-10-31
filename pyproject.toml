@@ -39,8 +39,8 @@ warn_unused_ignores = false
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# the battle screen's parts are mixins typed by the scene they are mixed into (`self: BattleScene`)
-module = "begin.ui.battle.*"
+# mixins typed by the class they are mixed into (`self: BattleScene`, `self: Bridge`)
+module = ["begin.ui.battle.*", "begin.crew.chatter"]
 disable_error_code = ["misc"]
 
 [tool.ruff]

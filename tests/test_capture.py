@@ -162,7 +162,7 @@ def test_a_system_hit_by_aimed_fire_is_slow_to_repair(content) -> None:  # type:
 
 
 def test_capture_order_parses_from_the_console_and_from_an_officer(content) -> None:  # type: ignore[no-untyped-def]
-    from begin.crew.conversation import _CAPTURE
+    from begin.crew.intents import CAPTURE
     from begin.sim.commands import SetObjective
 
     w, fed, kl = _pair(content)
@@ -172,8 +172,8 @@ def test_capture_order_parses_from_the_console_and_from_an_officer(content) -> N
     assert (cmd.goal, cmd.group, cmd.targets) == ("capture", "crew", (kl.id,))
     assert w.execute(cmd) is None and fed.objectives[0].describe({kl.id: "Votek"}) == "capture Votek"
     for said in ("worf, capture the votek", "seize her", "take her intact", "take the votek as a prize"):
-        assert _CAPTURE.search(said), said
-    assert not _CAPTURE.search("take out the votek")
+        assert CAPTURE.search(said), said
+    assert not CAPTURE.search("take out the votek")
 
 
 def test_an_officer_boards_a_helpless_ship_and_takes_her(content) -> None:  # type: ignore[no-untyped-def]
