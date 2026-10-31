@@ -6,7 +6,7 @@ A real-time 2D tactical starship simulation in Python and pygame-ce, and my own 
 
 You command a starship from a top-down tactical map and a Begin-style command console. The core is Begin's: six shield sectors, phaser banks that hit harder up close, torpedoes with arming and proximity fuses, heat, power, probes and cloaks. Around it I've built a lot that Begin never had:
 
-- a bridge crew who can fight the ship for you and talk back;
+- a bridge crew who can fight the ship for you, take orders in plain words, and talk back;
 - named battle plans and a coach that reads the fight;
 - aimed fire at a ship's systems, and boarding parties that take and keep enemy ships;
 - enemy captains you can hail, who are cowed or enraged by what you do to their allies, and who can be talked into surrendering or leaving;
@@ -94,6 +94,10 @@ I brought my own favourite Star Trek characters onto the bridge. Begin never had
 Spock (helm), Worf (tactical), Geordi La Forge (engineering) and Seven of Nine (science) can run their stations for you (`delegate tactical`, `delegate all`, or the toggles in the Crew tab), or take the whole bridge (`seven, take the bridge`; "I have the bridge" takes it back). Your own orders always override them for a few seconds, and they never retreat, surrender or self-destruct on their own. Talk to them by name, as in `spock, what do you recommend?` or `worf, fire all torpedoes`. Seven also takes standing objectives such as `seven, disable their shields`, and she and Spock can design a tachyon detector to find cloaked ships.
 
 ![Seven of Nine has the conn](docs/screenshots/bridge-crew.png)
+
+Taking a station back is as quick as saying so. "I have nav", "I have weapons" (or fire, phasers, torps), "I have shields" or "I have sensors" takes that one station back from whoever has it and stands that officer down, and "I have the conn" takes every station. Taking the helm or the weapons back also ends any attack an officer is running. `stand down` (or `everyone stop`, `knock it off`, `belay all`) takes every station and the bridge back at once, holds fire and stops a running named order; `spock, stand down` or just `spock, stop` does it for one officer. Stops always stop: punctuation doesn't matter (`Cease fire!`), plain words work (`weapons cold`, `don't shoot`, `break off`, `never mind`), a stop can share a line with another order (`cease fire and take evasive action`), and an officer's answer still on its way from the language model is thrown away so nobody opens fire again after you said stop. One line can also speak to two officers at once: `worf, target their shields and spock, take the helm`.
+
+Orders to cripple a ship rather than destroy her read the way you'd say them. "Target their shields", "take out their engines", "hit their shields" and "disable their shields" all mean the same thing: fire is focused on that system until it is out, and then it stops there. The ship is **spared**, so nobody on the bridge and not the fire computer shoots at her again, and your aim goes back to the hull, which is always the default. Name two systems ("target their shields and engines") and both are done in turn. "Target all their torps" does it to every enemy, one after another. Typos and possessives are fine (`target thier sheilds`, `target the other ship's shields`, or `target the orions' shields` for every Orion), and an allied captain told to disable a ship holds back from the kill too: Federation captains always, others when they're loyal and disciplined enough. To finish a spared ship, fire on her yourself or say `target their hull`, `destroy her` or `open fire`.
 
 Each officer has **traits** and a **response style** that shape how they talk; change them in `config/officers.toml` (copy `config/officers.example.toml`). Officers answer from the battle state on their own, and a language model can give them their own words: see [Language models (optional)](#language-models-optional).
 
@@ -213,6 +217,7 @@ Everything you set lives in the project's [`config/`](config/README.md) folder, 
 | `sounds/` | Your own WAV files, replacing the game's sounds. |
 | `begin2.key` | Begin 2.0 key macros. |
 | `help/` | Manual pages of your own. |
+| `logs/` | The language model's debug logs, only when you turn them on: every prompt and reply, and token counts per game and in total. |
 
 API keys never go there: they come only from environment variables.
 
@@ -228,7 +233,7 @@ src/begin/
   help/      the manual library (Markdown topics) and the live coach
   crew/      bridge officers: delegation, officer AI, conversation, rapport, traits, the end-of-battle review
   tour/      tours of duty: the tours, the squadron between battles, reinforcements and the captain's log
-  llm/       optional LLM providers (Anthropic, OpenAI, OpenRouter, Ollama) on a background thread
+  llm/       optional LLM providers (Anthropic, OpenAI, OpenRouter, Ollama) on a background thread, and their debug logs
   assets/    fonts and the manual's Markdown pages
   ui/        pygame presentation: tactical map, HUD panels, menus, effects and synthesised sound
   battle.py  builds a World with AI attached from a battle description
