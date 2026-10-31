@@ -804,6 +804,9 @@ class Bridge:
             elif ev.outcome == "done":
                 out.append(self._line(o, "objective_done", targets=names, systems=systems)
                            or self._say(o, f"Done, Captain: {names} have lost their {systems}."))
+                if ev.goal == "disable":
+                    out.append(self._say(o, "Holding fire on her now. Fire on her yourself, or say 'target her hull' "
+                                            "or 'destroy her', to finish her.", "dim"))
             else:
                 out.append(self._line(o, "objective_failed", reason=ev.reason)
                            or self._say(o, f"I can't finish that: {ev.reason}.", "caution"))

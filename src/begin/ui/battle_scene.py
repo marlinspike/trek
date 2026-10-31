@@ -1034,7 +1034,7 @@ class BattleScene:
     def _officer_run(self, line: str, officer: object) -> str | None:
         """Carry out a console line an officer was told (or decided) to run; only their own stations."""
         from ..crew.characters import OfficerProfile
-        from ..sim.commands import DelegateStation, ManageRepairs
+        from ..sim.commands import DelegateStation, EndObjective, ManageRepairs, SetObjective
 
         assert isinstance(officer, OfficerProfile)
         if self.player_id is None:
@@ -1051,8 +1051,9 @@ class BattleScene:
         if self.player is not None and self.player.conn == officer.id:
             allowed |= set(STATION_COMMANDS)   # in command of the bridge
         for cmd in res.commands:
-            if isinstance(cmd, (ManageRepairs, CeaseFire)) or (isinstance(cmd, DelegateStation) and not cmd.on):
-                continue       # any officer can be asked to direct repairs, told to cease fire, or hand a station back
+            if isinstance(cmd, (ManageRepairs, CeaseFire, SetObjective, EndObjective)) or (
+                    isinstance(cmd, DelegateStation) and not cmd.on):
+                continue       # any officer can direct repairs, cease fire, hand a station back or take an objective
             st = cmd.station if isinstance(cmd, DelegateStation) else station_of(cmd)
             if st is None or st not in allowed:
                 return "That is not my station, Captain."

@@ -59,6 +59,7 @@ DONE_SCAN_AGE = 4.0      # the scan that confirms success must be this fresh
 # capturing [E]
 BOARD_AT_CREW = 60        # board once her crew is down to this many (or our parties outnumber her 2 to 1)
 CAPTURE_TORPEDO_HULL = 0.5   # torpedoes only while more than this share of her hull is left
+DISABLE_TORPEDO_HULL = 0.5   # and the same when disabling: below it, aimed phasers only [E]
 GAP_STANDOFF = 0.55       # × phaser range: where the helm holds us, off her open shield
 BEAM_SPACING = 1.0        # cycles between boarding parties
 
@@ -208,7 +209,10 @@ def plan_disable(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: 
             out.append(p._cmd(FirePhasers, ship, banks=ready, target=primary, subsystem=aim, spread=10.0))
             p.count("phasers")
             p.note(obs, "phasers", f"Phasers on {label(obs, primary)}'s {aim or 'hull'}")
-    # torpedoes, burst where point defense won't expect them
+    # torpedoes, burst where point defense won't expect them; disabling, they are held back once her hull is half
+    # gone, because a torpedo blast tears the hull as well as the systems and she is to be crippled, not destroyed
+    if not destroy and c.scan is not None and c.scan.structure_frac <= DISABLE_TORPEDO_HULL:
+        torpedoes = False
     shot = _torpedo_shot(p, obs, ship, o, primary, [t for t in visible if t != primary]) if torpedoes else None
     if shot is not None:
         out.append(shot)

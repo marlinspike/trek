@@ -175,6 +175,7 @@ AIM_WORDS: dict[str, tuple[str, ...]] = {
     "sensors": ("sensors", "sensor", "computer", "scanners"),
     "cloak": ("cloak", "cloaking"),
 }
+AIM_FIRST = {"hull"} | {sp for spellings in AIM_WORDS.values() for sp in spellings}   # words that start an aim
 AIM_HELP = "hull, shields, power (warp core), life support (crew), weapons, phasers, torpedoes, propulsion, sensors, cloak"
 
 
@@ -583,15 +584,22 @@ class Parser:
         if tok.take_word("off", "none", "clear"):
             res.commands.append(self._cmd(SelectTarget, target=None))
             return
-        target = self.resolve_ship(tok)
+        tok.skip_filler()
+        if tok.peek() in ("their", "her", "its", "his", "the") and self.ship.target is not None:
+            tok.next()                          # "target their hull", "target the shields": the current target
+        if tok.peek() in AIM_FIRST and self.ship.target is not None:
+            target = self.ship.target
+        else:
+            target = self.resolve_ship(tok)
         sub = None
         tok.skip_filler()
+        hull = False
         if not tok.done():
             g = _take_aim(tok)
             if g is None:
                 raise ParseError(f"I don't know the system '{tok.peek()}'. Aim at: {AIM_HELP}.")
-            sub = g or None
-        res.commands.append(self._cmd(SelectTarget, target=target, subsystem=sub))
+            sub, hull = g or None, g == ""
+        res.commands.append(self._cmd(SelectTarget, target=target, subsystem=sub, hull=hull))
 
     def _v_aim(self, tok: _Tokens, res: ParseResult) -> None:
         """`aim [at] <system>`: precision fire at a system of the current target ('aim warp core', 'aim life support')."""
@@ -601,7 +609,7 @@ class Parser:
                              f"I don't know the system '{tok.peek()}'. Aim at: {AIM_HELP}.")
         if self.ship.target is None:
             raise ParseError("No target to aim at: 'target <ship>' first.")
-        res.commands.append(self._cmd(SelectTarget, target=self.ship.target, subsystem=g or None))
+        res.commands.append(self._cmd(SelectTarget, target=self.ship.target, subsystem=g or None, hull=g == ""))
 
     def _weapon(self, tok: _Tokens, default: str | None = None) -> tuple[str, bool]:
         """Weapon noun, with Begin's optional leading 'all' ('all torpedo tubes', 'all banks', 'tor').

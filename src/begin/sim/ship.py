@@ -380,6 +380,7 @@ class Ship:
     delegated: set[str] = field(default_factory=set)  # bridge stations run by officers (crew/stations.py)
     pending_volley: tuple[int, int | None, str | None, int] | None = None  # bait follow-up: (tick, target, subsystem, issuer) [E]
     hold_fire: bool = False            # the captain said cease fire: no officer or computer fires until they fire or say open fire [E]
+    spared: set[int] = field(default_factory=set)   # ships disabled on the captain's order: officers and the computer hold fire on them [E]
     deflector_ready: bool = False      # the dish is set up for tachyon pulses [E]
     deflector_cooldown: float = 0.0    # cycles until the next pulse
     objectives: list = field(default_factory=list)  # sim.objectives.Objective: standing orders to officers [E]
