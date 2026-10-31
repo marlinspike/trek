@@ -1,24 +1,25 @@
-# Curated battles [E]. The first ship of the player's fleet is the player's ship;
+# Curated battles [E]. The first ship of the player's fleet is the player's ship (the Enterprise, always a
+# Dreadnought);
 # every other ship gets an AI captain rolled from its faction. `center` places a
 # fleet (world units); ships are spread line abreast facing the battle centre.
 
 [[preset]]
 id = "border-incident"
 title = "Border Incident"
-description = "A lone heavy cruiser meets a Klingon battle cruiser probing the Neutral Zone. The classic Begin duel."
+description = "The Enterprise meets a Klingon battle cruiser probing the Neutral Zone. The classic Begin duel."
 seed = 1650
 fleets = [
-  {side = 0, player = true, center = [0, -11000], ships = ["federation.hc"]},
+  {side = 0, player = true, center = [0, -11000], ships = ["federation.dn"]},
   {side = 1, center = [0, 11000], ships = ["klingon.bc"]},
 ]
 
 [[preset]]
 id = "romulan-ambush"
 title = "Romulan Ambush"
-description = "A cruiser and destroyer escort answer a distress call. Two Birds of Prey wait under cloak. Watch for plasma."
+description = "The Enterprise and a destroyer escort answer a distress call. Two Birds of Prey wait under cloak. Watch for plasma."
 seed = 3301
 fleets = [
-  {side = 0, player = true, center = [0, -9000], ships = ["federation.hc", "federation.de"]},
+  {side = 0, player = true, center = [0, -9000], ships = ["federation.dn", "federation.de"]},
   {side = 1, center = [0, 9000], ships = ["romulan.bp", "romulan.bp"]},
 ]
 
@@ -28,7 +29,7 @@ title = "Pirate Hunt"
 description = "Run down an Orion raiding party before it scatters. Orions are fast, brittle and unpredictable."
 seed = 7710
 fleets = [
-  {side = 0, player = true, center = [-6000, -9000], ships = ["federation.de", "federation.in"]},
+  {side = 0, player = true, center = [-6000, -9000], ships = ["federation.dn", "federation.in"]},
   {side = 1, center = [5000, 9000], ships = ["orion.an", "orion.ra"]},
 ]
 
@@ -58,7 +59,7 @@ title = "Fleet Action"
 description = "Seven ships a side. Your wingmen fight on their own; use 'tell <ship> attack <target>' to direct them."
 seed = 9001
 fleets = [
-  {side = 0, player = true, center = [0, -16000], ships = ["federation.hc", "federation.dn", "federation.hc", "federation.de", "federation.de", "federation.in", "federation.in"]},
+  {side = 0, player = true, center = [0, -16000], ships = ["federation.dn", "federation.hc", "federation.hc", "federation.de", "federation.de", "federation.in", "federation.in"]},
   {side = 1, center = [0, 16000], ships = ["klingon.dr", "klingon.bc", "klingon.bc", "klingon.fr", "klingon.fr", "klingon.es", "klingon.es"]},
 ]
 
@@ -68,7 +69,7 @@ title = "Three-Way Standoff"
 description = "Federation, Klingon and Romulan ships meet over a disputed system. Everyone is hostile to everyone."
 seed = 3333
 fleets = [
-  {side = 0, player = true, ships = ["federation.hc"]},
+  {side = 0, player = true, ships = ["federation.dn"]},
   {side = 1, ships = ["klingon.bc"]},
   {side = 2, ships = ["romulan.bp"]},
 ]
@@ -79,7 +80,7 @@ title = "Starbase Defense"
 description = "Hold the line at the starbase against three Klingon waves: frigates, then a battle cruiser, then a dreadnought with her escort. Between waves, damaged ships can dock to repair (2.0 rules)."
 seed = 5150
 fleets = [
-  {side = 0, player = true, center = [0, -4000], ships = ["federation.hc", "federation.sb", "federation.de"]},
+  {side = 0, player = true, center = [0, -4000], ships = ["federation.dn", "federation.sb", "federation.de"]},
   {side = 1, center = [0, 17000], ships = ["klingon.fr", "klingon.fr", "klingon.es"]},
 ]
 # later waves drop out of warp `after_clear` cycles after the last one is beaten, or at cycle `at`, whichever is first

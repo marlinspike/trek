@@ -96,7 +96,7 @@ def test_damage_crew_and_torpedoes_carry_to_the_next_stop(content) -> None:  # t
     entry = run.finish(b)
     rec = run.state.flagship
     assert rec.hull == pytest.approx(0.4, abs=0.01)
-    assert rec.crew == content.classes["federation.hc"].crew - 100
+    assert rec.crew == content.classes[rec.class_id].crew - 100
     assert rec.torps == 3 and rec.damage[sub.sid] == 80
     assert entry.outcome == "victory" and run.state.stop == 1
     # the next fight starts after the transit: repairs on the way, a supply ship, and her captain's damage as it was

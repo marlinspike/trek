@@ -6,7 +6,7 @@ in the same format (a tour with the same id as a shipped one replaces it):
     [[tour]]
     id = "border-patrol"
     title = "Border Patrol"
-    flagship = "federation.hc"
+    flagship = "federation.dn"
     budget = 300                       # fleet points for escorts (a class costs its mass)
     reinforcement_calls = 2
     reinforcements = ["federation.hc", "federation.de"]

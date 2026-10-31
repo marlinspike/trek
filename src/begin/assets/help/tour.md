@@ -12,7 +12,7 @@ Your squadron carries everything that matters from one fight to the next: hull a
 
 ## The squadron
 
-Before the tour you choose the escorts that sail with the flagship. Each class costs its mass from the tour's fleet budget, so one heavy cruiser costs about as much as two destroyers and an interceptor.
+Before the tour you choose the escorts that sail with the flagship. Each class costs its mass from the tour's fleet budget, so one heavy cruiser costs about as much as two destroyers and an interceptor. The flagship herself, the Enterprise, is a Dreadnought and costs nothing.
 
 ## The Ready Room
 
