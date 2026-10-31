@@ -163,6 +163,15 @@ def test_the_console_reads_a_hail(content) -> None:  # type: ignore[no-untyped-d
     assert res.actions == [("hail", (None, "stand down"))]
     assert parse("open fire", ParseContext(me.id, w.observe(0))).error is None
     assert parse("pr", ParseContext(me.id, w.observe(0))).error != "Unknown command 'pr'. Type 'help' for the list."
+    # a word that reads as a ship that isn't there is not sent as speech
+    assert "No ship named 'gargoyle'" in (parse("hail gargoyle", ParseContext(me.id, w.observe(0))).error or "")
+    assert "hail them" in (parse("hail thm", ParseContext(me.id, w.observe(0))).error or "")
+    near = name[:-1] + ("x" if name[-1] != "x" else "y")
+    assert "Did you mean" in (parse(f"hail {near} surrender", ParseContext(me.id, w.observe(0))).error or "")
+    res = parse("hail surrender", ParseContext(me.id, w.observe(0)))
+    assert res.actions == [("hail", (kl.id, "surrender"))]
+    res = parse("hail we come in peace", ParseContext(me.id, w.observe(0)))
+    assert res.error is None and res.actions[0][1] == (kl.id, "we come in peace")
 
 
 def test_offline_reading_of_the_captains_words() -> None:
@@ -173,6 +182,8 @@ def test_offline_reading_of_the_captains_words() -> None:
     j = classify("Surrender. A Starfleet squadron is on its way.")
     assert j.bluff
     assert classify("You cowards!").intent == "taunt"
+    j = classify("Cease fire or we will destroy you")
+    assert j.intent == "withdraw" and j.threat
     assert classify("Who are you?").intent == "talk"
 
 

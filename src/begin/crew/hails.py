@@ -58,7 +58,8 @@ _SURRENDER = re.compile(r"\b(surrender|stand down|lower (your |all )?(the )?shie
                         r"strike (your )?colou?rs|prepare to be boarded|yield|give up|power down (your )?weapons|"
                         r"lay down (your )?arms|heave to|capitulate)\b")
 _WITHDRAW = re.compile(r"\b(withdraw|leave|retreat|go home|turn (back|around)|back off|break off|depart|get out|"
-                       r"safe passage|let you go|clear off|disengage|pull back|go away|run along|leave this)\b")
+                       r"safe passage|let you go|clear off|disengage|pull back|go away|run along|leave this|"
+                       r"cease (your )?fire|cease firing|hold (your )?fire|stop (firing|shooting)|stand off)\b")
 _THREAT = re.compile(r"\b(or (be|you will|you'?ll|we will|we'?ll|else|die)|destroy (you|your)|wipe|annihilate|"
                      r"last chance|final warning|share (their|the same|the) fate|the fate of|end you|no mercy|blow you|"
                      r"obliterate|you will die|you'?re next|like the)\b")

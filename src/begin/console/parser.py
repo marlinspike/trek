@@ -19,6 +19,7 @@ commands for the caller to submit, UI actions, and text displays.
 
 from __future__ import annotations
 
+import difflib
 import re
 from dataclasses import dataclass, field
 from typing import Mapping, Sequence
@@ -33,6 +34,11 @@ from ..sim.commands import (
 from ..sim.observation import Observation
 from ..sim.ship import HULL, BankRole, FireMode, Kind, PDDoctrine, RepairTarget
 from . import reports
+
+_HAIL_ALL = ("all", "everyone", "everybody", "enemies", "them", "fleet")
+# a hail of one word that is still something a captain would say, not a misheard ship's name
+_HAIL_SPEECH = frozenset("""surrender yield withdraw retreat leave greetings hello hi hail respond answer identify
+    stand cease halt stop""".split())
 
 
 class ParseError(Exception):
@@ -1363,7 +1369,7 @@ class Parser:
             sub.next()
         sid: int | None = None
         everyone = False
-        if sub.peek() in ("all", "everyone", "everybody", "enemies", "them", "fleet"):
+        if sub.peek() in _HAIL_ALL:
             sub.next()
             everyone = True
         else:
@@ -1373,12 +1379,32 @@ class Parser:
                 sid = None
             if sid is not None and self.obs.own(sid) is not None and self.obs.contact(sid) is None:
                 raise ParseError(f"{self._ship_name(sid)} is one of ours: use 'tell' to give her orders.")
+            if sid is None:
+                self._hail_misnamed(sub)
         words = " ".join(_after_tokens(rest, sub.i).split()).strip(" :,-\"'")
         if sid is None and not everyone:
             if self.ship.target is None:
                 raise ParseError("Hail whom? Name a ship ('hail gr'oth ...'), 'hail all', or target one first.")
             sid = self.ship.target
         res.actions.append(("hail", (None if everyone else sid, words)))
+
+    def _hail_misnamed(self, sub: _Tokens) -> None:
+        """'hail gargoyle' or 'hail thm': a word that reads as a ship that isn't there, not as the captain's words.
+        Caught when it is close to a ship's name or to 'them', or is the only word and not one a captain would say."""
+        sub.skip_filler()
+        first = sub.peek()
+        if first is None or first.startswith("#"):
+            return
+        names = sorted({n for n, _ in self._ship_table()} | {n.split()[0] for n, _ in self._ship_table()})
+        near = difflib.get_close_matches(first, names + list(_HAIL_ALL), n=1, cutoff=0.75)
+        only = sub.peek(1) is None and first not in _HAIL_SPEECH
+        if near or only:
+            hint = ""
+            if near and near[0] in _HAIL_ALL:
+                hint = " Did you mean 'hail them'?"
+            elif near:
+                hint = f" Did you mean the {near[0].title()}?"
+            raise ParseError(f"No ship named '{first}' on sensors.{hint}")
 
     def _v_prisoners(self, tok: _Tokens, res: ParseResult) -> None:
         """`prisoners` [E]: the crews of surrendered ships we hold."""
