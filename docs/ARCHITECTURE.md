@@ -90,6 +90,8 @@ The providers (`llm/providers/`) share one `complete(system, messages) -> str` m
 
 `MenuScene` draws the starfield and the flybys from `ui/showpiece.py`, which plans each pass as a straight line across the screen at one heading, fires phasers and torpedoes along it and draws them with additive glow. The ship sprites it uses are PNGs in `assets/ships/`, baked by `tools/render_ship.py` (which needs numpy; the game does not).
 
+Every other class has baked art too, in `assets/ships/fleet/`, made by `tools/render_fleet.py` from the class's hull in `hulls.toml`: each shape becomes part of a height field (domes, saucers, bevelled slabs, nacelle capsules, raised details), lit and plated in its faction's colours, one sprite per 30° of heading on a canvas centred on the hull origin. `ui/fleet_art.py` loads them (`fleet_image`), and the tactical map (`TacticalView._sprite`, own ships and identified contacts) and the tour screens (`tour_art.ship_art`) draw a class with its sprite when there is one and fall back to the outline when there isn't. Change a hull and run `PYTHONPATH=src python tools/render_fleet.py <class-id>` to rebake it.
+
 Panels subclass `Panel` and draw themselves into a rectangle, using small immediate-mode widgets from `ui/widgets.py`. Colours and fonts come from `ui/theme.py`.
 
 `console/parser.py` turns Begin's command language into commands. It handles unique prefixes, filler words, ship and subsystem names, ally orders and multi-command lines. Status commands return text instead.

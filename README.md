@@ -9,10 +9,22 @@ You command a starship from a top-down tactical map and a Begin-style command co
 - a bridge crew who can fight the ship for you and talk back;
 - named battle plans and a coach that reads the fight;
 - aimed fire at a ship's systems, and boarding parties that take and keep enemy ships;
+- a campaign: tours of duty that link battle after battle, with a squadron that carries its scars;
 - crew morale and hull repairs;
+- every ship class drawn as a lit, detailed model;
 - synthesised sound and effects, and a HUD that keeps to the essentials until you ask for more.
 
 ![Close quarters: the Enterprise's phasers on a Klingon battle cruiser, its shield taking the hit](docs/screenshots/close-quarters.png)
+
+## A campaign Begin never had
+
+Begin was a game of single battles: you fought, you won or lost, and the next fight started from nothing. The biggest thing I've added is the **tour of duty**, and it changes what the game is. You take a squadron of your own choosing out on a patrol of five or six stops, and nothing resets between them. The destroyer that lost half her hull at Tau Ceti limps into Kessik with whatever her crew could patch on the way. The torpedoes you spent on the raiders are not there for the dreadnought. A Klingon frigate your boarding party took is now flying in your line, and a ship you lose is gone for the rest of the tour. If the Enterprise falls, the tour is over.
+
+Between stops you sit in the Ready Room over the patrol chart. The officer who knows the threat best briefs you, including what the enemy has learned about the way you fight: lean on aimed fire and boarding and their captains grow wary; run your magazines dry and they close in. Some stops ask you to decide, such as whether to put in for a refit while the enemy uses the same time. You can call Starfleet for reinforcements, and they arrive when the distance allows, not when you need them. Starbase stops come in waves, with a lull to dock and repair before the next one drops out of warp.
+
+And the tour writes itself down. After each stop your bridge officers report on their stations, each captain in the squadron reports on their own ship, and your own entry is drafted for you to keep or rewrite. With a language model configured, the officers write in their own voices. The whole log is kept as Markdown you can edit, so a tour ends as a story of the patrol you actually flew. More on how it plays is under [Tours of duty](#tours-of-duty) below.
+
+![The Ready Room: Spock's briefing, the squadron as it will arrive, and the patrol chart behind](docs/screenshots/tour-ready.png)
 
 ## Run it
 
@@ -143,11 +155,17 @@ The assessment shows the score, your ship's record, every ship's damage and hits
 
 After each stop your officers write up their stations, each captain reports on their ship, and your own entry is drafted for you to rewrite. With a language model configured, the officers rewrite theirs in their own voices. The log is kept as Markdown in `config/tours/`, and you can edit your entries there too. Three tours ship with the game, and your own go in `config/tours/*.toml` (see [docs/EXTENDING.md](docs/EXTENDING.md#a-tour-of-duty)).
 
-![The Ready Room: Spock's briefing, the squadron as it will arrive, and the patrol chart behind](docs/screenshots/tour-ready.png)
-
 ![Assembling the squadron within the fleet budget](docs/screenshots/tour-squadron.png)
 
 ![The captain's log after a stop, written by the bridge officers and the squadron's captains](docs/screenshots/tour-log.png)
+
+### The ships
+
+Every class in the game, Federation, Klingon, Romulan and Orion, is drawn as a lit model: plated hulls with panel lines, lit windows, glowing nacelles and impulse engines, and the light always falling from the same side as she turns. You see them in the squadron screens and on the tactical map once you zoom in close; zoomed out, they go back to clean outlines. Each picture is built from the same hull layout the game uses for weapon arcs and system damage, so what you see is where the phasers fire from and where the hits land.
+
+![Every ship class in the game](docs/screenshots/fleet.png)
+
+![Zoomed in on the tactical map: the Enterprise, two escorts and a pair of Orion raiders](docs/screenshots/fleet-close.png)
 
 ### The manual and coach
 
@@ -188,7 +206,7 @@ src/begin/
 config/      your settings, officers, orders, sounds, key macros and manual pages (gitignored apart from README and examples)
 docs/        REFERENCE (mechanics digest), PLAN, ARCHITECTURE, EXTENDING, DEVIATIONS
 tests/       headless tests
-tools/       content importer from the reference data
+tools/       content importer and the ship-art bakers (render_ship.py, render_klingon.py, render_fleet.py)
 ```
 
 Start with [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together, and [docs/EXTENDING.md](docs/EXTENDING.md) to add ships, weapons, AI policies or HUD panels. [docs/DEVIATIONS.md](docs/DEVIATIONS.md) lists where the remake departs from Begin and why, and [LICENSING.md](LICENSING.md) covers the code, the original game and the fonts.

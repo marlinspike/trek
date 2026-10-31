@@ -17,7 +17,7 @@ import pygame
 
 from ..content.schema import Faction
 from ..core.angles import norm180
-from ..content.schema import HullDef
+from ..content.schema import HullDef, ShipClass
 from ..sim.events import Detonation, Event, HullHit, ShieldHit, ShipArrived, ShipStatusChanged
 from ..sim.factory import SHIELD_FACINGS
 from ..sim.observation import ContactView, Observation, OrdnanceView
@@ -26,6 +26,7 @@ from . import theme
 from .camera import Camera
 from .blast import SHIELD as SHIELD_GLOW, Blast, HullHit as HitFlash, ShieldFlare
 from .effects import Effects
+from .fleet_art import art_px, fleet_image, has_art
 from .showpiece import SPRITE_CENTRE_Y, SPRITE_PX, ship_image, ship_lights
 from .hulls import MIN_HULL_PX, draw_hull, hull_pixel_scale
 from .starfield import Starfield
@@ -34,8 +35,8 @@ SHIELD_FLASH = 0.7        # seconds a shield hit shimmers
 TRAIL_POINT = 0.25        # cycles between the points of an engine trail
 TRAIL_BANDS = 4           # strokes per wake, each fainter toward the tail
 SMOULDER_BELOW = 0.5      # hull fraction below which a ship trails sparks
-SPRITE_MIN_K = 0.9         # pixels per hull unit at which a ship with showpiece art is drawn with it
-SHOWPIECE = frozenset({"federation.hc"})
+SPRITE_MIN_K = 0.9         # pixels per hull unit at which a ship is drawn with her baked art
+SHOWPIECE = frozenset({"federation.hc"})     # the hand-built art (showpiece.py); the rest is fleet_art.py
 TORP_TRAIL = 1.4          # cycles of exhaust a torpedo leaves behind it
 TORP_TRAIL_POINT = 0.05   # cycles between the points of a torpedo trail
 LOCK_TIME = 0.35          # seconds the target brackets take to close in
@@ -48,6 +49,15 @@ Pose = tuple[float, float, float]  # x, y, course
 def _k(length: float, zoom: float) -> float:
     """Pixels per hull design unit for a hull `length` world units long (as `hull_pixel_scale`)."""
     return max(length * zoom, MIN_HULL_PX) / 100.0
+
+
+def _art(cls_id: str | None, length: float, course: float, k: float) -> pygame.Surface | None:
+    """A class's baked art at a course and `k` pixels per hull unit, or None if she has none."""
+    if cls_id in SHOWPIECE:
+        return ship_image(round(course) % 360, round(k / SPRITE_PX, 2))
+    if cls_id is not None and has_art(cls_id):
+        return fleet_image(cls_id, round(course) % 360, round(k / art_px(length), 2))
+    return None
 
 
 @dataclass
@@ -192,8 +202,8 @@ class TacticalView:
         length = hull.length if hull is not None else 200.0
         k0 = _k(length, self.cam.zoom)
         image: pygame.Surface | None = None
-        if cls_id in SHOWPIECE and k0 >= SPRITE_MIN_K:
-            image = ship_image(round(course) % 360, round(k0 / SPRITE_PX, 2))
+        if k0 >= SPRITE_MIN_K:
+            image = _art(hull.class_id if hull is not None else cls_id, length, course, k0)
         if image is None and hull is not None:      # her outline, filled in, to be torn apart
             size = int(110 * k0) + 4
             image = pygame.Surface((size, size), pygame.SRCALPHA)
@@ -563,14 +573,16 @@ class TacticalView:
                     self._dashed(surf, theme.dim(theme.HOSTILE, bright * 0.8), a, cam.to_screen(pt[0], pt[1]), 3, 7)
 
     @staticmethod
-    def _sprite(surf: pygame.Surface, cls_id: str, sx: float, sy: float, course: float, k: float) -> bool:
-        """Close in, a ship with showpiece art is drawn with it. False when there's none for the class."""
-        if cls_id not in SHOWPIECE:
-            return False
-        scale = round(k / SPRITE_PX, 2)
-        img = ship_image(round(course) % 360, scale)
+    def _sprite(surf: pygame.Surface, cls: ShipClass, sx: float, sy: float, course: float, k: float) -> bool:
+        """Close in, a ship is drawn with her baked art. False when there's none for the class."""
+        cls_id = cls.hull.class_id                 # a class built on another's hull wears its art
+        img = _art(cls_id, cls.hull.length, course, k)
         if img is None:
             return False
+        if cls_id not in SHOWPIECE:                # fleet art is centred on the hull origin
+            surf.blit(img, img.get_rect(center=(int(sx), int(sy))))
+            return True
+        scale = round(k / SPRITE_PX, 2)
         a = math.radians(course)
         off = -SPRITE_CENTRE_Y * k                 # the sprite's centre sits a little aft of the hull origin
         cx, cy = sx - math.sin(a) * off, sy + math.cos(a) * off
@@ -615,7 +627,7 @@ class TacticalView:
             a = math.radians(s.desired_course)
             L = 50 * k
             pygame.draw.line(surf, theme.dim(theme.CAUTION, 0.7), (sx, sy), (sx + math.sin(a) * L, sy - math.cos(a) * L), 1)
-        if not (s.alive and not s.cloaked and k >= SPRITE_MIN_K and self._sprite(surf, s.cls.id, sx, sy, p[2], k)):
+        if not (s.alive and not s.cloaked and k >= SPRITE_MIN_K and self._sprite(surf, s.cls, sx, sy, p[2], k)):
             draw_hull(surf, s.cls.hull, sx, sy, p[2], k, color)
         strengths = [(sh.effective if not sh.destroyed else 0.0, sh.up and not sh.destroyed and sh.effective > 0.5)
                      for sh in s.shields]
@@ -667,7 +679,8 @@ class TacticalView:
                 a = math.radians(p[2])
                 L = 18 + c.warp * 6
                 pygame.draw.line(surf, theme.dim(color, 0.45), (sx, sy), (sx + math.sin(a) * L * 1.5, sy - math.cos(a) * L * 1.5))
-            draw_hull(surf, c.cls.hull, sx, sy, p[2], k, color, fill_alpha=0.22 if c.visible else 0.08)
+            if not (c.visible and c.identified and k >= SPRITE_MIN_K and self._sprite(surf, c.cls, sx, sy, p[2], k)):
+                draw_hull(surf, c.cls.hull, sx, sy, p[2], k, color, fill_alpha=0.22 if c.visible else 0.08)
             self._shield_ring(surf, c.id, sx, sy, p[2], 62 * k, None, overlay)
             hurt = (c.assessed.hull if c.assessed is not None and c.assessed.hull is not None
                     else c.scan.structure_frac if c.scan is not None else None)
