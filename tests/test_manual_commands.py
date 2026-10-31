@@ -11,7 +11,7 @@ import pytest
 from begin.console.parser import ParseContext, parse
 from begin.sim.commands import (
     AllyOrder, ConfigureAutoload, ControlProbe, FirePhasers, FireTorpedoes, LaunchProbe, LoadTubes, LockWeapons,
-    Pursue, Scan, SelfDestruct, SetBanks, SetHelm, SetShields, SetTubes, Transport, TurnMounts,
+    Pursue, Scan, SelfDestruct, SetBanks, SetShields, SetTubes, Transport, TurnMounts,
 )
 
 from .conftest import make_world

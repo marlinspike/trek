@@ -34,7 +34,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .providers.base import Completion, LLMConfig, LLMError, Message, Provider, Usage
+from .providers.base import Completion, LLMConfig, Message, Provider, Usage
 
 PROMPT_LOG = "llm-prompts.log"
 TOKEN_LOG = "llm-tokens.json"

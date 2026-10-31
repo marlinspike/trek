@@ -13,12 +13,12 @@ never fights an explicit order. Delegating a station clears its holds.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import IntEnum
 from typing import TYPE_CHECKING, ClassVar
 
 from ..core.angles import bearing, in_arc, norm360
-from .ship import BankRole, FireMode, HelmMode, Kind, PDDoctrine, RepairTarget, Ship, ShipStatus, TARGETABLE_GROUPS, Tube
+from .ship import BankRole, FireMode, HelmMode, PDDoctrine, RepairTarget, Ship, ShipStatus, TARGETABLE_GROUPS, Tube
 
 if TYPE_CHECKING:
     from .objectives import Objective

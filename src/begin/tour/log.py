@@ -171,7 +171,7 @@ def station_entries(f: dict[str, Any]) -> dict[str, str]:
         g += " We can patch her to about 75% out here. Anything past that needs a starbase."
     out["geordi"] = g
     # Seven: sensors and findings
-    v = f"Sensor logs for the engagement are complete."
+    v = "Sensor logs for the engagement are complete."
     if f["scans"]:
         v += (f" {_n(f['scans'], 'detailed scan')} {'was' if f['scans'] == 1 else 'were'} taken; the data is filed "
               f"for the next encounter.")

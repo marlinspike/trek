@@ -489,7 +489,6 @@ class WeaponsPanel(Panel):
         x0 = rect.x + 12
         # phasers
         theme.text(surf, "Phasers", (x0, y), theme.TEXT_DIM, 12, weight="medium")
-        n = len(ship.banks)
         bw = 40
         for i, b in enumerate(ship.banks):
             r = pygame.Rect(x0 + 64 + i * (bw + 4), y - 2, bw, 30)

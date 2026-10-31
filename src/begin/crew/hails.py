@@ -24,7 +24,6 @@ change nothing, so the simulation stays deterministic.
 
 from __future__ import annotations
 
-import json
 import random
 import re
 import time
@@ -37,7 +36,7 @@ from ..content.loader import DATA_DIR
 from ..llm.service import LLMService
 from ..sim.commands import Command, Hail
 from ..sim.events import CaptainMood, Event, HailAnswered, ShipStatusChanged
-from ..sim.ship import Ship, ShipStatus
+from ..sim.ship import Ship
 from ..sim.systems import disposition
 from ..sim.world import World
 from .characters import OfficerProfile
@@ -267,7 +266,6 @@ class Comms:
 
     def _send(self, player: Ship, t: Ship, words: str, j: Judged, issue: Issue) -> list[Utterance]:
         """Issue the hail and put the answer into words."""
-        w = self.world
         cmd = Hail(ship_id=player.id, target=t.id, intent=j.intent, persuasion=j.persuasion, threat=j.threat,
                    bluff=j.bluff, text=words, release=j.release)
         err = issue(cmd)
@@ -372,7 +370,7 @@ class Comms:
             f"Your will: {_level(r.resolve, ('nearly broken', 'shaken', 'firm', 'unbending'))}. "
             f"Right now you are {_level(r.fear, ('unafraid', 'uneasy', 'afraid', 'terrified'))} and "
             f"{_level(r.anger, ('calm', 'irritated', 'angry', 'furious'))}"
-            + (f"; you no longer trust their word" if m.distrust > 0.2 else "") + ".\n"
+            + ("; you no longer trust their word" if m.distrust > 0.2 else "") + ".\n"
             f"Your ship: hull {max(0.0, t.structure) / max(1.0, t.structure_max) * 100:.0f}%, "
             f"{disposition.weapons_left(t) * 100:.0f}% of weapons working, crew morale {t.morale:.0f}/100. "
             f"Your side has {len(allies)} other ship{'s' if len(allies) != 1 else ''} still fighting"

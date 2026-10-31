@@ -103,7 +103,7 @@ def test_symbols_fall_back_from_the_display_font() -> None:
 def test_nav_lights_flash_and_engines_glow() -> None:
     from begin.ui.showpiece import NAV_FLASH, ship_lights
 
-    surf = _display()
+    _display()
     lit = []
     for t in (NAV_FLASH / 2, NAV_FLASH * 3):                  # mid-flash, then dark
         g = pygame.Surface((400, 400))

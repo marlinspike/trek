@@ -29,7 +29,7 @@ from ..sim.commands import (
     AddressCrew, AllyOrder, CeaseFire, Command, SetObjective, FirePhasers, FireTorpedoes, LaunchProbe, Pursue, Scan, SelectTarget, SetBanks, SetHelm,
     SetPointDefense, SetShields, StandDown, offensive_fire,
 )
-from ..sim.events import CommandRejected, Event, Message, ObjectiveEnded, ProjectCompleted, ScanCompleted, Tone
+from ..sim.events import Event, Message, ObjectiveEnded, ProjectCompleted, ScanCompleted, Tone
 from ..sim.observation import Observation
 from ..sim.scoring import Assessment
 from ..sim.ship import BankRole, Kind, Ship

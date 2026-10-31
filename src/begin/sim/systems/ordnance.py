@@ -11,7 +11,6 @@ import math
 from typing import TYPE_CHECKING
 
 from ...core.angles import bearing, in_arc, norm360
-from ...core.vec import closest_approach
 from ..events import Detonation, Message, ProbeLaunched, Tone, TorpedoLaunched
 from ..ordnance import Probe, Torpedo
 from ..ship import Launcher, Ship, Tube

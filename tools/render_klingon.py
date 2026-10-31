@@ -10,7 +10,6 @@ the menu's distant passes. Needs numpy, which the game itself does not.
 
 from __future__ import annotations
 
-import math
 import sys
 
 import numpy as np
