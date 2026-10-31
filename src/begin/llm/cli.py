@@ -3,9 +3,12 @@
     begin --llm provider=ollama model=lfm3 think=off    save these in settings.json
     begin --llm provider=off                           officers answer offline again
     begin --llm-test                                   ask Spock one question and print the answer
+    begin --llm log_prompts=on log_tokens=on           the debug logs, in config/logs/
+    begin --llm-usage                                  print the token totals
 
-Keys accepted by --llm: provider, model, base_url, think, effort, timeout, max_tokens, console
-(console = on | off | always: plain-English orders at the console).
+Keys accepted by --llm: provider, model, base_url, think, effort, timeout, max_tokens, console,
+log_prompts, log_tokens (console = on | off | always: plain-English orders at the console;
+log_prompts / log_tokens = on | off: see `llm/usage.py`).
 API keys are never written; they come from the environment.
 """
 
@@ -14,9 +17,10 @@ from __future__ import annotations
 import time
 
 from ..ui.settings import Settings
-from .providers.base import LLMError, config_from_settings, make_provider, parse_think
+from .providers.base import LLMError, config_from_settings, make_provider, parse_switch, parse_think
 
-KEYS = ("provider", "model", "base_url", "think", "effort", "timeout", "max_tokens", "console")
+KEYS = ("provider", "model", "base_url", "think", "effort", "timeout", "max_tokens", "console", "log_prompts",
+        "log_tokens")
 
 
 def configure(pairs: list[str], settings: Settings | None = None) -> Settings:
@@ -39,12 +43,14 @@ def configure(pairs: list[str], settings: Settings | None = None) -> Settings:
             from ..console.translator import normalize_mode
 
             llm[key] = normalize_mode(value)
+        elif key in ("log_prompts", "log_tokens"):
+            llm[key] = parse_switch(value)
         elif key == "max_tokens":
             llm[key] = int(value)
         else:
             llm[key] = value
     if str(llm.get("provider", "")).lower() == "off":
-        llm = {"provider": "off"}
+        llm = {"provider": "off", **{k: llm[k] for k in ("log_prompts", "log_tokens") if k in llm}}
     config_from_settings(llm, env={})  # validate before saving
     s.llm = llm
     s.save()
@@ -80,6 +86,9 @@ def test(question: str = "Spock, what do you recommend?") -> int:
     provider = make_provider(cfg)
     t0 = time.perf_counter()
     try:
+        from .usage import caller
+
+        caller.set("llm-test")
         text = provider.complete(bridge.system_prompt(officer, ctx), [{"role": "user", "content": question}])
     except LLMError as e:
         print(f"Failed after {time.perf_counter() - t0:.1f}s: {e}")
@@ -88,7 +97,20 @@ def test(question: str = "Spock, what do you recommend?") -> int:
     print(f"Answered in {time.perf_counter() - t0:.1f}s.\n\nRaw reply:\n{text}\n\n{officer.title}: {say}")
     if commands:
         print("Commands: " + "; ".join(commands))
+    logs = [name for name, on in (("prompts", cfg.log_prompts), ("tokens", cfg.log_tokens)) if on]
+    if logs:
+        from .usage import log_dir
+
+        print(f"Logged ({' and '.join(logs)}) in {log_dir()}")
     return 0
 
 
-__all__ = ["KEYS", "configure", "test"]
+def usage() -> int:
+    """Print the token log's totals and its most recent games."""
+    from .usage import summary
+
+    print(summary())
+    return 0
+
+
+__all__ = ["KEYS", "configure", "test", "usage"]

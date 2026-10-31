@@ -50,6 +50,8 @@ Useful shortcuts:
 | `begin --tour-test 6` | Flies every tour of duty 6 times with the officers in command and prints how many were won. |
 | `begin --llm provider=ollama model=lfm3 think=off` | Saves the officers' language model settings. |
 | `begin --llm-test` | Asks Spock one question through that model and prints the answer and timing. |
+| `begin --llm log_prompts=on log_tokens=on` | Turns on the language model's debug logs in `config/logs/`. |
+| `begin --llm-usage` | Prints the token totals: all time and the last ten games. |
 | `pytest` | Runs the test suite. |
 
 ## Playing
@@ -116,6 +118,15 @@ begin --llm-test        # asks Spock one question and prints the answer and timi
 `think=off` turns off a model's long "thinking" step, which these jobs don't need. Add `base_url=http://<host>:11434` if Ollama runs on another machine.
 
 **Cloud.** Use `provider=anthropic`, `openai` or `openrouter` with that provider's model id (`model=` is always required; the game has no default), and put the key in an environment variable: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `OPENROUTER_API_KEY`. Keys are never written to disk. The settings are saved in `config/settings.json`, and `BEGIN_LLM_PROVIDER`, `BEGIN_LLM_MODEL` and `BEGIN_LLM_BASE_URL` override them for one session.
+
+**Watching what the model costs.** Two debug logs, both off by default, show exactly how hard the game is working the model:
+
+```bash
+begin --llm log_prompts=on log_tokens=on
+begin --llm-usage       # all-time totals, then the last ten games, broken down by who asked
+```
+
+`config/logs/llm-prompts.log` records every request in full (the system prompt, the conversation and the reply) with its tokens in and out, who asked (an officer, the console, the captain's log) and how long it took. `config/logs/llm-tokens.json` keeps running totals and one entry per game (a battle, or a tour's captain's log between battles). The counts are the provider's own: Ollama's `prompt_eval_count` and `eval_count`, or the `usage` block from Anthropic, OpenAI and OpenRouter. When a reply has no counts (Ollama leaves the input count out when it reuses a cached prompt), they are estimated at four characters a token and marked as estimates. Turn either off again with `=off`.
 
 ### Named orders
 

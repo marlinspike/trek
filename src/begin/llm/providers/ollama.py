@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .base import LLMConfig, LLMError, Message, post_json
+from .base import Completion, LLMConfig, LLMError, Message, Usage, post_json
 
 _THINK_TAGS = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
@@ -31,6 +31,9 @@ class OllamaProvider:
         return body
 
     def complete(self, system: str, messages: list[Message]) -> str:
+        return self.complete_full(system, messages).text
+
+    def complete_full(self, system: str, messages: list[Message]) -> Completion:
         try:
             data = post_json(self.url, self.body(system, messages), {}, self.cfg.timeout)
         except LLMError as e:
@@ -42,4 +45,15 @@ class OllamaProvider:
             text = _THINK_TAGS.sub("", text).strip()  # models that think inline rather than in the separate field
         if not isinstance(text, str) or not text:
             raise LLMError("Ollama returned no text.")
-        return text
+        return Completion(text, usage_of(data))
+
+
+def usage_of(data: dict[str, Any]) -> Usage | None:
+    """Ollama's own counts: prompt_eval_count (in) and eval_count (out, thinking included).
+
+    Ollama leaves prompt_eval_count out when it reuses a cached prompt, so a
+    missing count is None and the caller estimates it."""
+    tin, tout = data.get("prompt_eval_count"), data.get("eval_count")
+    if not isinstance(tin, int) or not isinstance(tout, int):
+        return None
+    return Usage(tin, tout)

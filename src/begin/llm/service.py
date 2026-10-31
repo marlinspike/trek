@@ -26,8 +26,14 @@ class LLMService:
 
     def submit(self, tag: str, system: str, messages: list[Message]) -> int:
         rid = next(self._ids)
-        self._pending[rid] = (tag, self._pool.submit(self.provider.complete, system, list(messages)))
+        self._pending[rid] = (tag, self._pool.submit(self._complete, tag, system, list(messages)))
         return rid
+
+    def _complete(self, tag: str, system: str, messages: list[Message]) -> str:
+        from .usage import caller
+
+        caller.set(tag)         # on this worker thread: names who asked in the debug logs
+        return self.provider.complete(system, messages)
 
     def busy(self, tag: str) -> bool:
         return any(t == tag for t, _ in self._pending.values())
