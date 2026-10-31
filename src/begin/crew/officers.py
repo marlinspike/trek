@@ -131,8 +131,9 @@ class OfficerBrain(AICaptain):
             best = captains
         else:
             best, best_score = None, 0.0
+            probed, focused = self._scoring_sets(obs, ship)
             for c in obs.hostile_contacts():
-                s = self._score(obs, ship, c)
+                s = self._score(obs, ship, c, probed, focused)
                 if s > best_score:
                     best, best_score = c, s
             if best is not None and self.station in ("tactical", "bridge"):

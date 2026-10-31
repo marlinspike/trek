@@ -268,10 +268,11 @@ class AICaptain:
                 if near:
                     forced = min(near, key=lambda c: c.distance_to(ward.x, ward.y)).id
         best, best_score = None, 0.0
+        probed, focused = self._scoring_sets(obs, ship)
         for c in obs.hostile_contacts():
             if c.side is not None and c.side == self.side:
                 continue
-            s = self._score(obs, ship, c)
+            s = self._score(obs, ship, c, probed, focused)
             if forced is not None and c.id == forced:
                 s *= 100.0
             if s > best_score:
@@ -392,8 +393,18 @@ class AICaptain:
             self.withdrawing = self.retreating = True
             self._log(obs, f"stalled {AI_STALL_CYCLES:.0f} cycles; weaker ({ours:.0f} vs {theirs:.0f}): leaving the field")
 
-    def _score(self, obs: Observation, ship: Ship, c: ContactView) -> float:
-        """Begin's target score [R]: threat strength × distance band × modifiers."""
+    @staticmethod
+    def _scoring_sets(obs: Observation, ship: Ship) -> tuple[set[int | None], set[int | None]]:
+        """What `_score` needs about the whole side, gathered once per choice rather than once per contact
+        (the scoring is otherwise quadratic in the number of ships)."""
+        probed = {o.target for o in obs.ordnance() if o.friendly and o.kind == "probe"}
+        focused = {o.target for o in obs.own_ships() if o.id != ship.id}
+        return probed, focused
+
+    def _score(self, obs: Observation, ship: Ship, c: ContactView, probed: set[int | None],
+               focused: set[int | None]) -> float:
+        """Begin's target score [R]: threat strength × distance band × modifiers. `probed` holds the contacts our
+        probes are chasing, `focused` the targets of the side's other ships."""
         if c.cls is not None:
             sc = c.scan
             banks = sc.charged_banks if sc is not None else c.cls.banks
@@ -415,13 +426,13 @@ class AICaptain:
             return 0.0      # the flagship disabled her and wants her spared
         if c.id == ship.mood.nemesis:
             score *= 1.0 + 1.5 * ship.mood.anger     # [E] the ship they blame for their friends
-        if any(o.friendly and o.kind == "probe" and o.target == c.id for o in obs.ordnance()):
+        if c.id in probed:
             score *= 0.5
         if not c.visible:
             score *= AI_STALE_CONTACT_MULT
         # doctrine: focus on the side's common target
         focus = self.personality.doctrine.focus_fire
-        if any(s.target == c.id for s in obs.own_ships() if s.id != ship.id):
+        if c.id in focused:
             score *= 1.0 + 0.5 * focus
         if self.smart:
             # [E] finish what the scans show is hurt; leave a screened base for last

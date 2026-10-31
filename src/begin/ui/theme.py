@@ -141,7 +141,14 @@ def _tracked(s: str, color: Color, size: int, family: str, weight: str) -> pygam
 
 
 def render(s: str, color: Color, size: int = 14, family: str = "ui", weight: str = "regular") -> pygame.Surface:
-    """Render a line of text, never raising: a string the font can't measure falls back to the default font."""
+    """Render a line of text, never raising: a string the font can't measure falls back to the default font.
+
+    The same labels are drawn every frame, so finished lines are cached; callers must not draw on the result."""
+    return _render_cached(s, tuple(color), size, family, weight)    # type: ignore[arg-type]
+
+
+@lru_cache(maxsize=2048)
+def _render_cached(s: str, color: Color, size: int, family: str, weight: str) -> pygame.Surface:
     f = font(size, family, weight)
     if family == "display" and not _has_glyphs(f, s):
         f = font(size, "ui", weight)              # a symbol the display face lacks: the whole label in Inter

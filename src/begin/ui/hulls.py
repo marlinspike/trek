@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 
 import pygame
 
@@ -32,8 +33,13 @@ def transform(points: tuple[tuple[float, float], ...] | list[tuple[float, float]
     return out
 
 
+@lru_cache(maxsize=1024)
+def _ellipse(cx: float, cy: float, rx: float, ry: float, n: int) -> tuple[tuple[float, float], ...]:
+    return tuple((cx + math.cos(a) * rx, cy + math.sin(a) * ry) for a in (2 * math.pi * i / n for i in range(n)))
+
+
 def ellipse_points(cx: float, cy: float, rx: float, ry: float, n: int = 18) -> list[tuple[float, float]]:
-    return [(cx + math.cos(a) * rx, cy + math.sin(a) * ry) for a in (2 * math.pi * i / n for i in range(n))]
+    return list(_ellipse(cx, cy, rx, ry, n))
 
 
 def draw_hull(surf: pygame.Surface, hull: HullDef, sx: float, sy: float, course: float, k: float,
@@ -44,7 +50,7 @@ def draw_hull(surf: pygame.Surface, hull: HullDef, sx: float, sy: float, course:
         if shp.kind == "poly":
             pts = transform(shp.points, sx, sy, course, k)
         else:
-            pts = transform(ellipse_points(shp.center[0], shp.center[1], shp.radii[0], shp.radii[1]), sx, sy, course, k)
+            pts = transform(_ellipse(shp.center[0], shp.center[1], shp.radii[0], shp.radii[1], 18), sx, sy, course, k)
         if len(pts) < 3:
             continue
         if shp.role == "hull":
