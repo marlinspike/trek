@@ -35,14 +35,18 @@ pyz = PYZ(a.pure)
 
 if sys.platform == "darwin":
     exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Begin", console=False,
-              argv_emulation=False, target_arch=None)
+              argv_emulation=False, target_arch=None, icon=str(ROOT / "packaging" / "icon.icns"))
     coll = COLLECT(exe, a.binaries, a.datas, name="Begin")
     app = BUNDLE(
         coll,
         name="Begin.app",
+        icon=str(ROOT / "packaging" / "icon.icns"),
         bundle_identifier="net.marlinspike.begin",
         info_plist={
+            "CFBundleName": "Begin",
             "CFBundleDisplayName": "Begin",
+            "NSHumanReadableCopyright": "A personal, non-commercial fan project. Code: MIT.",
+            "LSApplicationCategoryType": "public.app-category.simulation-games",
             "CFBundleShortVersionString": VERSION,
             "CFBundleVersion": VERSION,
             "NSHighResolutionCapable": True,
@@ -50,9 +54,30 @@ if sys.platform == "darwin":
         },
     )
 else:
+    # Windows: the name, version and description Explorer shows under Properties > Details
+    VERSION_FILE = Path(workpath) / "version_info.txt"
+    if sys.platform == "win32":
+        nums = tuple(int(p) for p in VERSION.split(".")[:3]) + (0,)
+        VERSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        VERSION_FILE.write_text(f"""VSVersionInfo(
+  ffi=FixedFileInfo(filevers={nums}, prodvers={nums}),
+  kids=[
+    StringFileInfo([StringTable('040904B0', [
+      StringStruct('ProductName', 'Begin'),
+      StringStruct('FileDescription', 'Begin: a tactical starship simulation'),
+      StringStruct('FileVersion', '{VERSION}'),
+      StringStruct('ProductVersion', '{VERSION}'),
+      StringStruct('OriginalFilename', 'Begin.exe'),
+      StringStruct('LegalCopyright', 'A personal, non-commercial fan project. Code: MIT.')])]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
+  ]
+)
+""")
     exe = EXE(
         pyz, a.scripts, a.binaries, a.datas, [],
         name="Begin" if sys.platform == "win32" else "begin",
         console=False if sys.platform == "win32" else True,
         upx=False,
+        icon=str(ROOT / "packaging" / "icon.ico"),
+        version=str(VERSION_FILE) if sys.platform == "win32" else None,
     )
