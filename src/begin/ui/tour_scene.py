@@ -306,6 +306,11 @@ class TourScene:
             self.note = self.run.request_from_ready_room()
             self.save()
 
+    def _prisoners(self) -> None:
+        if self.run is not None:
+            self.note = self.run.hand_over_prisoners()
+            self.save()
+
     def _choose(self, i: int) -> None:
         if self.run is not None:
             self.run.choose(i)
@@ -567,6 +572,12 @@ class TourScene:
         self.ui.button(surf, pygame.Rect(40, by, 200, 46), "Captain's log", self._open_log,
                        "Every stop's page, and your entries", enabled=bool(st.log), size=14)
         self.ui.button(surf, pygame.Rect(256, by, 200, 46), "Save and leave", self.close, "Esc", size=14)
+        held = st.prisoners
+        self.ui.button(surf, pygame.Rect(472, by, 250, 46), f"Hand over prisoners ({held})", self._prisoners,
+                       "A Starfleet transport takes the prisoners of war in our brig to a detention facility. It "
+                       "leaves torpedoes and probes, and every 40 prisoners earns another reinforcement call. "
+                       "Or keep them: in battle you can offer them back for a ship's withdrawal over a hail.",
+                       enabled=held > 0, size=14, face="ui")
 
     def _enemy_words(self, run: TourRun) -> str:
         stop = run.stop

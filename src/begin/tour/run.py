@@ -36,6 +36,11 @@ from .state import LogEntry, ShipRecord, StopResult, TourState, apply_record, fl
 CAUTION_PER_AIMED = 0.25      # how much warier the enemy gets for each fight in which we aimed at their systems
 CAUTION_PER_CAPTURE = 0.2     # ...and for each ship of theirs we took
 CAUTION_MAX = 0.8
+MERCY_PER_SURRENDER = 0.2    # [E] each enemy ship that surrendered to us and was spared: word spreads
+MERCY_PER_TRUCE = 0.1        # ...each that we let withdraw as agreed
+RUTHLESS_PER_BROKEN = 0.5    # ...each we fired on after it surrendered or agreed to withdraw
+REPUTATION_MAX = 1.0
+PRISONERS_PER_CALL = 40      # prisoners handed to Starfleet that earn the squadron another reinforcement call
 PRESS_LOW_MAGAZINE = 0.35     # our flagship's magazine below this share: the enemy knows, and closes in
 REINFORCEMENT_EDGE = 16000.0  # how far from the battle Starfleet's ship drops out of warp
 REINFORCEMENT_MIN = 15.0      # the soonest one can arrive, cycles
@@ -144,7 +149,38 @@ class TourRun:
         if self._low_magazine():
             out.append("Our magazines are low, and their scouts will have counted our torpedoes. Expect them to close "
                        "to phaser range.")
+        trust = self.reputation()
+        if trust <= -0.3:
+            out.append("Word has spread that we fired on ships that had struck their colours. Expect no surrenders: "
+                       "their captains will fight to the end, and they will not believe our terms.")
+        elif trust >= 0.3:
+            out.append("Word has spread that we take surrenders and treat prisoners decently. Their captains will be "
+                       "readier to yield.")
+        elif trust > 0:
+            out.append("Some of their captains will have heard that we honour a surrender.")
         return out
+
+    def reputation(self) -> float:
+        """-1..1: how the enemy's captains expect us to treat a surrender, from what we did earlier in the tour."""
+        lessons = self.state.lessons
+        return max(-1.0, min(1.0, lessons.get("mercy", 0.0) - lessons.get("ruthless", 0.0)))
+
+    def hand_over_prisoners(self) -> str:
+        """In the Ready Room: a Starfleet transport takes the prisoners off our hands [E]."""
+        n = self.state.prisoners
+        if n <= 0:
+            return "We hold no prisoners. Take a ship that has surrendered and her crew come aboard as prisoners."
+        self.state.prisoners = 0
+        calls = n // PRISONERS_PER_CALL
+        if calls:
+            self.state.calls_left += calls
+        for r in self.state.squadron:
+            if r.active:
+                resupply(r, self.content, 0.25)
+        thanks = (f" Starfleet Command is grateful: {'another ship is' if calls == 1 else f'{calls} more ships are'} "
+                  "ours to call on." if calls else "")
+        return (f"A Starfleet transport has taken our {n} prisoners of war to a detention facility, and left us "
+                f"torpedoes and probes in exchange for the room.{thanks}")
 
     def _low_magazine(self) -> bool:
         f = self.state.flagship
@@ -261,6 +297,8 @@ class TourRun:
                 self.state.squadron.append(r)
         self.state.pending = []
         lean: dict[str, float] = {}
+        if self.reputation():
+            lean["trust"] = self.reputation()
         if self.state.lessons.get("caution"):
             lean["caution"] = self.state.lessons["caution"]
         if self._low_magazine():
@@ -284,6 +322,8 @@ class TourRun:
         fight.friend_ids = [s.id for s in ours[n:]]
         for rec, sid in zip(fight.records, fight.ship_ids):
             apply_record(w.ships[sid], rec)
+        if fight.ship_ids:
+            w.ships[fight.ship_ids[0]].prisoners = self.state.prisoners   # the brig comes along
         # the reinforcements called in from the Ready Room are named already; their records were made at launch
 
     def finish(self, battle: Battle, standout: str = "") -> LogEntry:
@@ -310,6 +350,8 @@ class TourRun:
             if role == "prize":
                 captured.append(s.name)
         lost = [r.name for r in self.state.squadron if r.lost and r.name not in before_lost]
+        # prisoners held aboard ships that are still ours (on a ship we lost, they are free again)
+        self.state.prisoners = sum(s.prisoners for s in w.ships.values() if s.side == side and s.alive)
         won = w.outcome.over and w.outcome.winner == side
         friends_ok = all(w.ships[i].alive for i in fight.friend_ids)
         flag = self.state.flagship
@@ -353,6 +395,20 @@ class TourRun:
         c += CAUTION_PER_CAPTURE * len(captured)
         if c > 0:
             self.state.lessons["caution"] = round(min(CAUTION_MAX, c), 2)
+        # [E] how we treated those who yielded: the enemy's captains will hear of it
+        w = battle.world
+        side = w.player_side
+        broken = w.faith_broken.get(side, set())
+        spared = [s for s in w.ships.values() if s.id not in broken and s.surrender_time > 0
+                  and (s.status == ShipStatus.SURRENDERED or (s.side == side and s.prisoners > 0))]
+        truces = [s for s in w.ships.values() if s.id not in broken and s.side != side and s.mood.terms
+                  and s.status == ShipStatus.ESCAPED]
+        mercy = self.state.lessons.get("mercy", 0.0) + MERCY_PER_SURRENDER * len(spared) + MERCY_PER_TRUCE * len(truces)
+        ruthless = self.state.lessons.get("ruthless", 0.0) + RUTHLESS_PER_BROKEN * len(broken)
+        if mercy:
+            self.state.lessons["mercy"] = round(min(REPUTATION_MAX, mercy), 2)
+        if ruthless:
+            self.state.lessons["ruthless"] = round(min(REPUTATION_MAX, ruthless), 2)
 
     # ------------------------------------------------------------ the end
 

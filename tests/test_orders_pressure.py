@@ -335,7 +335,7 @@ def _hunt(content, seed: int = 1):  # type: ignore[no-untyped-def]
 def test_a_federation_ally_disables_with_us_and_then_spares_them(content) -> None:  # type: ignore[no-untyped-def]
     from begin.ai.captain import AICaptain
 
-    sc = _hunt(content)
+    sc = _hunt(content, seed=3)
     me, w = sc.player, sc.world
     enemies = [s for s in w.ships.values() if s.side != me.side]
     sc.run_console(f"target #{enemies[0].id}")

@@ -9,6 +9,7 @@ the accumulator; orders can still be given while paused.
 from __future__ import annotations
 
 import math
+import re
 import time
 from functools import partial
 from dataclasses import dataclass
@@ -32,10 +33,11 @@ from ..sim.events import CommandRejected, Event, Message, ObjectiveEnded, Projec
 from ..sim.observation import Observation
 from ..sim.scoring import Assessment
 from ..sim.ship import BankRole, Kind, Ship
-from . import officer_view, theme
+from . import comms_view, officer_view, theme
 from .audio import Audio
 from .camera import Camera
 from ..crew.conversation import Bridge, Utterance, whole_bridge_stand_down
+from ..crew.hails import Comms, load_lines, prisoners_lines
 from ..crew.officers import STATION_COMMANDS, Activity, station_of
 from ..sim.systems.repair import in_battle, under_repair
 from ..help.coach import HelpContext
@@ -101,6 +103,11 @@ class TourLink(Protocol):
     """What a battle on a tour of duty can ask of the tour (a `TourRun`)."""
 
     def reinforcement_arrival(self, battle: Battle, player_ship: Ship | None) -> tuple[object | None, str]: ...
+
+
+# "hail the X", "open a channel to X", "open hailing frequencies", "get me the X", "put me through to X" [E]
+_HAIL_ORDER = re.compile(r"^\s*(hail(ing)?( frequencies)?|open (a |hailing )?(channel|frequencies|comms?)( to| with)?|"
+                         r"get me|put me through to|signal|raise them|raise the)\b\s*", re.I)
 
 
 class BattleScene:
@@ -186,6 +193,16 @@ class BattleScene:
             self.bridge = Bridge(battle.crew, self.hidden, service, seed=battle.setup.seed, chatter=chatter)
         from ..paths import config_dir
 
+        # [E] hailing enemy captains: its own model worker, so a hail never queues behind an officer
+        hail_llm = None
+        if provider is not None:
+            from ..llm.service import LLMService
+
+            hail_llm = LLMService(provider, workers=1)
+        crew = battle.crew
+        self.comms = Comms(self.world, self.side, hail_llm, seed=battle.setup.seed,
+                           lines=load_lines(override=config_dir() / "hails.toml"),
+                           officers=(lambda st: crew.officer(st)) if crew is not None else None)
         self.orders = OrderBook.load(config_dir())
         self.order_run: OrderRun | None = None
         self.audio = Audio(volume, muted, sounds, config_dir() / "sounds")
@@ -362,6 +379,8 @@ class BattleScene:
             self._speak(self.bridge.poll(self._help_context(), self._officer_run))
             for cmd in self.bridge.take_addresses():
                 self.issue(cmd)
+        if self.comms.llm is not None:
+            self._speak(self.comms.poll(self.player, self.issue))
         if self.translator is not None and self.translator.busy():
             for answer in self.translator.poll(self._would_run):
                 self._translated(answer)
@@ -852,6 +871,12 @@ class BattleScene:
             self._sound(val)
         elif name == "reinforcements":
             self._reinforcements()
+        elif name == "hail":
+            assert isinstance(val, tuple)
+            self.hail(val[0], str(val[1]))
+        elif name == "prisoners":
+            for line in prisoners_lines(self.world, self.side):
+                self._log(line, theme.TEXT)
         elif name == "hud":
             if val is not None:
                 self.hud_detail = val == "detail"
@@ -1005,12 +1030,48 @@ class BattleScene:
 
     # ------------------------------------------------------------ bridge officers
 
+    def hail(self, target: int | None, words: str) -> None:
+        """Open a channel to an enemy captain (or every one on sensors) and say `words` [E]."""
+        p = self.player
+        if p is None or not p.alive:
+            self._log("No ship under command.", theme.CAUTION)
+            return
+        self._speak(self.comms.hail(p, target, words, self.issue))
+
+    def open_channel(self, sid: int) -> None:
+        """The Hail button: open a channel (they answer), then the console waits for the captain's words."""
+        self.hail(sid, "")
+        name = self.obs.contact(sid)
+        label = name.label.split(" (")[0] if name is not None and name.identified else f"#{sid}"
+        self.console = f"hail {label} "
+        self.console_focus = True
+        pygame.key.start_text_input()
+
+    def _comms_button(self, line: str) -> None:
+        if line.startswith("\0type:"):
+            self.console = line[len("\0type:"):]
+            self.console_focus = True
+            pygame.key.start_text_input()
+            return
+        self.run_console(line)
+
     def _ask(self, officer: object, words: str) -> None:
         if self.bridge is None:
             return
         from ..crew.characters import OfficerProfile
 
         assert isinstance(officer, OfficerProfile)
+        if _HAIL_ORDER.match(words):
+            # "worf, hail the Gr'oth" / "seven, open a channel to them": the officer opens it, the captain speaks
+            res = parse(_HAIL_ORDER.sub("hail ", words, count=1), ParseContext(self.player_id, self.world.observe(self.side)))
+            if res.error:
+                self._speak([Utterance(officer.id, officer.title, res.error, "caution")])
+                return
+            self._speak([Utterance(officer.id, officer.title, "Channel open, Captain.")])
+            for name, val in res.actions:
+                if name == "hail":
+                    self.hail(val[0], str(val[1]))  # type: ignore[index]
+            return
         self._speak(self.bridge.ask(officer, words, self._help_context(), self._officer_run))
 
     def _conn(self, who: str | None) -> str | None:
@@ -1089,7 +1150,7 @@ class BattleScene:
         return None
 
     def _speak(self, lines: list[Utterance]) -> None:
-        tone = {"crew": theme.CREW, "caution": theme.CAUTION, "dim": theme.TEXT_DIM}
+        tone = {"crew": theme.CREW, "caution": theme.CAUTION, "dim": theme.TEXT_DIM, "enemy": theme.HAIL}
         for u in lines:
             self._log(f"{u.speaker}: {u.text}", tone.get(u.tone, theme.CREW))
             for c in u.commands:
@@ -1106,6 +1167,7 @@ class BattleScene:
         self.console_focus = True
 
     def _crew_react(self, events: list[Event]) -> None:
+        self._speak(self.comms.react(events, self.player))
         if self.bridge is not None and self.player_id is not None:
             self._speak(self.bridge.react(events, self._help_context()))
 
@@ -1144,6 +1206,7 @@ class BattleScene:
             self.bridge.close()
         if self.translator is not None:
             self.translator.close()
+        self.comms.close()
         self.orders.close()
 
     def _chart(self, opts: dict[str, object]) -> None:
@@ -1257,6 +1320,8 @@ class BattleScene:
         self.ui.add(self.map_rect, lambda: None)
         acts = self._activity(obs)
         officer_view.draw_intent(surf, self.cam, obs, p, acts, self._officer_name)
+        comms_view.draw_map(surf, self.cam, self.world, self.side, self.player_id, self.comms, time.monotonic(),
+                            self.map_rect)
         self._map_overlay_text(surf)
         officer_view.draw_panel(surf, (self.map_rect.x + 14, self.map_rect.y + 36), acts, self._officer_name,
                                 self.world.tick, self.world.rules.ticks_per_cycle)
@@ -1371,6 +1436,8 @@ class BattleScene:
             col = theme.mix(theme.TEXT_DIM, theme.GOOD, 0.4 + 0.6 * pulse)
             theme.text(surf, f"{names}  ·  ETA {eta:4.0f} cycles", (r.right - 14, y), col, 13, "mono", anchor="topright")
             y += 20
+        comms_view.draw_card(surf, (r.right - 14, y + 4), self.world, self.side, self.player_id, self.comms, self.ui,
+                             time.monotonic(), self._comms_button)
 
     def _draw_conn_banner(self, surf: pygame.Surface, top: int) -> None:
         """Who has the conn, when it isn't the captain; click it to take the bridge back."""

@@ -16,6 +16,10 @@ dimensions the remake models separately [E]:
   duty. Caution keeps a captain at range and quick to turn a fresh shield
   (they've seen what our aimed fire does); press sends them in close (they
   know our magazines are running low). Both are 0 outside a tour.
+* temper and obstinacy [E]: how the captain takes watching their allies battered
+  (0 cowed .. 1 enraged), and how hard they are to talk round over a hail at the
+  start (sim/systems/disposition.py). Rolled from their own stream, so adding
+  them changed no other roll.
 """
 
 from __future__ import annotations
@@ -44,6 +48,9 @@ class Personality:
     doctrine: Doctrine
     caution: float = 0.0
     press: float = 0.0
+    temper: float = 0.5
+    obstinacy: float = 0.5
+    trust: float = 0.0          # [E] -1..1: what their navy has heard of how we treat a surrender (tour)
 
     @property
     def reaction_ticks(self) -> int:
@@ -70,7 +77,11 @@ class Personality:
             discipline=vary(cm.discipline, cm.deviation),
             creativity=vary(cm.creativity, cm.deviation),
         )
-        p.update(caution=0.0, press=0.0)
+        p.update(caution=0.0, press=0.0, trust=0.0)
+        trng = rng.derive("temperament")      # its own stream: the rolls above stay as they were
+        tdev = faction.temperament_dev
+        p.update(temper=_clamp01(faction.temper + trng.uniform(-tdev, tdev)),
+                 obstinacy=_clamp01(faction.obstinacy + trng.uniform(-tdev, tdev)))
         if overrides:
             p.update({k: v for k, v in overrides.items() if k in p})
         return Personality(doctrine=faction.doctrine, **p)  # type: ignore[arg-type]
