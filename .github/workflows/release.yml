@@ -1,19 +1,13 @@
 # Builds the downloadable game for Windows, macOS (Apple Silicon and Intel) and Linux.
 #
-# Push a tag such as v0.2.0 and the builds are attached to a GitHub Release of that name.
-# Run it by hand (Actions > Build downloads > Run workflow), or change the packaging in a
-# pull request, and the builds are kept as workflow artifacts instead.
+# Runs only when a version tag such as v0.2.0 is pushed: the builds are attached to a
+# GitHub Release of that name. It never runs on pull requests or pushes to main, and it
+# doesn't run the test suite (tests are run locally before pushing).
 name: Build downloads
 
 on:
   push:
     tags: ["v*"]
-  pull_request:
-    paths:
-      - "packaging/**"
-      - "src/begin/paths.py"
-      - ".github/workflows/release.yml"
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -53,11 +47,6 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install ".[llm]" "pyinstaller>=6.22"
 
-      - name: Run the tests
-        run: |
-          python -m pip install pytest
-          python -m pytest -q
-
       - name: Build
         run: pyinstaller --noconfirm --clean packaging/begin.spec
 
@@ -94,7 +83,6 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
     permissions:

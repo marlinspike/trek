@@ -647,7 +647,7 @@ class Bridge:
             "Setting: the captain is speaking to you on the bridge during a real-time battle in a 2D tactical "
             "starship game. Courses are compass bearings (0 = up the map, 90 = right). Distances are in units; "
             "warp 1 = 100 units per second.",
-            (f"The captain has given you command of the bridge: you run every station and may use any command "
+            ("The captain has given you command of the bridge: you run every station and may use any command "
              "below, but the captain's orders come first. " if ctx.ship is not None and ctx.ship.conn == o.id else
              f"You run the {STATION_NAMES[o.station]} station and advise on: {stations}. ")
             + f"Your relationship with the captain: {rel.mood}.",

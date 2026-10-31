@@ -33,7 +33,7 @@ No Python needed: the [Releases page](https://github.com/marlinspike/trek/releas
 
 The downloaded game keeps its settings in a `Begin config` folder beside itself (beside `Begin.app` on a Mac), never in your home folder. It holds the same plain text files as `config/` below, starts with a README and the example files, and the **Open config folder** button on the main menu opens it. The officers' language model is optional there too.
 
-Builds are made by GitHub Actions ([.github/workflows/release.yml](.github/workflows/release.yml), with the PyInstaller recipe in [packaging/](packaging/)). Pushing a tag such as `v0.2.0` builds all four and publishes them as a release; running the workflow by hand keeps them as downloadable artifacts.
+Builds are made by GitHub Actions ([.github/workflows/release.yml](.github/workflows/release.yml), with the PyInstaller recipe in [packaging/](packaging/)). They run only when a version tag such as `v0.2.0` is pushed, which builds all four and publishes them as a release. The only check on pull requests and pushes to main is lint (`ruff check`, [.github/workflows/lint.yml](.github/workflows/lint.yml)); run the tests locally with `pytest` before pushing.
 
 ## Run it from source
 

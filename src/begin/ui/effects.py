@@ -23,7 +23,7 @@ import pygame
 from collections.abc import Callable
 
 from ..content.schema import Faction
-from ..sim.events import DeflectorPulsed, Detonation, Event, OrdnanceDestroyed, PhaserFired, ShieldHit, ShipStatusChanged
+from ..sim.events import DeflectorPulsed, Detonation, Event, OrdnanceDestroyed, PhaserFired, ShipStatusChanged
 from . import theme
 from .camera import Camera
 

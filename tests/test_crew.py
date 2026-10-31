@@ -10,7 +10,7 @@ import pytest
 
 from begin.battle import build_battle
 from begin.crew.characters import (
-    Relationship, Relationships, load_officers, read_response_styles, read_traits,
+    Relationships, load_officers, read_response_styles, read_traits,
 )
 from begin.crew.conversation import parse_reply, situation
 from begin.crew.officers import STATION_COMMANDS, station_of

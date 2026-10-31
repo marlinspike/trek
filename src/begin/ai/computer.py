@@ -161,7 +161,6 @@ class ShipComputer:
             want = (o.count if prof.banks_per_threat <= 1 else prof.banks_per_threat) - tr.engaged
             if want <= 0:
                 continue
-            brg_true = bearing(o.x - ship.x, o.y - ship.y)
             for i, b in enumerate(ship.banks):
                 if i in used or not bank_ready(ship, b) or b.role not in allowed_roles:
                     continue

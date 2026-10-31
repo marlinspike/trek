@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from ..ai.computer import torpedo_envelope
-from ..content.schema import ContentDB, ProbeDef, TorpedoDef
+from ..content.schema import ContentDB, TorpedoDef
 from ..core.angles import bearing, norm360
 from ..sim.systems.ordnance import blast_radius, suggested_prox
 from ..sim.observation import ContactView, Observation

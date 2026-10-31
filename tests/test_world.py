@@ -203,7 +203,7 @@ def test_cloak_hides_from_observation(content) -> None:  # type: ignore[no-untyp
     from begin.sim.commands import SetCloak
 
     w = make_world(content)
-    a = w.add_ship("federation.hc", 0, 0, 0)
+    w.add_ship("federation.hc", 0, 0, 0)
     r = w.add_ship("romulan.bp", 1, 0, 6000)
     w.step()
     assert w.observe(0).contact(r.id).visible  # type: ignore[union-attr]

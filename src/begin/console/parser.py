@@ -29,7 +29,7 @@ from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, ManageRepairs, Evasive, AddressCrew, SetShields, SetTubes, Surrender,
-    CeaseFire, OpenFire, StandDown, DeflectorPulse, EndObjective, FireAtPoint, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
+    CeaseFire, OpenFire, StandDown, DeflectorPulse, EndObjective, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
 from ..sim.ship import HULL, BankRole, FireMode, Kind, PDDoctrine, RepairTarget
