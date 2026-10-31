@@ -113,3 +113,51 @@ def test_coach_warns_when_proximity_is_wider_than_the_blast(content) -> None:  #
 
     want = suggested_prox(content.torpedoes["mk7"], dr.cls.max_warp, w.rules)
     assert t.priority == 1 and "barely scratch" in t.text and t.commands == [f"autoload tor prox {want:.0f}"]
+
+
+def test_single_key_controls(scene) -> None:  # type: ignore[no-untyped-def]
+    """Every one-key control does what the controls list says, with and without Shift."""
+    scene, _ = scene
+    from begin.sim.ship import PDDoctrine
+    from begin.ui.hud import PD_CYCLE
+
+    def press(key: int, mod: int = 0) -> None:
+        scene.handle(pygame.event.Event(pygame.KEYDOWN, key=key, mod=mod, unicode=""))
+
+    scene.overlay = None
+    p = scene.player
+    paused = scene.paused
+    press(pygame.K_SPACE)
+    assert scene.paused is not paused
+    scene.speed = 1.0
+    press(pygame.K_RIGHTBRACKET)
+    press(pygame.K_PERIOD)
+    assert scene.speed == 4.0
+    press(pygame.K_COMMA)
+    assert scene.speed == 2.0
+    zoom = scene.cam.zoom
+    press(pygame.K_EQUALS)
+    assert scene.cam.zoom > zoom
+    press(pygame.K_q)
+    assert scene.view.show_arcs
+    press(pygame.K_F9)
+    assert scene.omniscient
+    course = p.desired_course
+    press(pygame.K_d)
+    press(pygame.K_a, pygame.KMOD_SHIFT)
+    scene.world.step()
+    assert round((p.desired_course - course) % 360) == 10
+    warp = p.desired_warp
+    press(pygame.K_w)
+    scene.world.step()
+    assert p.desired_warp == min(p.cls.max_warp, int(warp) + 1)
+    doctrine = p.pd_doctrine
+    press(pygame.K_v)
+    scene.world.step()
+    assert p.pd_doctrine == PD_CYCLE[(PD_CYCLE.index(doctrine) + 1) % len(PD_CYCLE)] and isinstance(p.pd_doctrine, PDDoctrine)
+    press(pygame.K_ESCAPE)
+    assert scene.overlay == "menu"
+    press(pygame.K_ESCAPE)
+    assert scene.overlay is None
+    press(pygame.K_RETURN)
+    assert scene.console_focus

@@ -1588,7 +1588,7 @@ class AllyOrder(Command):
     needs_crew: ClassVar[bool] = False
 
     def validate(self, world: World, ship: Ship) -> None:
-        from .allies import ORDER_WORDS, SHIP_ORDERS
+        from .allies import ORDER_WORDS
 
         a = world.ships.get(self.ally)
         if a is None or not a.alive:
@@ -1597,46 +1597,64 @@ class AllyOrder(Command):
             raise Rejected(f"{a.name} is not under your command.")
         if a.id == ship.id:
             raise Rejected("Give your own ship orders directly.")
+        if self.order not in ORDER_WORDS:
+            raise Rejected(f"Unknown order '{self.order}'.")
+        self._check_target(world, ship, a)
+        self._check_equipment(a)
+        self._check_details(world, a)
+
+    def _check_target(self, world: World, ship: Ship, a: Ship) -> None:
+        """The ship the order names: there, seen, and on the right side (an enemy to attack, a friend to escort)."""
+        from .allies import SHIP_ORDERS
+
         o = self.order
-        if o not in ORDER_WORDS:
-            raise Rejected(f"Unknown order '{o}'.")
         need = SHIP_ORDERS.get(o, "none")
         if need != "none" and self.target is None:
             raise Rejected(f"'{o}' needs a ship.")
-        if self.target is not None:
-            t = world.ships.get(self.target)
-            if t is None or not t.exists:
-                raise Rejected("That ship no longer exists.")
-            if t.id == a.id:
-                raise Rejected(f"{a.name} cannot {o} itself.")
-            if need is True and t.side == a.side:
-                raise Rejected(f"{t.name} is one of ours.")
-            if need is False and t.side != a.side:
-                raise Rejected(f"{t.name} is not one of ours.")
-            if t.side != a.side and world.apparent_position(ship.side, t.id) is None:
-                raise Rejected("No sensor contact with that ship.")
+        if self.target is None:
+            return
+        t = world.ships.get(self.target)
+        if t is None or not t.exists:
+            raise Rejected("That ship no longer exists.")
+        if t.id == a.id:
+            raise Rejected(f"{a.name} cannot {o} itself.")
+        if need is True and t.side == a.side:
+            raise Rejected(f"{t.name} is one of ours.")
+        if need is False and t.side != a.side:
+            raise Rejected(f"{t.name} is not one of ours.")
+        if t.side != a.side and world.apparent_position(ship.side, t.id) is None:
+            raise Rejected("No sensor contact with that ship.")
+
+    def _check_equipment(self, a: Ship) -> None:
+        """The ally has working gear for the order."""
+        o = self.order
         if o == "phaser" and not any(b.intact for b in a.banks):
             raise Rejected(f"{a.name}: we have no working phasers.")
         if o == "torpedo" and not any(t.intact for t in a.tubes):
             raise Rejected(f"{a.name}: we have no working torpedo tubes.")
         if o == "probe" and not any(lch.intact for lch in a.launchers):
             raise Rejected(f"{a.name}: we have no working probe launchers.")
-        if o in ("course",) and self.value is None:
+        if o in ("recover", "eject") and a.cls.mass_capacity <= 0:
+            raise Rejected(f"{a.name} has no docking bays.")
+        if o in ("tow", "tractor") and (a.tractor is None or not a.tractor.intact):
+            raise Rejected(f"{a.name}: our tractor beam is not working.")
+        if o == "board" and not any(not x.destroyed for x in a.transporters):
+            raise Rejected(f"{a.name}: our transporters are down.")
+
+    def _check_details(self, world: World, a: Ship) -> None:
+        """What else the order needs: a course, a group, a docking bay, a destination."""
+        o = self.order
+        t = world.ships[self.target] if self.target is not None else None
+        if o == "course" and self.value is None:
             raise Rejected("Hold which course?")
         if o == "join" and (self.value is None or self.value < 1):
             raise Rejected("Join which group (1 or more)?")
-        if o in ("recover", "eject") and a.cls.mass_capacity <= 0:
-            raise Rejected(f"{a.name} has no docking bays.")
-        if o == "dock" and self.target is not None and world.ships[self.target].cls.mass_capacity <= 0:
-            raise Rejected(f"{world.ships[self.target].name} has no docking bays.")
-        if o == "eject" and self.target is not None and world.ships[self.target].docked_to != a.id:
-            raise Rejected(f"{world.ships[self.target].name} is not docked with {a.name}.")
-        if o in ("tow", "tractor") and (a.tractor is None or not a.tractor.intact):
-            raise Rejected(f"{a.name}: our tractor beam is not working.")
+        if o == "dock" and t is not None and t.cls.mass_capacity <= 0:
+            raise Rejected(f"{t.name} has no docking bays.")
+        if o == "eject" and t is not None and t.docked_to != a.id:
+            raise Rejected(f"{t.name} is not docked with {a.name}.")
         if o == "tow" and self.destination is None:
             raise Rejected("Tow it where? 'tell <ally> tow <ship> <destination ship>'.")
-        if o == "board" and not any(not x.destroyed for x in a.transporters):
-            raise Rejected(f"{a.name}: our transporters are down.")
         if o == "undock" and a.docked_to is None:
             raise Rejected(f"{a.name} is not docked.")
 

@@ -5,12 +5,13 @@ Part of `BattleScene` (see `ui/battle_scene.py`), which mixes these methods in; 
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import pygame
 
 from ...core.angles import bearing, norm360
 from ...sim.commands import Pursue, Scan, SelectTarget, SetHelm, SetPointDefense, SetShields
+from ...sim.ship import Ship
 from .. import theme
 from ..hud import PD_CYCLE, SUB_GROUPS
 from .common import FKEYS, SPEEDS
@@ -119,22 +120,12 @@ class InputMixin(SceneState):
 
     def _key(self: BattleScene, ev: pygame.event.Event) -> None:
         k = ev.key
-        p = self.player
-        shift = ev.mod & pygame.KMOD_SHIFT
         if k in FKEYS and self.run_key(FKEYS[k]):
             return
         if ev.mod & pygame.KMOD_CTRL and pygame.K_a <= k <= pygame.K_z and self.run_key("^" + chr(k)):
             return
         if k == pygame.K_ESCAPE:
-            if self.overlay is None and self.printout is not None:
-                self.printout = None
-                self.chart_auto = False
-            elif self.overlay in (None, "help_brief"):
-                self.overlay = "menu"
-            elif self.overlay == "debrief":
-                self.on_exit()
-            else:
-                self.overlay = None
+            self._escape()
             return
         if self.overlay == "debrief":
             if k in (pygame.K_RETURN, pygame.K_KP_ENTER):
@@ -142,71 +133,27 @@ class InputMixin(SceneState):
             return
         if self.overlay and self.overlay.startswith("help") and k not in (pygame.K_F1, pygame.K_h):
             self.overlay = None
-        if k == pygame.K_SPACE:
-            self.paused = not self.paused
-        elif k in (pygame.K_RIGHTBRACKET, pygame.K_PERIOD):
-            self.speed = SPEEDS[min(len(SPEEDS) - 1, SPEEDS.index(self.speed) + 1)]
-        elif k in (pygame.K_LEFTBRACKET, pygame.K_COMMA):
-            self.speed = SPEEDS[max(0, SPEEDS.index(self.speed) - 1)]
-        elif k in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SLASH, pygame.K_BACKQUOTE):
-            self.console_focus = True
-            pygame.key.start_text_input()
-        elif k == pygame.K_F1:
-            self.open_manual("controls")
-        elif k == pygame.K_h:
-            self.open_manual()
-        elif k == pygame.K_i:
-            self.toggle_overlay("damage")
-        elif k == pygame.K_q:
-            self.view.show_arcs = not self.view.show_arcs
-        elif k == pygame.K_c:
-            self.cam.follow = self.player_id
-        elif k in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS):
-            self.cam.zoom_at(1.25, *self.map_rect.center)
-        elif k in (pygame.K_MINUS, pygame.K_KP_MINUS):
-            self.cam.zoom_at(0.8, *self.map_rect.center)
-        elif k in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN):
-            step = 80
-            dx = {pygame.K_LEFT: step, pygame.K_RIGHT: -step}.get(k, 0)
-            dy = {pygame.K_UP: step, pygame.K_DOWN: -step}.get(k, 0)
-            self.cam.pan_pixels(dx, dy)
-        elif k == pygame.K_m:
-            muted = self.audio.toggle_mute()
-            self.toast = ("Sound off (M)" if muted else "Sound on (M)", theme.TEXT_DIM, 1.5)
-        elif k == pygame.K_F9:
-            self.omniscient = not self.omniscient
-        elif p is None:
+        shift = bool(ev.mod & pygame.KMOD_SHIFT)
+        scene_action = SCENE_KEYS.get(k)
+        if scene_action is not None:
+            scene_action(self, k, shift)
             return
-        elif k == pygame.K_w:
-            self.issue(SetHelm(ship_id=p.id, warp=min(p.cls.max_warp, math.floor(p.desired_warp + 1))))
-        elif k == pygame.K_s:
-            self.issue(SetHelm(ship_id=p.id, warp=max(0.0, math.ceil(p.desired_warp - 1))))
-        elif k == pygame.K_a:
-            self.issue(SetHelm(ship_id=p.id, course=norm360(p.desired_course - (5 if shift else 15))))
-        elif k == pygame.K_d:
-            self.issue(SetHelm(ship_id=p.id, course=norm360(p.desired_course + (5 if shift else 15))))
-        elif k == pygame.K_f:
-            self.fire_phasers(None)
-        elif k == pygame.K_t:
-            self.fire_torpedoes(None)
-        elif k == pygame.K_p:
-            self.launch_probe()
-        elif k == pygame.K_x:
-            if p.target is not None:
-                self.issue(Scan(ship_id=p.id, target=p.target))
-        elif k == pygame.K_TAB:
-            self._cycle_target(-1 if shift else 1)
-        elif k == pygame.K_r:
-            if p.target is not None:
-                i = SUB_GROUPS.index(p.target_subsystem) if p.target_subsystem in SUB_GROUPS else 0
-                self.issue(SelectTarget(ship_id=p.id, target=p.target, subsystem=SUB_GROUPS[(i + 1) % len(SUB_GROUPS)]))
-        elif k == pygame.K_g:
-            up = not any(s.up for s in p.shields)
-            self.issue(SetShields(ship_id=p.id, up=up))
-        elif k == pygame.K_v:
-            nxt = PD_CYCLE[(PD_CYCLE.index(p.pd_doctrine) + 1) % len(PD_CYCLE)]
-            self.issue(SetPointDefense(ship_id=p.id, doctrine=nxt))
-            self.toast = (f"Point defense: {nxt.value}", theme.GOOD, 2.0)
+        p = self.player
+        ship_action = SHIP_KEYS.get(k)
+        if p is not None and ship_action is not None:
+            ship_action(self, p, shift)
+
+    def _escape(self: BattleScene) -> None:
+        """Esc closes the printout, then the overlay; with nothing open it brings up the battle menu."""
+        if self.overlay is None and self.printout is not None:
+            self.printout = None
+            self.chart_auto = False
+        elif self.overlay in (None, "help_brief"):
+            self.overlay = "menu"
+        elif self.overlay == "debrief":
+            self.on_exit()
+        else:
+            self.overlay = None
 
     def _cycle_target(self: BattleScene, step: int) -> None:
         p = self.player
@@ -267,6 +214,124 @@ class InputMixin(SceneState):
             return False
         self.run_console(text)
         return True
+
+
+
+# ------------------------------------------------------------ single-key controls (see CONTROLS for the list shown to the player)
+
+def _open_console(s: BattleScene, k: int, shift: bool) -> None:
+    s.console_focus = True
+    pygame.key.start_text_input()
+
+
+def _pan(s: BattleScene, k: int, shift: bool) -> None:
+    step = 80
+    dx = {pygame.K_LEFT: step, pygame.K_RIGHT: -step}.get(k, 0)
+    dy = {pygame.K_UP: step, pygame.K_DOWN: -step}.get(k, 0)
+    s.cam.pan_pixels(dx, dy)
+
+
+def _mute(s: BattleScene, k: int, shift: bool) -> None:
+    muted = s.audio.toggle_mute()
+    s.toast = ("Sound off (M)" if muted else "Sound on (M)", theme.TEXT_DIM, 1.5)
+
+
+def _pause(s: BattleScene, k: int, shift: bool) -> None:
+    s.paused = not s.paused
+
+
+def _faster(s: BattleScene, k: int, shift: bool) -> None:
+    s.speed = SPEEDS[min(len(SPEEDS) - 1, SPEEDS.index(s.speed) + 1)]
+
+
+def _slower(s: BattleScene, k: int, shift: bool) -> None:
+    s.speed = SPEEDS[max(0, SPEEDS.index(s.speed) - 1)]
+
+
+def _zoom_in(s: BattleScene, k: int, shift: bool) -> None:
+    s.cam.zoom_at(1.25, *s.map_rect.center)
+
+
+def _zoom_out(s: BattleScene, k: int, shift: bool) -> None:
+    s.cam.zoom_at(0.8, *s.map_rect.center)
+
+
+def _arcs(s: BattleScene, k: int, shift: bool) -> None:
+    s.view.show_arcs = not s.view.show_arcs
+
+
+def _follow(s: BattleScene, k: int, shift: bool) -> None:
+    s.cam.follow = s.player_id
+
+
+def _omniscient(s: BattleScene, k: int, shift: bool) -> None:
+    s.omniscient = not s.omniscient
+
+
+SceneKey = Callable[["BattleScene", int, bool], None]
+
+# keys that work with or without a ship under command
+SCENE_KEYS: dict[int, SceneKey] = {
+    pygame.K_SPACE: _pause,
+    pygame.K_RIGHTBRACKET: _faster, pygame.K_PERIOD: _faster,
+    pygame.K_LEFTBRACKET: _slower, pygame.K_COMMA: _slower,
+    pygame.K_RETURN: _open_console, pygame.K_KP_ENTER: _open_console, pygame.K_SLASH: _open_console, pygame.K_BACKQUOTE: _open_console,
+    pygame.K_F1: lambda s, k, shift: s.open_manual("controls"),
+    pygame.K_h: lambda s, k, shift: s.open_manual(),
+    pygame.K_i: lambda s, k, shift: s.toggle_overlay("damage"),
+    pygame.K_q: _arcs,
+    pygame.K_c: _follow,
+    pygame.K_EQUALS: _zoom_in, pygame.K_PLUS: _zoom_in, pygame.K_KP_PLUS: _zoom_in,
+    pygame.K_MINUS: _zoom_out, pygame.K_KP_MINUS: _zoom_out,
+    pygame.K_LEFT: _pan, pygame.K_RIGHT: _pan, pygame.K_UP: _pan, pygame.K_DOWN: _pan,
+    pygame.K_m: _mute,
+    pygame.K_F9: _omniscient,
+}
+
+
+def _warp(s: BattleScene, p: Ship, step: int) -> None:
+    warp = min(p.cls.max_warp, math.floor(p.desired_warp + 1)) if step > 0 else max(0.0, math.ceil(p.desired_warp - 1))
+    s.issue(SetHelm(ship_id=p.id, warp=warp))
+
+
+def _turn(s: BattleScene, p: Ship, sign: int, shift: bool) -> None:
+    s.issue(SetHelm(ship_id=p.id, course=norm360(p.desired_course + sign * (5 if shift else 15))))
+
+
+def _scan(s: BattleScene, p: Ship, shift: bool) -> None:
+    if p.target is not None:
+        s.issue(Scan(ship_id=p.id, target=p.target))
+
+
+def _cycle_aim(s: BattleScene, p: Ship, shift: bool) -> None:
+    if p.target is not None:
+        i = SUB_GROUPS.index(p.target_subsystem) if p.target_subsystem in SUB_GROUPS else 0
+        s.issue(SelectTarget(ship_id=p.id, target=p.target, subsystem=SUB_GROUPS[(i + 1) % len(SUB_GROUPS)]))
+
+
+def _cycle_pd(s: BattleScene, p: Ship, shift: bool) -> None:
+    nxt = PD_CYCLE[(PD_CYCLE.index(p.pd_doctrine) + 1) % len(PD_CYCLE)]
+    s.issue(SetPointDefense(ship_id=p.id, doctrine=nxt))
+    s.toast = (f"Point defense: {nxt.value}", theme.GOOD, 2.0)
+
+
+ShipKey = Callable[["BattleScene", Ship, bool], None]
+
+# keys that act on the ship under command
+SHIP_KEYS: dict[int, ShipKey] = {
+    pygame.K_w: lambda s, p, shift: _warp(s, p, +1),
+    pygame.K_s: lambda s, p, shift: _warp(s, p, -1),
+    pygame.K_a: lambda s, p, shift: _turn(s, p, -1, shift),
+    pygame.K_d: lambda s, p, shift: _turn(s, p, +1, shift),
+    pygame.K_f: lambda s, p, shift: s.fire_phasers(None),
+    pygame.K_t: lambda s, p, shift: s.fire_torpedoes(None),
+    pygame.K_p: lambda s, p, shift: s.launch_probe(),
+    pygame.K_x: _scan,
+    pygame.K_TAB: lambda s, p, shift: s._cycle_target(-1 if shift else 1),
+    pygame.K_r: _cycle_aim,
+    pygame.K_g: lambda s, p, shift: s.issue(SetShields(ship_id=p.id, up=not any(sh.up for sh in p.shields))),
+    pygame.K_v: _cycle_pd,
+}
 
 
 __all__ = ["InputMixin"]

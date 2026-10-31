@@ -183,6 +183,20 @@ class Bridge(Chatter):
             rel.nudge(0.03)
         if RUDE.search(low):
             rel.nudge(-0.08)
+        said_now = self._bridge_order(officer, low, ctx, run)
+        if said_now is None and not asked:
+            said_now = self._combat_order(officer, low, run)
+        if said_now is not None:
+            return said_now
+        collab = None if FIRING.match(low) else collaborations.matching(officer.id, low)
+        if collab is not None:
+            return self.collaborate(officer, collab, run)
+        if self.llm is not None:
+            return self._ask_model(officer, text, said, ctx)
+        return self.offline(officer, low, ctx, run)
+
+    def _bridge_order(self, officer: OfficerProfile, low: str, ctx: HelpContext, run: RunCommand) -> list[Utterance] | None:
+        """Handing over the bridge or the repairs, cease fire, stand down, 'I have the helm': carried out at once."""
         turn = self.handover(low)
         if turn == "release" and not (ctx.ship is not None and ctx.ship.conn):
             turn = None   # nobody has the bridge: "I relieve you" means this officer's station
@@ -207,20 +221,24 @@ class Bridge(Chatter):
         m = RELEASE.search(low)
         if m is not None:
             return self.release(officer, ctx, run, named=next((g for g in m.groups()[1:] if g), ""))
-        m = None if asked else TARGET_ORDER.match(low)
-        if m is not None:      # "worf, target their shields" / "focus fire on their engines": no model, no delay
+        return None
+
+    def _combat_order(self, officer: OfficerProfile, low: str, run: RunCommand) -> list[Utterance] | None:
+        """Targeting, capture, disable and destroy orders in plain words: standing objectives, no model, no delay."""
+        m = TARGET_ORDER.match(low)
+        if m is not None:      # "worf, target their shields" / "focus fire on their engines"
             return self.objective(officer, f"target {m.group(1)}", run)
-        m = None if asked else CAPTURE.search(low)
+        m = CAPTURE.search(low)
         if m is not None:
             if m.group(1) in ("capture", "seize"):
                 rest = low[m.end():]
             else:
                 rest = "" if m.group(2) in ("her", "it", "them") else m.group(2)   # "her": the current target
             return self.objective(officer, f"capture {rest}", run)
-        if not asked and SOFT_ORDER.match(low):
+        if SOFT_ORDER.match(low):
             # "hit their shields", "take down her shields", "finish her off", "take them out": the console's words
             return self.objective(officer, low, run)
-        m = None if asked else DISABLE_ORDER.search(low)
+        m = DISABLE_ORDER.search(low)
         if m is not None:
             rest = low[m.end():]
             names_systems = any(w.strip(".,!?'\"").removesuffix("'s") in DISABLE_WORDS for w in rest.split())
@@ -229,20 +247,20 @@ class Bridge(Chatter):
             else:
                 verb = "disarm" if m.group(1) == "disarm" else "cripple"   # both always mean the enemy's systems
             return self.objective(officer, f"{verb} {rest}", run)
-        collab = None if FIRING.match(low) else collaborations.matching(officer.id, low)
-        if collab is not None:
-            return self.collaborate(officer, collab, run)
-        if self.llm is not None:
-            if self.llm.busy(officer.id):
-                return [self._say(officer, "One moment, Captain.", "dim")]
-            system = self.system_prompt(officer, ctx)
-            hist = self.history.setdefault(officer.id, [])
-            hist.append({"role": "user", "content": text or "Report."})
-            del hist[:-16]
-            self.llm.submit(officer.id, system, hist)
-            self.asking[officer.id] = is_question(said)
-            return [self._say(officer, "…", "dim")]
-        return self.offline(officer, low, ctx, run)
+        return None
+
+    def _ask_model(self, officer: OfficerProfile, text: str, said: str, ctx: HelpContext) -> list[Utterance]:
+        """Put the captain's words to the officer's language model; the answer arrives via `poll`."""
+        assert self.llm is not None
+        if self.llm.busy(officer.id):
+            return [self._say(officer, "One moment, Captain.", "dim")]
+        system = self.system_prompt(officer, ctx)
+        hist = self.history.setdefault(officer.id, [])
+        hist.append({"role": "user", "content": text or "Report."})
+        del hist[:-16]
+        self.llm.submit(officer.id, system, hist)
+        self.asking[officer.id] = is_question(said)
+        return [self._say(officer, "…", "dim")]
 
     @staticmethod
     def handover(text: str) -> str | None:

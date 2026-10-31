@@ -58,51 +58,60 @@ class Chatter:
         out.extend(self._morale_remarks(events, s, obs))
         if not self.chatter:
             return out
-        delegated = s.delegated
         commander = self.find(s.conn) if s.conn else None
         if commander is not None and s.target is not None and s.target != self._conn_target:
             self._maybe(out, obs, "", "bridge_target", 1.0, gap=4.0, officer=commander, target=contact_name(obs, s.target))
         self._conn_target = s.target if commander is not None else None
         for ev in events:
-            if isinstance(ev, ProjectCompleted) and ev.ship_id == s.id:
-                collab = collaborations.for_project(ev.project)
-                if collab is not None and (ev.tube is not None or "{tube}" not in str(collab.done)):
-                    out.extend(self._chorus(collab.done, tube=(ev.tube or 0) + 1))
-                    self._last_any = obs.tick
-            elif isinstance(ev, (TorpedoLaunched, PhaserFired)) and ev.ship_id == s.id and s.objectives:
-                continue   # the officer working the objective says what she is firing and why
-            elif isinstance(ev, TorpedoLaunched) and ev.ship_id == s.id and commander is not None:
-                self._maybe(out, obs, "", "bridge_torpedoes", 0.5, officer=commander)
-            elif isinstance(ev, TorpedoLaunched) and ev.ship_id == s.id and "tactical" in delegated:
-                self._maybe(out, obs, "tactical", "torpedoes", 0.6)
-            elif isinstance(ev, PhaserFired) and ev.ship_id == s.id and "tactical" in delegated:
-                self._maybe(out, obs, "tactical", "phasers", 0.15)
-            elif isinstance(ev, ShipStatusChanged) and ev.status == "destroyed":
-                c = obs.contact(ev.ship_id)
-                if c is not None and not (c.side is not None and c.side == s.side):
-                    self._maybe(out, obs, "tactical", "enemy_destroyed", 0.9, target=contact_name(obs, ev.ship_id))
-            elif isinstance(ev, HullHit) and ev.ship_id == s.id and s.structure > 0:
-                band = int(4 * max(0.0, s.structure) / max(1.0, s.structure_max))
-                if band < self._hull_band:
-                    self._hull_band = band
-                    self._maybe(out, obs, "engineering", "hull", 1.0,
-                                n=round(100 * max(0.0, s.structure) / max(1.0, s.structure_max)))
-            elif isinstance(ev, ContactChanged) and ev.side == s.side and ev.acquired:
-                c = obs.contact(ev.ship_id)
-                if c is not None and c.visible:
-                    self._maybe(out, obs, "science", "contact", 0.5, target=contact_name(obs, ev.ship_id))
-            elif isinstance(ev, ContactChanged) and ev.side == s.side and not ev.acquired:
-                # the science officer gives the last fix, so the captain knows where to look
-                c = obs.contact(ev.ship_id)
-                if c is not None and not c.visible and not c.cloaked_hint:
-                    self._maybe(out, obs, "science", "lost", 1.0, gap=4.0, target=contact_name(obs, ev.ship_id),
-                                bearing=f"{bearing(c.x - s.x, c.y - s.y):.0f}",
-                                range=f"{math.hypot(c.x - s.x, c.y - s.y):,.0f}",
-                                heading=f"{c.course:.0f}", warp=f"{c.warp:.1f}")
-            elif isinstance(ev, ScanCompleted) and ev.ship_id == s.id:
-                self._maybe(out, obs, "science", "scan", 0.7, target=contact_name(obs, ev.target_id))
-            elif isinstance(ev, SubsystemRepaired) and ev.ship_id == s.id:
-                self._maybe(out, obs, "engineering", "repaired", 0.3, n=ev.label)
+            self._event_remark(ev, s, obs, commander, out)
+        self._warnings(s, obs, out)
+        return out
+
+    def _event_remark(self: Bridge, ev: Event, s: Ship, obs: Observation, commander: OfficerProfile | None,
+                      out: list[Utterance]) -> None:
+        """An officer's remark on one event, if it is worth one."""
+        if isinstance(ev, ProjectCompleted) and ev.ship_id == s.id:
+            collab = collaborations.for_project(ev.project)
+            if collab is not None and (ev.tube is not None or "{tube}" not in str(collab.done)):
+                out.extend(self._chorus(collab.done, tube=(ev.tube or 0) + 1))
+                self._last_any = obs.tick
+        elif isinstance(ev, (TorpedoLaunched, PhaserFired)) and ev.ship_id == s.id and s.objectives:
+            pass       # the officer working the objective says what she is firing and why
+        elif isinstance(ev, TorpedoLaunched) and ev.ship_id == s.id and commander is not None:
+            self._maybe(out, obs, "", "bridge_torpedoes", 0.5, officer=commander)
+        elif isinstance(ev, TorpedoLaunched) and ev.ship_id == s.id and "tactical" in s.delegated:
+            self._maybe(out, obs, "tactical", "torpedoes", 0.6)
+        elif isinstance(ev, PhaserFired) and ev.ship_id == s.id and "tactical" in s.delegated:
+            self._maybe(out, obs, "tactical", "phasers", 0.15)
+        elif isinstance(ev, ShipStatusChanged) and ev.status == "destroyed":
+            c = obs.contact(ev.ship_id)
+            if c is not None and not (c.side is not None and c.side == s.side):
+                self._maybe(out, obs, "tactical", "enemy_destroyed", 0.9, target=contact_name(obs, ev.ship_id))
+        elif isinstance(ev, HullHit) and ev.ship_id == s.id and s.structure > 0:
+            band = int(4 * max(0.0, s.structure) / max(1.0, s.structure_max))
+            if band < self._hull_band:
+                self._hull_band = band
+                self._maybe(out, obs, "engineering", "hull", 1.0,
+                            n=round(100 * max(0.0, s.structure) / max(1.0, s.structure_max)))
+        elif isinstance(ev, ContactChanged) and ev.side == s.side and ev.acquired:
+            c = obs.contact(ev.ship_id)
+            if c is not None and c.visible:
+                self._maybe(out, obs, "science", "contact", 0.5, target=contact_name(obs, ev.ship_id))
+        elif isinstance(ev, ContactChanged) and ev.side == s.side and not ev.acquired:
+            # the science officer gives the last fix, so the captain knows where to look
+            c = obs.contact(ev.ship_id)
+            if c is not None and not c.visible and not c.cloaked_hint:
+                self._maybe(out, obs, "science", "lost", 1.0, gap=4.0, target=contact_name(obs, ev.ship_id),
+                            bearing=f"{bearing(c.x - s.x, c.y - s.y):.0f}",
+                            range=f"{math.hypot(c.x - s.x, c.y - s.y):,.0f}",
+                            heading=f"{c.course:.0f}", warp=f"{c.warp:.1f}")
+        elif isinstance(ev, ScanCompleted) and ev.ship_id == s.id:
+            self._maybe(out, obs, "science", "scan", 0.7, target=contact_name(obs, ev.target_id))
+        elif isinstance(ev, SubsystemRepaired) and ev.ship_id == s.id:
+            self._maybe(out, obs, "engineering", "repaired", 0.3, n=ev.label)
+
+    def _warnings(self: Bridge, s: Ship, obs: Observation, out: list[Utterance]) -> None:
+        """Incoming fire (when the captain is flying) and hot engines."""
         threats = len([o for o in obs.threats() if math.hypot(o.x - s.x, o.y - s.y) < 8000])
         if threats > self._threats and "helm" not in s.delegated and not s.evasive:
             self._maybe(out, obs, "helm", "incoming", 0.5)   # advice: with an officer at the helm, they just dodge
@@ -110,7 +119,6 @@ class Chatter:
         temp = max((d.temp for d in s.drives if not d.destroyed), default=0.0)
         if temp > obs.rules.temp_limit * 0.85:
             self._maybe(out, obs, "engineering", "hot", 1.0, gap=20.0)
-        return out
 
     def _callouts(self: Bridge, s: Ship, obs: Observation) -> list[Utterance]:
         """Officers flying the ship or working an objective say what they're doing as they start each step
