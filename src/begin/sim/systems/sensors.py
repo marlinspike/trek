@@ -16,6 +16,7 @@ from ..events import ContactChanged, Message, ScanCompleted, Tone
 from ..ship import Kind, Ship
 
 if TYPE_CHECKING:
+    from ..ordnance import Probe, Torpedo
     from ..world import World
 
 
@@ -130,7 +131,8 @@ def update_sensors(world: World) -> None:
                                        Tone.CAUTION, visible_to=frozenset({side})))
 
         vis: set[int] = set()
-        for o in (*world.torpedoes, *world.probes):
+        ordnance: list[Torpedo | Probe] = [*world.torpedoes, *world.probes]
+        for o in ordnance:
             if o.side == side:
                 vis.add(o.id)
                 continue

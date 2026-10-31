@@ -58,7 +58,7 @@ class ParseResult:
 
 @dataclass
 class ParseContext:
-    ship_id: int
+    ship_id: int | None      # None: no ship under command, so only orders that need no ship work
     obs: Observation
 
 
@@ -70,7 +70,7 @@ class Parser:
     def __init__(self, ctx: ParseContext) -> None:
         self.ctx = ctx
         self.obs = ctx.obs
-        ship = self.obs.own(ctx.ship_id)
+        ship = self.obs.own(ctx.ship_id) if ctx.ship_id is not None else None
         if ship is None:
             raise ParseError("No ship under command.")
         self.ship = ship
@@ -336,6 +336,7 @@ class Parser:
             return
         if tok.peek() in ("their", "her", "its", "his", "the") and self.ship.target is not None:
             tok.next()                          # "target their hull", "target their life support": the current target
+        target: int | None
         if self.ship.target is not None and (tok.peek() in AIM_FIRST or aim_ahead(tok)):
             target = self.ship.target
         else:
@@ -705,7 +706,7 @@ class Parser:
         res.commands.append(self._cmd(SetFireMode, weapon=w, mounts=mounts, mode=FireMode(m)))
 
     def _v_pd(self, tok: Tokens, res: ParseResult) -> None:
-        docs = {d.value: (d.value,) for d in PDDoctrine}
+        docs: dict[str, tuple[str, ...]] = {d.value: (d.value,) for d in PDDoctrine}
         docs["conservative"] = ("conservative", "cons", "low")
         docs["aggressive"] = ("aggressive", "aggr", "high")
         docs["balanced"] = ("balanced", "bal", "normal", "on")

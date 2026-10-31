@@ -268,7 +268,7 @@ def _omniscient(s: BattleScene, k: int, shift: bool) -> None:
     s.omniscient = not s.omniscient
 
 
-SceneKey = Callable[["BattleScene", int, bool], None]
+SceneKey = Callable[["BattleScene", int, bool], object]
 
 # keys that work with or without a ship under command
 SCENE_KEYS: dict[int, SceneKey] = {
@@ -315,7 +315,7 @@ def _cycle_pd(s: BattleScene, p: Ship, shift: bool) -> None:
     s.toast = (f"Point defense: {nxt.value}", theme.GOOD, 2.0)
 
 
-ShipKey = Callable[["BattleScene", Ship, bool], None]
+ShipKey = Callable[["BattleScene", Ship, bool], object]
 
 # keys that act on the ship under command
 SHIP_KEYS: dict[int, ShipKey] = {

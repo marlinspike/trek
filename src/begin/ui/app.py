@@ -37,7 +37,8 @@ class App:
         pygame.init()
         pygame.key.set_repeat(350, 40)
         self.settings = Settings.load()
-        self.size = size or tuple(self.settings.window)  # type: ignore[assignment]
+        w, h = self.settings.window
+        self.size: tuple[int, int] = size or (w, h)
         flags = pygame.RESIZABLE
         _set_window_icon()
         self.screen = pygame.display.set_mode(self.size, flags)

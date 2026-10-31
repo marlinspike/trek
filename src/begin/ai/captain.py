@@ -384,8 +384,8 @@ class AICaptain:
             return
         ours = sum(strength(sum(1 for b in s.banks if b.intact), s.cls.banks_range, sum(1 for t in s.tubes if t.intact))
                    * max(0.1, s.structure / max(1.0, s.structure_max)) for s in obs.own_ships())
-        theirs = sum(strength(c.cls.banks, c.cls.banks_range, c.cls.tubes)
-                     * (c.scan.structure_frac if c.scan is not None else 1.0) for c in hostiles)
+        theirs = sum(strength(cls.banks, cls.banks_range, cls.tubes) * (c.scan.structure_frac if c.scan is not None else 1.0)
+                     for c in hostiles if (cls := c.cls) is not None)
         if ours >= theirs * AI_PRESS_EDGE:
             self.pressing = True
             self._log(obs, f"stalled {AI_STALL_CYCLES:.0f} cycles; stronger ({ours:.0f} vs {theirs:.0f}): pressing the attack")

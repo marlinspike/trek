@@ -72,7 +72,7 @@ def test(question: str = "Spock, what do you recommend?") -> int:
     if cfg is None:
         print("No LLM provider is set; officers answer offline. Try: begin --llm provider=ollama model=<name>")
         return 1
-    think = {None: "model default", True: "on", False: "off"}.get(cfg.think, str(cfg.think))  # type: ignore[call-overload]
+    think = "model default" if cfg.think is None else "on" if cfg.think is True else "off" if cfg.think is False else str(cfg.think)
     print(f"Provider {cfg.provider}, model {cfg.model}, thinking {think}"
           + (f", endpoint {cfg.base_url}" if cfg.base_url else ""))
     content = default_content()
