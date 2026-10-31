@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pygame
 
@@ -17,6 +18,17 @@ from .tour_scene import TourScene
 TARGET_FPS = 60
 
 
+ICON = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
+
+
+def _set_window_icon() -> None:
+    """The Enterprise on the title bar, taskbar and (when run from Python) the Dock; drawn by tools/make_icon.py."""
+    try:
+        pygame.display.set_icon(pygame.image.load(str(ICON)))
+    except (pygame.error, FileNotFoundError):
+        pass
+
+
 class App:
     def __init__(self, size: tuple[int, int] | None = None, headless: bool = False) -> None:
         if headless:
@@ -27,6 +39,7 @@ class App:
         self.settings = Settings.load()
         self.size = size or tuple(self.settings.window)  # type: ignore[assignment]
         flags = pygame.RESIZABLE
+        _set_window_icon()
         self.screen = pygame.display.set_mode(self.size, flags)
         pygame.display.set_caption("Begin — tactical starship simulation")
         self.clock = pygame.time.Clock()

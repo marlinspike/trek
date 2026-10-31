@@ -3,8 +3,9 @@
 # Runs only when a version tag such as v0.2.0 is pushed, or when started by hand
 # (Actions > Build downloads > Run workflow, giving a version): the builds are attached
 # to a GitHub Release of that name, and a hand-started run creates the tag on the commit
-# it built. It never runs on pull requests or pushes to main, and it doesn't run the
-# test suite (tests are run locally before pushing).
+# it built. Running it again for a release that already exists replaces its downloads.
+# It never runs on pull requests or pushes to main, and it doesn't run the test suite
+# (tests are run locally before pushing).
 name: Build downloads
 
 on:
@@ -105,7 +106,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
         run: |
-          gh release create "$VERSION" out/* \
-            --target "${{ github.sha }}" \
-            --title "Begin $VERSION" \
-            --notes-file packaging/RELEASE_NOTES.md
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            # rebuilding a release that already exists: replace its downloads and notes
+            gh release upload "$VERSION" out/* --clobber
+            gh release edit "$VERSION" --notes-file packaging/RELEASE_NOTES.md
+          else
+            gh release create "$VERSION" out/* \
+              --target "${{ github.sha }}" \
+              --title "Begin $VERSION" \
+              --notes-file packaging/RELEASE_NOTES.md
+          fi
