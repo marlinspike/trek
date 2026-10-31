@@ -18,6 +18,16 @@ Remake additions [E]:
   boat outside the target's phaser reach, stays out of a stronger enemy's reach
   when it is the faster ship, and turns a fresh shield toward the enemy when the
   one facing it fails.
+
+Fighting as a force [E] (`smart`):
+* captains prefer a target their scans show is already badly hurt, and leave a
+  base for last while it still has mobile defenders close by;
+* a second ship closing on a target its shipmate is already fighting comes in
+  on the flank, so the two of them hit different shields;
+* a damaged ship with a friendly base on the field docks to repair, then
+  rejoins the fight;
+* when nobody has landed a hit for a long while, the stronger side presses
+  the attack and the weaker one leaves, so fights end instead of stalling.
 """
 
 from __future__ import annotations
@@ -74,6 +84,18 @@ AI_CLOSE_HYSTERESIS = 1.15       # closing needs odds this much better than stan
 AI_TORP_HIT = 0.45               # rough chance a torpedo connects; homing ones more often
 AI_TORP_HIT_HOMING = 0.7
 AI_BATTERY_CRAWL = 0.25
+# fighting as a force [E]
+AI_DOCK_DAMAGE = 0.45            # damage ratio (or hull lost) at which a ship goes to a friendly base to repair
+AI_UNDOCK_HULL = 0.9             # hull fraction a docked ship waits for before rejoining
+AI_UNDOCK_SYSTEMS = 30           # % damage left on any weapon, drive or shield before it rejoins
+AI_HOME_RANGE = 12000.0          # a ship with a friendly base fights within this of it, under its guns
+AI_LULL_RANGE = 25000.0          # no enemy this close: a lull, time to dock and repair
+AI_STALL_CYCLES = 100.0          # cycles with no damage done or taken by anyone on our side: the fight has stalled
+AI_PRESS_EDGE = 0.8              # our strength / theirs at or above which a stalled side presses the attack
+AI_FLANK_ANGLE = 40.0            # degrees off the direct bearing for the second ship on a target
+AI_HURT_BONUS = 1.0              # target score × (1 + this × structure lost), from scans
+AI_BASE_SCREENED = 0.5           # × score of a base while its mobile defenders are close by
+AI_SCREEN_RANGE = 10000.0
 STRENGTH_DIVISOR = 1000.0
 
 
@@ -104,6 +126,11 @@ class AICaptain:
     order_seen: int = -1
     order_done: bool = False   # the current movement order has been carried out (tow delivered, party beamed)
     smart: bool = True         # [E] fight to the ship's strengths; False keeps Begin's weapon-dominance rule alone
+    docking: bool = False      # [E] on the way to (or docked at) a friendly base for repairs
+    pressing: bool = False     # [E] the fight stalled and we are the stronger side: close and finish it
+    withdrawing: bool = False  # [E] the fight stalled and we are the weaker side: leave the field
+    stall_mark: float = -1.0
+    stall_since: int = 0
 
     # ------------------------------------------------------------ entry
 
@@ -126,6 +153,10 @@ class AICaptain:
 
     def _log(self, obs: Observation, text: str) -> None:
         self.trace.add(obs.tick, text)
+
+    def helm_aggression(self, obs: Observation, ship: Ship) -> float:
+        """How boldly the helm flies: how little it weaves and how fast it closes. Officers temper it [E]."""
+        return self.personality.aggression
 
     # ------------------------------------------------------------ strategy: morale and target
 
@@ -152,9 +183,16 @@ class AICaptain:
         st = obs.ally_order(ship.id)
         if st is not None and st.movement == "run":
             self.retreating = True  # told to run: never rejoins until the order is cancelled
-        elif self.retreating and dmg < p.bravery * AI_RETREAT_RECOVER:
+        elif self.retreating and dmg < p.bravery * AI_RETREAT_RECOVER and not self.withdrawing:
             self.retreating = False
             self._log(obs, "recovered nerve; re-engaging")
+        if self.smart:
+            self._plan_repairs(obs, ship, dmg, st, out)
+            self._check_stall(obs, ship)
+            if self.retreating and not self.withdrawing and not ship.cls.is_base and all(
+                    c.cls is not None and c.cls.is_base for c in obs.hostile_contacts() if c.visible):
+                self.withdrawing = True   # beaten, and only a base left to fight: it won't follow, so leave for good
+                self._log(obs, "only a base left against us: leaving the field")
 
         # last stand: fanatics (and crippled ships of a self-destruct doctrine) blow themselves up
         if (not self.last_stand and ship.self_destruct < 0 and dmg > 0.8
@@ -205,6 +243,104 @@ class AICaptain:
                 self.autoload_set_for = best.id
         return out
 
+    # ------------------------------------------------------------ fighting as a force [E]
+
+    def repair_base(self, obs: Observation, ship: Ship) -> Ship | None:
+        """The nearest friendly base with room to take this ship aboard."""
+        bases = [b for b in obs.own_ships() if b.cls.is_base and b.cls.mass_capacity >= ship.cls.mass and b.id != ship.id]
+        if not bases or ship.cls.is_base:
+            return None
+        return min(bases, key=lambda b: math.hypot(b.x - ship.x, b.y - ship.y))
+
+    def dock_threshold(self, obs: Observation, ship: Ship) -> float:
+        """Damage at which a ship breaks off to dock."""
+        return AI_DOCK_DAMAGE
+
+    def ready_to_rejoin(self, ship: Ship) -> bool:
+        hull = ship.structure / max(1.0, ship.structure_max)
+        vital = [*ship.banks, *ship.tubes, *ship.drives, *ship.shields, *ship.reactors]
+        return hull >= AI_UNDOCK_HULL and all(x.damage < AI_UNDOCK_SYSTEMS for x in vital) and ship.crew > 0
+
+    def _plan_repairs(self, obs: Observation, ship: Ship, dmg: float, st: AllyStanding | None,
+                      out: list[Command]) -> None:
+        """A badly hurt ship with a friendly base on the field goes and docks, and rejoins once she is fit."""
+        ordered = st is not None and st.movement is not None
+        base = self.repair_base(obs, ship)
+        hull = ship.structure / max(1.0, ship.structure_max)
+        if base is None or ordered or self.last_stand:
+            if self.docking and ship.docked_to is None:
+                self.docking = False
+            return
+        quiet = not any(c.visible and c.distance_to(ship.x, ship.y) < AI_LULL_RANGE for c in obs.hostile_contacts())
+        if not self.docking and (dmg > self.dock_threshold(obs, ship) or hull < 1.0 - self.dock_threshold(obs, ship)):
+            self.docking = True
+            self.retreating = False
+            self._log(obs, f"damage {dmg:.2f}, hull {hull:.0%}: going to {base.name} for repairs")
+        elif not self.docking and quiet and ship.docked_to is None and not self.ready_to_rejoin(ship):
+            self.docking = True       # a lull between attacks: use it to put her right at the base
+            self._log(obs, f"lull in the fighting, hull {hull:.0%}: docking at {base.name} to repair")
+        if self.docking and not self.withdrawing:
+            self.retreating = False
+        if self.docking and ship.docked_to is not None and self.ready_to_rejoin(ship):
+            self.docking = False
+            self.last_helm = None
+            self._log(obs, "repaired: undocking to rejoin the fight")
+            out.append(self._cmd(Dock, ship, host=None))
+
+    def _stay_home(self, obs: Observation, ship: Ship, c: ContactView | None) -> Command | None:
+        """With a friendly base on the field, fight near it [E]: don't chase an enemy far from its guns, and
+        come back to it when there's nobody to fight. Returns the helm order, or None to fight as usual."""
+        base = self.repair_base(obs, ship)
+        if base is None:
+            return None
+        d_home = math.hypot(base.x - ship.x, base.y - ship.y)
+        brg_home = bearing(base.x - ship.x, base.y - ship.y)
+        if c is None:
+            if d_home > AI_HOME_RANGE * 0.4:
+                return self._helm(obs, ship, brg_home, min(self.combat_speed(ship, obs), max(1.0, d_home / 1500.0)))
+            return self._helm(obs, ship, ship.course, 0.0)
+        if d_home > AI_HOME_RANGE and c.distance_to(base.x, base.y) > AI_HOME_RANGE:
+            return self._weave(obs, ship, brg_home, c.distance_to(ship.x, ship.y))
+        return None
+
+    def _go_dock(self, obs: Observation, ship: Ship) -> list[Command]:
+        base = self.repair_base(obs, ship)
+        if base is None:
+            self.docking = False
+            return []
+        if ship.docked_to is not None:
+            return []
+        d = math.hypot(base.x - ship.x, base.y - ship.y)
+        if d <= obs.rules.dock_range * 0.9:
+            return [c for c in (self._helm(obs, ship, ship.course, 0.0), self._cmd(Dock, ship, host=base.id)) if c is not None]
+        warp = self.combat_speed(ship, obs) if d > obs.rules.dock_range * 4 else max(1.0, min(3.0, d / 400.0))
+        return [c for c in (self._helm(obs, ship, bearing(base.x - ship.x, base.y - ship.y), warp),) if c is not None]
+
+    def _check_stall(self, obs: Observation, ship: Ship) -> None:
+        """Nobody on our side has dealt or taken damage for a long while: press if we're stronger, else leave."""
+        mark = sum(s.stats.damage_dealt + s.stats.damage_taken for s in obs.own_ships(alive_only=False))
+        if mark != self.stall_mark:
+            self.stall_mark = mark
+            self.stall_since = obs.tick
+            return
+        if self.pressing or self.withdrawing:
+            return
+        if (obs.tick - self.stall_since) * obs.rules.dt < AI_STALL_CYCLES:
+            return
+        hostiles = [c for c in obs.hostile_contacts() if c.visible and c.cls is not None]
+        if not hostiles:
+            return
+        ours = sum(strength(sum(1 for b in s.banks if b.intact), s.cls.banks_range, sum(1 for t in s.tubes if t.intact))
+                   * max(0.1, s.structure / max(1.0, s.structure_max)) for s in obs.own_ships())
+        theirs = sum(strength(c.cls.banks, c.cls.banks_range, c.cls.tubes)
+                     * (c.scan.structure_frac if c.scan is not None else 1.0) for c in hostiles)
+        if ours >= theirs * AI_PRESS_EDGE:
+            self.pressing = True
+            self._log(obs, f"stalled {AI_STALL_CYCLES:.0f} cycles; stronger ({ours:.0f} vs {theirs:.0f}): pressing the attack")
+        elif not ship.cls.is_base:
+            self.withdrawing = self.retreating = True
+            self._log(obs, f"stalled {AI_STALL_CYCLES:.0f} cycles; weaker ({ours:.0f} vs {theirs:.0f}): leaving the field")
+
     def _score(self, obs: Observation, ship: Ship, c: ContactView) -> float:
         """Begin's target score [R]: threat strength × distance band × modifiers."""
         if c.cls is not None:
@@ -232,6 +368,14 @@ class AICaptain:
         focus = self.personality.doctrine.focus_fire
         if any(s.target == c.id for s in obs.own_ships() if s.id != ship.id):
             score *= 1.0 + 0.5 * focus
+        if self.smart:
+            # [E] finish what the scans show is hurt; leave a screened base for last
+            if c.scan is not None:
+                score *= 1.0 + AI_HURT_BONUS * (1.0 - c.scan.structure_frac)
+            if c.cls is not None and c.cls.is_base and any(
+                    o.id != c.id and o.visible and o.cls is not None and not o.cls.is_base
+                    and o.distance_to(c.x, c.y) < AI_SCREEN_RANGE for o in obs.hostile_contacts()):
+                score *= AI_BASE_SCREENED
         return score
 
     def _subsystem_choice(self, obs: Observation, ship: Ship, c: ContactView | None) -> str | None:
@@ -262,6 +406,9 @@ class AICaptain:
         handled = False
         if st is not None:
             handled = self._standing_orders(obs, ship, c, st, out)
+        if not handled and self.docking:
+            out.extend(self._go_dock(obs, ship))
+            handled = True
         if not handled:
             helm = self._maneuver(obs, ship, c, st)
             if helm is not None:
@@ -593,7 +740,7 @@ class AICaptain:
         self.weave_side = -self.weave_side
         amp = 0.0
         if d < AI_WEAVE_THREAT_RANGE:
-            cap = (AI_WEAVE_AGGR_BASE - self.personality.aggression) * max(0.0, AI_WEAVE_AMP_MAX - d / AI_WEAVE_DIST_DIV)
+            cap = (AI_WEAVE_AGGR_BASE - self.helm_aggression(obs, ship)) * max(0.0, AI_WEAVE_AMP_MAX - d / AI_WEAVE_DIST_DIV)
             amp = self.rng.uniform(0.0, max(0.0, cap))
         course = norm360(base + self.weave_side * amp)
         warp = self.combat_speed(ship, obs)
@@ -605,7 +752,7 @@ class AICaptain:
 
     def _close_for_phasers(self, obs: Observation, ship: Ship, c: ContactView, d: float, brg: float) -> Command | None:
         rng_ = ship.cls.banks_range
-        if c.cls is not None and c.cls.is_base and d < rng_ * AI_BASE_STANDOFF:
+        if c.cls is not None and c.cls.is_base and d < rng_ * AI_BASE_STANDOFF and not self.pressing:
             # [E] a base's banks cover every bearing, so sitting on top of one is suicide: stand off and shoot
             side = 1.0 if ship.id % 2 else -1.0
             return self._weave(obs, ship, brg + 180.0 - side * AI_STANDOFF_OPEN_ANGLE, d)
@@ -615,14 +762,26 @@ class AICaptain:
             if sh is None or sh.effective < AI_APPROACH_CONE:
                 return self._helm(obs, ship, self.rng.uniform(0, 360), self.combat_speed(ship, obs))  # jink
             return self._helm(obs, ship, brg, c.warp + 1.0)
+        if self.smart and d > rng_ * 1.2:
+            # [E] a shipmate is already closer on this target: come in on her flank, onto another shield
+            mate = next((s for s in obs.own_ships() if s.id != ship.id and s.target == c.id
+                         and math.hypot(s.x - c.x, s.y - c.y) < d), None)
+            if mate is not None:
+                # swing to the other side of the line from the target than the one she is on
+                cross = (mate.x - c.x) * (ship.y - c.y) - (mate.y - c.y) * (ship.x - c.x)
+                brg = norm360(brg + (AI_FLANK_ANGLE if cross >= 0 else -AI_FLANK_ANGLE))
         if d > rng_ * 2.0:
             return self._weave(obs, ship, brg, d)
-        return self._helm(obs, ship, brg, c.warp + self.personality.aggression * AI_APPROACH_WARP_AGGR)
+        return self._helm(obs, ship, brg, c.warp + self.helm_aggression(obs, ship) * AI_APPROACH_WARP_AGGR)
 
     def _maneuver(self, obs: Observation, ship: Ship, c: ContactView | None,
                   st: AllyStanding | None = None) -> Command | None:
         if ship.cls.is_base or not ship.can_move() or ship.docked_to is not None:
             return None
+        if self.smart and not st and not self.retreating and not self.pressing:
+            home = self._stay_home(obs, ship, c)
+            if home is not None:
+                return home
         if c is None:
             # wander [R]: hold course at cruise, occasionally sidestep
             turn = 0.0
@@ -633,6 +792,8 @@ class AICaptain:
         brg = bearing(c.x - ship.x, c.y - ship.y)
         if self.retreating:
             return self._weave(obs, ship, brg + 180.0, d)
+        if self.pressing and not st:
+            return self._close_for_phasers(obs, ship, c, d, brg)
         if self.last_stand:
             return self._helm(obs, ship, brg, ship.max_attainable_warp)  # ram
 
@@ -665,6 +826,9 @@ class AICaptain:
             if fresh is not None:
                 return fresh
             close, stand = self._odds(obs, ship, c)
+            # [E] what this navy has learned on the tour: wary of our aimed fire, or sure our magazines are low
+            close *= 1.0 + 0.6 * p.press - 0.4 * p.caution
+            stand *= 1.0 + 0.4 * p.caution
             armed = ship.torps_remaining + sum(t.loaded is not None for t in ship.tubes) > 0 and tp_dom > 0
             quicker = c.cls is not None and ship.max_attainable_warp > c.cls.max_warp
             if armed and quicker and max(close, stand) < 1.0:
@@ -752,7 +916,8 @@ class AICaptain:
         """The shield facing the enemy is nearly gone: turn a fresh one toward it (Begin's own advice) [E]."""
         facing = ship.shield_for_bearing(norm360(brg - ship.course))
         reach = c.cls.banks_range if c.cls is not None else 2000.0
-        if facing is None or facing.effective >= AI_SHIELD_BACK_OFF or d > reach * AI_KITE_MARGIN * 1.5:
+        if facing is None or facing.effective >= AI_SHIELD_BACK_OFF * (1.0 + self.personality.caution) \
+                or d > reach * AI_KITE_MARGIN * 1.5:
             return None
         best = max((sh for sh in ship.shields if sh.up), key=lambda sh: sh.effective, default=None)
         if best is None or best.effective < facing.effective + 20.0:

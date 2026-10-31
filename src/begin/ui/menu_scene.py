@@ -28,8 +28,10 @@ MENU_SOUND = 0.4          # × the player's volume: the menu's flybys are heard,
 
 class MenuScene:
     def __init__(self, content: ContentDB, settings: Settings, start: Callable[[BattleSetup], None],
-                 quit_: Callable[[], None], show_help: Callable[[], None] | None = None) -> None:
+                 quit_: Callable[[], None], show_help: Callable[[], None] | None = None,
+                 tours: Callable[[], None] | None = None) -> None:
         self.content = content
+        self.tours = tours
         self.settings = settings
         self.start = start
         self.quit = quit_
@@ -110,6 +112,8 @@ class MenuScene:
                 self.start(self.presets[self.preset_i].setup())
             elif self.page == "main" and ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self._quick()
+            elif self.page == "main" and ev.key == pygame.K_t:
+                self._tours()
             elif self.page == "main" and ev.key == pygame.K_k:
                 self.flybys.summon()               # a Klingon on demand, for anyone who wants to see one
             elif self.page == "main" and ev.key in (pygame.K_c, pygame.K_h, pygame.K_F1):
@@ -120,6 +124,10 @@ class MenuScene:
     def _quick(self) -> None:
         seed = random.randrange(1, 100000)
         self.start(quick_battle(self.content, seed, self.custom["player_faction"]))
+
+    def _tours(self) -> None:
+        if self.tours is not None:
+            self.tours()
 
     def _custom_setup(self) -> BattleSetup:
         c = self.custom
@@ -178,6 +186,7 @@ class MenuScene:
         x, y = 84, 220
         items = [
             ("Quick battle", self._quick, "A seeded random engagement (Enter)"),
+            ("Tour of duty", self._tours, "Linked battles with a squadron that carries its damage, and a captain's log (T)"),
             ("Preset battles", lambda: setattr(self, "page", "presets"), "Curated scenarios"),
             ("Custom battle", lambda: setattr(self, "page", "custom"), "Choose fleets"),
             ("Coach & training", self.open_manual, "How to fight your first battle, before you start (C)"),

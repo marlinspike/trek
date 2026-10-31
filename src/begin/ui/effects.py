@@ -113,6 +113,18 @@ class Ripple:
 
 
 @dataclass
+class Streak:
+    """A ship dropping out of warp [E]: a long streak of light that shrinks into her, and a flash where she arrives."""
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    color: theme.Color
+    life: float = 1.0
+    age: float = 0.0
+
+
+@dataclass
 class Effects:
     beams: list[Beam] = field(default_factory=list)
     rings: list[Ring] = field(default_factory=list)
@@ -122,6 +134,7 @@ class Effects:
     glows: list[Glow] = field(default_factory=list)
     embers: list[Spark] = field(default_factory=list)
     ripples: list[Ripple] = field(default_factory=list)
+    streaks: list[Streak] = field(default_factory=list)
     rng: random.Random = field(default_factory=lambda: random.Random(7))
 
     def ingest(self, events: list[Event], player_side: int, visible: set[int], friendly: set[int],
@@ -178,6 +191,11 @@ class Effects:
             self.embers.append(Spark(x + math.sin(a) * radius * 0.1, y + math.cos(a) * radius * 0.1,
                                      math.sin(a) * sp, math.cos(a) * sp, EMBER, self.rng.uniform(1.4, 3.0)))
 
+    def warp_in(self, x0: float, y0: float, x1: float, y1: float, color: theme.Color) -> None:
+        """A ship arriving from warp: the streak from (x0, y0), then a flash and a soft glow at (x1, y1)."""
+        self.streaks.append(Streak(x0, y0, x1, y1, color))
+        self.glows.append(Glow(x1, y1, 1400.0, theme.mix(color, (255, 255, 255), 0.5), life=0.9))
+
     def ripple(self, x: float, y: float, vanishing: bool) -> None:
         self.ripples.append(Ripple(x, y, vanishing, phase=self.rng.uniform(0, math.tau)))
 
@@ -224,6 +242,9 @@ class Effects:
             g.age += dt
         for rp in self.ripples:
             rp.age += dt
+        for st in self.streaks:
+            st.age += dt
+        self.streaks = [st for st in self.streaks if st.age < st.life]
         self.ripples = [rp for rp in self.ripples if rp.age < rp.life]
         for e in self.embers:
             e.age += dt
@@ -266,6 +287,8 @@ class Effects:
                 alpha = int(120 * math.sin(math.pi * t) / (1 + k))
                 if alpha > 3:
                     pygame.draw.lines(overlay, (*CLOAK, alpha), True, pts, 1)
+        for st in self.streaks:
+            self._streak(surf, cam, overlay, st)
         for shard in self.debris:
             t = shard.age / shard.life
             sx, sy = cam.to_screen(shard.x, shard.y)
@@ -323,12 +346,33 @@ class Effects:
             pygame.draw.circle(surf, theme.mix(s.color, theme.BG, t), (int(sx), int(sy)), 1 if t > 0.5 else 2)
 
 
+    @staticmethod
+    def _streak(surf: pygame.Surface, cam: Camera, overlay: pygame.Surface, st: Streak) -> None:
+        t = st.age / st.life
+        p1 = cam.to_screen(st.x1, st.y1)
+        p0 = cam.to_screen(st.x0, st.y0)
+        # the tail races in to the ship over the first part of the effect; the flash fades after
+        k = 1.0 - (1.0 - min(1.0, t / STREAK_IN)) ** 3
+        tail = (p0[0] + (p1[0] - p0[0]) * k, p0[1] + (p1[1] - p0[1]) * k)
+        fade = 1.0 if t < STREAK_IN else max(0.0, 1.0 - (t - STREAK_IN) / (1.0 - STREAK_IN))
+        if math.hypot(p1[0] - tail[0], p1[1] - tail[1]) > 2:
+            for w, a in STREAK_GLOW:
+                pygame.draw.line(overlay, (*st.color, int(a * fade)), tail, p1, w)
+            pygame.draw.line(surf, theme.mix(st.color, (255, 255, 255), 0.7), tail, p1, 2)
+        flash = max(0.0, 1.0 - abs(t - STREAK_IN) / 0.25)
+        if flash > 0:
+            pygame.draw.circle(overlay, (255, 255, 255, int(200 * flash)), (int(p1[0]), int(p1[1])), int(4 + 12 * flash))
+            pygame.draw.circle(overlay, (*st.color, int(90 * flash)), (int(p1[0]), int(p1[1])), int(10 + 30 * flash), 2)
+
+
 UNKNOWN_WEAPON = (215, 215, 215)   # a ship we can't identify
 FIZZLE = (150, 150, 150)           # a round shot down before it could go off properly
 EMBER = (255, 132, 60)
 CLOAK = (170, 225, 215)            # the shimmer of a cloak engaging or dropping
 GLOW_STEPS = 28             # burning fragments of a ship
-BEAM_GLOW = ((13, 30), (7, 60))   # (pixels wide, alpha at full strength): the halo around a beam
+BEAM_GLOW = ((13, 30), (7, 60))
+STREAK_GLOW = ((15, 40), (7, 90))   # the halo round a warp streak
+STREAK_IN = 0.45                    # share of the warp-in spent on the streak shrinking into the ship   # (pixels wide, alpha at full strength): the halo around a beam
 
 
 def _bolts(surf: pygame.Surface, col: theme.Color, a: tuple[float, float], b: tuple[float, float], width: int,
@@ -349,4 +393,4 @@ def _bolts(surf: pygame.Surface, col: theme.Color, a: tuple[float, float], b: tu
         t += on + gap
 
 
-__all__ = ["FIZZLE", "UNKNOWN_WEAPON", "Effects"]
+__all__ = ["FIZZLE", "UNKNOWN_WEAPON", "Effects", "Streak"]

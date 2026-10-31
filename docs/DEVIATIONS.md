@@ -92,6 +92,8 @@ The captains follow Begin's decoded scoring for targets, fire discipline, weapon
 - **Opening the range obliquely.** When a captain opens to torpedo range, it turns 70° off dead astern instead of running straight away, which only invites a stern chase.
 - **Out of torpedoes.** A captain whose magazine is empty stops counting its tubes and closes for phasers.
 - **Bases.** Attackers stand off a starbase or outpost at 0.6× phaser range instead of sitting on top of it.
+- **Fighting as a force [E].** A ship whose hull or systems are badly hurt docks at a friendly base, between waves or when the fight goes quiet, and undocks once repaired. Defenders stay within reach of their base rather than chasing far from it, and a fight that stalls is broken by comparing strengths: the stronger side presses in to phaser range, the weaker withdraws (and so does an attacker left with nothing but a base to shoot at). Targets that scans show are hurt score higher, and a base screened by its ships scores lower. The bridge officers use the same docking and, outnumbered or badly hurt, temper their aggression. With an officer in command of the flagship, Starbase Defense went from 4 of 8 (Worf) and 6 of 8 (Spock) to 8 of 8 for both, and Pirate Hunt's average battle from 163 cycles to 63.
+- **Lessons [E].** On a tour of duty the enemy remembers how you fought: aimed fire and boarding parties make their captains more cautious (`Personality.caution`: earlier shield turns, less willingness to close), and a low magazine makes them press in (`Personality.press`).
 - **Fighting to strengths.** Begin's captain decides between phasers and torpedoes from its own loadout. Ours also weighs the target's (`AICaptain._odds`): a close-in score from both sides' banks and half their tubes, and a stand-off score from tubes alone, each scaled by how much punishment each ship can take (shields times absorption plus hull). A target whose scan shows hull below 35% or shields nearly gone makes closing more attractive. A captain that does better at range keeps at least 1.3× the target's phaser reach; a faster ship that is outgunned up close stays out of reach; and the knife fight above only happens when closing actually scores better. When the shield facing the enemy falls below 35%, the captain turns a fresher one toward them (`_fresh_shield`). `AICaptain.smart = False` restores Begin's rule. Over 420 AI-versus-AI battles (30 seeds of 14 matchups, the player's side smart and the other not) survival rose from 69% to 71%, time spent inside the enemy's phaser reach fell from 32% to 27%, and Fleet Action survival went from 86% to 93%. Two further ideas, fanning torpedo salvos and weighting targets by threat, made results worse and were dropped.
 
 ## Ship data
@@ -156,7 +158,9 @@ In the 14-ship Fleet Action, frame time with the effects is within about a milli
 
 - **Presets** (`content/data/presets.toml`) are our own scenarios. Balance runs set their fleets: each preset is fought by AI captains on both sides many times, and fleets are adjusted until the result is in a sensible range.
 - **Quick and Custom battles** generate fleets from a seed or from the player's choices.
-- **Escape.** A ship more than 60,000 units from every enemy for 10 cycles leaves the battle.
+- **Escape.** A ship more than 60,000 units from every enemy for 10 cycles leaves the battle, unless she is guarding a friendly base.
+- **Arrivals [E].** Ships can join a battle after it starts: waves of attackers after a lull or at a set time, and reinforcements with an ETA. Waves keep the battle open until they have all come.
+- **Tours of duty [E].** Battles linked into a patrol, with a squadron that carries its damage, crews, magazines, morale and prizes between them, choices in a Ready Room, reinforcements from Starfleet, and a captain's log written by the officers and edited by the player. Begin had single battles only.
 
 ## Bridge officers and language models
 

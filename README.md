@@ -35,6 +35,7 @@ Useful shortcuts:
 | `begin --preset fleet-action --cycles 30 --screenshot shot.png` | Simulates 30 cycles headlessly and saves a screenshot. |
 | `begin --tournament 20` | Runs 20 headless AI-versus-AI battles and prints a balance summary. |
 | `begin --balance 8` | Fights every preset 8 times with AI captains on both sides and prints win rates. |
+| `begin --tour-test 6` | Flies every tour of duty 6 times with the officers in command and prints how many were won. |
 | `begin --llm provider=ollama model=lfm3 think=off` | Saves the officers' language model settings. |
 | `begin --llm-test` | Asks Spock one question through that model and prints the answer and timing. |
 | `pytest` | Runs the test suite. |
@@ -136,6 +137,18 @@ The assessment shows the score, your ship's record, every ship's damage and hits
 
 ![The battle assessment](docs/screenshots/debrief.png)
 
+### Tours of duty
+
+**Tour of duty** on the main menu (or **T**) strings battles into a patrol. Pick your escorts within the tour's fleet budget, then fly stop after stop: every ship keeps her damage, casualties, empty torpedo racks and morale from one fight to the next, prizes you board join the squadron, and a ship you lose stays lost. Between stops you are in the Ready Room, over the patrol chart: an officer briefs you on the next stop (and on what the enemy has learned about how you fight), you make the stop's decision, such as a refit that costs time, and Geordi shows how each ship will arrive after the crews patch her up on the way. You can call Starfleet for reinforcements there or in battle with `request reinforcements`; the ship drops out of warp after a delay, with her ETA on the map. Starbase stops come in waves, with a lull between them for docking.
+
+After each stop your officers write up their stations, each captain reports on their ship, and your own entry is drafted for you to rewrite. With a language model configured, the officers rewrite theirs in their own voices. The log is kept as Markdown in `config/tours/`, and you can edit your entries there too. Three tours ship with the game, and your own go in `config/tours/*.toml` (see [docs/EXTENDING.md](docs/EXTENDING.md#a-tour-of-duty)).
+
+![The Ready Room: Spock's briefing, the squadron as it will arrive, and the patrol chart behind](docs/screenshots/tour-ready.png)
+
+![Assembling the squadron within the fleet budget](docs/screenshots/tour-squadron.png)
+
+![The captain's log after a stop, written by the bridge officers and the squadron's captains](docs/screenshots/tour-log.png)
+
 ### The manual and coach
 
 `help` (or `man`) opens the in-game manual. It covers every command, grouped by station, with search, links and examples you can click into the console; `help tor` opens a command's page. `coach` reads your battle and suggests what to do next, most urgent first: whether the target is in your torpedo envelope, which warhead and proximity suit it, which shield to turn toward it. The manual is Markdown in `src/begin/assets/help/`, and a page of yours in `config/help/` replaces the bundled one.
@@ -149,6 +162,7 @@ Everything you set lives in the project's [`config/`](config/README.md) folder, 
 | `settings.json` | Window, speed, volume, mute, sound versions, chatter, custom battle choices and the language model settings. The game writes it. |
 | `officers.toml` | Your officers' traits and response styles. |
 | `orders.toml` | Your named tactical orders. |
+| `tours/` | Your tours of duty in progress (`<tour>.json`), their captain's logs (`<tour>-log.md`) and tours you write yourself (`*.toml`). |
 | `sounds/` | Your own WAV files, replacing the game's sounds. |
 | `begin2.key` | Begin 2.0 key macros. |
 | `help/` | Manual pages of your own. |
@@ -166,6 +180,7 @@ src/begin/
   console/   the command parser, Begin's text displays, plain-English translation and named orders
   help/      the manual library (Markdown topics) and the live coach
   crew/      bridge officers: delegation, officer AI, conversation, rapport, traits, the end-of-battle review
+  tour/      tours of duty: the tours, the squadron between battles, reinforcements and the captain's log
   llm/       optional LLM providers (Anthropic, OpenAI, OpenRouter, Ollama) on a background thread
   assets/    fonts and the manual's Markdown pages
   ui/        pygame presentation: tactical map, HUD panels, menus, effects and synthesised sound

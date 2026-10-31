@@ -51,6 +51,32 @@ begin --preset <id>
 
 The first fights every preset 16 times with AI on both sides; aim for the player's side to win roughly 35 to 65% of them. The second plays it.
 
+## A tour of duty
+
+Write a tour in `config/tours/<anything>.toml`, in the format of `content/data/tours.toml` (the full list of keys is in the docstring of `tour/model.py`). A tour with the id of a shipped one replaces it. A tour is a `[[tour]]` with its flagship, fleet budget, reinforcement calls and the classes Starfleet can send, then one `[[tour.stop]]` per battle:
+
+```toml
+[[tour.stop]]
+id = "ambush"
+title = "Romulan ambush"
+system = "Galorndon Core"
+chart = [0.66, 0.40]      # where it sits on the patrol chart
+transit = 140             # cycles of travel before it: field repairs happen on the way
+eta = 200                 # how long Starfleet's reinforcements take to get here
+officer = "spock"         # who gives the briefing
+briefing = "..."
+enemies = ["romulan.bp", "romulan.bp"]
+
+[[tour.stop.choice]]      # a decision in the Ready Room
+label = "Refit at the starbase"
+consequence = "..."
+refit = true
+transit = 360
+flags = ["refit"]
+```
+
+A stop can add later waves (`[[tour.stop.wave]]` with `ships`, `after_clear` and/or `at`, and `if_flag` or `unless_flag`), add or drop enemies when a flag is set (`[tour.stop.add]`, `[tour.stop.drop]`), set a flag when it is won (`win_flag`), and put friendly ships on the field (`friends = ["federation.sb"]`). On a `finale = true` stop, losing those friends loses the tour. A misspelt class is reported on the tour list rather than crashing the game. Check a tour's difficulty with `begin --tour-test 8`; the officers win the shipped tours roughly a third to all of the time.
+
 ## Rules
 
 Every tunable number is a field of `Rules` in `sim/rules.py`. To try a change without editing the defaults, build a modified copy, `DEFAULT_RULES.with_changes(beam_kill_max=0.7)`, and pass it in a `BattleSetup`. Mark a new field [E] if it isn't from Begin.

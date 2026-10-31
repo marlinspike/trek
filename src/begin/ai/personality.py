@@ -11,7 +11,11 @@ dimensions the remake models separately [E]:
 * creativity: willingness to try unusual moves (probes, subsystem shots);
 * loyalty: how readily an ally follows the flagship's orders;
 * doctrine: the faction playbook (weapon bias, focus fire, surrender);
-* fanaticism: last-stand behaviour.
+* fanaticism: last-stand behaviour;
+* caution and press [E]: what a navy has learned about this enemy on a tour of
+  duty. Caution keeps a captain at range and quick to turn a fresh shield
+  (they've seen what our aimed fire does); press sends them in close (they
+  know our magazines are running low). Both are 0 outside a tour.
 """
 
 from __future__ import annotations
@@ -38,6 +42,8 @@ class Personality:
     discipline: float
     creativity: float
     doctrine: Doctrine
+    caution: float = 0.0
+    press: float = 0.0
 
     @property
     def reaction_ticks(self) -> int:
@@ -64,6 +70,7 @@ class Personality:
             discipline=vary(cm.discipline, cm.deviation),
             creativity=vary(cm.creativity, cm.deviation),
         )
+        p.update(caution=0.0, press=0.0)
         if overrides:
             p.update({k: v for k, v in overrides.items() if k in p})
         return Personality(doctrine=faction.doctrine, **p)  # type: ignore[arg-type]

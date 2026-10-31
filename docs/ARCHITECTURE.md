@@ -79,7 +79,7 @@ The providers (`llm/providers/`) share one `complete(system, messages) -> str` m
 
 ## The front end
 
-`ui/app.py` opens the window and runs the loop at 60 FPS. It swaps between `MenuScene` (presets, Quick and Custom setup) and `BattleScene`.
+`ui/app.py` opens the window and runs the loop at 60 FPS. It swaps between `MenuScene` (presets, Quick and Custom setup), `TourScene` (tours of duty, between battles) and `BattleScene`.
 
 `BattleScene` adds frame time × speed to an accumulator and steps the world in fixed ticks, at most 12 per frame. It keeps the previous tick's snapshot so motion is drawn smoothly between ticks. Each frame it draws:
 
@@ -96,6 +96,21 @@ Panels subclass `Panel` and draw themselves into a rectangle, using small immedi
 
 The manual (`help/docs.py`) is a folder of Markdown pages with front matter. Pages in `config/help/` replace or add to the bundled ones. `{{blocks}}` insert live content such as the coach or weapon tables.
 
+## Tours of duty
+
+A tour links battles. `tour/model.py` reads tours from `content/data/tours.toml` and `config/tours/*.toml` into frozen `TourDef`s (stops, choices, waves). `tour/state.py` holds how a tour stands: a `ShipRecord` per ship of the squadron (hull, system damage, crew, magazines, morale, lost or in reserve), the flags set by choices and wins, what the enemy has learned, and the log. `TourState` is saved as JSON after every change.
+
+`tour/run.py`'s `TourRun` joins the two and knows nothing about pygame, so `begin --tour-test` and the tests fly whole tours headless:
+
+1. `launch` applies the transit (field repairs and resupply, or a refit), builds the stop's `BattleSetup` from the squadron, and turns its waves and the Ready Room's reinforcement calls into `Arrival`s.
+2. `prepare` writes each record onto its freshly built ship.
+3. During the battle, `reinforcement_arrival` adds a Starfleet `Arrival` with an ETA.
+4. `finish` writes every ship back, adds prizes and reinforcements, records the result and what the enemy learned, and drafts the log page (`tour/log.py`).
+
+Arrivals are part of the simulation (`sim/arrivals.py`): the world places the ships when their time comes and emits `ShipArrived`; `World.on_arrival` lets the battle give them a ship computer and a captain. Waves hold the battle open (`World._check_outcome`), and each wave's lull starts only once the earlier waves are here and beaten.
+
+The screens are `ui/tour_scene.py` (the tour list, the squadron, the Ready Room, the log and the rating) and `ui/tour_art.py` (the procedural patrol chart, the lit ships and the officers' cards). `ui/app.py` starts a stop's battle from the Ready Room and takes the squadron back when the battle scene exits. The officers' voices go through the same `LLMService` as the bridge, in the background, and an entry you have edited is never rewritten.
+
 ## Settings
 
 `paths.py` decides where the player's files live: `<project>/config/` in a source checkout, or the folder named by `BEGIN_HOME`. `ui/settings.py` reads and writes `settings.json` there. The `llm` section configures the officers' language model; API keys are read only from the environment.
@@ -104,6 +119,7 @@ The manual (`help/docs.py`) is a folder of Markdown pages with front matter. Pag
 
 - `begin --balance N` (`tools/balance.py`) fights every preset N times with AI captains on all ships, including the player's, and prints win rates.
 - `begin --tournament N` (`tools/tournament.py`) runs random AI battles.
+- `begin --tour-test N` (`tools/tours.py`) flies every tour N times with the officers in command of the flagship and AI captains on every other ship, and prints how many were won.
 - `begin --preset ... --cycles N --screenshot file.png` renders a frame headlessly; the README screenshots are made this way.
 - `pytest` runs headless tests of the geometry, the rules, commands, the AI, the parser, the manual, the officers and the UI wiring. Tests use a temporary config folder.
 

@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Callable, Iterable, Protocol
 
 from ..content.schema import ContentDB
 from ..core.rng import Rng
+from .arrivals import Arrival, update_arrivals, waves_pending
 from .allies import MOVEMENT_ORDERS, WEAPON_ORDERS, AllyStanding
 from .commands import AllyOrder, Authority, Command, Rejected, offensive_fire
 from .events import CommandRejected, Event, Message, ShipStatusChanged, SubsystemDamaged, Tone
@@ -108,6 +109,8 @@ class World:
     torpedo_pressure: dict[int, float] = field(default_factory=dict)
     side_names: dict[int, str] = field(default_factory=dict)
     on_capture: Callable[[Ship], None] | None = None           # gives a captured ship to her new side's brains
+    arrivals: list[Arrival] = field(default_factory=list)      # waves and reinforcements still to come [E]
+    on_arrival: Callable[[Ship], None] | None = None           # gives an arriving ship her captain and computer
 
     _next_id: int = 1
     _queue: list[Command] = field(default_factory=list)
@@ -351,6 +354,7 @@ class World:
 
         self._escapes(dt)
         self.tick += 1
+        update_arrivals(self)
         self._check_outcome()
 
     def _follow_up(self, ship: Ship) -> None:
@@ -724,7 +728,9 @@ class World:
                 s.escape_time = 0.0
                 continue
             nearest = min(math.hypot(e.x - s.x, e.y - s.y) for e in enemies)
-            if nearest > r.escape_distance:
+            home = any(b.alive and b.side == s.side and b.cls.is_base and math.hypot(b.x - s.x, b.y - s.y) < r.escape_distance / 2
+                       for b in self.ships.values())
+            if nearest > r.escape_distance and not home:   # a ship guarding her base hasn't left [E]
                 s.escape_time += dt
                 if s.escape_time >= r.escape_cycles:
                     self._set_status(s, ShipStatus.ESCAPED, "escaped", None,
@@ -752,6 +758,8 @@ class World:
         all_sides = {s.side for s in self.ships.values()}
         if len(all_sides) < 2 or len(sides) > 1:
             return
+        if waves_pending(self) and self.player_side in sides:
+            return          # the next wave is on its way: the lull is a breather, not the end
         if self._prize_open(sides):
             return
         o = self.outcome

@@ -10,6 +10,7 @@ Everything you set for the game lives in this folder. Only this README and the e
 | `orders.cache.json` | The game's own note of how the language model put your plain-English order steps into console commands, so it doesn't ask again. Safe to delete. |
 | `sounds/` | Your own sound effects, as WAV files named for the sound they replace: `phaser.wav`, `torpedo.wav`, and the others listed in `help sound`. Each one replaces the game's own. |
 | `begin2.key` | Begin 2.0 key macros, one per line, such as `F2 fire all torpedoes`. |
+| `tours/` | Tours of duty. The game keeps each tour in progress here (`<tour>.json`) and its captain's log (`<tour>-log.md`: edit your entries between the `captain` markers and the game reads them back). Tours of your own go here too, as `.toml` files in the format of `src/begin/content/data/tours.toml`. |
 | `help/` | Manual pages of your own. A `.md` file here replaces the bundled page with the same name; new files become new pages. |
 
 API keys never go in here: they come only from environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`).
