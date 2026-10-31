@@ -28,7 +28,7 @@ from ..content.schema import ContentDB
 from ..core.rng import Rng
 from .arrivals import Arrival, update_arrivals, waves_pending
 from .allies import MOVEMENT_ORDERS, WEAPON_ORDERS, AllyStanding
-from .commands import AllyOrder, Authority, Command, Rejected, offensive_fire
+from .commands import AllyOrder, Authority, Command, Rejected, fire_target, offensive_fire
 from .events import CommandRejected, Event, Message, ShipStatusChanged, SubsystemDamaged, Tone
 from .factory import build_ship
 from .ordnance import Probe, Torpedo
@@ -232,6 +232,11 @@ class World:
         """Validate and apply a command now. Returns the rejection reason, or None."""
         ship = self.ships.get(cmd.ship_id)
         reason: str | None = None
+        if ship is not None and ship.spared and cmd.issuer >= Authority.CAPTAIN and (
+                offensive_fire(cmd) or getattr(cmd, "hull", False) is True):
+            # the captain fires on a ship they had disabled, or says "target her hull": she is fair game again,
+            # even if this shot can't go (the banks still charging)
+            ship.spared.discard(fire_target(cmd, ship))
         if ship is None or not ship.exists:
             reason = "That ship is no longer under command."
         elif cmd.needs_crew and (ship.crew <= 0 or ship.status != ShipStatus.ACTIVE):
@@ -264,6 +269,9 @@ class World:
         ship = self.ships.get(cmd.ship_id)
         if ship is not None and ship.hold_fire and cmd.issuer < Authority.CAPTAIN and offensive_fire(cmd):
             return "Holding fire on the captain's order."
+        if (ship is not None and ship.spared and cmd.issuer < Authority.CAPTAIN and offensive_fire(cmd)
+                and fire_target(cmd, ship) in ship.spared):
+            return "Holding fire on her: the captain wanted her disabled, not destroyed."
         for ch in cmd.channels():
             h = self._holds.get((cmd.ship_id, ch))
             if h is None:

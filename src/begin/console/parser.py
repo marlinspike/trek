@@ -28,7 +28,7 @@ from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, ManageRepairs, Evasive, AddressCrew, SetShields, SetTubes, Surrender,
-    CeaseFire, OpenFire, DeflectorPulse, EndObjective, FireAtPoint, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
+    CeaseFire, OpenFire, StandDown, DeflectorPulse, EndObjective, FireAtPoint, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
 from ..sim.ship import HULL, BankRole, FireMode, Kind, PDDoctrine, RepairTarget
@@ -177,6 +177,7 @@ AIM_WORDS: dict[str, tuple[str, ...]] = {
     "sensors": ("sensors", "sensor", "computer", "scanners"),
     "cloak": ("cloak", "cloaking"),
 }
+AIM_FIRST = {"hull"} | {sp for spellings in AIM_WORDS.values() for sp in spellings}   # words that start an aim
 AIM_HELP = "hull, shields, power (warp core), life support (crew), weapons, phasers, torpedoes, propulsion, sensors, cloak"
 
 
@@ -210,7 +211,7 @@ FILLER = {"with", "the", "to", "at", "on", "of", "and", "set", "please", "by", "
 # the manual's command summary, grouped as in its overview (pp. 4-7) plus the 2.0 and remake additions
 HELP = [
     "Helm:     helm <course> [warp] <w> · pursue|elude <ship> [warp] <w> · warp <w> · stop · <course> <warp>",
-    "          evasive [off]   (Federation: the helm dodges incoming torpedoes until your next helm order)",
+    "          evasive [off] · evasive manoeuvres · take evasive action   (Federation: the helm dodges incoming torpedoes until your next helm order)",
     "Crew:     address crew <your words>   (a speech to the crew lifts morale; once a minute at most) · morale (how the crews feel)",
     "Display:  range|display|scan <range> · chart [on|off|all|<ship>|by name|distance|nation] · report",
     "Status:   status [damage|banks|tubes|launchers|probes|shields|fleet] · damage · banks · tubes · launchers · shields · fleet · group",
@@ -219,6 +220,7 @@ HELP = [
     "Torps:    fire [all] torpedoes [<list>] [spread <deg>]   (fir tor al, torp 1 2, fire all tor spread 10) · lock [all] tubes [<list>] on <ship> [dispersion <d>]",
     "          turn tubes [<list>] to <mark> · load [all] tubes [<list>] [prox] <p> · unload [all] tubes [<list>] · enable|disable tubes",
     "Hold:     cease fire · hold fire · stop firing   (every weapon stops and officers' objectives end; point defense stays on) · open fire",
+    "          stand down   (all that, and every station and the bridge come back to you) · <officer>, stand down (just theirs)",
     "Probes:   fire [all] probes [<list>] at <ship> | course <c> · load launchers [<list>] [prox] <p> [time] <t> · unload launchers",
     "          turn probe <code>|all probes [course] <c> · lock probe <code>|all probes on <ship> · detonate <code>|all · status probes",
     "Shields:  raise|lower|drop [shields] <list>|all · reenforce <n>|off",
@@ -233,9 +235,11 @@ HELP = [
     "Remake:   autoload tor|probe [<list>] [<type>] [<prox>] [time <t>] [on|off] · mode phasers|tubes manual|assisted|automatic",
     "          pd off|conservative|balanced|aggressive [reserve <banks>] · target <ship> [system] · aim <system> · pause · resume · time <x>",
     "Crew:     delegate|assume helm|tactical|engineering|science|all · crew [chatter on|off] · ask <officer> <words>",
+    "          I have nav|weapons|fire|phasers|torps|shields|sensors|the conn   (take that station back; its officer's work ends)",
     "          <officer>, <words>   e.g. 'worf, fire all torpedoes' · 'spock, what do you recommend?'",
     "Special:  design tachyon|deflector · tachyon <ship>|<bearing> <range> · pulse · conn <officer>|captain",
     "          disable|cripple <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> · disable off",
+    "          target|take out their <system> · target all their <system>   (the weapons officer knocks it out, then spares her) · target their hull",
     "          destroy <ships> · capture <ship> · bait <ship>   (standing objectives and tricks for Seven)",
     "Orders:   execute order <name> | <name>   (a named order from config/orders.toml) · orders (list them) · belay (stop one running)",
     "Display:  hud detail|simple   (simple: hover a panel for its numbers)",
@@ -455,6 +459,23 @@ class Parser:
         if _is_num(first):  # bare "90 4" = helm
             tok.i -= 1
             first = "helm"
+        if first in ("i", "i've", "ive") and tok.peek() in ("have", "got", "'ve", "has"):
+            self._v_ihave(tok, res)
+            return
+        if first in ("take", "knock") and tok.peek() == "out":
+            tok.next()      # "take out their shields": disable them; "take out the Wraith": destroy her [E]
+            words = [w.strip(".!?;'\"").removesuffix("'s").removesuffix("s'") for w in tok.toks[tok.i:]]
+            if any(w in self._DISABLE_WORDS for w in words):
+                self._disable_enemy(tok, res)
+            else:
+                self._v_destroy(tok, res)
+            return
+        if first == "take" and tok.peek() in ("evasive", "evasion"):
+            first = tok.next() or "evasive"       # "take evasive action"
+        if first == "stand" and tok.is_word("down"):
+            tok.next()
+            self._v_standdown(tok, res)
+            return
         verb = _match(first, VERBS)
         if verb is None:
             cands = _candidates(first, VERBS) if len(first) >= 2 else []
@@ -485,6 +506,9 @@ class Parser:
         if tok.take_word("firing", "fire", "shooting", "weapons"):
             res.commands.append(self._cmd(CeaseFire))     # "stop firing": cease fire, not all stop [E]
             return
+        if tok.take_word("everything", "everyone", "everybody", "all"):
+            self._v_standdown(tok, res)                   # "stop everything": the officers stand down [E]
+            return
         res.commands.append(self._cmd(SetHelm, warp=0.0))
 
     # cease fire [E] ----------------------------------------------------
@@ -497,6 +521,30 @@ class Parser:
         if not tok.take_word("fire", "firing") and tok.peek() is not None:
             raise ParseError("Hold what? 'hold fire' stops every weapon.")
         res.commands.append(self._cmd(CeaseFire))
+
+    def _v_standdown(self, tok: _Tokens, res: ParseResult) -> None:
+        """`stand down [all|everyone]` [E]: cease fire, every objective ends, every station and the bridge
+        come back to the captain, and the helm steadies."""
+        tok.rest()
+        res.commands.append(self._cmd(StandDown))
+
+    def _v_ihave(self, tok: _Tokens, res: ParseResult) -> None:
+        """`I have nav` / `I have fire|weapons|phasers|torps` / `I have the conn` [E]: the captain takes that
+        station (or every station) back from its officer, and whatever they were working on ends."""
+        tok.next()
+        tok.take_word("got")
+        words = [w.strip(".!'\"") for w in tok.rest() if w not in FILLER and w not in ("got", "control", "of", "now")]
+        if not words:
+            raise ParseError("You have what? e.g. 'I have nav', 'I have weapons', 'I have the conn'.")
+        stations: list[str] = []
+        for w in words:
+            st = next((k for k, spellings in HAVE_WORDS.items() if w in spellings), None)
+            if st is None:
+                raise ParseError(f"I have what? '{w}' is no station. Try nav, weapons, phasers, torps, shields, "
+                                 "sensors or the conn.")
+            stations.extend(STATION_WORDS if st == "all" else [st])
+        for st in dict.fromkeys(stations):
+            res.commands.append(self._cmd(DelegateStation, station=st, on=False))
 
     def _v_open(self, tok: _Tokens, res: ParseResult) -> None:
         tok.skip_filler()
@@ -558,15 +606,27 @@ class Parser:
         if tok.take_word("off", "none", "clear"):
             res.commands.append(self._cmd(SelectTarget, target=None))
             return
-        target = self.resolve_ship(tok)
+        tok.skip_filler()
+        rest = [w.strip(".!?;'\"").removesuffix("'s").removesuffix("s'") for w in tok.toks[tok.i:]]
+        if rest and rest[0] in self._THEIR and any(self._DISABLE_WORDS.get(w) for w in rest):
+            # "target their shields", "target all their torps": an officer knocks that system out and stops there [E]
+            self._disable_enemy(tok, res)
+            return
+        if tok.peek() in ("their", "her", "its", "his", "the") and self.ship.target is not None:
+            tok.next()                          # "target their hull", "target the shields": the current target
+        if tok.peek() in AIM_FIRST and self.ship.target is not None:
+            target = self.ship.target
+        else:
+            target = self.resolve_ship(tok)
         sub = None
         tok.skip_filler()
+        hull = False
         if not tok.done():
             g = _take_aim(tok)
             if g is None:
                 raise ParseError(f"I don't know the system '{tok.peek()}'. Aim at: {AIM_HELP}.")
-            sub = g or None
-        res.commands.append(self._cmd(SelectTarget, target=target, subsystem=sub))
+            sub, hull = g or None, g == ""
+        res.commands.append(self._cmd(SelectTarget, target=target, subsystem=sub, hull=hull))
 
     def _v_aim(self, tok: _Tokens, res: ParseResult) -> None:
         """`aim [at] <system>`: precision fire at a system of the current target ('aim warp core', 'aim life support')."""
@@ -576,7 +636,7 @@ class Parser:
                              f"I don't know the system '{tok.peek()}'. Aim at: {AIM_HELP}.")
         if self.ship.target is None:
             raise ParseError("No target to aim at: 'target <ship>' first.")
-        res.commands.append(self._cmd(SelectTarget, target=self.ship.target, subsystem=g or None))
+        res.commands.append(self._cmd(SelectTarget, target=self.ship.target, subsystem=g or None, hull=g == ""))
 
     def _weapon(self, tok: _Tokens, default: str | None = None) -> tuple[str, bool]:
         """Weapon noun, with Begin's optional leading 'all' ('all torpedo tubes', 'all banks', 'tor').
@@ -1281,10 +1341,11 @@ class Parser:
         res.actions.append(("orders", None))
 
     def _v_belay(self, tok: _Tokens, res: ParseResult) -> None:
-        """`belay [that|order]`: stop the named order that is running, and cease fire."""
-        tok.rest()
+        """`belay [that|order]`: stop the named order that is running, and cease fire;
+        `belay all|everything`: and the officers stand down too."""
+        everything = any(w in ("all", "everything", "everyone", "everybody") for w in tok.rest())
         res.actions.append(("belay", None))
-        res.commands.append(self._cmd(CeaseFire))      # and whatever the officers had going
+        res.commands.append(self._cmd(StandDown if everything else CeaseFire))   # and whatever the officers had going
 
     def _v_request(self, tok: _Tokens, res: ParseResult) -> None:
         """`request reinforcements` [E]: on a tour of duty, ask Starfleet for a ship; she arrives after the stop's ETA."""
@@ -1392,6 +1453,7 @@ class Parser:
         **dict.fromkeys(("sensor", "sensors", "eyes"), "sensors"),
         **dict.fromkeys(("cloak", "cloaking"), "cloak"),
     }
+    _THEIR = ("their", "all", "every", "everyone", "everybody", "them", "enemy", "enemies", "each")
     _EVERYONE = ("all", "everyone", "everybody", "them", "enemy", "enemies", "both", "every", "each", "they")
     _FACTIONS = {"klingon": "klingon", "romulan": "romulan", "orion": "orion", "federation": "federation",
                  "pirate": "orion", "pirates": "orion"}
@@ -1524,6 +1586,16 @@ class Parser:
         tok.rest()
         res.actions.append(("key", (name, text)))
 
+
+# what the captain can say they have: "I have nav", "I have fire", "I have torps", "I have the conn" [E]
+HAVE_WORDS: dict[str, tuple[str, ...]] = {
+    "helm": ("helm", "nav", "navigation", "navs", "steering", "course", "wheel", "flying"),
+    "tactical": ("tactical", "weapons", "weapon", "fire", "phasers", "phaser", "torps", "torp", "torpedoes", "torpedo",
+                 "torpedos", "guns", "tubes", "targeting"),
+    "engineering": ("engineering", "engines", "power", "shields", "shield"),
+    "science": ("science", "sensors", "scans", "scanning"),
+    "all": ("conn", "bridge", "ship", "everything", "all", "command", "stations"),
+}
 
 STATION_WORDS: dict[str, tuple[str, ...]] = {
     "helm": ("helm", "conn", "navigation", "nav"),

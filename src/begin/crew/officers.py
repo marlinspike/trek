@@ -34,7 +34,7 @@ from ..sim.commands import (
     Authority, Command, ConfigureAutoload, ControlProbe, Evasive, FirePhasers, FireTorpedoes, LaunchProbe, LoadTubes,
     LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak, SetFireMode, SetHelm,
     SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, StartProject, TurnMounts,
-    FireSpecialRound, DeflectorPulse, SetObjective, EndObjective, FireAtPoint, Dock,
+    FireSpecialRound, DeflectorPulse, SetObjective, EndObjective, FireAtPoint, Dock, offensive_fire,
 )
 from ..sim.allies import AllyStanding
 from ..sim.observation import ContactView, Observation
@@ -496,9 +496,10 @@ class Crew:
         if ship.objectives:
             # an objective decides targets and offensive fire; it steers only when it has to
             steering = any(isinstance(c, (SetHelm, Pursue)) for c in out)
+            # (probes too: Worf's attack probes used to finish off a ship Seven was only told to disable)
             routine = [c for c in routine
-                       if not isinstance(c, (SelectTarget, LockWeapons, FireTorpedoes, FireAtPoint, ConfigureAutoload))
-                       and not (isinstance(c, FirePhasers) and not c.defensive)
+                       if not isinstance(c, (SelectTarget, LockWeapons, ConfigureAutoload, ControlProbe))
+                       and not offensive_fire(c)
                        and not (steering and isinstance(c, (SetHelm, Pursue)))]
         return out + routine
 

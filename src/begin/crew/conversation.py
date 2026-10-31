@@ -89,14 +89,26 @@ _BRIDGE_TAKE = re.compile(r"\b(take (the )?(bridge|conn|ship)|you have the (brid
 _BRIDGE_RELEASE = re.compile(r"\b(i have the (bridge|conn|ship)|i'?ll take (the bridge|the conn|command)|"
                              r"i'?m taking (the bridge|the conn|command)|i have command|i relieve you|"
                              r"(the )?captain'?s? on the bridge|give me (the bridge|the conn|command))\b")
-_RELEASE = re.compile(r"\b(stand down|i have (the|it)|i'?ll (take|handle) (it|the)|i relieve you|belay)\b")
-# "seven, cease fire" / "stop firing" / "belay that" / "stand down": every weapon stops and her objectives end [E]
-_CEASE = re.compile(r"\b(cease ?fire|hold (your )?fire|stop (firing|shooting|the attack|attacking|that|it|this)|"
-                    r"belay|stand down|cancel (that|it|this|your|the)|abort|break (it )?off|call (it )?off|knock it off|"
-                    r"never ?mind)\b|^\s*stop\W*$")
+# "spock, I have the helm" / "I relieve you": the officer's station comes back to the captain, nothing else stops [E]
+_HAVE = r"(helm|nav|navigation|steering|weapons|tactical|fire|phasers|torps|torpedoes|guns|station|science|sensors|engineering|shields)"
+_RELEASE = re.compile(r"\b(i(?: have|'ve got| got) (the )?" + _HAVE + r"|"
+                      r"i have it( from here)?|i relieve you|i'?ll (take|handle) it from here|"
+                      r"i'?ll take (the )?" + _HAVE + r")\b")
+# "seven, cease fire" / "hold fire" / "stop firing": every weapon stops and the objectives end [E]
+_CEASE = re.compile(r"\b(cease ?fire|hold (your )?fire|stop (firing|shooting)|weapons (cold|hold))\b")
+# "spock, stop" / "stand down" / "belay that" / "stop disabling their shields" / "forget the shields": all that, and
+# the officer stops whatever they are doing: their station (and the bridge, if they have it) come back to the captain [E]
+_STAND_DOWN = re.compile(r"\b(stand down|belay|cancel (that|it|this|your|the)|abort|break (it )?off|call (it )?off|"
+                         r"knock it off|never ?mind|stop (the attack|that|it|this|everything|now|there)|"
+                         r"(stop|quit|cease) \w+ing|forget (it|that|the|about)|leave (it|them|her|him) alone|"
+                         r"that'?s enough|(don'?t|do not) (?!stop\b))\b|^\s*(stop|halt|enough)\W*$")
+_STATION_HANDBACK = {"helm": "the helm is", "tactical": "the weapons station is", "engineering": "engineering is",
+                     "science": "the science station is"}
 # "disable the Klingons' shields", "knock out Gorkon's torpedoes", "cancel that objective"
 _DISABLE = re.compile(r"\b(disable|disarm|cripple|knock out|take out|neutrali[sz]e|shut down|destroy|eliminate|"
                       r"finish off|kill|sink|blow up)\b")
+# "worf, target their shields", "focus fire on their engines", "target all their torps", "target their hull" [E]
+_TARGET = re.compile(r"^\s*(?:target|focus (?:your )?(?:fire )?on|aim (?:at|for))\s+(.+?)\W*$")
 # "worf, capture the Votek" / "seize her" / "take her intact" / "take her as a prize"
 _CAPTURE = re.compile(r"\b(capture|seize|take (her|it|them|the [\w'-]+) (intact|alive|as (a )?prize))\b")
 _KILL_VERBS = ("take out", "destroy", "eliminate", "finish off", "kill", "sink", "blow up", "knock out")
@@ -108,6 +120,18 @@ _REPAIRS_RELEASE = re.compile(r"\b(i'?ll|i will|let me) (manage|handle|direct|ru
                               r"\brepairs? (are|is) mine\b|\b(stop|quit) (managing|directing) (the )?repairs?\b")
 _STATUS = re.compile(r"\b(status|report|sitrep|situation|how are|how's|condition)\b")
 _ADVICE = re.compile(r"\b(advice|advise|recommend|suggest|what (should|do you|now|next)|ideas?|options?|thoughts?|opinion)\b")
+
+
+# "everyone stop", "all hands, stand down", "officers, belay that", "bridge, knock it off": the whole bridge stands down [E]
+_WHOLE_BRIDGE = re.compile(r"^\s*(all (stations|hands|officers|of you)|every ?(one|body)|officers|bridge( crew)?|"
+                           r"crew|people|you all|y'?all)\W*(,\s*)?(please )?(stop|stand down|belay( that)?|"
+                           r"knock it off|cease fire|hold fire|that'?s enough|enough)\b.*$|"
+                           r"^\s*(stop|belay) (everyone|everybody|everything|all)\W*$")
+
+
+def whole_bridge_stand_down(text: str) -> bool:
+    """The captain tells every officer at once to stop what they are doing."""
+    return _WHOLE_BRIDGE.match(text.lower()) is not None
 
 
 def _could_be_officer(word: str) -> bool:
@@ -205,8 +229,6 @@ class Bridge:
             if err:
                 return [self._say(officer, err, "caution")]
             return self.handover_lines(officer, turn == "take")
-        if _CEASE.search(low):
-            return self.cease(officer, low, run)
         if _REPAIRS_RELEASE.search(low) or _REPAIRS_TAKE.search(low):
             taking = not _REPAIRS_RELEASE.search(low)
             err = run(f"repair auto {officer.id}" if taking else "repair manual", officer)
@@ -216,6 +238,16 @@ class Bridge:
             if not taking:
                 return [self._say(officer, "The repair crews are yours, Captain.")]
             return [self._say(officer, "Understood. I will direct the repair crews and tell you what I am doing.")]
+        if _CEASE.search(low):
+            return self.cease(officer, low, run)
+        if _STAND_DOWN.search(low):
+            return self.stand_down(officer, ctx, run)
+        m = _RELEASE.search(low)
+        if m is not None:
+            return self.release(officer, ctx, run, named=next((g for g in m.groups()[1:] if g), ""))
+        m = _TARGET.match(low)
+        if m is not None:      # "worf, target their shields" / "focus fire on their engines": no model, no delay
+            return self.objective(officer, f"target {m.group(1)}", run)
         m = _CAPTURE.search(low)
         if m is not None:
             if m.group(1) in ("capture", "seize"):
@@ -265,15 +297,45 @@ class Bridge:
         return [self._line(officer, "bridge_released") or self._say(officer, "The bridge is yours, Captain.")]
 
     def cease(self, officer: OfficerProfile, low: str, run: RunCommand) -> list[Utterance]:
-        """The captain tells an officer to stop: no language model, no delay. Every weapon ceases fire and the
-        officers' objectives end; "stand down" also hands back their station."""
+        """The captain tells an officer to cease fire: no language model, no delay. Every weapon ceases fire and
+        the officers' objectives end; whoever is flying the ship keeps flying it."""
         err = run("cease fire", officer)
         if err:
             return [self._say(officer, err, "caution")]
-        if "stand down" in low:
-            run(f"assume {officer.station}", officer)    # not delegated is fine: the cease fire is what matters
-            return [self._say(officer, "Standing down. Weapons are cold, Captain.")]
         return [self._say(officer, "Ceasing fire, Captain.")]
+
+    def stand_down(self, officer: OfficerProfile, ctx: HelpContext, run: RunCommand) -> list[Utterance]:
+        """The captain tells an officer to stop: no language model, no delay. Every weapon ceases fire, the
+        objectives end, and the officer hands back what they were running: their station, the bridge if they
+        had it, and the helm's evasive manoeuvres if they were flying."""
+        err = run("cease fire", officer)
+        if err:
+            return [self._say(officer, err, "caution")]
+        return self.release(officer, ctx, run, standing_down=True)
+
+    def release(self, officer: OfficerProfile, ctx: HelpContext, run: RunCommand,
+                standing_down: bool = False, named: str = "") -> list[Utterance]:
+        """The officer hands their station back to the captain (and the bridge, if they have it); `named`, a
+        station the captain said they have ("spock, I have weapons"), instead of the officer's own."""
+        from ..console.parser import HAVE_WORDS
+
+        station = next((k for k, words in HAVE_WORDS.items() if named in words and k != "all"), "") if named else ""
+        if station and station != officer.station:
+            err = run(f"assume {station}", officer)
+            what = _STATION_HANDBACK.get(station, "the station is")
+            return [self._say(officer, err, "caution") if err else
+                    self._say(officer, f"Aye. {what[:1].upper() + what[1:]} yours, Captain.")]
+        ship = ctx.ship
+        had_bridge = ship is not None and ship.conn == officer.id
+        if had_bridge:
+            run("conn captain", officer)
+        run(f"assume {officer.station}", officer)    # not delegated is fine: nothing else to hand back
+        if officer.station == "helm" and ship is not None and ship.evasive:
+            run("evasive off", officer)
+        what = "the bridge is" if had_bridge else _STATION_HANDBACK.get(officer.station, "the station is")
+        if standing_down:
+            return [self._say(officer, f"Standing down. Weapons are cold, and {what} yours, Captain.")]
+        return [self._line(officer, "released") or self._say(officer, f"Aye. {what[:1].upper() + what[1:]} yours, Captain.")]
 
     def objective(self, officer: OfficerProfile, line: str, run: RunCommand) -> list[Utterance]:
         """The captain sets the officer a standing objective; they say how they'll go about it."""
@@ -430,9 +492,6 @@ class Bridge:
             out.append(self._line(o, "rude") or self._say(o, "Understood, Captain."))
         elif _PRAISE.search(low) and not _ADVICE.search(low):
             out.append(self._line(o, "thanks") or self._say(o, "Thank you, Captain."))
-        elif _RELEASE.search(low):
-            err = run(f"assume {o.station}", o)
-            out.append(self._say(o, err, "caution") if err else (self._line(o, "released") or self._say(o, "Aye.")))
         elif _TAKE.search(low):
             err = run(f"delegate {o.station}", o)
             out.append(self._say(o, err, "caution") if err else (self._line(o, "delegated") or self._say(o, "Aye.")))
@@ -750,6 +809,9 @@ class Bridge:
             elif ev.outcome == "done":
                 out.append(self._line(o, "objective_done", targets=names, systems=systems)
                            or self._say(o, f"Done, Captain: {names} have lost their {systems}."))
+                if ev.goal == "disable":
+                    out.append(self._say(o, "Holding fire on her now. Fire on her yourself, or say 'target her hull' "
+                                            "or 'destroy her', to finish her.", "dim"))
             else:
                 out.append(self._line(o, "objective_failed", reason=ev.reason)
                            or self._say(o, f"I can't finish that: {ev.reason}.", "caution"))
@@ -841,7 +903,8 @@ COMMAND_SYNTAX = """\
   tachyon <bearing> <range> | tachyon <ship> (burst the loaded detector round there)
   design deflector (set the dish up for tachyon pulses) | pulse (expose cloaked ships ahead of the bow)
   disable <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> | disable off   (a standing objective)
-  delegate <helm|tactical|engineering|science> | assume <station>   (hand a station to its officer, or take it back)"""
+  delegate <helm|tactical|engineering|science> | assume <station>   (hand a station to its officer, or take it back)
+  stand down   (cease fire, every objective ends, every station and the bridge back to the captain)"""
 
 
 def clean_command(line: str) -> str:

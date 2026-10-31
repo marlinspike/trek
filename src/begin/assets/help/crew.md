@@ -24,7 +24,9 @@ assume all
 crew
 ```
 
-- `delegate <station>` hands a station to its officer. `assume <station>` takes it back. `all` covers every station.
+- `delegate <station>` hands a station to its officer. `assume <station>` takes it back and ends anything that officer was working on. `all` covers every station.
+- "I have nav", "I have weapons" (or fire, phasers, torps), "I have shields", "I have sensors" or "I have the conn" takes that station (or every station) back. Taking the helm or the weapons back also ends any attack an officer is running, such as Seven disabling their shields.
+- `stand down` takes every station and the bridge back at once and holds fire; `spock, stand down` (or just `spock, stop`) does it for one officer. See [[ceasefire|Cease fire and stand down]].
 - The **Crew** tab, beside **Contacts** and **Fleet** under the weapons, shows who runs each station. Click **Captain** / **Officer** to switch, or click an officer's name to speak to them.
 - `crew` lists your officers, who is running what, and how each of them feels about you.
 - To let one officer command the whole ship, say "Seven, take the bridge". See [[conn|Giving an officer the bridge]].
