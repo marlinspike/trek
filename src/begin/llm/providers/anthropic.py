@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .base import LLMConfig, LLMError, Message
+from .base import Completion, LLMConfig, LLMError, Message, Usage
 
 
 class AnthropicProvider:
@@ -26,6 +26,9 @@ class AnthropicProvider:
         self.client = anthropic.Anthropic(**kw)
 
     def complete(self, system: str, messages: list[Message]) -> str:
+        return self.complete_full(system, messages).text
+
+    def complete_full(self, system: str, messages: list[Message]) -> Completion:
         kw: dict[str, Any] = {}
         if self.cfg.effort:
             kw["output_config"] = {"effort": self.cfg.effort}
@@ -48,4 +51,13 @@ class AnthropicProvider:
         text = "".join(b.text for b in resp.content if b.type == "text")
         if not text.strip():
             raise LLMError("The model returned no text.")
-        return text
+        return Completion(text, usage_of(getattr(resp, "usage", None)))
+
+
+def usage_of(usage: Any) -> Usage | None:
+    """Input counts every prompt token: fresh, written to the cache, and read from it."""
+    if usage is None or not isinstance(getattr(usage, "input_tokens", None), int):
+        return None
+    tin = sum(getattr(usage, k, None) or 0
+              for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+    return Usage(tin, int(getattr(usage, "output_tokens", 0) or 0))

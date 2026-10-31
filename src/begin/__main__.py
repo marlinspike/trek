@@ -9,6 +9,7 @@ Extra options exist for development and testing:
   --tour-test N          fly every tour of duty N times with the officers in command, and print how they went
   --llm KEY=VALUE ...    save the officers' language model settings (e.g. provider=ollama model=lfm3 think=off)
   --llm-test             ask Spock one question through the configured model and print the answer
+  --llm-usage            print the language model's token totals (with log_tokens=on)
 """
 
 from __future__ import annotations
@@ -32,7 +33,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tour-test", type=int, metavar="N")
     ap.add_argument("--llm", nargs="+", metavar="KEY=VALUE")
     ap.add_argument("--llm-test", nargs="?", const="Spock, what do you recommend?", metavar="QUESTION")
+    ap.add_argument("--llm-usage", action="store_true")
     args = ap.parse_args(argv)
+
+    if args.llm_usage:
+        from .llm.cli import usage
+
+        return usage()
 
     if args.llm or args.llm_test:
         from .llm.cli import configure, test

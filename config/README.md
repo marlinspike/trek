@@ -13,6 +13,7 @@ Everything you set for the game lives in this folder. Only this README and the e
 | `begin2.key` | Begin 2.0 key macros, one per line, such as `F2 fire all torpedoes`. |
 | `tours/` | Tours of duty. The game keeps each tour in progress here (`<tour>.json`) and its captain's log (`<tour>-log.md`: edit your entries between the `captain` markers and the game reads them back). Tours of your own go here too, as `.toml` files in the format of `src/begin/content/data/tours.toml`. |
 | `help/` | Manual pages of your own. A `.md` file here replaces the bundled page with the same name; new files become new pages. |
+| `logs/` | The language model's debug logs, written only when you turn them on (`begin --llm log_prompts=on log_tokens=on`, or `"log_prompts": true` / `"log_tokens": true` under `llm` in `settings.json`). `llm-prompts.log` holds every prompt and reply in full with its tokens in and out, who asked and how long it took. `llm-tokens.json` keeps all-time totals and each game's calls and tokens, broken down by who asked; `begin --llm-usage` prints them. Safe to delete. |
 
 API keys never go in here: they come only from environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`).
 

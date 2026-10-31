@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .base import LLMConfig, LLMError, Message, post_json
+from .base import Completion, LLMConfig, LLMError, Message, Usage, post_json
 
 
 class OpenAICompatProvider:
@@ -19,6 +19,9 @@ class OpenAICompatProvider:
             self.headers["X-Title"] = "Begin remake"
 
     def complete(self, system: str, messages: list[Message]) -> str:
+        return self.complete_full(system, messages).text
+
+    def complete_full(self, system: str, messages: list[Message]) -> Completion:
         body: dict[str, Any] = {"model": self.cfg.model, "messages": [{"role": "system", "content": system}, *messages]}
         data = post_json(self.url, body, self.headers, self.cfg.timeout)
         try:
@@ -27,4 +30,7 @@ class OpenAICompatProvider:
             raise LLMError(f"Unexpected reply from {self.name}.") from e
         if not isinstance(text, str) or not text.strip():
             raise LLMError("The model returned no text.")
-        return text
+        usage = data.get("usage") if isinstance(data, dict) else None
+        tin = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+        tout = usage.get("completion_tokens") if isinstance(usage, dict) else None
+        return Completion(text, Usage(tin, tout) if isinstance(tin, int) and isinstance(tout, int) else None)
