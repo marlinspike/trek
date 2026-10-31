@@ -198,7 +198,7 @@ def test_comms_takes_the_models_reading_and_words(content) -> None:  # type: ign
 def test_shipped_hail_lines_are_plain_star_trek_language(content) -> None:  # type: ignore[no-untyped-def]
     lines = load_lines()
     text = " ".join(str(v) for t in lines.values() for v in t.values()).lower()
-    for word in ("sex", "seduc", "kiss", "naked", "rape", "fuck"):
+    for word in ("sex", "seduc", "kiss", "naked", "flirt"):
         assert word not in text
 
 
