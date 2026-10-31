@@ -5,9 +5,9 @@ Everything is drawn in code, so a tour you write yourself gets a chart of its ow
 - the chart: a deep field of nebulae and stars made from the tour's id (the same tour always
   looks the same), a faint sector grid, the route between the stops glowing where you have
   been and dashed where you are going, and the flagship gliding along it;
-- a ship: the heavy cruiser's baked sprite where there is one, otherwise the class's hull drawn
-  from hulls.toml, filled and shaded, lit from the same side whatever her heading, with scorch
-  marks that spread as her hull is damaged;
+- a ship: her class's baked sprite (`showpiece.py` for the heavy cruiser, `fleet_art.py` for the
+  rest), or failing that her hull drawn from hulls.toml, filled and shaded; lit from the same side
+  whatever her heading, with scorch marks that spread as her hull is damaged;
 - an officer's card: a portrait in their department's colour, their name and post.
 """
 
@@ -24,7 +24,8 @@ from ..content.schema import ShipClass
 from ..tour.model import TourDef
 from . import theme
 from .hulls import ellipse_points, transform
-from .showpiece import KLINGON_SPRITE, SHIP_DIR, ship_image
+from .fleet_art import art_px, fleet_image, has_art
+from .showpiece import ship_image
 
 NEBULA_COLOURS = ((60, 40, 120), (30, 90, 140), (120, 40, 90), (30, 110, 110), (90, 70, 30))
 HULL_PAINT = {"federation": (176, 186, 202), "klingon": (120, 132, 112), "romulan": (122, 158, 132),
@@ -38,7 +39,8 @@ OFFICER_COLOUR = {"spock": (66, 112, 196), "worf": (196, 152, 56), "geordi": (19
 CHART_MARGIN = 0.06       # share of the chart kept clear round the edge
 ART_STEP = 3              # degrees: a turning ship is drawn at this step (each drawing is kept)
 GLIDE_SECONDS = 4.0       # how long the flagship takes to fly a leg of the route on the chart
-HC_SPRITE_SCALE = 1.15 / 700.0     # sprite scale per pixel of ship length (7 sprite px per hull unit, ~100 units, a little trim)
+ART_TRIM = 1.15                      # baked art drawn a little larger than her length: the hulls span ~100 units
+HC_SPRITE_SCALE = ART_TRIM / 700.0     # sprite scale per pixel of ship length (7 sprite px per hull unit, ~100 units, a little trim)
 
 
 def _seed(s: str) -> int:
@@ -240,14 +242,6 @@ def _hull_base(cls_id: str, length: int, scorch: int, seed: int) -> pygame.Surfa
     return base
 
 
-@lru_cache(maxsize=4)
-def _klingon() -> pygame.Surface | None:
-    try:
-        return pygame.image.load(str(SHIP_DIR / KLINGON_SPRITE))
-    except (FileNotFoundError, pygame.error, OSError):
-        return None
-
-
 def ship_art(cls: ShipClass, length: int, heading: float, hull: float = 1.0, seed: int = 0) -> pygame.Surface:
     """A ship for the squadron screens: `length` pixels bow to stern at `heading` (degrees clockwise from up),
     lit from the upper left, scorched as her `hull` (0..1) is damaged, with a glow of her engines beneath."""
@@ -261,12 +255,11 @@ def _ship_art(cls_id: str, length: int, heading: int, scorch: int, seed: int) ->
     cls = _CLASSES[cls_id]
     engine = ENGINE_GLOW.get(cls.faction, (160, 200, 255))
     img: pygame.Surface | None = None
-    if cls.id == "federation.hc":
+    art = cls.hull.class_id                       # a class built on another's hull wears its art
+    if art == "federation.hc":
         img = ship_image(round(heading / 2) * 2 % 360, round(length * HC_SPRITE_SCALE, 3))
-    elif cls.id == "klingon.bc" and _klingon() is not None:
-        k = _klingon()
-        assert k is not None
-        img = pygame.transform.rotozoom(k, -heading, length / max(1, k.get_height()))
+    elif has_art(art):
+        img = fleet_image(art, heading, round(length * ART_TRIM / (100.0 * art_px(cls.hull.length)), 3))
     if img is None:
         base = _hull_base(cls.id, length, scorch, seed)
         img = pygame.transform.rotozoom(base, -heading, 1.0)
