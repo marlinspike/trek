@@ -5,6 +5,7 @@ from __future__ import annotations
 import itertools
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
+from typing import Callable
 
 from .providers.base import LLMError, Message, Provider
 
@@ -31,6 +32,13 @@ class LLMService:
 
     def busy(self, tag: str) -> bool:
         return any(t == tag for t, _ in self._pending.values())
+
+    def forget(self, tags: set[str] | None = None, keep: Callable[[str], bool] = lambda tag: False) -> list[str]:
+        """Stop waiting on requests with these tags (every tag, by default, except those `keep` spares): their
+        answers are thrown away when they come. Returns the tags forgotten."""
+        gone = [rid for rid, (tag, _) in self._pending.items() if (tags is None or tag in tags) and not keep(tag)]
+        out = [self._pending.pop(rid)[0] for rid in gone]
+        return list(dict.fromkeys(out))
 
     def poll(self) -> list[Reply]:
         """Finished requests since the last poll; never blocks."""

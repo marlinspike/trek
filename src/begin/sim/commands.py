@@ -170,9 +170,10 @@ def end_objectives(world: World, ship: Ship, ending: list[Objective], outcome: s
     from .events import ObjectiveEnded
 
     ship.objectives = [o for o in ship.objectives if o not in ending]
+    still = {t for o in ship.objectives for t in o.targets}   # "their shields and engines": the engines are next
     for o in ending:
         if outcome == "done" and o.goal == "disable":
-            ship.spared.update(o.targets)
+            ship.spared.update(set(o.targets) - still)
         if o.goal != "destroy" and ship.target_subsystem is not None:
             ship.target_subsystem = None     # the systems were the objective's aim: by default we aim at the hull
         world.emit(ObjectiveEnded(world.tick, ship.id, o.officer, o.goal, o.group, o.targets, outcome, reason))
@@ -1115,6 +1116,7 @@ class SetObjective(Command):
         # a new order about the same systems replaces the old one
         ship.objectives = [o for o in ship.objectives if not (o.goal == self.goal and o.group == self.group)]
         ship.spared.difference_update(self.targets)    # a new order about her: the officer may fire on her again
+        ship.hold_fire = False      # a new order to attack lifts an earlier cease fire, or the officer never shoots
         ship.objectives.append(Objective(self.goal, self.group, tuple(self.targets), self.officer, world.tick))
 
     def describe(self) -> str:

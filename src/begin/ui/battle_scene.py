@@ -648,6 +648,11 @@ class BattleScene:
             self._execute_now("stand down")     # "everyone stop", "all hands stand down": the whole bridge, at once
             return
         if self.bridge is not None:
+            pieces = self.bridge.split_addressed(text)
+            if len(pieces) > 1:                 # "worf, target their shields and spock, take the helm"
+                for piece in pieces:
+                    self._run_one(piece, translate, "  > ")
+                return
             hit = self.bridge.addressed(text)
             if hit is not None:
                 self._ask(*hit)
@@ -678,6 +683,8 @@ class BattleScene:
         if tr is not None and tr.busy():
             tr.drop_pending()
             self._log("  (interpretation dropped)", theme.TEXT_DIM)
+        if self.bridge is not None:
+            self.bridge.drop_orders()       # nor may an officer's answer still on its way from the model
         self._execute(text, res)
 
     def _after_captain(self, cmd: Command) -> None:
