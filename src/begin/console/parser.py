@@ -187,6 +187,16 @@ AIM_FIRST = {"hull"} | {sp for spellings in AIM_WORDS.values() for sp in spellin
 AIM_HELP = "hull, shields, power (warp core), life support (crew), weapons, phasers, torpedoes, propulsion, sensors, cloak"
 
 
+def _aim_ahead(tok: _Tokens, skip: int = 0) -> bool:
+    """A system is named next (after `skip` words), without consuming it."""
+    i = tok.i
+    tok.i += skip
+    try:
+        return _take_aim(tok) is not None
+    finally:
+        tok.i = i
+
+
 def _take_aim(tok: _Tokens) -> str | None:
     """A subsystem group named next ("warp core", "life support", "shields"), consumed; "hull" gives ""."""
     tok.skip_filler()
@@ -286,11 +296,113 @@ def _candidates(word: str, table: Mapping[str, Sequence[str]]) -> list[str]:
     return primary or hits
 
 
+# plain-English stop orders said to the bridge at large [E]; "seize fire" is a cease fire, not a capture
+_STOP_FIRE = re.compile(
+    r"(?:(?:seize|sieze|ceese|sease|ceaze|cese|ceace|ceas)\s+fir(?:e|ing)|hold\s+(?:your|our|all|the)\s+fire|"
+    r"(?:don'?t|do\s+not)\s+(?:shoot|fire)|weapons\s+(?:cold|hold|tight|safe)|"
+    r"stop\s+(?:attacking|engaging|disabling|targeting|shooting\s+at|firing\s+at|the\s+(?:attack|run))|"
+    r"abort\s+(?:the\s+)?(?:attack|run|attack\s+run|objective)|(?:call|break)\s+(?:it\s+)?off|disengage|"
+    r"(?:leave|let)\s+(?:them|her|him|it)\s+(?:alone|go|be)|spare\s+(?:them|her|him|it)\b|"
+    r"forget\s+(?:the|their|her|its|it|that|about)\b|never\s*mind|"
+    r"cancel(?:\s+(?:that|it|this|objective|the\s+(?:order|attack|disable|objective)))?\W*$)")
+_STOP_ALL = re.compile(r"(?:stand\s*down|standown|knock\s+it\s+off|that'?s\s+enough|enough)\W*$")
+
+_THEIR_TYPOS = re.compile(r"\b(?:thier|theri|thir|ther|theyre|they're)\b")
+_POSSESSIVE = re.compile(r"\b(their|her|its|his|them|enemy|enemies|all|both|every|each)\b|\w's\b|\ws'(?=\s|$)")
+# "hit their shields", "bring down her shields", "get their shields down": a disable, when it names their systems
+_SOFT_DISABLE = re.compile(r"^(?:hit|shoot(?:\s+at)?|go\s+after|bring\s+down|take\s+down|knock\s+down|get|"
+                           r"blast|pound|hammer|concentrate\s+(?:fire\s+)?on)\s+(.+)$")
+_WANT_DOWN = re.compile(r"^(?:i want|i need|we need|i'?d like)\s+((?:their|her|its|his)\b.*?)\s+(?:down|out|gone|offline)\W*$")
+_REWRITES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^all\s+stop\b"), "stop"),                           # "all stop": the engines, as on any bridge
+    (re.compile(r"^i'?ll\s+take\s+(?:it\s+from\s+here|over|it)\b"), "i have it"),
+    (re.compile(r"^i'?ll\s+(?:take|handle|run)\s+"), "i have "),         # "I'll take the helm"
+    (re.compile(r"^i'?ll\s+fly(?:\s+(?:her|it|the\s+ship))?\b"), "i have nav"),
+    (re.compile(r"^give\s+me\s+"), "i have "),                          # "give me the helm"
+    (re.compile(r"^(?:the\s+)?(\w+)\s+(?:is|are)\s+mine\b"), r"i have \1"),
+    (re.compile(r"^stop\s+evading\b|^no\s+more\s+evasive\b"), "evasive off"),
+    (re.compile(r"^evasives\b"), "evasive"),
+    (re.compile(r"^finish\s+off\s+"), "destroy "),                      # "finish off the Wraith"
+    (re.compile(r"^finish\s+(.+?)(?:\s+off)?\W*$"), r"destroy \1"),     # "finish her off"
+    (re.compile(r"^take\s+(.+?)\s+out\W*$"), r"take out \1"),          # "take their shields out", "take them all out"
+)
+
+
+def plain_order(text: str) -> str:
+    """A captain's plain words in the console's own: typos of 'their', 'I'll take the helm', 'all stop',
+    'hit their shields', 'finish her off'. Anything else is left as it was typed."""
+    low = text.strip().lower()
+    if not low or _SPOKEN.match(low):
+        return text          # a message, a hail or a macro: the captain's own words, untouched
+    low = _THEIR_TYPOS.sub("their", low)
+    for pat, repl in _REWRITES:
+        new = pat.sub(repl, low, count=1)
+        if new != low:
+            return new
+    m = _WANT_DOWN.match(low)
+    if m is not None and any(_system_word(w) for w in m.group(1).split()):
+        return f"disable {m.group(1)}"           # "I want their shields down"
+    m = _SOFT_DISABLE.match(low)
+    if m is not None and _POSSESSIVE.search(m.group(1)) and any(_system_word(w) for w in m.group(1).split()):
+        return f"disable {m.group(1)}"
+    return low if low != text.strip().lower() else text
+
+
+# a later order in the same line starts with a verb: "cease fire and take evasive action", "stand down, I have nav"
+_SPLIT = re.compile(r"\s*(?:[,;]|\band\s+then\b|\bthen\b|\band\b)\s*")
+_NO_SPLIT = ("tell", "order", "key", "address", "ask", "say", "text", "translate", "interpret", "english")
+# words said over a channel to another captain are theirs to hear, never orders to our own bridge:
+# "hail them, stand down and you will live"
+_SPOKEN = re.compile(r"^(?:(?:" + "|".join(_NO_SPLIT) + r"|hail|hailing|channel)\b|"
+                     r"open\s+(?:a\s+)?(?:channel|hailing|frequencies|comms|communications)\b)")
+
+
+def _starts_order(piece: str) -> bool:
+    first = (piece.split() or [""])[0].rstrip("!?.")
+    if not first or _is_num(first) or _system_word(first) or first in AIM_FIRST:
+        return False
+    return first in ("i", "i've", "ive", "i'll", "ill", "stand", "take", "knock", "all", "give", "finish") or \
+        _match(first, VERBS) is not None or bool(_STOP_FIRE.match(piece) or _STOP_ALL.match(piece))
+
+
+def split_orders(text: str) -> list[str]:
+    """The separate orders in a line, where each after the first plainly starts a new one; else the line."""
+    low = text.strip()
+    if not low or _SPOKEN.match(low.lower()):
+        return [low]
+    pieces: list[str] = []
+    start = 0
+    for m in _SPLIT.finditer(low):
+        if m.start() == 0:
+            continue
+        after = low[m.end():].lower()
+        if _starts_order(after):
+            pieces.append(low[start:m.start()])
+            start = m.end()
+    pieces.append(low[start:])
+    pieces = [p.strip(" ,;") for p in pieces if p.strip(" ,;")]
+    if len(pieces) > 1 and not _starts_order(pieces[0].lower()):
+        return [low]         # "7, stand down": the first part is no order of its own
+    return [plain_order(p) for p in pieces] if len(pieces) > 1 else [low]
+
+
+def _system_word(word: str) -> str | None:
+    """The enemy system a word names ("shields", "torps"), allowing for a slip of the keyboard ("sheilds")."""
+    w = word.strip(".!?;'\"").removesuffix("'s").removesuffix("s'")
+    hit = Parser._DISABLE_WORDS.get(w)
+    if hit is not None or len(w) < 5:
+        return hit
+    close = difflib.get_close_matches(w, list(Parser._DISABLE_WORDS), n=1, cutoff=0.8)
+    return Parser._DISABLE_WORDS[close[0]] if close else None
+
+
 class _Tokens:
     def __init__(self, text: str) -> None:
         self.raw = text
         text = text.replace(",", " ").replace("°", " ")
-        self.toks = [t for t in text.lower().split() if t]
+        text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text.lower())      # "cease-fire", "stand-down"
+        # "Cease fire!", "evasive!", "stand down." : the punctuation that ends an order is not part of a word
+        self.toks = [t if _is_num(t) else (t.rstrip("!?.") or t) for t in text.split()]
         self.i = 0
         self.max_mount = 12
 
@@ -439,7 +551,29 @@ class Parser:
 
     # entry -------------------------------------------------------------
     def parse(self, text: str) -> ParseResult:
-        res = ParseResult(echo=text.strip())
+        """One line; several orders in it ("cease fire and take evasive action") are carried out in turn."""
+        plain = plain_order(text)
+        pieces = split_orders(plain)
+        if len(pieces) > 1:
+            parts = [self._parse_one(p, p) for p in pieces]
+            if all(p.error is None for p in parts):
+                res = ParseResult(echo=text.strip())
+                for p in parts:
+                    res.commands.extend(p.commands)
+                    res.actions.extend(p.actions)
+                    res.info.extend(p.info)
+                    res.display.extend(p.display)
+                return res
+        return self._parse_one(plain, text)
+
+    def _parse_one(self, text: str, said: str) -> ParseResult:
+        res = ParseResult(echo=said.strip())
+        stop = _STOP_ALL.match(text.strip().lower()) or _STOP_FIRE.match(text.strip().lower())
+        if stop is not None:
+            # "hold your fire", "stop attacking", "break off", "never mind", "knock it off": said to the bridge,
+            # these stop the shooting (or every officer) at once, never waiting on a language model [E]
+            res.commands.append(self._cmd(StandDown if stop.re is _STOP_ALL else CeaseFire))
+            return res
         tok = _Tokens(text)
         s = self.ship
         tok.max_mount = max(6, len(s.banks), len(s.tubes), len(s.launchers), len(s.shields))
@@ -470,8 +604,7 @@ class Parser:
             return
         if first in ("take", "knock") and tok.peek() == "out":
             tok.next()      # "take out their shields": disable them; "take out the Wraith": destroy her [E]
-            words = [w.strip(".!?;'\"").removesuffix("'s").removesuffix("s'") for w in tok.toks[tok.i:]]
-            if any(w in self._DISABLE_WORDS for w in words):
+            if any(_system_word(w) for w in tok.toks[tok.i:]):
                 self._disable_enemy(tok, res)
             else:
                 self._v_destroy(tok, res)
@@ -539,7 +672,8 @@ class Parser:
         station (or every station) back from its officer, and whatever they were working on ends."""
         tok.next()
         tok.take_word("got")
-        words = [w.strip(".!'\"") for w in tok.rest() if w not in FILLER and w not in ("got", "control", "of", "now")]
+        words = [w.strip(".!'\"") for w in tok.rest()
+                 if w not in FILLER and w not in ("got", "control", "of", "now", "here", "over", "back")]
         if not words:
             raise ParseError("You have what? e.g. 'I have nav', 'I have weapons', 'I have the conn'.")
         stations: list[str] = []
@@ -609,18 +743,23 @@ class Parser:
 
     # targeting -------------------------------------------------------------
     def _v_target(self, tok: _Tokens, res: ParseResult) -> None:
+        lead = tok.peek()
         if tok.take_word("off", "none", "clear"):
             res.commands.append(self._cmd(SelectTarget, target=None))
             return
         tok.skip_filler()
         rest = [w.strip(".!?;'\"").removesuffix("'s").removesuffix("s'") for w in tok.toks[tok.i:]]
-        if rest and rest[0] in self._THEIR and any(self._DISABLE_WORDS.get(w) for w in rest):
-            # "target their shields", "target all their torps": an officer knocks that system out and stops there [E]
+        whose = lead in ("the", "her", "its", "his") or (bool(rest) and (
+            rest[0] in self._THEIR or rest[0] in self._FACTIONS or rest[0].rstrip("s") in self._FACTIONS
+            or tok.toks[tok.i].endswith(("'s", "s'"))))
+        if whose and any(_system_word(w) for w in rest):
+            # "target their shields", "target her engines", "target the Klingons' shields", "target all their
+            # torps": an officer knocks that system out and stops there [E]
             self._disable_enemy(tok, res)
             return
         if tok.peek() in ("their", "her", "its", "his", "the") and self.ship.target is not None:
-            tok.next()                          # "target their hull", "target the shields": the current target
-        if tok.peek() in AIM_FIRST and self.ship.target is not None:
+            tok.next()                          # "target their hull", "target their life support": the current target
+        if self.ship.target is not None and (tok.peek() in AIM_FIRST or _aim_ahead(tok)):
             target = self.ship.target
         else:
             target = self.resolve_ship(tok)
@@ -636,6 +775,12 @@ class Parser:
 
     def _v_aim(self, tok: _Tokens, res: ParseResult) -> None:
         """`aim [at] <system>`: precision fire at a system of the current target ('aim warp core', 'aim life support')."""
+        tok.skip_filler()
+        if tok.peek() in ("their", "her", "its", "his") and _system_word(tok.peek(1) or ""):
+            self._disable_enemy(tok, res)      # "aim at their shields": as 'target their shields' [E]
+            return
+        if tok.peek() in ("their", "her", "its", "his"):
+            tok.next()
         g = _take_aim(tok)
         if g is None:
             raise ParseError(f"Aim at what? {AIM_HELP}." if tok.done() else
@@ -813,6 +958,8 @@ class Parser:
                     raise ParseError(f"Torpedo tube {v:g} does not exist.")
             elif tok.peek() in FILLER:
                 tok.next()
+            elif tok.peek() in ("their", "her", "its", "his") and _aim_ahead(tok, 1):
+                tok.next()              # "fire phasers at their shields": the current target, aimed
             elif (g := _take_aim(tok)) is not None:
                 sub = g or None
             else:
@@ -1479,7 +1626,7 @@ class Parser:
         **dict.fromkeys(("sensor", "sensors", "eyes"), "sensors"),
         **dict.fromkeys(("cloak", "cloaking"), "cloak"),
     }
-    _THEIR = ("their", "all", "every", "everyone", "everybody", "them", "enemy", "enemies", "each")
+    _THEIR = ("their", "all", "every", "everyone", "everybody", "them", "enemy", "enemies", "each", "both")
     _EVERYONE = ("all", "everyone", "everybody", "them", "enemy", "enemies", "both", "every", "each", "they")
     _FACTIONS = {"klingon": "klingon", "romulan": "romulan", "orion": "orion", "federation": "federation",
                  "pirate": "orion", "pirates": "orion"}
@@ -1513,6 +1660,8 @@ class Parser:
                 targets.extend(c.id for c in hostile if c.cls is not None and c.cls.faction == fac)
             elif w in self._EVERYONE:
                 targets.extend(c.id for c in hostile)
+            elif w == "other" and len(hostile) > 1:      # "the other ship's shields": not the one we have targeted
+                targets.extend(c.id for c in hostile if c.id != self.ship.target)
             i += 1
         if not targets:
             if self.ship.target is not None and self.ship.target in {c.id for c in hostile}:
@@ -1559,13 +1708,17 @@ class Parser:
         if any(w in ("off", "cancel", "stop", "belay", "abort", "nevermind") for w in words):
             res.commands.append(self._cmd(EndObjective, outcome="cancelled"))
             return
-        group = next((self._DISABLE_WORDS[w] for w in words if w in self._DISABLE_WORDS), None)
-        if group is None:
-            group = "weapons" if verb.startswith("disarm") else None
-        if group is None:
+        # "disable their shields and engines": each system named, in the order given
+        groups = list(dict.fromkeys(g for w in words if (g := _system_word(w)) is not None))
+        if not groups and verb.startswith("disarm"):
+            groups = ["weapons"]
+        if not groups:
             raise ParseError("Disable what? shields, phasers, torpedoes, weapons, engines, sensors or cloak.")
-        targets = self._enemy_targets(words)
-        res.commands.append(self._cmd(SetObjective, goal="disable", group=group, targets=targets))
+        if "weapons" in groups:
+            groups = [g for g in groups if g not in ("phasers", "torpedoes")]   # 'weapons' covers both
+        targets = self._enemy_targets([w for w in words if _system_word(w) is None])
+        for group in groups:
+            res.commands.append(self._cmd(SetObjective, goal="disable", group=group, targets=targets))
 
     def _v_pulse(self, tok: _Tokens, res: ParseResult) -> None:
         """`pulse`: sweep the cone ahead with the deflector's tachyon pulse [E]."""
@@ -1620,7 +1773,7 @@ HAVE_WORDS: dict[str, tuple[str, ...]] = {
                  "torpedos", "guns", "tubes", "targeting"),
     "engineering": ("engineering", "engines", "power", "shields", "shield"),
     "science": ("science", "sensors", "scans", "scanning"),
-    "all": ("conn", "bridge", "ship", "everything", "all", "command", "stations"),
+    "all": ("conn", "bridge", "ship", "everything", "all", "command", "stations", "it"),
 }
 
 STATION_WORDS: dict[str, tuple[str, ...]] = {

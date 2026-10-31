@@ -170,20 +170,23 @@ def test_stand_down_in_the_simulation(content) -> None:  # type: ignore[no-untyp
 
 @pytest.mark.parametrize("line", ["I have nav", "i have navigation", "I have the helm", "I've got the helm",
                                   "spock, I have nav"])
-def test_i_have_nav_takes_the_helm_back_and_ends_the_attack(flying, line: str) -> None:  # type: ignore[no-untyped-def]
-    _, helm = _after(flying, line)
+def test_i_have_nav_takes_the_helm_back_and_leaves_seven_at_work(flying, line: str) -> None:  # type: ignore[no-untyped-def]
+    _, helm = _after(flying, line, secs=2.0)
     me = flying.player
-    assert helm == 0 and "helm" not in me.delegated and not me.objectives
+    assert helm == 0 and "helm" not in me.delegated
+    assert [o.officer for o in me.objectives] == ["seven"]      # only the officer who had the helm stands down
     assert not me.hold_fire and me.helm_mode == HelmMode.COURSE
 
 
 @pytest.mark.parametrize("line", ["I have fire", "I have weapons", "I have phasers", "I have torps",
                                   "i have torpedoes", "worf, I have weapons", "seven, I have weapons"])
-def test_i_have_weapons_takes_tactical_back_and_ends_seven_s_attack(content, line: str) -> None:  # type: ignore[no-untyped-def]
+def test_i_have_weapons_stands_worf_down_and_only_worf(content, line: str) -> None:  # type: ignore[no-untyped-def]
     sc = _scene(content, ["delegate all"])
-    shots, _ = _after(sc, line)
+    sc.run_console("worf, disable their engines")
+    _after(sc, line, secs=2.0)
     me = sc.player
-    assert shots == 0 and "tactical" not in me.delegated and not me.objectives
+    assert "tactical" not in me.delegated
+    assert [o.officer for o in me.objectives] == ["seven"]      # Worf's engines job ends; Seven's shields go on
     assert "helm" in me.delegated               # only the weapons came back: Spock still flies
     assert not me.hold_fire                     # the guns are the captain's now, not held
     sc.close()

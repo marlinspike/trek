@@ -667,6 +667,11 @@ class BattleScene:
             self._execute_now("stand down")     # "everyone stop", "all hands stand down": the whole bridge, at once
             return
         if self.bridge is not None:
+            pieces = self.bridge.split_addressed(text)
+            if len(pieces) > 1:                 # "worf, target their shields and spock, take the helm"
+                for piece in pieces:
+                    self._run_one(piece, translate, "  > ")
+                return
             hit = self.bridge.addressed(text)
             if hit is not None:
                 self._ask(*hit)
@@ -697,6 +702,8 @@ class BattleScene:
         if tr is not None and tr.busy():
             tr.drop_pending()
             self._log("  (interpretation dropped)", theme.TEXT_DIM)
+        if self.bridge is not None:
+            self.bridge.drop_orders()       # nor may an officer's answer still on its way from the model
         self._execute(text, res)
 
     def _after_captain(self, cmd: Command) -> None:
@@ -711,7 +718,8 @@ class BattleScene:
             self._log("  Every station and the bridge are yours, Captain.", theme.TEXT_DIM)
             return
         if isinstance(cmd, DelegateStation) and not cmd.on and b is not None:
-            # taking a station back ends what its officer was working on, such as Seven disabling their shields
+            # taking a station back stands down the officer it was delegated to, and only them: what they were working
+            # on ends ("I have weapons" stops Worf's disable), while the rest of the bridge keeps at its own work
             o = b.crew.officers.get(cmd.station)
             owners = {o.id} | ({""} if cmd.station == "science" else set()) if o is not None else set()
             for who in sorted({ob.officer for ob in ship.objectives} & owners):
@@ -1135,6 +1143,8 @@ class BattleScene:
             if reason:
                 return reason
             self._log(f"  {cmd.describe()}: done", theme.TEXT_DIM)
+            if isinstance(cmd, DelegateStation) and not cmd.on:
+                self._after_captain(cmd)     # "seven, I have weapons": Worf, who had them, stands down
         if res.display:
             self._show(res.display, None)
         return None
