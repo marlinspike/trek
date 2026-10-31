@@ -1,13 +1,20 @@
 # Builds the downloadable game for Windows, macOS (Apple Silicon and Intel) and Linux.
 #
-# Runs only when a version tag such as v0.2.0 is pushed: the builds are attached to a
-# GitHub Release of that name. It never runs on pull requests or pushes to main, and it
-# doesn't run the test suite (tests are run locally before pushing).
+# Runs only when a version tag such as v0.2.0 is pushed, or when started by hand
+# (Actions > Build downloads > Run workflow, giving a version): the builds are attached
+# to a GitHub Release of that name, and a hand-started run creates the tag on the commit
+# it built. It never runs on pull requests or pushes to main, and it doesn't run the
+# test suite (tests are run locally before pushing).
 name: Build downloads
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, such as v0.2.0"
+        required: true
 
 permissions:
   contents: read
@@ -96,7 +103,9 @@ jobs:
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
         run: |
-          gh release create "${{ github.ref_name }}" out/* \
-            --title "Begin ${{ github.ref_name }}" \
+          gh release create "$VERSION" out/* \
+            --target "${{ github.sha }}" \
+            --title "Begin $VERSION" \
             --notes-file packaging/RELEASE_NOTES.md
