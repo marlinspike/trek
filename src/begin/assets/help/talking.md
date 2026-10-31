@@ -21,7 +21,8 @@ ask spock how do we beat this ship
 - **Reports.** "status", "report" or "sitrep" gets a report on that officer's station.
 - **Advice.** "what do you recommend?", "advice" or any other question gets that officer's best idea for their stations, with the command to carry it out. Spock advises on everything.
 - **Orders.** Any console command works, as long as it belongs to that officer's station: Worf will fire, Geordi will raise shields, but Worf won't steer.
-- **Stations.** "take the helm", "take over" or "you have the conn" delegates the officer's station; "stand down" or "I have the conn" takes it back.
+- **Stations.** "take the helm", "take over" or "you have the conn" delegates the officer's station; "I have the helm" or "I relieve you" takes it back.
+- **Stopping.** "stop", "stand down", "belay that", "break off", "forget the shields" or "stop disabling their shields" stops that officer at once: weapons hold, objectives end, and their station (and the bridge, if they have it) comes back to you. "everyone stop" or a bare `stand down` does it for the whole bridge. See [[ceasefire|Cease fire and stand down]].
 
 ## Rapport
 

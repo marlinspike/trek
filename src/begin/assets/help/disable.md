@@ -2,8 +2,8 @@
 title: Disabling or taking out enemy ships
 category: Crew
 order: 2
-aliases: disable, cripple, disarm, knock out, objective, capture, seize, take her intact, prize, disable shields, disable weapons, disable torpedoes, disable phasers, destroy, eliminate, take out, bait, fire bait
-summary: Ask Seven to knock out the shields, phasers, torpedoes, engines or sensors of one ship or several, to take ships out altogether, or to capture one, and she works out how.
+aliases: disable, cripple, disarm, knock out, target their, target all their, spared, objective, capture, seize, take her intact, prize, disable shields, disable weapons, disable torpedoes, disable phasers, destroy, eliminate, take out, bait, fire bait
+summary: Ask Worf or Seven to knock out the shields, phasers, torpedoes, engines or sensors of one ship or several, to take ships out altogether, or to capture one, and she works out how.
 see: crew, targeting, conn, deflector
 ---
 Tell Seven what you want knocked out, and on whom. She makes a plan, carries it out, reports each ship as its systems go down, and tells you when the job is done or can't be done.
@@ -15,16 +15,28 @@ seven disarm them
 seven, take out the Wraith
 worf, capture the Votek
 disable gorkon zantha phasers
+target their shields
+take out their engines
+target all their torps
 destroy wraith
 disable off
 ```
 
 "Take out", "destroy" or "finish off" without naming any systems means the whole ship: she keeps at it until it is gone.
 
+## Just that system, and then she is spared
+
+Disabling means just the system you named. "Target their shields", "take out their shields" and "disable their shields" all mean the same: focus fire on the shields until they are out, then stop. "Target all their shields" does it to every enemy, one after another.
+
+- Torpedoes tear the hull as well as the systems, so once her hull is half gone the officer uses aimed phasers only.
+- When the job is done, the ship is **spared**: nobody else on the bridge, and not the fire computer, shoots at her again. The officer tells you so. Your aim goes back to the hull, which is always the default.
+- To finish her, fire on her yourself, or say `target their hull`, `destroy her` or `open fire`.
+- A ship you named (`target gorkon shields`) or `aim shields` only sets your own aim; nobody is given the job.
+
 - **What:** shields, phasers (or disruptors), torpedoes (tubes), weapons (phasers and torpedoes), engines, sensors or the cloaking device.
 - **Whom:** ship names, a race ("the Klingons", "the Romulans"), or "all" / "them". With no ship named, she takes your current target, or every enemy if you have none.
 - **Stop:** `disable off`, or "Seven, cancel that". A new order about the same systems replaces the old one.
-- Typed without an officer's name, the console gives the job to your science officer. `disable tubes 1 2` still switches off your *own* tubes; it only means the enemy's when you name a ship, a race, or a system your tubes don't have.
+- Typed without an officer's name, the console gives the job to your weapons officer (Worf). Name an officer to give it to them instead: `seven, disable their shields`. `disable tubes 1 2` still switches off your *own* tubes; it only means the enemy's when you name a ship, a race, or a system your tubes don't have.
 
 ## How she does it
 
