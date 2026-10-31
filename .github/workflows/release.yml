@@ -1,0 +1,114 @@
+# Builds the downloadable game for Windows, macOS (Apple Silicon and Intel) and Linux.
+#
+# Push a tag such as v0.2.0 and the builds are attached to a GitHub Release of that name.
+# Run it by hand (Actions > Build downloads > Run workflow), or change the packaging in a
+# pull request, and the builds are kept as workflow artifacts instead.
+name: Build downloads
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "packaging/**"
+      - "src/begin/paths.py"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows
+            asset: Begin-windows.exe
+          - os: macos-15
+            label: mac-apple-silicon
+            asset: Begin-mac-apple-silicon.zip
+          - os: macos-15-intel
+            label: mac-intel
+            asset: Begin-mac-intel.zip
+          - os: ubuntu-22.04          # an older glibc, so the program runs on more Linux versions
+            label: linux
+            asset: Begin-linux-x86_64.tar.gz
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+
+      - name: Install the game and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[llm]" "pyinstaller>=6.22"
+
+      - name: Run the tests
+        run: |
+          python -m pip install pytest
+          python -m pytest -q
+
+      - name: Build
+        run: pyinstaller --noconfirm --clean packaging/begin.spec
+
+      - name: Smoke test (render the menu headlessly)
+        shell: bash
+        run: |
+          mkdir smoke
+          case "${{ matrix.label }}" in
+            windows) cp dist/Begin.exe smoke/ && prog=smoke/Begin.exe ;;
+            mac-*)   cp -R dist/Begin.app smoke/ && prog=smoke/Begin.app/Contents/MacOS/Begin ;;
+            linux)   cp dist/begin smoke/ && prog=smoke/begin ;;
+          esac
+          "$prog" --screenshot smoke/menu.png
+          test -s smoke/menu.png
+          test -f "smoke/Begin config/README.md"
+          test -f "smoke/Begin config/officers.example.toml"
+          test ! -e "smoke/Begin config/officers.toml"
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir out
+          case "${{ matrix.label }}" in
+            windows) cp dist/Begin.exe "out/${{ matrix.asset }}" ;;
+            mac-*)   ditto -c -k --sequesterRsrc --keepParent dist/Begin.app "out/${{ matrix.asset }}" ;;
+            linux)   tar -C dist -czf "out/${{ matrix.asset }}" begin ;;
+          esac
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: out/${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" out/* \
+            --title "Begin ${{ github.ref_name }}" \
+            --notes-file packaging/RELEASE_NOTES.md

@@ -46,6 +46,10 @@ class AnthropicProvider:
             raise LLMError(f"Anthropic error {e.status_code}: {e.message}") from e
         except sdk.APIConnectionError as e:
             raise LLMError("Could not reach Anthropic.") from e
+        except TypeError as e:          # the SDK's way of saying it found no key at all
+            if "authentication" not in str(e).lower():
+                raise
+            raise LLMError("No Anthropic API key: set the ANTHROPIC_API_KEY environment variable.") from e
         if resp.stop_reason == "refusal":
             raise LLMError("The model declined to answer.")
         text = "".join(b.text for b in resp.content if b.type == "text")

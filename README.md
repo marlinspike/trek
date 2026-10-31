@@ -27,7 +27,15 @@ And the tour writes itself down. After each stop your bridge officers report on 
 
 ![The Ready Room: Spock's briefing, the squadron as it will arrive, and the patrol chart behind](docs/screenshots/tour-ready.png)
 
-## Run it
+## Download and play
+
+No Python needed: the [Releases page](https://github.com/marlinspike/trek/releases) has a ready-to-run game for Windows (`Begin-windows.exe`), Macs with Apple Silicon or Intel chips (`Begin-mac-*.zip`, holding `Begin.app`) and Linux (`Begin-linux-x86_64.tar.gz`). Download the one for your computer and open it. The builds aren't signed with a paid certificate, so the first launch needs one extra click: on Windows choose **More info**, then **Run anyway**; on a Mac, move `Begin.app` into Applications, open it, then allow it under **System Settings > Privacy & Security > Open Anyway**. The release notes walk through it.
+
+The downloaded game keeps its settings in a `Begin config` folder beside itself (beside `Begin.app` on a Mac), never in your home folder. It holds the same plain text files as `config/` below, starts with a README and the example files, and the **Open config folder** button on the main menu opens it. The officers' language model is optional there too.
+
+Builds are made by GitHub Actions ([.github/workflows/release.yml](.github/workflows/release.yml), with the PyInstaller recipe in [packaging/](packaging/)). Pushing a tag such as `v0.2.0` builds all four and publishes them as a release; running the workflow by hand keeps them as downloadable artifacts.
+
+## Run it from source
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate

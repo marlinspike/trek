@@ -57,6 +57,9 @@ class MenuScene:
         threading.Thread(target=self._make_audio, daemon=True).start()
         self.manual: ManualView | None = None     # made the first time the coach or manual is opened
         self._swallow = False
+        from ..paths import config_warning
+
+        self.config_warning = config_warning()   # the downloaded game sitting where it can't save settings
 
     def open_manual(self, topic: str = "coach") -> None:
         """The coach and the manual, before any battle: the training run and every page, read at leisure."""
@@ -192,15 +195,23 @@ class MenuScene:
             ("Coach & training", self.open_manual, "How to fight your first battle, before you start (C)"),
             ("Manual", lambda: self.open_manual("index"), "Every page of the manual (H)"),
             ("About & licensing", lambda: setattr(self, "page", "about"), ""),
+            ("Open config folder", self._open_config, "Your settings, officers, orders and sounds: plain text files you can edit"),
             ("Quit", self.quit, "Esc"),
         ]
         for label, act, tip in items:
             self.ui.button(surf, pygame.Rect(x, y, 300, 44), label.upper(), act, tip, size=16)
-            y += 56
+            y += 52
         pf = self.custom["player_faction"]
         self.ui.button(surf, pygame.Rect(x, y + 12, 300, 30), f"QUICK BATTLE SIDE: {self.content.factions[pf].name.upper()}",
                        lambda: self._cycle("player_faction", FACTIONS), "Which faction you command in a quick battle",
                        size=12, face="display")
+        if self.config_warning:
+            theme.text(surf, self.config_warning, (x, surf.get_height() - 40), theme.CAUTION, 14)
+
+    def _open_config(self) -> None:
+        from ..paths import config_dir, open_folder
+
+        open_folder(config_dir())
 
     def _make_audio(self) -> None:
         from ..paths import config_dir
