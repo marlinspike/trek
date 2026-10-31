@@ -21,6 +21,7 @@ datas = collect_data_files("begin", excludes=["**/__pycache__", "**/*.pyc"])
 datas += [(str(ROOT / "packaging" / "config_seed" / "README.md"), "config_seed")]
 datas += [(str(f), "config_seed") for f in sorted((ROOT / "config").glob("*.example.*"))]
 hiddenimports = collect_submodules("begin")
+from begin import __version__ as VERSION
 
 a = Analysis(
     [str(ROOT / "packaging" / "launcher.py")],
@@ -42,7 +43,8 @@ if sys.platform == "darwin":
         bundle_identifier="net.marlinspike.begin",
         info_plist={
             "CFBundleDisplayName": "Begin",
-            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleShortVersionString": VERSION,
+            "CFBundleVersion": VERSION,
             "NSHighResolutionCapable": True,
             "LSMinimumSystemVersion": "11.0",
         },
