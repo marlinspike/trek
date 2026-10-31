@@ -202,3 +202,25 @@ class ShipArrived(Event):
     ship_id: int
     kind: str              # "wave" | "reinforcement"
     origin: tuple[float, float] = (0.0, 0.0)   # where the warp streak starts
+
+
+@dataclass(slots=True)
+class HailAnswered(Event):
+    """An enemy captain's answer to a hail [E] (sim/systems/disposition.py). The words are the comms layer's."""
+
+    ship_id: int           # who hailed
+    target: int            # who answered
+    intent: str            # surrender | withdraw | threat | bluff | taunt | talk
+    outcome: str           # surrender | withdraw | refuse | defy | waver | silence | talk
+    mood: str              # how they sound: calm | shaken | enraged | wavering | broken
+    reason: str = ""       # why, in a few words, for the officers and the log
+
+
+@dataclass(slots=True)
+class CaptainMood(Event):
+    """An AI captain was shaken or enraged by what they watched happen to their side [E]."""
+
+    ship_id: int
+    mood: str              # shaken | enraged | wavering
+    cause: str = ""        # the ally they saw lost or battered, by name
+    blame: int | None = None   # the enemy ship they hold responsible

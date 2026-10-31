@@ -77,7 +77,7 @@ VERBS: dict[str, tuple[str, ...]] = {
     "fpr": ("fpr",),
     "phaser": ("phaser", "phasers"),
     "torp": ("torp", "torps", "torpedo", "torpedoes", "torpedos"),
-    "probe": ("probe", "probes"),
+    "probe": ("probe", "probes", "pr"),
     "target": ("target", "t", "tgt", "designate"),
     "lock": ("lock", "lk"),
     "turn": ("turn", "point"),
@@ -147,6 +147,8 @@ VERBS: dict[str, tuple[str, ...]] = {
     "sound": ("sound", "volume", "audio", "mute"),
     "hud": ("hud", "detail"),
     "request": ("request", "reinforcements", "summon"),
+    "hail": ("hail", "hailing", "channel"),
+    "prisoners": ("prisoners", "brig"),
 }
 
 WEAPONS = {
@@ -237,6 +239,10 @@ HELP = [
     "          destroy <ships> · capture <ship> · bait <ship>   (standing objectives and tricks for Seven)",
     "Orders:   execute order <name> | <name>   (a named order from config/orders.toml) · orders (list them) · belay (stop one running)",
     "Display:  hud detail|simple   (simple: hover a panel for its numbers)",
+    "Hail:     hail [<ship>|all] [<your words>]   e.g. 'hail gr'oth surrender and your crew will be treated well'",
+    "          (demand surrender, tell them to withdraw, threaten, bluff or just talk; 'open a channel to <ship>' too)",
+    "          A ship that surrenders drops her shields: board her with six or more and her crew are taken prisoner.",
+    "          prisoners   (who you hold)",
     "Tour:     request reinforcements   (on a tour of duty: Starfleet sends a ship, which arrives after a delay)",
     "Sound:    sound on|off|<0-100>   sound phaser|torpedo a-d   (M mutes)",
     "Other:    key F<n>|^<x> <commands; separated; by semicolons> · translate on|off|always · help · quit",
@@ -493,6 +499,13 @@ class Parser:
         res.commands.append(self._cmd(CeaseFire))
 
     def _v_open(self, tok: _Tokens, res: ParseResult) -> None:
+        tok.skip_filler()
+        if tok.is_word("channel", "hailing", "frequencies", "comms", "communications"):
+            while tok.is_word("channel", "hailing", "frequencies", "frequency", "comms", "communications", "a", "to",
+                              "with", "the"):
+                tok.next()
+            self._v_hail(tok, res)        # "open a channel to the Gr'oth", "open hailing frequencies" [E]
+            return
         if not tok.take_word("fire") and tok.peek() is not None:
             raise ParseError("Open what? 'open fire' lifts a cease fire.")
         res.commands.append(self._cmd(OpenFire))
@@ -1279,6 +1292,38 @@ class Parser:
         tok.rest()
         res.actions.append(("reinforcements", None))
 
+    def _v_hail(self, tok: _Tokens, res: ParseResult) -> None:
+        """`hail [<ship>|all] [words]` [E]: speak to an enemy captain; with no ship named, the current target."""
+        rest_raw = _after_tokens(tok.raw, tok.i)            # the captain's own words, commas and all
+        rest = rest_raw.replace(":", " ")                    # same length: offsets still line up
+        tok.rest()
+        sub = _Tokens(rest)
+        while sub.is_word("frequencies", "frequency", "channel", "to", "with", "the", "open"):
+            sub.next()
+        sid: int | None = None
+        everyone = False
+        if sub.peek() in ("all", "everyone", "everybody", "enemies", "them", "fleet"):
+            sub.next()
+            everyone = True
+        else:
+            try:
+                sid = self.resolve_ship(sub, allow_none=True)
+            except ParseError:
+                sid = None
+            if sid is not None and self.obs.own(sid) is not None and self.obs.contact(sid) is None:
+                raise ParseError(f"{self._ship_name(sid)} is one of ours: use 'tell' to give her orders.")
+        words = " ".join(_after_tokens(rest, sub.i).split()).strip(" :,-\"'")
+        if sid is None and not everyone:
+            if self.ship.target is None:
+                raise ParseError("Hail whom? Name a ship ('hail gr'oth ...'), 'hail all', or target one first.")
+            sid = self.ship.target
+        res.actions.append(("hail", (None if everyone else sid, words)))
+
+    def _v_prisoners(self, tok: _Tokens, res: ParseResult) -> None:
+        """`prisoners` [E]: the crews of surrendered ships we hold."""
+        tok.rest()
+        res.actions.append(("prisoners", None))
+
     def _v_hud(self, tok: _Tokens, res: ParseResult) -> None:
         """`hud detail|simple`: every number on the panels, or only what matters (hover a panel to see the rest)."""
         first = tok.toks[0] if tok.toks else ""
@@ -1502,6 +1547,12 @@ def _stations(tok: "_Tokens") -> list[str]:
             raise ParseError(f"No station called '{w}'. Stations: helm, tactical, engineering, science.")
         out.append(st)
     return out
+
+
+def _after_tokens(raw: str, n: int) -> str:
+    """The text of `raw` from its n-th token on (tokens as `_Tokens` splits them), untouched."""
+    spans = list(re.finditer(r"[^\s,°]+", raw))
+    return raw[spans[n].start():] if n < len(spans) else ""
 
 
 def parse(text: str, ctx: ParseContext) -> ParseResult:

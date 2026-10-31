@@ -36,6 +36,7 @@ CAUTION = (232, 170, 64)      # amber
 ALERT = (236, 98, 82)
 GOOD = (64, 196, 168)         # teal: healthy systems
 CREW = (178, 160, 230)
+HAIL = (238, 196, 120)         # an enemy captain's voice over the comms [E]
 PHASER = (255, 170, 90)
 PHASER_FRIEND = (130, 230, 255)
 TORPEDO = (255, 120, 80)

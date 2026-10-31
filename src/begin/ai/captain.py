@@ -148,6 +148,14 @@ class AICaptain:
             out.extend(self._tactics(obs, ship))
         return out
 
+    def seat(self, world: object) -> None:
+        """Taking command: the ship's mood takes this captain's temperament [E] (called by World.add_controller)."""
+        from ..sim.systems.disposition import seat
+
+        ship = getattr(world, "ships", {}).get(self.ship_id)
+        if ship is not None:
+            seat(ship, self.personality)
+
     def _cmd(self, cls: type[Command], ship: Ship, **kw: object) -> Command:
         return cls(ship_id=ship.id, issuer=Authority.AI_CAPTAIN, source=f"Captain {ship.captain}".strip(), **kw)  # type: ignore[arg-type]
 
@@ -155,8 +163,11 @@ class AICaptain:
         self.trace.add(obs.tick, text)
 
     def helm_aggression(self, obs: Observation, ship: Ship) -> float:
-        """How boldly the helm flies: how little it weaves and how fast it closes. Officers temper it [E]."""
-        return self.personality.aggression
+        """How boldly the helm flies: how little it weaves and how fast it closes. Officers temper it [E].
+
+        An enraged captain flies harder at us, a shaken one more warily [E]."""
+        m = ship.mood
+        return max(0.0, min(1.0, self.personality.aggression + 0.25 * m.anger - 0.25 * m.fear))
 
     # ------------------------------------------------------------ strategy: morale and target
 
@@ -175,11 +186,19 @@ class AICaptain:
         p = self.personality
         dmg = self.damage_ratio(ship)
         # [E] a shaken crew makes a captain quicker to break off, a keen one slower
+        m = ship.mood
         threshold = (p.bravery * AI_RETREAT_DAMAGE * p.doctrine.retreat_threshold_scale
-                     * (1.0 + obs.rules.morale_nerve * ship.morale_factor))
+                     * (1.0 + obs.rules.morale_nerve * ship.morale_factor)
+                     * (1.0 - 0.5 * m.fear) * (1.0 + 0.6 * m.anger))   # [E] what they've watched happen to their side
+        if m.terms == "withdraw" and not self.withdrawing and not ship.cls.is_base:
+            self.withdrawing = self.retreating = True                  # [E] they agreed to leave over a hail
+            self._log(obs, "agreed to withdraw: leaving the field, weapons cold")
         if not self.retreating and dmg > threshold:
             self.retreating = True
             self._log(obs, f"morale broken: damage {dmg:.2f} > {threshold:.2f}; retreating")
+        if self.retreating and not self.withdrawing and m.fear > 0.6 and not ship.cls.is_base:
+            self.withdrawing = True     # [E] cowed by what they've watched: they leave the field rather than hover
+            self._log(obs, f"cowed (fear {m.fear:.2f}): leaving the field")
         st = obs.ally_order(ship.id)
         if st is not None and st.movement == "run":
             self.retreating = True  # told to run: never rejoins until the order is cancelled
@@ -202,10 +221,10 @@ class AICaptain:
             self._log(obs, "last stand: self-destruct and ram")
             out.append(self._cmd(SelfDestruct, ship, cycles=6.0))
 
-        # surrender when beaten and unable to run
-        if (self.retreating and not ship.can_move() and dmg > 0.7 and not self.last_stand
+        # surrender when beaten and unable to run; [E] or cowed by what they've seen, and still trusting us
+        if (self.retreating and (not ship.can_move() or m.fear > 0.6) and dmg > 0.7 and not self.last_stand
                 and self.rng.unit() < 0.05 * p.doctrine.surrender_willingness * (1.0 - p.bravery * 0.5)
-                * (1.0 - 0.5 * ship.morale_factor)):
+                * (1.0 - 0.5 * ship.morale_factor) * (1.0 + 3.0 * m.fear) * (1.0 - m.distrust)):
             self._log(obs, "striking colours")
             out.append(self._cmd(Surrender, ship))
             return out
@@ -360,6 +379,8 @@ class AICaptain:
             score *= 2.0
         if c.id == self.target:
             score *= AI_TARGET_STICKINESS
+        if c.id == ship.mood.nemesis:
+            score *= 1.0 + 1.5 * ship.mood.anger     # [E] the ship they blame for their friends
         if any(o.friendly and o.kind == "probe" and o.target == c.id for o in obs.ordnance()):
             score *= 0.5
         if not c.visible:
@@ -397,7 +418,7 @@ class AICaptain:
             self.order_seen = st.issued
             self.order_done = False
             self.last_helm = None
-        hold_fire = st is not None and st.hold_fire
+        hold_fire = (st is not None and st.hold_fire) or ship.hold_fire   # [E] or they agreed to stand down
         # a running ship still uses its weapons while an enemy is in range (manual p. 23)
         if c is not None and not hold_fire:
             out.extend(self._weapons(obs, ship, c, st))
@@ -782,6 +803,9 @@ class AICaptain:
             home = self._stay_home(obs, ship, c)
             if home is not None:
                 return home
+        if c is None and self.withdrawing:
+            # [E] leaving the field with no enemy left on sensors: hold the course away, full speed, until clear
+            return self._helm(obs, ship, ship.desired_course, ship.max_attainable_warp)
         if c is None:
             # wander [R]: hold course at cruise, occasionally sidestep
             turn = 0.0
@@ -791,6 +815,8 @@ class AICaptain:
         d = c.distance_to(ship.x, ship.y)
         brg = bearing(c.x - ship.x, c.y - ship.y)
         if self.retreating:
+            if self.withdrawing and d >= AI_WEAVE_THREAT_RANGE:
+                return self._helm(obs, ship, norm360(brg + 180.0), ship.max_attainable_warp)   # [E] clear out
             return self._weave(obs, ship, brg + 180.0, d)
         if self.pressing and not st:
             return self._close_for_phasers(obs, ship, c, d, brg)

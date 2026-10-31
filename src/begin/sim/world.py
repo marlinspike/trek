@@ -34,12 +34,13 @@ from .factory import build_ship
 from .ordnance import Probe, Torpedo
 from .projects import update_projects
 from .rules import DEFAULT_RULES, Rules
-from .ship import HelmMode, LoadedProbe, Launcher, Ship, ShipStatus, Subsystem
+from .ship import HelmMode, LoadedProbe, Launcher, Mood, Ship, ShipStatus, Subsystem
 from .systems import sensors as sensors_sys
 from .systems.helm import move_ship, update_helm
 from .systems.ordnance import blast, fly_ordnance, resolve_detonations
 from .systems.power import update_power, warp_budget
 from .systems.morale import update_morale
+from .systems.disposition import update_disposition
 from .systems.repair import update_repair
 
 if TYPE_CHECKING:
@@ -110,6 +111,7 @@ class World:
     side_names: dict[int, str] = field(default_factory=dict)
     on_capture: Callable[[Ship], None] | None = None           # gives a captured ship to her new side's brains
     arrivals: list[Arrival] = field(default_factory=list)      # waves and reinforcements still to come [E]
+    faith_broken: dict[int, set[int]] = field(default_factory=dict)   # side -> ships it fired on after a surrender or truce [E]
     on_arrival: Callable[[Ship], None] | None = None           # gives an arriving ship her captain and computer
 
     _next_id: int = 1
@@ -165,6 +167,9 @@ class World:
 
     def add_controller(self, c: Controller) -> None:
         self.controllers.append(c)
+        seat = getattr(c, "seat", None)
+        if callable(seat):
+            seat(self)          # an AI captain takes command: the ship's mood gets their temperament [E]
 
     # ------------------------------------------------------------ events
 
@@ -346,6 +351,7 @@ class World:
                 if len(s.trail) > 24:
                     del s.trail[0]
         self._complete_scans()
+        update_disposition(self, self.morale_events, dt)   # captains weigh what they saw before the crews do
         update_morale(self, dt)
         for k in list(self.torpedo_pressure):
             self.torpedo_pressure[k] *= 1.0 - 0.2 * dt
@@ -663,6 +669,11 @@ class World:
     def _boarding(self, ship: Ship) -> None:
         """One cycle of boarding combat [R]: rounds = rand × boarders, rolled against the boarders' nation."""
         attacker_side = ship.boarder_side
+        if ship.status == ShipStatus.SURRENDERED:
+            # [E] she struck her colours: her crew lay down their arms, and a party of six takes her without a shot
+            if ship.boarders >= 6:
+                self._capture(ship, attacker_side, prisoners=True)
+            return
         level = 0.5
         for s in self.ships.values():
             if s.side == attacker_side:
@@ -685,10 +696,18 @@ class World:
         elif ship.crew <= 0:
             self.lose_all_hands(ship, "boarders")
 
-    def _capture(self, ship: Ship, side: int) -> None:
-        """The boarders hold the ship: she joins their side with them as her crew [R], under a new captain [E]."""
+    def _capture(self, ship: Ship, side: int, prisoners: bool = False) -> None:
+        """The boarders hold the ship: she joins their side with them as her crew [R], under a new captain [E].
+
+        `prisoners`: she had surrendered, so her crew are taken prisoner rather than fought [E].
+        """
         old = ship.side
-        ship.stats.crew_lost += ship.crew          # the last defenders
+        held = ship.crew if prisoners else 0
+        if prisoners:
+            ship.prisoners += held
+        else:
+            ship.stats.crew_lost += ship.crew          # the last defenders
+        ship.mood = Mood()                            # a new crew, a new captain's mind
         ship.side = side
         ship.crew = ship.boarders
         ship.boarders = 0
@@ -702,8 +721,10 @@ class World:
         ship.repair_priority = None
         for b in ship.banks:
             b.lock = None
+            b.enabled = True        # a surrendered ship's weapons were made safe; her new crew arms them again
         for t in ship.tubes:
             t.lock = None
+            t.enabled = True
         # her old side's brains let go of her; the new side's take over (see `on_capture`)
         self.controllers = [c for c in self.controllers if getattr(c, "ship_id", None) != ship.id]
         self.ally_orders.pop(ship.id, None)
@@ -712,8 +733,13 @@ class World:
             if c is not None:
                 c.assessed = None
         self.emit(ShipStatusChanged(self.tick, ship.id, ShipStatus.CAPTURED.value, f"captured from side {old}", None))
-        self.emit(Message(self.tick, f"{ship.name} has been captured by the {self.side_names.get(side, 'boarders')}! "
-                          f"A prize crew of {ship.crew} holds her.", Tone.ALERT, ship_id=ship.id))
+        if held:
+            self.emit(Message(self.tick, f"{ship.name} has been taken without a fight by the "
+                              f"{self.side_names.get(side, 'boarders')}. Her crew of {held} are prisoners of war, held "
+                              f"under guard; a prize crew of {ship.crew} has her.", Tone.GOOD, ship_id=ship.id))
+        else:
+            self.emit(Message(self.tick, f"{ship.name} has been captured by the {self.side_names.get(side, 'boarders')}! "
+                              f"A prize crew of {ship.crew} holds her.", Tone.ALERT, ship_id=ship.id))
         if self.on_capture is not None:
             self.on_capture(ship)
 

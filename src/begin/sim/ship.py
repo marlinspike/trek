@@ -312,6 +312,33 @@ class BattleStats:
     crew_lost: int = 0
 
 
+@dataclass(slots=True)
+class Mood:
+    """An AI captain's state of mind toward the enemy [E] (sim/systems/disposition.py).
+
+    fear and anger rise as they watch their own side battered (which one depends on temper); resolve
+    starts at their obstinacy and is worn down by every loss they watch. `terms` is what they agreed
+    to over a hail ("withdraw"); `distrust` grows when the enemy fires on a ship that surrendered.
+    """
+
+    seated: bool = False
+    temper: float = 0.5
+    obstinacy: float = 0.5
+    fanaticism: float = 0.0
+    fear: float = 0.0
+    anger: float = 0.0
+    resolve: float = 0.5
+    distrust: float = 0.0
+    trust: float = 0.0                # their navy's word on how we treat a surrender (a tour's reputation)
+    nemesis: int | None = None        # the enemy ship they blame most
+    terms: str = ""                   # "" | "withdraw": what they agreed to
+    terms_side: int = -1              # with whom
+    last_hailed: int = -10**9         # tick of the last hail they answered
+    hails: int = 0                    # how many times they have been hailed
+    said: str = ""                    # the last mood they let show: "" | "shaken" | "enraged" | "wavering"
+    seen_lost: list[str] = field(default_factory=list)   # names of their side's ships they watched lost
+
+
 @dataclass(slots=True, eq=False)
 class Ship:
     id: int
@@ -387,6 +414,8 @@ class Ship:
     conn_saved: set[str] = field(default_factory=set)  # stations delegated before the officer took the bridge
     escape_time: float = 0.0
     surrender_time: float = 0.0
+    mood: Mood = field(default_factory=Mood)   # an AI captain's state of mind toward the enemy [E]
+    prisoners: int = 0                 # crew of a surrendered ship held aboard after she was taken [E]
 
     base_sophistication: float = 0.5
     pd_doctrine: PDDoctrine = PDDoctrine.BALANCED
@@ -491,6 +520,6 @@ class Ship:
 
 __all__ = [
     "Battery", "BankRole", "FireMode", "PDDoctrine", "BattleStats", "DAMAGE_WEIGHT", "Drive", "HelmMode", "KIND_LABEL", "Kind",
-    "HULL", "Launcher", "LoadedProbe", "LoadedTorpedo", "PhaserBank", "PowerReport", "REPAIR_CLASS",
+    "HULL", "Launcher", "LoadedProbe", "LoadedTorpedo", "Mood", "PhaserBank", "PowerReport", "REPAIR_CLASS",
     "Reactor", "RepairTarget", "repair_words", "Shield", "Ship", "ShipStatus", "Subsystem", "TARGETABLE_GROUPS", "Tube",
 ]

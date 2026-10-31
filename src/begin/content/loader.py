@@ -159,6 +159,9 @@ def load_content(data_dir: Path = DATA_DIR) -> ContentDB:
             orders=tuple(str(o) for o in f.get("orders", [])),
             morale_start=float(f.get("morale", {}).get("start", 75.0)),
             morale_steadiness=float(f.get("morale", {}).get("steadiness", 1.0)),
+            temper=float(f.get("temperament", {}).get("temper", 0.5)),
+            obstinacy=float(f.get("temperament", {}).get("obstinacy", 0.5)),
+            temperament_dev=float(f.get("temperament", {}).get("deviation", 0.2)),
             **_weapon_colors(f),
         )
 

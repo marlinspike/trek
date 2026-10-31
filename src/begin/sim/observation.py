@@ -143,6 +143,10 @@ class Observation:
         """Ships out of the fight, which everyone can tell: destroyed, escaped, surrendered or derelict."""
         return {sid for sid, s in self._w.ships.items() if not s.alive}
 
+    def surrendered(self) -> set[int]:
+        """Ships that have struck their colours, which everyone can tell: shields down, waiting to be boarded [E]."""
+        return {sid for sid, s in self._w.ships.items() if s.status.value == "surrendered"}
+
     def hostile_contacts(self) -> list[ContactView]:
         """Contacts not known to be on our side (unidentified contacts count as hostile)."""
         return [c for c in self.contacts().values() if c.side is None or c.side != self.side]

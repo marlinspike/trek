@@ -425,7 +425,8 @@ def plan_capture(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: 
     tpc = rules.ticks_per_cycle
     if any(obs.own(t) is not None for t in o.targets):
         return [p._cmd(EndObjective, ship, group=o.group, outcome="done")]
-    alive = [t for t in o.targets if _alive(obs, t)]
+    yielded = obs.surrendered()
+    alive = [t for t in o.targets if _alive(obs, t) or t in yielded]
     if not alive:
         return [p._cmd(EndObjective, ship, group=o.group, outcome="impossible", reason="she was destroyed")]
     if not any(not x.destroyed for x in ship.transporters):
@@ -448,7 +449,9 @@ def plan_capture(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: 
         return [x for x in cmds if not isinstance(x, EndObjective)]
 
     party = ship.boarding_party()
-    if gaps and crew is not None and (crew <= BOARD_AT_CREW or crew * 2 <= party):
+    if primary in yielded:
+        gaps = gaps or [0]        # [E] she struck her colours: her shields are down and her crew won't resist
+    if gaps and (primary in yielded or crew is not None and (crew <= BOARD_AT_CREW or crew * 2 <= party)):
         # board: hold fire, close to transporter range off her open side, and beam parties across
         out: list[Command] = []
         point = _gap_station(ship, c, gaps[0], rules.beam_range * 0.5)
