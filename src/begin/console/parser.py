@@ -237,6 +237,7 @@ HELP = [
     "          <officer>, <words>   e.g. 'worf, fire all torpedoes' · 'spock, what do you recommend?'",
     "Special:  design tachyon|deflector · tachyon <ship>|<bearing> <range> · pulse · conn <officer>|captain",
     "          disable|cripple <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> · disable off",
+    "          target|take out their <system> · target all their <system>   (the weapons officer knocks it out, then spares her) · target their hull",
     "          destroy <ships> · capture <ship> · bait <ship>   (standing objectives and tricks for Seven)",
     "Orders:   execute order <name> | <name>   (a named order from config/orders.toml) · orders (list them) · belay (stop one running)",
     "Display:  hud detail|simple   (simple: hover a panel for its numbers)",
@@ -455,6 +456,14 @@ class Parser:
         if first in ("i", "i've", "ive") and tok.peek() in ("have", "got", "'ve", "has"):
             self._v_ihave(tok, res)
             return
+        if first in ("take", "knock") and tok.peek() == "out":
+            tok.next()      # "take out their shields": disable them; "take out the Wraith": destroy her [E]
+            words = [w.strip(".!?;'\"").removesuffix("'s").removesuffix("s'") for w in tok.toks[tok.i:]]
+            if any(w in self._DISABLE_WORDS for w in words):
+                self._disable_enemy(tok, res)
+            else:
+                self._v_destroy(tok, res)
+            return
         if first == "take" and tok.peek() in ("evasive", "evasion"):
             first = tok.next() or "evasive"       # "take evasive action"
         if first == "stand" and tok.is_word("down"):
@@ -585,6 +594,11 @@ class Parser:
             res.commands.append(self._cmd(SelectTarget, target=None))
             return
         tok.skip_filler()
+        rest = [w.strip(".!?;'\"").removesuffix("'s").removesuffix("s'") for w in tok.toks[tok.i:]]
+        if rest and rest[0] in self._THEIR and any(self._DISABLE_WORDS.get(w) for w in rest):
+            # "target their shields", "target all their torps": an officer knocks that system out and stops there [E]
+            self._disable_enemy(tok, res)
+            return
         if tok.peek() in ("their", "her", "its", "his", "the") and self.ship.target is not None:
             tok.next()                          # "target their hull", "target the shields": the current target
         if tok.peek() in AIM_FIRST and self.ship.target is not None:
@@ -1394,6 +1408,7 @@ class Parser:
         **dict.fromkeys(("sensor", "sensors", "eyes"), "sensors"),
         **dict.fromkeys(("cloak", "cloaking"), "cloak"),
     }
+    _THEIR = ("their", "all", "every", "everyone", "everybody", "them", "enemy", "enemies", "each")
     _EVERYONE = ("all", "everyone", "everybody", "them", "enemy", "enemies", "both", "every", "each", "they")
     _FACTIONS = {"klingon": "klingon", "romulan": "romulan", "orion": "orion", "federation": "federation",
                  "pirate": "orion", "pirates": "orion"}

@@ -9,7 +9,9 @@ import pytest
 from begin.battle import build_battle
 from begin.console.parser import ParseContext, parse
 from begin.presets import load_presets
-from begin.sim.commands import Authority, FirePhasers, LaunchProbe, OpenFire, SelectTarget, offensive_fire
+from begin.sim.commands import (
+    Authority, FirePhasers, LaunchProbe, OpenFire, SelectTarget, SetObjective, offensive_fire,
+)
 from begin.sim.events import ObjectiveEnded
 
 
@@ -149,5 +151,52 @@ def test_hull_is_the_default_and_named_on_purpose(content) -> None:  # type: ign
     for said in ("target hull", "target their hull", "target the hull", f"target #{enemy.id} hull", "aim hull"):
         cmd = parse(said, ctx).commands[0]
         assert isinstance(cmd, SelectTarget) and cmd.target == enemy.id and cmd.subsystem is None and cmd.hull, said
-    cmd = parse("target their shields", ctx).commands[0]
-    assert isinstance(cmd, SelectTarget) and cmd.subsystem == "shields" and not cmd.hull
+    cmd = parse(f"target #{enemy.id} shields", ctx).commands[0]
+    assert isinstance(cmd, SelectTarget) and cmd.subsystem == "shields" and not cmd.hull   # a named ship: just the aim
+
+
+def _two_enemies(content):  # type: ignore[no-untyped-def]
+    b = build_battle(content, next(p for p in load_presets() if p.id == "pirate-hunt").setup())
+    me = b.world.ships[b.player_ship_id]
+    enemies = [s for s in b.world.ships.values() if s.side != me.side]
+    assert len(enemies) >= 2
+    me.target = enemies[0].id
+    return b, me, enemies
+
+
+@pytest.mark.parametrize("said, group", [
+    ("target their shields", "shields"), ("target their phasers", "phasers"), ("target their torps", "torpedoes"),
+    ("target their engines", "propulsion"), ("take out their shields", "shields"),
+    ("take out their torpedoes", "torpedoes"), ("knock out their engines", "propulsion"),
+    ("disable their phasers", "phasers"),
+])
+def test_target_their_system_means_disable_it(content, said: str, group: str) -> None:  # type: ignore[no-untyped-def]
+    b, me, enemies = _two_enemies(content)
+    cmd = parse(said, ParseContext(me.id, b.world.observe(me.side))).commands[0]
+    assert isinstance(cmd, SetObjective) and (cmd.goal, cmd.group, cmd.targets) == ("disable", group, (enemies[0].id,))
+
+
+@pytest.mark.parametrize("said", ["target all their shields", "target all shields", "take out all their shields",
+                                  "disable all their shields"])
+def test_target_all_their_system_means_every_enemy(content, said: str) -> None:  # type: ignore[no-untyped-def]
+    b, me, enemies = _two_enemies(content)
+    cmd = parse(said, ParseContext(me.id, b.world.observe(me.side))).commands[0]
+    assert isinstance(cmd, SetObjective) and cmd.goal == "disable" and cmd.group == "shields"
+    assert set(cmd.targets) == {e.id for e in enemies}
+
+
+def test_take_out_a_ship_still_means_destroy_her(content) -> None:  # type: ignore[no-untyped-def]
+    b, me, enemies = _two_enemies(content)
+    cmd = parse(f"take out #{enemies[1].id}", ParseContext(me.id, b.world.observe(me.side))).commands[0]
+    assert isinstance(cmd, SetObjective) and cmd.goal == "destroy" and cmd.targets == (enemies[1].id,)
+
+
+@pytest.mark.parametrize("line, who", [("target their shields", "worf"), ("take out their engines", "worf"),
+                                       ("disable their phasers", "worf"), ("worf, target their shields", "worf"),
+                                       ("seven, target their torps", "seven"),
+                                       ("worf, focus fire on their engines", "worf")])
+def test_the_weapons_officer_takes_it_unless_someone_else_is_named(content, line: str, who: str) -> None:  # type: ignore[no-untyped-def]
+    sc, _ = _scene(content, [])
+    sc.run_console(line)
+    assert [o.officer for o in sc.player.objectives] == [who]
+    sc.close()

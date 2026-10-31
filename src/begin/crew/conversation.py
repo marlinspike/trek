@@ -107,6 +107,8 @@ _STATION_HANDBACK = {"helm": "the helm is", "tactical": "the weapons station is"
 # "disable the Klingons' shields", "knock out Gorkon's torpedoes", "cancel that objective"
 _DISABLE = re.compile(r"\b(disable|disarm|cripple|knock out|take out|neutrali[sz]e|shut down|destroy|eliminate|"
                       r"finish off|kill|sink|blow up)\b")
+# "worf, target their shields", "focus fire on their engines", "target all their torps", "target their hull" [E]
+_TARGET = re.compile(r"^\s*(?:target|focus (?:your )?(?:fire )?on|aim (?:at|for))\s+(.+?)\W*$")
 # "worf, capture the Votek" / "seize her" / "take her intact" / "take her as a prize"
 _CAPTURE = re.compile(r"\b(capture|seize|take (her|it|them|the [\w'-]+) (intact|alive|as (a )?prize))\b")
 _KILL_VERBS = ("take out", "destroy", "eliminate", "finish off", "kill", "sink", "blow up", "knock out")
@@ -243,6 +245,9 @@ class Bridge:
         m = _RELEASE.search(low)
         if m is not None:
             return self.release(officer, ctx, run, named=next((g for g in m.groups()[1:] if g), ""))
+        m = _TARGET.match(low)
+        if m is not None:      # "worf, target their shields" / "focus fire on their engines": no model, no delay
+            return self.objective(officer, f"target {m.group(1)}", run)
         m = _CAPTURE.search(low)
         if m is not None:
             if m.group(1) in ("capture", "seize"):

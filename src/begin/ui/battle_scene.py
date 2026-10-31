@@ -25,7 +25,7 @@ from ..console.translator import Translation, Translator
 from ..core.angles import bearing, norm360
 from ..sim.allies import AllyStanding
 from ..sim.commands import (
-    AddressCrew, AllyOrder, CeaseFire, Command, FirePhasers, FireTorpedoes, LaunchProbe, Pursue, Scan, SelectTarget, SetBanks, SetHelm,
+    AddressCrew, AllyOrder, CeaseFire, Command, SetObjective, FirePhasers, FireTorpedoes, LaunchProbe, Pursue, Scan, SelectTarget, SetBanks, SetHelm,
     SetPointDefense, SetShields, StandDown, offensive_fire,
 )
 from ..sim.events import CommandRejected, Event, Message, ObjectiveEnded, ProjectCompleted, ScanCompleted, Tone
@@ -749,6 +749,11 @@ class BattleScene:
                 if self.bridge.judge_address(cmd, self._help_context()):
                     self._log("  … the crew listens", theme.TEXT_DIM)
                     continue      # the model judges how it lands; the morale follows when it answers
+            if isinstance(cmd, SetObjective) and not cmd.officer and self.bridge is not None:
+                # "disable their shields" said to nobody in particular: the weapons officer focuses fire on them
+                o = self.bridge.crew.officers.get("tactical")
+                if o is not None and cmd.goal != "capture":
+                    cmd.officer = o.id
             reason = self.issue(cmd)
             if reason is None:
                 self._log(f"  {cmd.describe()}: acknowledged", theme.TEXT_DIM)
