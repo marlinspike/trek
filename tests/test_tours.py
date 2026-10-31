@@ -364,3 +364,15 @@ def test_the_tour_screens_from_the_list_to_the_end(content, screen) -> None:  # 
     ts2 = TourScene(content, Settings(), launched.append, lambda: None)
     state = ts2.saved(run.tour)
     assert state is not None and state.log[-1].edited
+
+
+def test_the_enterprise_is_a_dreadnought_by_default(content) -> None:  # type: ignore[no-untyped-def]
+    """Every shipped tour, every preset and every quick battle gives the player a Dreadnought unless configured otherwise."""
+    from begin.battle import quick_battle
+    from begin.presets import load_presets
+
+    assert all(t.flagship == "federation.dn" for t in load_tours(user_dir=None)[0] if t.faction == "federation")
+    assert parse_tour({"id": "t", "title": "T", "stop": [{"id": "a", "title": "A", "enemies": ["klingon.bc"]}]}).flagship == "federation.dn"
+    for setup in [p.setup() for p in load_presets()] + [quick_battle(content, s, size=n) for s in range(1, 6) for n in (1, 3)]:
+        player = next(f for f in setup.fleets if f.player)
+        assert player.ships[0].class_id == "federation.dn"

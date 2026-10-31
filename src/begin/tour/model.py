@@ -6,7 +6,7 @@ in the same format (a tour with the same id as a shipped one replaces it):
     [[tour]]
     id = "border-patrol"
     title = "Border Patrol"
-    flagship = "federation.dn"
+    flagship = "federation.dn"          # optional: the faction's default, a Dreadnought for the Federation
     budget = 300                       # fleet points for escorts (a class costs its mass)
     reinforcement_calls = 2
     reinforcements = ["federation.hc", "federation.de"]
@@ -46,6 +46,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from ..battle import PLAYER_FLAGSHIP_CLASSES
 
 try:
     import tomllib
@@ -172,7 +173,7 @@ def parse_tour(t: dict[str, Any], source: str = "shipped") -> TourDef:
         ))
     return TourDef(
         id=str(t["id"]), title=str(t["title"]), description=str(t.get("description", "")).strip(),
-        flagship=str(t["flagship"]), stops=tuple(stops), faction=str(t.get("faction", "federation")),
+        flagship=str(t.get("flagship") or PLAYER_FLAGSHIP_CLASSES.get(str(t.get("faction", "federation")), "")), stops=tuple(stops), faction=str(t.get("faction", "federation")),
         budget=int(t.get("budget", 300)), reinforcement_calls=int(t.get("reinforcement_calls", 2)),
         reinforcements=tuple(t.get("reinforcements", ())), starbase=str(t.get("starbase", "Starbase 12")),
         sector=str(t.get("sector", "")), resupply=float(t.get("resupply", 0.5)), source=source,

@@ -213,6 +213,8 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
 
 # The player's own ship always carries this name when it belongs to the faction (the player's wish).
 PLAYER_FLAGSHIP_NAMES: dict[str, str] = {"federation": "Enterprise"}
+# ... and, unless the player configures otherwise, is this class: the Enterprise is a Dreadnought (the player's rule).
+PLAYER_FLAGSHIP_CLASSES: dict[str, str] = {"federation": "federation.dn"}
 
 
 def _player_flagship_name(content: ContentDB, setup: BattleSetup) -> str | None:
@@ -234,7 +236,11 @@ def quick_battle(content: ContentDB, seed: int, player_faction: str = "federatio
     mine = [c for c in content.classes_of(player_faction, include_bases=False) if c.banks > 0 and c.era == "1.65"] or \
         [c for c in content.classes_of(player_faction, include_bases=False) if c.banks > 0]
     theirs = [c for c in content.classes_of(enemy, include_bases=False) if c.banks > 0]
-    flagship = max(mine, key=lambda c: c.mass) if size <= 1 else rng.choice(mine)
+    default = PLAYER_FLAGSHIP_CLASSES.get(player_faction)
+    if default in content.classes:
+        flagship = content.classes[default]
+    else:
+        flagship = max(mine, key=lambda c: c.mass) if size <= 1 else rng.choice(mine)
     player = FleetSpec(0, [ShipSpec(flagship.id)], player=True)
     budget = flagship.mass * size * rng.uniform(0.85, 1.25)
     for _ in range(size - 1):
@@ -256,4 +262,4 @@ def quick_battle(content: ContentDB, seed: int, player_faction: str = "federatio
     )
 
 
-__all__ = ["Battle", "BattleSetup", "FleetSpec", "MAX_OBJECTS", "PLAYER_FLAGSHIP_NAMES", "ShipSpec", "build_battle", "quick_battle"]
+__all__ = ["Battle", "BattleSetup", "FleetSpec", "MAX_OBJECTS", "PLAYER_FLAGSHIP_CLASSES", "PLAYER_FLAGSHIP_NAMES", "ShipSpec", "build_battle", "quick_battle"]
