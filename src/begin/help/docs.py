@@ -30,6 +30,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..console.vocab import VERBS, match_word
+
 BUNDLED_DIR = Path(__file__).resolve().parent.parent / "assets" / "help"
 
 CATEGORY_ORDER = ("Getting started", "Coach", "Helm", "Weapons", "Defense", "Sensors and status", "Ship systems",
@@ -115,10 +117,8 @@ class HelpLibrary:
             if q == t.id or q == t.title.lower() or q in t.aliases:
                 return t
         # 'help tor' → the verb 'torp' → the topic that lists it as an alias
-        from ..console.parser import VERBS, _match
-
         words = q.split()
-        verb = _match(words[0], VERBS)
+        verb = match_word(words[0], VERBS)
         if verb is not None:
             for t in self.ordered():
                 if verb in t.aliases or verb == t.id:

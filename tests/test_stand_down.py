@@ -10,7 +10,7 @@ import pytest
 
 from begin.battle import build_battle
 from begin.console.parser import ParseContext, parse
-from begin.crew.conversation import whole_bridge_stand_down
+from begin.crew.intents import whole_bridge_stand_down
 from begin.presets import load_presets
 from begin.sim.commands import Authority, CeaseFire, DelegateStation, Pursue, SetHelm, StandDown, TakeConn
 from begin.sim.events import PhaserFired, TorpedoLaunched

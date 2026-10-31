@@ -24,6 +24,7 @@ from ..ai.computer import torpedo_envelope
 from ..content.schema import ContentDB, TorpedoDef
 from ..core.angles import bearing, norm360
 from ..sim.systems.ordnance import blast_radius, suggested_prox
+from ..sim.objectives import baitable
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import Ship
 
@@ -169,149 +170,189 @@ class Tip:
     station: str = "tactical"
 
 
+AddTip = Callable[..., None]      # tip(priority, title, text, *commands)
+
+
 def tips(ctx: HelpContext) -> list[Tip]:
     """Situational advice, most urgent first. Every suggestion comes with the command that carries it out."""
     s, obs = ctx.ship, ctx.obs
     if s is None or obs is None or not s.alive:
         return []
     out: list[Tip] = []
-    upw = obs.rules.units_per_warp
 
     def tip(prio: int, title: str, text: str, *cmds: str) -> None:
         out.append(Tip(prio, title, text, list(cmds), TIP_STATIONS.get(title, "tactical")))
 
-    threats = [o for o in obs.threats() if math.hypot(o.x - s.x, o.y - s.y) < 8000]
-    if threats:
-        n = len(threats)
-        doctrine = s.pd_doctrine.value
-        tip(0, "Incoming ordnance",
-            f"{n} enemy {'weapon is' if n == 1 else 'weapons are'} inbound. Point defense is **{doctrine}**. "
-            "Turning so a strong shield faces the threat, or running at right angles to its course, also helps.",
-            *(["pd aggressive"] if doctrine in ("off", "conservative") else []))
-        fac = ctx.content.factions.get(s.cls.faction)
-        torps = [o for o in threats if o.kind != "probe"]
-        if torps and fac is not None and "evasive" in fac.orders and not s.evasive:
-            tip(1, "Dodge them", "Evasive manoeuvres keep your course or pursuit and jink out of the way of each "
-                "torpedo that would hit, then carry on. Any helm order you give ends it.", "evasive")
-
+    _threat_tips(ctx, s, obs, tip)
     c = obs.contact(s.target) if s.target is not None else None
     if c is None:
-        hostile = sorted((h for h in obs.hostile_contacts() if h.visible), key=lambda h: h.distance_to(s.x, s.y))
-        if hostile:
-            h = hostile[0]
-            tip(1, "Pick a target", f"Nearest enemy: **{_contact_name(h)}** at {h.distance_to(s.x, s.y):,.0f}. "
-                "Weapons locked on a target lead it automatically.", f"target {_contact_name(h).lower()}")
-        else:
-            tip(1, "Find the enemy", "Nothing hostile on sensors. Widen the display or check the chart.", "range 40000", "chart")
+        _no_target_tips(s, obs, tip)
     else:
         d = c.distance_to(s.x, s.y)
         name = _contact_name(c)
-        tcls = c.cls
-        # torpedo envelope and choice
         if s.tubes and any(t.intact for t in s.tubes):
-            options = [ctx.content.torpedoes[x] for x in ctx.content.factions[s.faction].torpedoes if x in ctx.content.torpedoes]
-            cur_id = s.tubes[0].load_ordnance or s.cls.torpedo
-            cur = ctx.content.torpedoes.get(cur_id)
-            fits = []
-            for t in options:
-                lo, hi = torpedo_envelope(s, c.x, c.y, c.vx, c.vy, t.velocity, t.arm_time, t.max_time_fuse, upw)
-                fits.append((t, lo, hi, lo <= d <= hi * 0.8))
-            if cur is not None:
-                lo, hi = next(((lo, hi) for t, lo, hi, _ in fits if t.id == cur.id),
-                              torpedo_envelope(s, c.x, c.y, c.vx, c.vy, cur.velocity, cur.arm_time, cur.max_time_fuse, upw))
-                loaded = sum(1 for t in s.tubes if t.loaded is not None)
-                if d < lo:
-                    tip(2, "Too close for torpedoes",
-                        f"{name} is {d:,.0f} away but a {cur.name} only arms after about {lo:,.0f} at this closing speed. "
-                        "Open the range or use phasers.")
-                elif d > hi:
-                    tip(3, "Out of torpedo reach",
-                        f"{name} is {d:,.0f} away; your {cur.name} runs out at about {hi:,.0f} against this target. "
-                        f"Close to under {hi * 0.7:,.0f} for a good shot.", f"pursue {name.lower()}")
-                elif loaded:
-                    tip(2, "Torpedo shot is on",
-                        f"{name} is inside your {cur.name} envelope ({lo:,.0f}–{hi:,.0f}). {loaded} tube"
-                        f"{'s are' if loaded != 1 else ' is'} loaded. Torpedoes fired at a manoeuvring target miss more "
-                        "the farther they travel, so shots from the nearer half of the envelope hit best.", "fire all torpedoes")
-                    if loaded > 1 and c.warp > 1.5 and d > lo + (hi - lo) * 0.4:
-                        tip(3, "Fan the salvo", f"{name} is moving fast. A spread fans the salvo around where it will "
-                            "be, so a turn doesn't take it clear of every round.", "fire all torpedoes spread 10")
-                # better torpedo for this fight?
-                better = [f for f in fits if f[3] and f[0].id != cur.id and f[0].damage > cur.damage]
-                if better and not (lo <= d <= hi * 0.8):
-                    b = max(better, key=lambda f: f[0].damage)[0]
-                    tip(3, "Switch torpedoes",
-                        f"At {d:,.0f} the {b.name} (warhead {b.damage:g}, warp {b.velocity:g}) fits this range better than "
-                        f"your {cur.name} (warhead {cur.damage:g}, warp {cur.velocity:g}).", f"autoload tor {b.id}")
-                elif better and d < hi * 0.5:
-                    b = max(better, key=lambda f: f[0].damage)[0]
-                    tip(4, "Heavier torpedo available",
-                        f"Close in, the slower {b.name} hits {b.damage / max(1.0, cur.damage):.1f}× as hard as the {cur.name}.",
-                        f"autoload tor {b.id}")
-                # proximity fuse matched to the target's agility (the Begin AI's rule)
-                if tcls is not None:
-                    want = suggested_prox(cur, tcls.max_warp, obs.rules)
-                    have = s.tubes[0].load_prox or cur.max_prox
-                    radius = blast_radius(cur, obs.rules)
-                    if have > radius * 0.7:
-                        tip(1, "Proximity fuse",
-                            f"Your {cur.name}s burst {have:,.0f} from the target, but the blast only reaches "
-                            f"{radius:,.0f}, so they barely scratch it ({math.sqrt(max(0.0, 1 - have / radius)) * 100:.0f}% "
-                            f"of the warhead). Try about {want:,.0f}.", f"autoload tor prox {want:.0f}")
-                    elif abs(have - want) > want * 0.25:
-                        tip(4, "Proximity fuse",
-                            f"A {tcls.name} manoeuvres at up to warp {tcls.max_warp:g}; a proximity of about {want:,.0f} "
-                            f"suits it (yours: {have:,.0f}). Wider fuses catch agile ships but deliver less of the blast.",
-                            f"autoload tor prox {want:.0f}")
-        # phasers
+            _torpedo_tips(ctx, s, obs, c, d, name, tip)
         if s.banks and any(b.intact for b in s.banks):
-            r = s.cls.banks_range
-            ready = sum(1 for b in s.banks if b.intact and b.charge >= s.cls.banks_charge - 1e-6)
-            if d < r:
-                k = math.sqrt(max(0.0, 1 - d / r)) * 100
-                tip(2, "Phasers in range",
-                    f"{name} is at {d:,.0f} of your {r:,.0f} phaser range; hits land at {k:.0f}% of point-blank strength. "
-                    f"{ready} bank{'s are' if ready != 1 else ' is'} charged. Spread 10 concentrates the hit on one ship.",
-                    "fire all phasers spread 10")
-            elif d < r * 2:
-                tip(3, "Closing to phaser range", f"{d - r:,.0f} more to phaser range ({r:,.0f}). "
-                    "Every 10% closer adds noticeably to each hit.", f"pursue {name.lower()}")
-        # probes against slow ships
-        if s.launchers and any(lch.loaded for lch in s.launchers) and tcls is not None:
-            p = ctx.content.probes.get(s.launchers[0].load_ordnance or s.cls.probe)
-            if p is not None and p.damage > 0 and tcls.max_warp < p.velocity:
-                tip(4, "Probe it", f"A {tcls.name} tops out at warp {tcls.max_warp:g}; your {p.name} runs at warp "
-                    f"{p.velocity:g} and homes, so it cannot be outrun. Its warhead is {p.damage:g}.", f"fire probes at {name.lower()}")
-        # the enemy's shields
-        if c.scan is None:
-            tip(4, "Scan the target", f"A scan shows {name}'s shields, weapons and damage, so you know where to hit.",
-                f"scan {name.lower()}")
-        elif tcls is not None and c.scan.shields:
-            facings = (0, 60, 300, 120, 240, 180)
-            rel = norm360(bearing(s.x - c.x, s.y - c.y) - c.course)
-            face = min(range(len(facings)), key=lambda i: abs((rel - facings[i] + 180) % 360 - 180))
-            shields = c.scan.shields
-            weakest = min(range(len(shields)), key=lambda i: shields[i] if shields[i] >= 0 else -1)
-            if face < len(c.scan.shields):
-                tip(3, "Their shields", f"You face {name}'s shield {face + 1} ({max(0, c.scan.shields[face]):.0f}%). "
-                    f"Their weakest is shield {weakest + 1} ({max(0, c.scan.shields[weakest]):.0f}%), "
-                    f"centred {facings[weakest]}° off their bow.")
-        # our shield toward them
-        if s.shields:
-            rel = norm360(bearing(c.x - s.x, c.y - s.y) - s.course)
-            sh = s.shield_for_bearing(rel)
-            best = max((x for x in s.shields if not x.destroyed), key=lambda x: x.effective, default=None)
-            if sh is not None and best is not None and sh.effective < 40 and best.effective > sh.effective + 30:
-                turn = norm360(bearing(c.x - s.x, c.y - s.y) - best.facing)
-                tip(1, "Turn a fresh shield toward them",
-                    f"Shield {sh.index + 1} facing {name} is down to {sh.effective:.0f}%. Shield {best.index + 1} is at "
-                    f"{best.effective:.0f}%: steer {turn:.0f} to put it toward them, or reinforce the weak one.",
-                    f"helm {turn:.0f}", f"reenforce {sh.index + 1}")
-    # engines and power
+            _phaser_tips(s, d, name, tip)
+        _probe_tips(ctx, s, c, name, tip)
+        _their_shield_tips(s, c, name, tip)
+        _our_shield_tips(s, c, name, tip)
+    _crew_tips(s, obs, c, tip)
+    _cloak_tips(s, obs, tip)
+    _ship_tips(s, obs, tip)
+    out.sort(key=lambda t: t.priority)     # stable: equal priorities keep the order above
+    return out
+
+
+def _threat_tips(ctx: HelpContext, s: Ship, obs: Observation, tip: AddTip) -> None:
+    """Enemy ordnance on its way in."""
+    threats = [o for o in obs.threats() if math.hypot(o.x - s.x, o.y - s.y) < 8000]
+    if not threats:
+        return
+    n = len(threats)
+    doctrine = s.pd_doctrine.value
+    tip(0, "Incoming ordnance",
+        f"{n} enemy {'weapon is' if n == 1 else 'weapons are'} inbound. Point defense is **{doctrine}**. "
+        "Turning so a strong shield faces the threat, or running at right angles to its course, also helps.",
+        *(["pd aggressive"] if doctrine in ("off", "conservative") else []))
+    fac = ctx.content.factions.get(s.cls.faction)
+    torps = [o for o in threats if o.kind != "probe"]
+    if torps and fac is not None and "evasive" in fac.orders and not s.evasive:
+        tip(1, "Dodge them", "Evasive manoeuvres keep your course or pursuit and jink out of the way of each "
+            "torpedo that would hit, then carry on. Any helm order you give ends it.", "evasive")
+
+
+def _no_target_tips(s: Ship, obs: Observation, tip: AddTip) -> None:
+    hostile = sorted((h for h in obs.hostile_contacts() if h.visible), key=lambda h: h.distance_to(s.x, s.y))
+    if hostile:
+        h = hostile[0]
+        tip(1, "Pick a target", f"Nearest enemy: **{_contact_name(h)}** at {h.distance_to(s.x, s.y):,.0f}. "
+            "Weapons locked on a target lead it automatically.", f"target {_contact_name(h).lower()}")
+    else:
+        tip(1, "Find the enemy", "Nothing hostile on sensors. Widen the display or check the chart.", "range 40000", "chart")
+
+
+def _torpedo_tips(ctx: HelpContext, s: Ship, obs: Observation, c: ContactView, d: float, name: str, tip: AddTip) -> None:
+    """The torpedo envelope against this target, the best torpedo for the range, and the proximity fuse."""
+    upw = obs.rules.units_per_warp
+    options = [ctx.content.torpedoes[x] for x in ctx.content.factions[s.faction].torpedoes if x in ctx.content.torpedoes]
+    cur = ctx.content.torpedoes.get(s.tubes[0].load_ordnance or s.cls.torpedo)
+    fits = []
+    for t in options:
+        lo, hi = torpedo_envelope(s, c.x, c.y, c.vx, c.vy, t.velocity, t.arm_time, t.max_time_fuse, upw)
+        fits.append((t, lo, hi, lo <= d <= hi * 0.8))
+    if cur is None:
+        return
+    lo, hi = next(((lo, hi) for t, lo, hi, _ in fits if t.id == cur.id),
+                  torpedo_envelope(s, c.x, c.y, c.vx, c.vy, cur.velocity, cur.arm_time, cur.max_time_fuse, upw))
+    loaded = sum(1 for t in s.tubes if t.loaded is not None)
+    if d < lo:
+        tip(2, "Too close for torpedoes",
+            f"{name} is {d:,.0f} away but a {cur.name} only arms after about {lo:,.0f} at this closing speed. "
+            "Open the range or use phasers.")
+    elif d > hi:
+        tip(3, "Out of torpedo reach",
+            f"{name} is {d:,.0f} away; your {cur.name} runs out at about {hi:,.0f} against this target. "
+            f"Close to under {hi * 0.7:,.0f} for a good shot.", f"pursue {name.lower()}")
+    elif loaded:
+        tip(2, "Torpedo shot is on",
+            f"{name} is inside your {cur.name} envelope ({lo:,.0f}–{hi:,.0f}). {loaded} tube"
+            f"{'s are' if loaded != 1 else ' is'} loaded. Torpedoes fired at a manoeuvring target miss more "
+            "the farther they travel, so shots from the nearer half of the envelope hit best.", "fire all torpedoes")
+        if loaded > 1 and c.warp > 1.5 and d > lo + (hi - lo) * 0.4:
+            tip(3, "Fan the salvo", f"{name} is moving fast. A spread fans the salvo around where it will "
+                "be, so a turn doesn't take it clear of every round.", "fire all torpedoes spread 10")
+    # better torpedo for this fight?
+    better = [f for f in fits if f[3] and f[0].id != cur.id and f[0].damage > cur.damage]
+    if better and not (lo <= d <= hi * 0.8):
+        b = max(better, key=lambda f: f[0].damage)[0]
+        tip(3, "Switch torpedoes",
+            f"At {d:,.0f} the {b.name} (warhead {b.damage:g}, warp {b.velocity:g}) fits this range better than "
+            f"your {cur.name} (warhead {cur.damage:g}, warp {cur.velocity:g}).", f"autoload tor {b.id}")
+    elif better and d < hi * 0.5:
+        b = max(better, key=lambda f: f[0].damage)[0]
+        tip(4, "Heavier torpedo available",
+            f"Close in, the slower {b.name} hits {b.damage / max(1.0, cur.damage):.1f}× as hard as the {cur.name}.",
+            f"autoload tor {b.id}")
+    tcls = c.cls
+    if tcls is None:
+        return
+    # proximity fuse matched to the target's agility (the Begin AI's rule)
+    want = suggested_prox(cur, tcls.max_warp, obs.rules)
+    have = s.tubes[0].load_prox or cur.max_prox
+    radius = blast_radius(cur, obs.rules)
+    if have > radius * 0.7:
+        tip(1, "Proximity fuse",
+            f"Your {cur.name}s burst {have:,.0f} from the target, but the blast only reaches "
+            f"{radius:,.0f}, so they barely scratch it ({math.sqrt(max(0.0, 1 - have / radius)) * 100:.0f}% "
+            f"of the warhead). Try about {want:,.0f}.", f"autoload tor prox {want:.0f}")
+    elif abs(have - want) > want * 0.25:
+        tip(4, "Proximity fuse",
+            f"A {tcls.name} manoeuvres at up to warp {tcls.max_warp:g}; a proximity of about {want:,.0f} "
+            f"suits it (yours: {have:,.0f}). Wider fuses catch agile ships but deliver less of the blast.",
+            f"autoload tor prox {want:.0f}")
+
+
+def _phaser_tips(s: Ship, d: float, name: str, tip: AddTip) -> None:
+    r = s.cls.banks_range
+    ready = sum(1 for b in s.banks if b.intact and b.charge >= s.cls.banks_charge - 1e-6)
+    if d < r:
+        k = math.sqrt(max(0.0, 1 - d / r)) * 100
+        tip(2, "Phasers in range",
+            f"{name} is at {d:,.0f} of your {r:,.0f} phaser range; hits land at {k:.0f}% of point-blank strength. "
+            f"{ready} bank{'s are' if ready != 1 else ' is'} charged. Spread 10 concentrates the hit on one ship.",
+            "fire all phasers spread 10")
+    elif d < r * 2:
+        tip(3, "Closing to phaser range", f"{d - r:,.0f} more to phaser range ({r:,.0f}). "
+            "Every 10% closer adds noticeably to each hit.", f"pursue {name.lower()}")
+
+
+def _probe_tips(ctx: HelpContext, s: Ship, c: ContactView, name: str, tip: AddTip) -> None:
+    """Probes against ships too slow to outrun them."""
+    tcls = c.cls
+    if not (s.launchers and any(lch.loaded for lch in s.launchers) and tcls is not None):
+        return
+    p = ctx.content.probes.get(s.launchers[0].load_ordnance or s.cls.probe)
+    if p is not None and p.damage > 0 and tcls.max_warp < p.velocity:
+        tip(4, "Probe it", f"A {tcls.name} tops out at warp {tcls.max_warp:g}; your {p.name} runs at warp "
+            f"{p.velocity:g} and homes, so it cannot be outrun. Its warhead is {p.damage:g}.", f"fire probes at {name.lower()}")
+
+
+def _their_shield_tips(s: Ship, c: ContactView, name: str, tip: AddTip) -> None:
+    if c.scan is None:
+        tip(4, "Scan the target", f"A scan shows {name}'s shields, weapons and damage, so you know where to hit.",
+            f"scan {name.lower()}")
+    elif c.cls is not None and c.scan.shields:
+        facings = (0, 60, 300, 120, 240, 180)
+        rel = norm360(bearing(s.x - c.x, s.y - c.y) - c.course)
+        face = min(range(len(facings)), key=lambda i: abs((rel - facings[i] + 180) % 360 - 180))
+        shields = c.scan.shields
+        weakest = min(range(len(shields)), key=lambda i: shields[i] if shields[i] >= 0 else -1)
+        if face < len(c.scan.shields):
+            tip(3, "Their shields", f"You face {name}'s shield {face + 1} ({max(0, c.scan.shields[face]):.0f}%). "
+                f"Their weakest is shield {weakest + 1} ({max(0, c.scan.shields[weakest]):.0f}%), "
+                f"centred {facings[weakest]}° off their bow.")
+
+
+def _our_shield_tips(s: Ship, c: ContactView, name: str, tip: AddTip) -> None:
+    """A fresh shield to turn toward the target."""
+    if not s.shields:
+        return
+    rel = norm360(bearing(c.x - s.x, c.y - s.y) - s.course)
+    sh = s.shield_for_bearing(rel)
+    best = max((x for x in s.shields if not x.destroyed), key=lambda x: x.effective, default=None)
+    if sh is not None and best is not None and sh.effective < 40 and best.effective > sh.effective + 30:
+        turn = norm360(bearing(c.x - s.x, c.y - s.y) - best.facing)
+        tip(1, "Turn a fresh shield toward them",
+            f"Shield {sh.index + 1} facing {name} is down to {sh.effective:.0f}%. Shield {best.index + 1} is at "
+            f"{best.effective:.0f}%: steer {turn:.0f} to put it toward them, or reinforce the weak one.",
+            f"helm {turn:.0f}", f"reenforce {sh.index + 1}")
+
+
+def _crew_tips(s: Ship, obs: Observation, c: ContactView | None, tip: AddTip) -> None:
+    """Seven's tricks: baiting point defense, and standing objectives."""
     if (c is not None and c.visible and not s.objectives and s.pending_volley is None
             and sum(1 for t in s.tubes if t.loaded is not None) >= 3):
-        from ..crew.objectives import baitable
-
         if baitable(obs, c) and 3000 < c.distance_to(s.x, s.y) < 8000:
             tip(3, "Bait their point defense", f"**{_contact_name(c)}**'s crew fires everything at the first torpedo it "
                 "sees. Send one, and the rest a second later while its phasers recharge.", "bait")
@@ -323,22 +364,29 @@ def tips(ctx: HelpContext) -> list[Tip]:
     elif c is not None and c.scan is not None and c.visible and s.tubes:
         tip(5, "Let Seven disable it", f"Seven can knock out **{_contact_name(c)}**'s weapons or shields for you, bursting "
             "torpedoes where its point defense won't react.", f"seven, disable {_contact_name(c).lower()} weapons")
+
+
+def _cloak_tips(s: Ship, obs: Observation, tip: AddTip) -> None:
+    """Finding a ship that has cloaked."""
     cloaked = [h for h in obs.hostile_contacts() if h.cloaked_hint]
-    if cloaked and s.tubes:
-        h = min(cloaked, key=lambda h: h.distance_to(s.x, s.y))
-        name = _contact_name(h)
-        brg = bearing(h.x - s.x, h.y - s.y)
-        if s.deflector_ready and s.deflector_cooldown <= 0 and h.distance_to(s.x, s.y) < obs.rules.deflector_pulse_range:
-            tip(1, "Deflector pulse ready", f"Turn toward where **{name}** vanished (bearing {brg:.0f}) and pulse the "
-                "deflector to expose it.", f"helm {brg:.0f}", "pulse")
-        elif any(t.loaded is not None and t.loaded.ordnance == "tachyon" for t in s.tubes):
-            tip(1, "Tachyon round ready", f"Burst the tachyon detector where **{name}** vanished to light it up.",
-                f"tachyon {name.lower()}")
-        elif "tachyon" in s.projects:
-            pass  # Spock and Seven are on it
-        else:
-            tip(2, "Cloaked ship nearby", f"**{name}** has probably cloaked. Spock and Seven can build a tachyon "
-                "detector torpedo, or set the deflector up for tachyon pulses.", "design tachyon", "design deflector")
+    if not (cloaked and s.tubes):
+        return
+    h = min(cloaked, key=lambda h: h.distance_to(s.x, s.y))
+    name = _contact_name(h)
+    brg = bearing(h.x - s.x, h.y - s.y)
+    if s.deflector_ready and s.deflector_cooldown <= 0 and h.distance_to(s.x, s.y) < obs.rules.deflector_pulse_range:
+        tip(1, "Deflector pulse ready", f"Turn toward where **{name}** vanished (bearing {brg:.0f}) and pulse the "
+            "deflector to expose it.", f"helm {brg:.0f}", "pulse")
+    elif any(t.loaded is not None and t.loaded.ordnance == "tachyon" for t in s.tubes):
+        tip(1, "Tachyon round ready", f"Burst the tachyon detector where **{name}** vanished to light it up.",
+            f"tachyon {name.lower()}")
+    elif "tachyon" not in s.projects:       # otherwise Spock and Seven are already on it
+        tip(2, "Cloaked ship nearby", f"**{name}** has probably cloaked. Spock and Seven can build a tachyon "
+            "detector torpedo, or set the deflector up for tachyon pulses.", "design tachyon", "design deflector")
+
+
+def _ship_tips(s: Ship, obs: Observation, tip: AddTip) -> None:
+    """Engines, power, morale and the hull."""
     live = [dv for dv in s.drives if not dv.destroyed]
     temp = max((dv.temp for dv in live), default=0.0)
     if temp > obs.rules.temp_limit * 0.8:
@@ -359,9 +407,6 @@ def tips(ctx: HelpContext) -> list[Tip]:
     if s.structure < s.structure_max * 0.35:
         tip(2, "Badly damaged", "Hull below 35%. Consider breaking off, docking with a base for repairs, "
             "or beaming to an ally.", "repair all", "fleet")
-    out.sort(key=lambda t: t.priority)
-    return out
-
 
 BRIEFING = """> **Coach** You're not in a battle yet, so here is the training run. Once a battle starts, this space reads \
 your fight instead: your target's range against your weapons' envelopes, the best torpedo and proximity setting, \

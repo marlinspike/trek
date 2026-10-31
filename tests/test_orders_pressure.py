@@ -311,7 +311,7 @@ def test_a_punctuated_cease_fire_never_waits_on_the_model(content, stop: str) ->
                                   "open a channel, cease fire or be destroyed", "tell agena attack derango and evade",
                                   "address crew stand down, and be proud of today"])
 def test_words_for_someone_else_are_never_split_into_our_orders(said: str) -> None:
-    from begin.console.parser import plain_order, split_orders
+    from begin.console.plain import plain_order, split_orders
 
     assert split_orders(said) == [said.strip()] and plain_order(said) == said
 

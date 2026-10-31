@@ -95,7 +95,7 @@ There are three levels, from least to most code:
 ## A new command
 
 1. Subclass `Command` in `sim/commands.py`. Implement `validate` (raise `Rejected("why")` when it can't be done now) and `apply`, and return the channels it controls from `channels()` so the captain's hold applies to it.
-2. Teach the console the words: add the verb and its synonyms to `VERBS` in `console/parser.py`, and write a `_v_<verb>` method that reads the tokens and appends the command to the result.
+2. Teach the console the words: add the verb and its synonyms to `VERBS` in `console/vocab.py`, and write a `_v_<verb>` method in `console/parser.py` that reads the tokens and appends the command to the result.
 3. Write a manual page for it (below) and add a parser test in `tests/test_manual_commands.py`.
 
 If an officer should be able to use it, map it to a station in `station_of` in `crew/officers.py`.

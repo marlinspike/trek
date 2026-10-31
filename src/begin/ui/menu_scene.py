@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import random
 import threading
-from typing import Callable
+from functools import partial
+from typing import Any, Callable, cast
 
 import pygame
 
@@ -16,7 +17,7 @@ from . import theme
 from .showpiece import Flybys
 from .starfield import Starfield
 from .manual import ManualView
-from .settings import Settings
+from ..settings import Settings
 from .widgets import UI
 
 FACTIONS = ["federation", "klingon", "romulan", "orion"]
@@ -26,7 +27,7 @@ MENU_SOUND = 0.4          # × the player's volume: the menu's flybys are heard,
 
 
 class MenuScene:
-    def __init__(self, content: ContentDB, settings: Settings, start: Callable[[BattleSetup], None],
+    def __init__(self, content: ContentDB, settings: Settings, start: Callable[[BattleSetup], object],
                  quit_: Callable[[], None], show_help: Callable[[], None] | None = None,
                  tours: Callable[[], None] | None = None) -> None:
         self.content = content
@@ -40,14 +41,14 @@ class MenuScene:
         self.preset_i = 0
         self.size = (1600, 900)
         cs = settings.custom
-        self.custom = {
+        self.custom: dict[str, Any] = {      # the custom battle being set up, as saved in the settings
             "player_faction": cs.get("player_faction", "federation"),
             "player_class": cs.get("player_class", "federation.hc"),
-            "wingmen": int(cs.get("wingmen", 0)),
+            "wingmen": int(cast("int | float | str", cs.get("wingmen", 0))),
             "enemy_faction": cs.get("enemy_faction", "klingon"),
             "enemy_class": cs.get("enemy_class", "klingon.bc"),
-            "enemies": int(cs.get("enemies", 1)),
-            "seed": int(cs.get("seed", 1)),
+            "enemies": int(cast("int | float | str", cs.get("enemies", 1))),
+            "seed": int(cast("int | float | str", cs.get("seed", 1))),
         }
         self.t = 0.0
         self.stars = Starfield(seed=47)
@@ -229,7 +230,7 @@ class MenuScene:
     def _presets(self, surf: pygame.Surface) -> None:
         x, y = 84, 210
         for i, p in enumerate(self.presets):
-            self.ui.button(surf, pygame.Rect(x, y, 300, 34), p.title, (lambda i=i: setattr(self, "preset_i", i)),
+            self.ui.button(surf, pygame.Rect(x, y, 300, 34), p.title, partial(setattr, self, "preset_i", i),
                            active=i == self.preset_i, size=14)
             y += 40
         self.ui.button(surf, pygame.Rect(x, y + 14, 140, 34), "Back", lambda: setattr(self, "page", "main"), size=13)
@@ -277,7 +278,7 @@ class MenuScene:
         for label, value, fn in rows:
             theme.text(surf, label, (x, y + 8), theme.TEXT_DIM, 14)
             self.ui.button(surf, pygame.Rect(x + 160, y, 300, 34), value, fn,
-                           "Click for next, right-click for previous", size=14, right=lambda fn=fn: fn(-1))
+                           "Click for next, right-click for previous", size=14, right=partial(fn, -1))
             y += 44
         self.ui.button(surf, pygame.Rect(x + 160, y + 16, 300, 40), "Start battle",
                        lambda: self.start(self._custom_setup()), size=15, accent=theme.GOOD)

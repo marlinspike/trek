@@ -27,12 +27,14 @@ from __future__ import annotations
 import random
 import re
 import time
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+import tomllib
+
 from ..content.loader import DATA_DIR
+from ..llm.reply import first_object, spoken
 from ..llm.service import LLMService
 from ..sim.commands import Command, Hail
 from ..sim.events import CaptainMood, Event, HailAnswered, ShipStatusChanged
@@ -40,7 +42,7 @@ from ..sim.ship import Ship
 from ..sim.systems import disposition
 from ..sim.world import World
 from .characters import OfficerProfile
-from .conversation import Utterance, first_object, spoken
+from .utterance import Utterance
 
 Issue = Callable[[Command], "str | None"]
 

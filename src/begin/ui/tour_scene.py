@@ -30,7 +30,7 @@ from ..tour.model import TourDef, check_tour, load_tours
 from ..tour.run import TourRun
 from ..tour.state import ShipRecord, TourState, fleet_cost
 from . import theme
-from .settings import Settings
+from ..settings import Settings
 from .tour_art import GLIDE_SECONDS, draw_chart, glass, portrait, ship_art, wrap
 from .widgets import UI
 

@@ -308,7 +308,7 @@ def test_the_tour_screens_from_the_list_to_the_end(content, screen) -> None:  # 
     import pygame
 
     from begin.llm.service import LLMService
-    from begin.ui.settings import Settings
+    from begin.settings import Settings
     from begin.ui.tour_scene import TourScene, tours_dir
 
     launched: list[TourRun] = []

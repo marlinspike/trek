@@ -10,8 +10,12 @@ To add a goal: add it to `GOALS`, then give it a planner in `crew/objectives.py`
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from .ship import TARGETABLE_GROUPS
+
+if TYPE_CHECKING:
+    from .observation import ContactView, Observation
 
 GOALS = ("disable", "destroy", "capture")
 
@@ -40,4 +44,16 @@ class Objective:
         return f"{self.goal} {DISABLE_GROUPS.get(self.group, self.group)} on {who}"
 
 
-__all__ = ["CAPTURE_GROUP", "DESTROY_GROUP", "DISABLE_GROUPS", "GOALS", "Objective"]
+def baitable(obs: Observation, c: ContactView) -> bool:
+    """Will this ship's point defense spend several banks on a lone torpedo? Judged from what Seven
+    knows: its race's habits, and from a scan, how many of its crew are left [E]."""
+    if c.cls is None:
+        return False
+    faction = obs.content.factions.get(c.cls.faction)
+    discipline = faction.pd_discipline if faction is not None else 0.7
+    if c.scan is not None:
+        discipline *= 0.5 + 0.5 * max(0.0, min(1.0, c.scan.crew / max(1, c.cls.crew)))
+    return discipline < 0.6
+
+
+__all__ = ["CAPTURE_GROUP", "DESTROY_GROUP", "DISABLE_GROUPS", "GOALS", "Objective", "baitable"]

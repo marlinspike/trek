@@ -18,7 +18,7 @@ The game has two halves. The simulation (`sim/`) owns every fact about the battl
    │     Crew (crew/officers.py)       the player's delegated stations
    │
    └── Front ends (read Observations and Events, submit Commands)
-         ui/battle_scene.py   map, HUD panels, console, manual, officers' chat
+         ui/battle_scene.py   map, HUD panels, console, manual, officers' chat (parts in ui/battle/)
          console/parser.py    Begin's command language ─► Commands
          tools/balance.py     headless runs with AI on every ship
 ```
@@ -71,7 +71,7 @@ A controller has a `side`, a `period` (ticks between decisions) and a `phase` (a
 
 ## Officers and language models
 
-`crew/conversation.py` (`Bridge`) handles talking to the officers. It decides who is addressed, answers offline from the battle state (with help from `help/coach.py`), keeps rapport (`crew/characters.py`), and builds the system prompt when a language model is configured. Requests go through `llm/service.py`, a small thread pool that `BattleScene.update` polls every frame, so the battle never waits for the network.
+`crew/conversation.py` (`Bridge`) handles talking to the officers. It decides who is addressed, answers offline from the battle state (with help from `help/coach.py`), keeps rapport (`crew/characters.py`), and builds the system prompt when a language model is configured. The patterns that recognise what the captain means (an order, a handover, praise, a question) are in `crew/intents.py`; the officers' running commentary on the battle is `crew/chatter.py`, mixed into `Bridge`; each station's report and the situation summary given to the model are in `crew/station_reports.py`. `llm/reply.py` reads a model's JSON answer, however mangled, for the officers, the hails and the translator alike. Requests go through `llm/service.py`, a small thread pool that `BattleScene.update` polls every frame, so the battle never waits for the network.
 
 The providers (`llm/providers/`) share one `complete(system, messages) -> str` method. Anthropic uses the official SDK. OpenAI and OpenRouter share an OpenAI-compatible client, and Ollama talks to the local server's `/api/chat`. The commands in a reply go through the same console parser as typed ones.
 
@@ -81,7 +81,9 @@ The providers (`llm/providers/`) share one `complete(system, messages) -> str` m
 
 `ui/app.py` opens the window and runs the loop at 60 FPS. It swaps between `MenuScene` (presets, Quick and Custom setup), `TourScene` (tours of duty, between battles) and `BattleScene`.
 
-`BattleScene` adds frame time × speed to an accumulator and steps the world in fixed ticks, at most 12 per frame. It keeps the previous tick's snapshot so motion is drawn smoothly between ticks. Each frame it draws:
+`BattleScene` (`ui/battle_scene.py`) holds the scene's state and frame loop, and mixes in its other parts from `ui/battle/`: `input.py` (keys and mouse, with the single-key controls as tables), `console.py` (typed orders, printouts, the chart and the manual), `orders.py` (named orders and the translator), `comms.py` (officers and hails) and `render.py` (drawing). `ui/battle/state.py` declares the state they share, so each part is type-checked against it.
+
+It adds frame time × speed to an accumulator and steps the world in fixed ticks, at most 12 per frame. It keeps the previous tick's snapshot so motion is drawn smoothly between ticks. Each frame it draws:
 
 - the tactical map (`ui/tactical.py`, with `camera.py`, `hulls.py`, `effects.py` and `starfield.py`), which also keeps torpedo trails and the target-lock animation. Zoomed in, a ship class listed in `tactical.SHOWPIECE` is drawn from its baked sprite instead of its outline;
 - the HUD panels (`ui/hud.py`): Own Ship, Target, Weapons, and a tabbed Contacts/Fleet/Crew column. Shown numbers go through `ui/tween.py`, which eases them and flashes changes; `BattleScene.hud_detail` (or the mouse over a panel) decides whether every number is shown;
@@ -94,7 +96,7 @@ Every other class has baked art too, in `assets/ships/fleet/`, made by `tools/re
 
 Panels subclass `Panel` and draw themselves into a rectangle, using small immediate-mode widgets from `ui/widgets.py`. Colours and fonts come from `ui/theme.py`.
 
-`console/parser.py` turns Begin's command language into commands. It handles unique prefixes, filler words, ship and subsystem names, ally orders and multi-command lines. Status commands return text instead.
+`console/parser.py` turns Begin's command language into commands. It handles unique prefixes, filler words, ship and subsystem names, ally orders and multi-command lines. Status commands return text instead. Its vocabulary (verbs and their spellings, weapon and system words, the help summary) is `console/vocab.py`, which the officers and the manual use too; `console/tokens.py` reads a line a word at a time; and `console/plain.py` rewrites a captain's plain words into the console's own and splits a line of several orders.
 
 The manual (`help/docs.py`) is a folder of Markdown pages with front matter. Pages in `config/help/` replace or add to the bundled ones. `{{blocks}}` insert live content such as the coach or weapon tables.
 
@@ -115,7 +117,7 @@ The screens are `ui/tour_scene.py` (the tour list, the squadron, the Ready Room,
 
 ## Settings
 
-`paths.py` decides where the player's files live: `<project>/config/` in a source checkout, or the folder named by `BEGIN_HOME`. `ui/settings.py` reads and writes `settings.json` there. The `llm` section configures the officers' language model; API keys are read only from the environment.
+`paths.py` decides where the player's files live: `<project>/config/` in a source checkout, or the folder named by `BEGIN_HOME`. `settings.py` reads and writes `settings.json` there. The `llm` section configures the officers' language model; API keys are read only from the environment.
 
 ## Tools and tests
 
@@ -127,12 +129,19 @@ The screens are `ui/tour_scene.py` (the tour list, the squadron, the Ready Room,
 
 ## Performance
 
-Measured in the cloud container (software rendering, no GPU) at 1600×900:
+Measured in the cloud container (software rendering, no GPU, a 2.1 GHz Xeon) with `python tools/bench.py`, which drives the real battle screen headlessly and times the update and the drawing separately:
 
-| Battle | Ships | Simulation | Update + draw |
+| Battle | Ships | Update | Draw (mean, 95th percentile) |
 |---|---|---|---|
-| Border Incident | 2 | 0.08 ms per tick | 8.2 ms per frame (about 120 FPS) |
-| Starbase Defense | 10 | 0.32 ms per tick | 10.0 ms per frame (about 100 FPS) |
-| Fleet Action | 14 | 0.48 ms per tick | 10.8 ms per frame (about 90 FPS) |
+| Border Incident, 1600×900 | 2 | 0.11 ms | 5.8 ms, 8.4 ms |
+| Starbase Defense, 1600×900 | 6 | 0.15 ms | 6.0 ms, 8.1 ms |
+| Fleet Action, 1600×900 | 14 | 0.23 ms | 7.1 ms, 10.4 ms |
+| Fleet Action, 2560×1440 | 14 | 0.18 ms | 11.8 ms, 15.3 ms |
 
-At 4× speed the simulation runs 40 ticks a second, which costs under 20 ms of each second even in the largest preset. Drawing dominates the frame time, and every preset stays comfortably above the 60 FPS target.
+Drawing is nearly all of the frame. The same labels are drawn every frame, so `theme.render` caches finished lines of text and `hulls` caches the hull outlines; without those caches Fleet Action took 12.0 ms to draw at 1600×900 and 18.1 ms at 2560×1440, past the 16.7 ms a frame that 60 FPS allows. A surface returned by `theme.render` is shared, so draw it but never draw on it.
+
+The simulation costs about 0.3 ms a tick for a duel, 0.9 ms with 14 ships and 4 ms with Begin's limit of 60 (`tools/bench.py` times fleets of each size with AI on both sides). At 4× speed that is 40 ticks a second, well within budget even at the limit. Per-tick work that looks at every pair of ships gathers its lists once per tick or per choice rather than once per ship or per contact (`World._escapes`, `AICaptain._scoring_sets`).
+
+## Checking a change
+
+Before a pull request: `ruff check .` (all CI runs), `mypy` (no issues today; keep it that way) and `pytest`. For a change meant to keep behaviour, `begin --tournament 12` and `begin --balance 1` print the same results before and after, since every battle is deterministic; `tools/bench.py` shows whether it changed the speed.

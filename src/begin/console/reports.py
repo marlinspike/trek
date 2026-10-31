@@ -379,11 +379,11 @@ def library_lines(content: ContentDB, words: list[str]) -> list[str]:
             return _torp_lines(hits[0])
         return ["Torpedoes: " + ", ".join(f"{t.id} ({t.name})" for t in hits)] if hits else ["No such torpedo."]
     if topic == "probe":
-        hits = [p for p in content.probes.values() if not rest or _norm(p.id).startswith(_norm(rest[0]))
-                or all(w in p.name.lower() for w in rest)]
-        if len(hits) == 1:
-            return _probe_lines(hits[0])
-        return ["Probes: " + ", ".join(f"{p.id} ({p.name})" for p in hits)] if hits else ["No such probe."]
+        probes = [p for p in content.probes.values() if not rest or _norm(p.id).startswith(_norm(rest[0]))
+                  or all(w in p.name.lower() for w in rest)]
+        if len(probes) == 1:
+            return _probe_lines(probes[0])
+        return ["Probes: " + ", ".join(f"{p.id} ({p.name})" for p in probes)] if probes else ["No such probe."]
     if topic == "ship":
         classes = list(content.classes.values())
         for w in rest:

@@ -185,8 +185,8 @@ def test_failures_and_modes(scene) -> None:  # type: ignore[no-untyped-def]
 
 
 def test_cli_saves_the_console_mode(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
-    from begin.llm.cli import configure
-    from begin.ui.settings import Settings
+    from begin.tools.llm import configure
+    from begin.settings import Settings
 
     monkeypatch.setenv("BEGIN_HOME", str(tmp_path))
     configure(["provider=ollama", "model=lfm3", "console=always"])

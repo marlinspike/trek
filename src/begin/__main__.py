@@ -37,12 +37,12 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     if args.llm_usage:
-        from .llm.cli import usage
+        from .tools.llm import usage
 
         return usage()
 
     if args.llm or args.llm_test:
-        from .llm.cli import configure, test
+        from .tools.llm import configure, test
         from .llm.providers.base import LLMError
 
         try:

@@ -38,6 +38,11 @@ packages = ["begin"]
 warn_unused_ignores = false
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# mixins typed by the class they are mixed into (`self: BattleScene`, `self: Bridge`)
+module = ["begin.ui.battle.*", "begin.crew.chatter"]
+disable_error_code = ["misc"]
+
 [tool.ruff]
 line-length = 140
 target-version = "py310"

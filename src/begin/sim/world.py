@@ -753,17 +753,18 @@ class World:
 
     def _escapes(self, dt: float) -> None:
         r = self.rules
+        alive = [e for e in self.ships.values() if e.alive]   # gathered once (this runs for every ship every tick);
+        bases = [b for b in alive if b.cls.is_base]           # still checked below, as a ship may escape mid-loop
         for s in self.ships.values():
             if not s.alive or s.cls.is_base or s.docked_to is not None:
                 s.escape_time = 0.0  # bases can't leave, and a docked ship goes where its base goes
                 continue
-            enemies = [e for e in self.ships.values() if e.alive and e.side != s.side]
+            enemies = [e for e in alive if e.alive and e.side != s.side]
             if not enemies:
                 s.escape_time = 0.0
                 continue
             nearest = min(math.hypot(e.x - s.x, e.y - s.y) for e in enemies)
-            home = any(b.alive and b.side == s.side and b.cls.is_base and math.hypot(b.x - s.x, b.y - s.y) < r.escape_distance / 2
-                       for b in self.ships.values())
+            home = any(b.alive and b.side == s.side and math.hypot(b.x - s.x, b.y - s.y) < r.escape_distance / 2 for b in bases)
             if nearest > r.escape_distance and not home:   # a ship guarding her base hasn't left [E]
                 s.escape_time += dt
                 if s.escape_time >= r.escape_cycles:

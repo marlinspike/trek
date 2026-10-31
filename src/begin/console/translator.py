@@ -21,8 +21,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ..llm.providers.base import Message
+from ..llm.reply import clean_command, first_object, spoken
 from ..llm.service import LLMService
-from .parser import HELP
+from .vocab import HELP
 
 MODES = ("off", "fallback", "always")
 TAG = "console"
@@ -212,8 +213,6 @@ def system_prompt(brief: str) -> str:
 
 def parse_answer(text: str) -> tuple[str, list[str], str]:
     """The model's JSON → (say, commands, clarifying question). Plain text is taken as speech."""
-    from ..crew.conversation import clean_command, first_object, spoken
-
     data = first_object(text)
     if data is None:
         return spoken(text), [], ""

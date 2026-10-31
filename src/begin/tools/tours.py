@@ -85,7 +85,8 @@ def _default_escorts(tour, content) -> list[str]:  # type: ignore[no-untyped-def
 
     options = sorted((c for c in content.classes_of(tour.faction, include_bases=False) if c.banks > 0),
                      key=lambda c: -c.mass)
-    left, out = tour.budget, []
+    left = tour.budget
+    out: list[str] = []
     for c in options:
         while fleet_cost(c.id, content) <= left and len(out) < 3:
             out.append(c.id)

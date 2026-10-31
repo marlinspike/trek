@@ -211,3 +211,16 @@ def test_torpedoes_leave_trails_and_the_lock_closes_in(content) -> None:  # type
     assert sc.hud_detail and "every number" in sc.log[-1].text
     sc.draw(surf)
     sc.close()
+
+
+def test_text_and_hull_shapes_are_cached_between_frames():
+    """The same label is rasterised once, not every frame; the cache tells colours and sizes apart."""
+    from begin.ui import hulls, theme
+
+    a = theme.render("TACTICAL", theme.TEXT_DIM, 11, "display", "medium")
+    assert theme.render("TACTICAL", list(theme.TEXT_DIM), 11, "display", "medium") is a
+    assert theme.render("TACTICAL", theme.TEXT, 11, "display", "medium") is not a
+    assert theme.render("TACTICAL", theme.TEXT_DIM, 12, "display", "medium") is not a
+    pts = hulls.ellipse_points(0.0, 10.0, 20.0, 8.0)
+    pts.append((0.0, 0.0))                      # a caller's list is its own: the cached outline is untouched
+    assert len(hulls.ellipse_points(0.0, 10.0, 20.0, 8.0)) == 18

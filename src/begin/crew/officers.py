@@ -30,17 +30,17 @@ from ..ai.captain import AI_KNIFE_FIGHT_RANGE, AICaptain
 from ..ai.personality import Personality
 from ..content.schema import ContentDB
 from ..core.rng import Rng
-from ..sim.commands import (
-    Authority, Command, ConfigureAutoload, ControlProbe, Evasive, FirePhasers, FireTorpedoes, LaunchProbe, LoadTubes,
-    LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak, SetFireMode, SetHelm,
-    SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, StartProject, TurnMounts,
-    FireSpecialRound, DeflectorPulse, SetObjective, EndObjective, FireAtPoint, Dock, offensive_fire,
-)
 from ..sim.allies import AllyStanding
+from ..sim.commands import (
+    Authority, Command, ConfigureAutoload, ControlProbe, DeflectorPulse, Dock, EndObjective, Evasive, FireAtPoint, FirePhasers,
+    FireSpecialRound, FireTorpedoes, LaunchProbe, LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak,
+    SetFireMode, SetHelm, SetObjective, SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, StartProject, TurnMounts,
+    offensive_fire,
+)
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import HULL, HelmMode, Kind, RepairTarget, Ship
-from .characters import STATIONS, OfficerProfile
 from ..sim.systems.ordnance import suggested_prox
+from .characters import STATIONS, OfficerProfile
 from .helm import HelmPlan, incoming, plan_helm, support_range, threatened
 from .objectives import Planner
 
@@ -131,8 +131,9 @@ class OfficerBrain(AICaptain):
             best = captains
         else:
             best, best_score = None, 0.0
+            probed, focused = self._scoring_sets(obs, ship)
             for c in obs.hostile_contacts():
-                s = self._score(obs, ship, c)
+                s = self._score(obs, ship, c, probed, focused)
                 if s > best_score:
                     best, best_score = c, s
             if best is not None and self.station in ("tactical", "bridge"):

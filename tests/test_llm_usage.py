@@ -141,7 +141,7 @@ def test_each_provider_reads_its_own_counts(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_cli_switches_the_logs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from begin.llm.cli import configure
+    from begin.tools.llm import configure
 
     monkeypatch.setenv("BEGIN_HOME", str(tmp_path))
     s = configure(["provider=ollama", "model=lfm3", "log_prompts=on", "log_tokens=off"])

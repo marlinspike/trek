@@ -38,11 +38,10 @@ from typing import TYPE_CHECKING
 
 from ..core.angles import bearing, norm360
 from ..sim.commands import (
-    Authority, Command, EndObjective, FireAtPoint, FireBait, FirePhasers, Pursue, Scan, SelectTarget, SetHelm,
-    SetShields, Transport,
+    Authority, Command, EndObjective, FireAtPoint, FireBait, FirePhasers, Pursue, Scan, SelectTarget, SetHelm, SetShields, Transport,
 )
 from ..sim.factory import SHIELD_FACINGS
-from ..sim.objectives import Objective
+from ..sim.objectives import Objective, baitable
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import TARGETABLE_GROUPS, Ship
 from ..sim.systems.ordnance import blast_radius
@@ -73,18 +72,6 @@ def group_state(c: ContactView | None, group: str) -> tuple[int, int] | None:
     if not hits:
         return (0, 0)
     return len(hits), sum(1 for d in hits if d > 0)   # a damaged system is off line until repaired
-
-
-def baitable(obs: Observation, c: ContactView) -> bool:
-    """Will this ship's point defense spend several banks on a lone torpedo? Judged from what Seven
-    knows: its race's habits, and from a scan, how many of its crew are left [E]."""
-    if c.cls is None:
-        return False
-    faction = obs.content.factions.get(c.cls.faction)
-    discipline = faction.pd_discipline if faction is not None else 0.7
-    if c.scan is not None:
-        discipline *= 0.5 + 0.5 * max(0.0, min(1.0, c.scan.crew / max(1, c.cls.crew)))
-    return discipline < 0.6
 
 
 def disabled(c: ContactView | None, group: str) -> bool:

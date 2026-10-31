@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import time
 
-from ..ui.settings import Settings
-from .providers.base import LLMError, config_from_settings, make_provider, parse_switch, parse_think
+from ..settings import Settings
+from ..llm.providers.base import LLMError, config_from_settings, make_provider, parse_switch, parse_think
 
 KEYS = ("provider", "model", "base_url", "think", "effort", "timeout", "max_tokens", "console", "log_prompts",
         "log_tokens")
@@ -62,7 +62,8 @@ def test(question: str = "Spock, what do you recommend?") -> int:
     """Send one real question through the configured provider, as the game would, and print the reply."""
     from ..battle import build_battle
     from ..content import default_content
-    from ..crew.conversation import Bridge, parse_reply
+    from ..crew.conversation import Bridge
+    from ..llm.reply import parse_reply
     from ..help.coach import HelpContext
     from ..presets import load_presets
 
@@ -71,7 +72,7 @@ def test(question: str = "Spock, what do you recommend?") -> int:
     if cfg is None:
         print("No LLM provider is set; officers answer offline. Try: begin --llm provider=ollama model=<name>")
         return 1
-    think = {None: "model default", True: "on", False: "off"}.get(cfg.think, str(cfg.think))  # type: ignore[call-overload]
+    think = "model default" if cfg.think is None else "on" if cfg.think is True else "off" if cfg.think is False else str(cfg.think)
     print(f"Provider {cfg.provider}, model {cfg.model}, thinking {think}"
           + (f", endpoint {cfg.base_url}" if cfg.base_url else ""))
     content = default_content()
@@ -86,7 +87,7 @@ def test(question: str = "Spock, what do you recommend?") -> int:
     provider = make_provider(cfg)
     t0 = time.perf_counter()
     try:
-        from .usage import caller
+        from ..llm.usage import caller
 
         caller.set("llm-test")
         text = provider.complete(bridge.system_prompt(officer, ctx), [{"role": "user", "content": question}])
@@ -99,7 +100,7 @@ def test(question: str = "Spock, what do you recommend?") -> int:
         print("Commands: " + "; ".join(commands))
     logs = [name for name, on in (("prompts", cfg.log_prompts), ("tokens", cfg.log_tokens)) if on]
     if logs:
-        from .usage import log_dir
+        from ..llm.usage import log_dir
 
         print(f"Logged ({' and '.join(logs)}) in {log_dir()}")
     return 0
@@ -107,7 +108,7 @@ def test(question: str = "Spock, what do you recommend?") -> int:
 
 def usage() -> int:
     """Print the token log's totals and its most recent games."""
-    from .usage import summary
+    from ..llm.usage import summary
 
     print(summary())
     return 0
