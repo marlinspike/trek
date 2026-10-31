@@ -26,7 +26,7 @@ from ..core.angles import bearing, norm360
 from ..sim.allies import AllyStanding
 from ..sim.commands import (
     AddressCrew, AllyOrder, CeaseFire, Command, FirePhasers, FireTorpedoes, LaunchProbe, Pursue, Scan, SelectTarget, SetBanks, SetHelm,
-    SetPointDefense, SetShields, offensive_fire,
+    SetPointDefense, SetShields, StandDown, offensive_fire,
 )
 from ..sim.events import CommandRejected, Event, Message, ObjectiveEnded, ProjectCompleted, ScanCompleted, Tone
 from ..sim.observation import Observation
@@ -35,7 +35,7 @@ from ..sim.ship import BankRole, Kind, Ship
 from . import officer_view, theme
 from .audio import Audio
 from .camera import Camera
-from ..crew.conversation import Bridge, Utterance
+from ..crew.conversation import Bridge, Utterance, whole_bridge_stand_down
 from ..crew.officers import STATION_COMMANDS, Activity, station_of
 from ..sim.systems.repair import in_battle, under_repair
 from ..help.coach import HelpContext
@@ -644,6 +644,9 @@ class BattleScene:
         if translate and echo == "> " and self.orders.find(text) is not None:
             self._execute_order(text)       # a named order, called by name alone
             return
+        if whole_bridge_stand_down(text):
+            self._execute_now("stand down")     # "everyone stop", "all hands stand down": the whole bridge, at once
+            return
         if self.bridge is not None:
             hit = self.bridge.addressed(text)
             if hit is not None:
@@ -655,11 +658,8 @@ class BattleScene:
                 return
         res = parse(text, ParseContext(self.player_id, self.world.observe(self.side)))
         tr = self.translator
-        if any(isinstance(c, CeaseFire) for c in res.commands):
-            if tr is not None and tr.busy():
-                tr.drop_pending()       # nothing still being interpreted may open fire after this
-                self._log("  (interpretation dropped)", theme.TEXT_DIM)
-            self._execute(text, res)    # at once: never waits on a language model
+        if any(isinstance(c, (CeaseFire, StandDown)) for c in res.commands):
+            self._execute_now(text, res)
             return
         if (translate and tr is not None and not any(n == "translate" for n, _ in res.actions)
                 and tr.wants(res.error is None, _exact_verb(text) or len(text.split()) >= 2)):
@@ -667,6 +667,58 @@ class BattleScene:
             self._log("  … interpreting", theme.TEXT_DIM)
             return
         self._execute(text, res)
+
+    def _execute_now(self, text: str, res: ParseResult | None = None) -> None:
+        """A cease fire or a stand down: at once, never waiting on a language model, and nothing still being
+        interpreted may open fire (or take a station) after it."""
+        if res is None:
+            assert self.player_id is not None
+            res = parse(text, ParseContext(self.player_id, self.world.observe(self.side)))
+        tr = self.translator
+        if tr is not None and tr.busy():
+            tr.drop_pending()
+            self._log("  (interpretation dropped)", theme.TEXT_DIM)
+        self._execute(text, res)
+
+    def _after_captain(self, cmd: Command) -> None:
+        """Follow-through on the captain's own orders that hand work back from the officers."""
+        from ..sim.commands import DelegateStation, EndObjective
+
+        ship, b = self.player, self.bridge
+        if ship is None:
+            return
+        if isinstance(cmd, StandDown):
+            self._belay()               # a named order running stops too
+            self._log("  Every station and the bridge are yours, Captain.", theme.TEXT_DIM)
+            return
+        if isinstance(cmd, DelegateStation) and not cmd.on and b is not None:
+            # taking a station back ends what its officer was working on, such as Seven disabling their shields
+            o = b.crew.officers.get(cmd.station)
+            owners = {o.id} | ({""} if cmd.station == "science" else set()) if o is not None else set()
+            for who in sorted({ob.officer for ob in ship.objectives} & owners):
+                self.issue(EndObjective(ship_id=ship.id, officer=who, reason="station taken back"))
+            return
+        if b is None:
+            return
+        all_stop = isinstance(cmd, SetHelm) and cmd.warp == 0.0 and cmd.course is None
+        if not (isinstance(cmd, CeaseFire) or all_stop):
+            return
+        # the captain said stop, but someone is still at work: say who, and how to stop them
+        busy: list[str] = []
+        holder = b.find(ship.conn) if ship.conn else None
+        if holder is not None:
+            busy.append(f"{holder.name} has the bridge")
+        elif "helm" in ship.delegated and "helm" in b.crew.officers:
+            busy.append(f"{b.crew.officers['helm'].name} has the helm")
+        if all_stop:
+            for ob in ship.objectives:
+                o = b.find(ob.officer) if ob.officer else b.crew.officers.get("science")
+                if o is not None:
+                    busy.append(f"{o.name} is still working to {ob.describe()}")
+                    break
+        if busy:
+            self._log(f"  {'; '.join(busy)}. 'stand down' takes every station back and stops them; "
+                      f"'<officer>, stand down' just that one.", theme.CAUTION)
 
     def _execute(self, text: str, res: ParseResult) -> None:
         if res.error:
@@ -692,6 +744,7 @@ class BattleScene:
             reason = self.issue(cmd)
             if reason is None:
                 self._log(f"  {cmd.describe()}: acknowledged", theme.TEXT_DIM)
+                self._after_captain(cmd)
                 if isinstance(cmd, AddressCrew) and self.bridge is not None:
                     self._speak(self.bridge.address_reaction(cmd))
         if res.commands and self.bridge is not None:

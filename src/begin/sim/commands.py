@@ -1021,9 +1021,13 @@ class DelegateStation(Command):
             for prefix in STATION_CHANNELS[self.station]:
                 world.release_holds(ship.id, prefix)
         else:
+            was = self.station in ship.delegated
             ship.delegated.discard(self.station)
             if not ship.delegated:
                 ship.conn, ship.conn_saved = "", set()   # every station taken back: the captain has the bridge again
+            if was and self.station == "helm" and ship.helm_mode != HelmMode.COURSE:
+                # the officer was chasing (or running from) someone: the captain takes a steady helm, not their chase
+                ship.desired_course, ship.helm_mode, ship.helm_target = ship.course, HelmMode.COURSE, None
 
 
 @dataclass(kw_only=True)
@@ -1125,6 +1129,27 @@ class OpenFire(Command):
         ship.hold_fire = False
 
 
+@dataclass(kw_only=True)
+class StandDown(Command):
+    """`stand down` [E]: the captain takes the whole ship back from the officers at once.
+
+    Everything a cease fire does (weapons hold, objectives end, a bait volley is called off), and every
+    station and the bridge come back to the captain, evasive manoeuvres end, and a helm that was chasing
+    someone steadies on its present course. Point defense keeps shooting down torpedoes.
+    """
+
+    name: ClassVar[str] = "stand down"
+    needs_crew: ClassVar[bool] = False
+
+    def apply(self, world: World, ship: Ship) -> None:
+        CeaseFire(ship_id=ship.id, issuer=self.issuer).apply(world, ship)
+        if ship.helm_mode != HelmMode.COURSE and ("helm" in ship.delegated or ship.evasive):
+            ship.desired_course, ship.helm_mode, ship.helm_target = ship.course, HelmMode.COURSE, None
+        ship.evasive, ship.evasive_resume = False, None
+        ship.delegated = set()
+        ship.conn, ship.conn_saved = "", set()
+
+
 def offensive_fire(cmd: Command) -> bool:
     """A command that fires on someone: what a cease fire stops (point defense isn't)."""
     if isinstance(cmd, FirePhasers):
@@ -1139,6 +1164,7 @@ class EndObjective(Command):
     group: str = ""
     outcome: str = "cancelled"   # "done" | "impossible" | "cancelled"
     reason: str = ""
+    officer: str | None = None   # only this officer's objectives ("" = the science officer's default); None = anyone's
     name: ClassVar[str] = "end objective"
     needs_crew: ClassVar[bool] = False
 
@@ -1152,7 +1178,8 @@ class EndObjective(Command):
     def apply(self, world: World, ship: Ship) -> None:
         from .events import ObjectiveEnded
 
-        ending = [o for o in ship.objectives if not self.group or o.group == self.group]
+        ending = [o for o in ship.objectives if (not self.group or o.group == self.group)
+                  and (self.officer is None or o.officer == self.officer)]
         ship.objectives = [o for o in ship.objectives if o not in ending]
         for o in ending:
             world.emit(ObjectiveEnded(world.tick, ship.id, o.officer, o.goal, o.group, o.targets, self.outcome,
@@ -1300,6 +1327,9 @@ class TakeConn(Command):
             ship.conn = ""
             ship.delegated = set(ship.conn_saved)
             ship.conn_saved = set()
+            if "helm" not in ship.delegated and ship.helm_mode != HelmMode.COURSE:
+                # whoever had the bridge was chasing someone: the captain takes a steady helm, not their chase
+                ship.desired_course, ship.helm_mode, ship.helm_target = ship.course, HelmMode.COURSE, None
 
     def describe(self) -> str:
         return f"conn {self.officer or 'captain'}"

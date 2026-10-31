@@ -28,7 +28,7 @@ from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, ManageRepairs, Evasive, AddressCrew, SetShields, SetTubes, Surrender,
-    CeaseFire, OpenFire, DeflectorPulse, EndObjective, FireAtPoint, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
+    CeaseFire, OpenFire, StandDown, DeflectorPulse, EndObjective, FireAtPoint, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
 from ..sim.ship import HULL, BankRole, FireMode, Kind, PDDoctrine, RepairTarget
@@ -217,6 +217,7 @@ HELP = [
     "Torps:    fire [all] torpedoes [<list>] [spread <deg>]   (fir tor al, torp 1 2, fire all tor spread 10) · lock [all] tubes [<list>] on <ship> [dispersion <d>]",
     "          turn tubes [<list>] to <mark> · load [all] tubes [<list>] [prox] <p> · unload [all] tubes [<list>] · enable|disable tubes",
     "Hold:     cease fire · hold fire · stop firing   (every weapon stops and officers' objectives end; point defense stays on) · open fire",
+    "          stand down   (all that, and every station and the bridge come back to you) · <officer>, stand down (just theirs)",
     "Probes:   fire [all] probes [<list>] at <ship> | course <c> · load launchers [<list>] [prox] <p> [time] <t> · unload launchers",
     "          turn probe <code>|all probes [course] <c> · lock probe <code>|all probes on <ship> · detonate <code>|all · status probes",
     "Shields:  raise|lower|drop [shields] <list>|all · reenforce <n>|off",
@@ -449,6 +450,10 @@ class Parser:
         if _is_num(first):  # bare "90 4" = helm
             tok.i -= 1
             first = "helm"
+        if first == "stand" and tok.is_word("down"):
+            tok.next()
+            self._v_standdown(tok, res)
+            return
         verb = _match(first, VERBS)
         if verb is None:
             cands = _candidates(first, VERBS) if len(first) >= 2 else []
@@ -479,6 +484,9 @@ class Parser:
         if tok.take_word("firing", "fire", "shooting", "weapons"):
             res.commands.append(self._cmd(CeaseFire))     # "stop firing": cease fire, not all stop [E]
             return
+        if tok.take_word("everything", "everyone", "everybody", "all"):
+            self._v_standdown(tok, res)                   # "stop everything": the officers stand down [E]
+            return
         res.commands.append(self._cmd(SetHelm, warp=0.0))
 
     # cease fire [E] ----------------------------------------------------
@@ -491,6 +499,12 @@ class Parser:
         if not tok.take_word("fire", "firing") and tok.peek() is not None:
             raise ParseError("Hold what? 'hold fire' stops every weapon.")
         res.commands.append(self._cmd(CeaseFire))
+
+    def _v_standdown(self, tok: _Tokens, res: ParseResult) -> None:
+        """`stand down [all|everyone]` [E]: cease fire, every objective ends, every station and the bridge
+        come back to the captain, and the helm steadies."""
+        tok.rest()
+        res.commands.append(self._cmd(StandDown))
 
     def _v_open(self, tok: _Tokens, res: ParseResult) -> None:
         if not tok.take_word("fire") and tok.peek() is not None:
@@ -1268,10 +1282,11 @@ class Parser:
         res.actions.append(("orders", None))
 
     def _v_belay(self, tok: _Tokens, res: ParseResult) -> None:
-        """`belay [that|order]`: stop the named order that is running, and cease fire."""
-        tok.rest()
+        """`belay [that|order]`: stop the named order that is running, and cease fire;
+        `belay all|everything`: and the officers stand down too."""
+        everything = any(w in ("all", "everything", "everyone", "everybody") for w in tok.rest())
         res.actions.append(("belay", None))
-        res.commands.append(self._cmd(CeaseFire))      # and whatever the officers had going
+        res.commands.append(self._cmd(StandDown if everything else CeaseFire))   # and whatever the officers had going
 
     def _v_request(self, tok: _Tokens, res: ParseResult) -> None:
         """`request reinforcements` [E]: on a tour of duty, ask Starfleet for a ship; she arrives after the stop's ETA."""
