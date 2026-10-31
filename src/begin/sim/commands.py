@@ -1015,6 +1015,9 @@ class DelegateStation(Command):
         if self.station not in STATION_CHANNELS:
             raise Rejected(f"No {self.station} station.")
 
+    def describe(self) -> str:
+        return f"{'delegate' if self.on else 'assume'} {self.station}"
+
     def apply(self, world: World, ship: Ship) -> None:
         if self.on:
             ship.delegated.add(self.station)
@@ -1023,6 +1026,14 @@ class DelegateStation(Command):
         else:
             was = self.station in ship.delegated
             ship.delegated.discard(self.station)
+            if self.station in ("helm", "tactical") and ship.objectives:
+                # an objective flies and fights the ship: the captain taking the helm or the weapons ends it
+                from .events import ObjectiveEnded
+
+                ending, ship.objectives = ship.objectives, []
+                for o in ending:
+                    world.emit(ObjectiveEnded(world.tick, ship.id, o.officer, o.goal, o.group, o.targets,
+                                              "cancelled", f"the captain has the {self.station}"))
             if not ship.delegated:
                 ship.conn, ship.conn_saved = "", set()   # every station taken back: the captain has the bridge again
             if was and self.station == "helm" and ship.helm_mode != HelmMode.COURSE:

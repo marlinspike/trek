@@ -208,7 +208,7 @@ FILLER = {"with", "the", "to", "at", "on", "of", "and", "set", "please", "by", "
 # the manual's command summary, grouped as in its overview (pp. 4-7) plus the 2.0 and remake additions
 HELP = [
     "Helm:     helm <course> [warp] <w> · pursue|elude <ship> [warp] <w> · warp <w> · stop · <course> <warp>",
-    "          evasive [off]   (Federation: the helm dodges incoming torpedoes until your next helm order)",
+    "          evasive [off] · evasive manoeuvres · take evasive action   (Federation: the helm dodges incoming torpedoes until your next helm order)",
     "Crew:     address crew <your words>   (a speech to the crew lifts morale; once a minute at most) · morale (how the crews feel)",
     "Display:  range|display|scan <range> · chart [on|off|all|<ship>|by name|distance|nation] · report",
     "Status:   status [damage|banks|tubes|launchers|probes|shields|fleet] · damage · banks · tubes · launchers · shields · fleet · group",
@@ -232,6 +232,7 @@ HELP = [
     "Remake:   autoload tor|probe [<list>] [<type>] [<prox>] [time <t>] [on|off] · mode phasers|tubes manual|assisted|automatic",
     "          pd off|conservative|balanced|aggressive [reserve <banks>] · target <ship> [system] · aim <system> · pause · resume · time <x>",
     "Crew:     delegate|assume helm|tactical|engineering|science|all · crew [chatter on|off] · ask <officer> <words>",
+    "          I have nav|weapons|fire|phasers|torps|shields|sensors|the conn   (take that station back; its officer's work ends)",
     "          <officer>, <words>   e.g. 'worf, fire all torpedoes' · 'spock, what do you recommend?'",
     "Special:  design tachyon|deflector · tachyon <ship>|<bearing> <range> · pulse · conn <officer>|captain",
     "          disable|cripple <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> · disable off",
@@ -450,6 +451,11 @@ class Parser:
         if _is_num(first):  # bare "90 4" = helm
             tok.i -= 1
             first = "helm"
+        if first in ("i", "i've", "ive") and tok.peek() in ("have", "got", "'ve", "has"):
+            self._v_ihave(tok, res)
+            return
+        if first == "take" and tok.peek() in ("evasive", "evasion"):
+            first = tok.next() or "evasive"       # "take evasive action"
         if first == "stand" and tok.is_word("down"):
             tok.next()
             self._v_standdown(tok, res)
@@ -505,6 +511,24 @@ class Parser:
         come back to the captain, and the helm steadies."""
         tok.rest()
         res.commands.append(self._cmd(StandDown))
+
+    def _v_ihave(self, tok: _Tokens, res: ParseResult) -> None:
+        """`I have nav` / `I have fire|weapons|phasers|torps` / `I have the conn` [E]: the captain takes that
+        station (or every station) back from its officer, and whatever they were working on ends."""
+        tok.next()
+        tok.take_word("got")
+        words = [w.strip(".!'\"") for w in tok.rest() if w not in FILLER and w not in ("got", "control", "of", "now")]
+        if not words:
+            raise ParseError("You have what? e.g. 'I have nav', 'I have weapons', 'I have the conn'.")
+        stations: list[str] = []
+        for w in words:
+            st = next((k for k, spellings in HAVE_WORDS.items() if w in spellings), None)
+            if st is None:
+                raise ParseError(f"I have what? '{w}' is no station. Try nav, weapons, phasers, torps, shields, "
+                                 "sensors or the conn.")
+            stations.extend(STATION_WORDS if st == "all" else [st])
+        for st in dict.fromkeys(stations):
+            res.commands.append(self._cmd(DelegateStation, station=st, on=False))
 
     def _v_open(self, tok: _Tokens, res: ParseResult) -> None:
         if not tok.take_word("fire") and tok.peek() is not None:
@@ -1494,6 +1518,16 @@ class Parser:
         tok.rest()
         res.actions.append(("key", (name, text)))
 
+
+# what the captain can say they have: "I have nav", "I have fire", "I have torps", "I have the conn" [E]
+HAVE_WORDS: dict[str, tuple[str, ...]] = {
+    "helm": ("helm", "nav", "navigation", "navs", "steering", "course", "wheel", "flying"),
+    "tactical": ("tactical", "weapons", "weapon", "fire", "phasers", "phaser", "torps", "torp", "torpedoes", "torpedo",
+                 "torpedos", "guns", "tubes", "targeting"),
+    "engineering": ("engineering", "engines", "power", "shields", "shield"),
+    "science": ("science", "sensors", "scans", "scanning"),
+    "all": ("conn", "bridge", "ship", "everything", "all", "command", "stations"),
+}
 
 STATION_WORDS: dict[str, tuple[str, ...]] = {
     "helm": ("helm", "conn", "navigation", "nav"),

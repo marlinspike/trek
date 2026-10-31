@@ -166,3 +166,54 @@ def test_stand_down_in_the_simulation(content) -> None:  # type: ignore[no-untyp
     assert w.execute(StandDown(ship_id=me.id)) is None
     assert not me.delegated and me.conn == "" and not me.conn_saved
     assert me.hold_fire and me.helm_mode == HelmMode.COURSE and me.helm_target is None
+
+
+@pytest.mark.parametrize("line", ["I have nav", "i have navigation", "I have the helm", "I've got the helm",
+                                  "spock, I have nav"])
+def test_i_have_nav_takes_the_helm_back_and_ends_the_attack(flying, line: str) -> None:  # type: ignore[no-untyped-def]
+    _, helm = _after(flying, line)
+    me = flying.player
+    assert helm == 0 and "helm" not in me.delegated and not me.objectives
+    assert not me.hold_fire and me.helm_mode == HelmMode.COURSE
+
+
+@pytest.mark.parametrize("line", ["I have fire", "I have weapons", "I have phasers", "I have torps",
+                                  "i have torpedoes", "worf, I have weapons", "seven, I have weapons"])
+def test_i_have_weapons_takes_tactical_back_and_ends_seven_s_attack(content, line: str) -> None:  # type: ignore[no-untyped-def]
+    sc = _scene(content, ["delegate all"])
+    shots, _ = _after(sc, line)
+    me = sc.player
+    assert shots == 0 and "tactical" not in me.delegated and not me.objectives
+    assert "helm" in me.delegated               # only the weapons came back: Spock still flies
+    assert not me.hold_fire                     # the guns are the captain's now, not held
+    sc.close()
+
+
+def test_i_have_the_conn_with_nobody_on_the_bridge_takes_every_station_back(content) -> None:  # type: ignore[no-untyped-def]
+    sc = _scene(content, ["delegate all"])
+    shots, helm = _after(sc, "I have the conn")
+    assert (shots, helm) == (0, 0) and not sc.player.delegated and not sc.player.objectives
+    sc.close()
+
+
+@pytest.mark.parametrize("line", ["evasive", "Evasive", "evasive manoeuvres", "evasive maneuvers", "Evasive manuevers", "evasive action",
+                                  "take evasive action", "spock, evasive manoeuvres", "spock, take evasive action"])
+def test_evasive_manoeuvres_in_every_spelling(content, line: str) -> None:  # type: ignore[no-untyped-def]
+    sc = _scene(content, [])
+    sc.run_console(line)
+    assert sc.player.evasive
+    sc.close()
+
+
+def test_i_have_words(content) -> None:  # type: ignore[no-untyped-def]
+    b = build_battle(content, load_presets()[0].setup())
+    ctx = ParseContext(b.player_ship_id, b.world.observe(0))
+    for said, stations in [("I have nav", ["helm"]), ("I have fire", ["tactical"]), ("I have weapons", ["tactical"]),
+                           ("I have phasers", ["tactical"]), ("I have torps", ["tactical"]),
+                           ("I have shields", ["engineering"]), ("I have sensors", ["science"]),
+                           ("I have nav and weapons", ["helm", "tactical"]),
+                           ("I have the conn", ["helm", "tactical", "engineering", "science"])]:
+        cmds = parse(said, ctx).commands
+        assert all(isinstance(c, DelegateStation) and not c.on for c in cmds), said
+        assert [c.station for c in cmds if isinstance(c, DelegateStation)] == stations, said
+    assert parse("I have bananas", ctx).error is not None

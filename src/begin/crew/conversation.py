@@ -90,9 +90,10 @@ _BRIDGE_RELEASE = re.compile(r"\b(i have the (bridge|conn|ship)|i'?ll take (the 
                              r"i'?m taking (the bridge|the conn|command)|i have command|i relieve you|"
                              r"(the )?captain'?s? on the bridge|give me (the bridge|the conn|command))\b")
 # "spock, I have the helm" / "I relieve you": the officer's station comes back to the captain, nothing else stops [E]
-_RELEASE = re.compile(r"\b(i have (the )?(helm|weapons|tactical|station|science|sensors|engineering|shields)|"
+_HAVE = r"(helm|nav|navigation|steering|weapons|tactical|fire|phasers|torps|torpedoes|guns|station|science|sensors|engineering|shields)"
+_RELEASE = re.compile(r"\b(i(?: have|'ve got| got) (the )?" + _HAVE + r"|"
                       r"i have it( from here)?|i relieve you|i'?ll (take|handle) it from here|"
-                      r"i'?ll take (the )?(helm|weapons|tactical|station|science|sensors|engineering|shields))\b")
+                      r"i'?ll take (the )?" + _HAVE + r")\b")
 # "seven, cease fire" / "hold fire" / "stop firing": every weapon stops and the objectives end [E]
 _CEASE = re.compile(r"\b(cease ?fire|hold (your )?fire|stop (firing|shooting)|weapons (cold|hold))\b")
 # "spock, stop" / "stand down" / "belay that" / "stop disabling their shields" / "forget the shields": all that, and
@@ -239,8 +240,9 @@ class Bridge:
             return self.cease(officer, low, run)
         if _STAND_DOWN.search(low):
             return self.stand_down(officer, ctx, run)
-        if _RELEASE.search(low):
-            return self.release(officer, ctx, run)
+        m = _RELEASE.search(low)
+        if m is not None:
+            return self.release(officer, ctx, run, named=next((g for g in m.groups()[1:] if g), ""))
         m = _CAPTURE.search(low)
         if m is not None:
             if m.group(1) in ("capture", "seize"):
@@ -307,8 +309,17 @@ class Bridge:
         return self.release(officer, ctx, run, standing_down=True)
 
     def release(self, officer: OfficerProfile, ctx: HelpContext, run: RunCommand,
-                standing_down: bool = False) -> list[Utterance]:
-        """The officer hands their station back to the captain (and the bridge, if they have it)."""
+                standing_down: bool = False, named: str = "") -> list[Utterance]:
+        """The officer hands their station back to the captain (and the bridge, if they have it); `named`, a
+        station the captain said they have ("spock, I have weapons"), instead of the officer's own."""
+        from ..console.parser import HAVE_WORDS
+
+        station = next((k for k, words in HAVE_WORDS.items() if named in words and k != "all"), "") if named else ""
+        if station and station != officer.station:
+            err = run(f"assume {station}", officer)
+            what = _STATION_HANDBACK.get(station, "the station is")
+            return [self._say(officer, err, "caution") if err else
+                    self._say(officer, f"Aye. {what[:1].upper() + what[1:]} yours, Captain.")]
         ship = ctx.ship
         had_bridge = ship is not None and ship.conn == officer.id
         if had_bridge:

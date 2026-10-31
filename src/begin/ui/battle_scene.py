@@ -700,6 +700,14 @@ class BattleScene:
             return
         if b is None:
             return
+        from ..sim.commands import Evasive
+
+        if isinstance(cmd, Evasive) and cmd.on and "helm" in ship.delegated and "helm" in b.crew.officers:
+            o = b.find(ship.conn) if ship.conn else b.crew.officers["helm"]
+            if o is not None:
+                self._log(f"  {o.name} is flying the ship and dodges torpedoes as part of it. "
+                          f"Say 'I have nav' to fly evasive manoeuvres yourself.", theme.TEXT_DIM)
+            return
         all_stop = isinstance(cmd, SetHelm) and cmd.warp == 0.0 and cmd.course is None
         if not (isinstance(cmd, CeaseFire) or all_stop):
             return
@@ -1043,8 +1051,8 @@ class BattleScene:
         if self.player is not None and self.player.conn == officer.id:
             allowed |= set(STATION_COMMANDS)   # in command of the bridge
         for cmd in res.commands:
-            if isinstance(cmd, (ManageRepairs, CeaseFire)):
-                continue       # any officer can be asked to direct the repair crews, or told to cease fire
+            if isinstance(cmd, (ManageRepairs, CeaseFire)) or (isinstance(cmd, DelegateStation) and not cmd.on):
+                continue       # any officer can be asked to direct repairs, told to cease fire, or hand a station back
             st = cmd.station if isinstance(cmd, DelegateStation) else station_of(cmd)
             if st is None or st not in allowed:
                 return "That is not my station, Captain."
