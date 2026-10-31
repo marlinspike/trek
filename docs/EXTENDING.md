@@ -139,6 +139,10 @@ To change a page without touching the bundled ones, put your version in `config/
 
 All the lines are original writing; keep it that way (see [LICENSING.md](../LICENSING.md)).
 
+## Enemy captains and hails
+
+A race's captains take their `temperament` from `factions.toml` (`temper`: 0 cowed by losses, 1 enraged by them; `obstinacy`: how hard they are to talk round at the start; `deviation`). What they watch, and how a hail is answered, lives in `sim/systems/disposition.py`: the shock each event deals, how fast fear and anger build and fade, and the odds of a demand being accepted. Their words come from `content/data/hails.toml`, one table per race over `[default]`; a player's `config/hails.toml` is read over it. `crew/hails.py` reads the captain's words (keywords, or the language model) and puts the answer into words, and `ui/comms_view.py` draws the comms card and the mood marks.
+
 ## Crew collaborations and projects
 
 Spock and Seven's tachyon detector is the first of these, and the pattern is meant for more. It has two halves:

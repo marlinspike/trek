@@ -9,6 +9,7 @@ You command a starship from a top-down tactical map and a Begin-style command co
 - a bridge crew who can fight the ship for you and talk back;
 - named battle plans and a coach that reads the fight;
 - aimed fire at a ship's systems, and boarding parties that take and keep enemy ships;
+- enemy captains you can hail, who are cowed or enraged by what you do to their allies, and who can be talked into surrendering or leaving;
 - a campaign: tours of duty that link battle after battle, with a squadron that carries its scars;
 - crew morale and hull repairs;
 - every ship class drawn as a lit, detailed model;
@@ -182,6 +183,22 @@ Every class in the game, Federation, Klingon, Romulan and Orion, is drawn as a l
 
 `help` (or `man`) opens the in-game manual. It covers every command, grouped by station, with search, links and examples you can click into the console; `help tor` opens a command's page. `coach` reads your battle and suggests what to do next, most urgent first: whether the target is in your torpedo envelope, which warhead and proximity suit it, which shield to turn toward it. The manual is Markdown in `src/begin/assets/help/`, and a page of yours in `config/help/` replaces the bundled one.
 
+### Hailing enemy captains
+
+Every enemy ship has a captain with a temper and a stubborn streak of their own, and `hail <ship> <your words>` (or the **Hail** button on the Target panel, or "Worf, open a channel to the Gr'oth") lets you talk to them. Demand they surrender, tell them to leave, threaten them, bluff, or just ask who they are; offering fair terms such as decent treatment of prisoners makes a demand more persuasive.
+
+What decides the answer is what they have watched happen. Every shield you collapse, every torpedo into an ally's hull and every ship of theirs destroyed or taken is seen by the captains still fighting. A cool-headed captain is cowed by it and grows readier to yield or withdraw, and a hot-headed one is enraged, fights harder and goes after your ship. Each loss also wears down their obstinacy, so even a stubborn Romulan comes round once they have seen enough. Klingons tend to rage, Romulans start very stubborn, and Orion pirates fold quickly. Their own damage, their crew's morale and the odds as they see them count too, and a bluff fails if their scans show your ship is battered.
+
+A captain who surrenders lowers their shields and powers down their weapons. You can keep firing, and every hit goes straight into the hull. Or you can beam six or more across, and the ship is yours without a fight, her crew held as prisoners of war. Fire on a ship that has surrendered and the other captains stop trusting your terms. A captain who agrees to withdraw holds fire and leaves, and firing on them voids the deal.
+
+The comms card in the top right of the map shows who is on the channel: their race's emblem, name and ship, their mood, our officers' read of their resolve, fear and anger, and the last words exchanged, with one-click demands under it. On the map, an enemy ship whose captain is enraged, shaken or wavering carries a small mark (a flame, a falling chevron or a wave), and a surrendered ship flies a white flag. Your science officer reads each answer for you, and Worf has advice about Klingons.
+
+Without a language model the captains answer from lines written for their race and mood (`config/hails.toml` can change or add them). With one, the model plays the enemy captain: it reads your actual words, judges how persuasive they are, answers in character, and hails you on its own when the captain's mood turns. The battle still decides whether they agree.
+
+On a tour of duty, word of how you treat a surrender travels ahead of you, making later captains readier to yield or more determined to fight to the end. Prisoners can be handed to Starfleet in the Ready Room for supplies and extra reinforcement calls, or offered back to an enemy over a hail in exchange for their withdrawal.
+
+![Hailing: an Orion raider has surrendered and lowered her shields, while her shaken wingman carries a falling chevron on the map](docs/screenshots/hailing.png)
+
 ## Your config folder
 
 Everything you set lives in the project's [`config/`](config/README.md) folder, which git ignores apart from its README and the example files:
@@ -191,6 +208,7 @@ Everything you set lives in the project's [`config/`](config/README.md) folder, 
 | `settings.json` | Window, speed, volume, mute, sound versions, chatter, custom battle choices and the language model settings. The game writes it. |
 | `officers.toml` | Your officers' traits and response styles. |
 | `orders.toml` | Your named tactical orders. |
+| `hails.toml` | Your own lines for enemy captains, read over the shipped ones race by race. |
 | `tours/` | Your tours of duty in progress (`<tour>.json`), their captain's logs (`<tour>-log.md`) and tours you write yourself (`*.toml`). |
 | `sounds/` | Your own WAV files, replacing the game's sounds. |
 | `begin2.key` | Begin 2.0 key macros. |

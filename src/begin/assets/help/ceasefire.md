@@ -2,7 +2,7 @@
 title: Cease fire
 category: Weapons
 order: 3
-aliases: cease, cease fire, hold, hold fire, stop firing, open, open fire, stand down, belay all, everyone stop
+aliases: cease, cease fire, hold, hold fire, hold your fire, stop firing, weapons cold, break off, disengage, open, open fire, stand down, belay all, everyone stop, knock it off
 summary: Stop every weapon at once, and the officers with them; stand down takes every station back too.
 see: fire, crew, orders
 ---
@@ -21,11 +21,15 @@ open fire
 
 You can say it to an officer too: `seven, cease fire`, `seven, stop firing` or `worf, hold fire`. A cease fire stops the guns only: if Spock is flying the ship, he keeps flying it.
 
+Plain words work the same way, with or without an officer's name: `hold your fire`, `weapons cold`, `don't shoot`, `stop attacking`, `break off`, `disengage`, `leave them alone`, `never mind`. Punctuation doesn't matter (`Cease fire!`), and a cease fire can share a line with another order: `cease fire and take evasive action`. An officer's answer still on its way from the language model is dropped, so nobody starts shooting again after you said stop.
+
+A new order to attack, such as `target their engines` after a cease fire, lifts the cease fire for that officer's work; you don't have to say `open fire` first.
+
 ## Stand down
 
 To stop an officer outright, tell them to stop: `spock, stop`, `spock, stand down`, `seven, belay that`, `seven, forget the shields` or `seven, stop disabling their shields`. Everything a cease fire does happens, and the officer hands back what they were running: their station, the bridge if they had it, and evasive manoeuvres. A helm that was chasing the enemy steadies on its present course.
 
-To stop the whole bridge at once, say `stand down`, `everyone stop`, `all stations, stand down`, `stop everything` or `belay all`. Every station and the bridge come back to you, and a running named order stops too.
+To stop the whole bridge at once, say `stand down`, `everyone stop`, `all stations, stand down`, `stop everything`, `knock it off` or `belay all`. Every station and the bridge come back to you, and a running named order stops too.
 
 ```console
 spock, stand down

@@ -251,6 +251,11 @@ class Faction:
     # [E] crew morale: spirits at the start of a battle (0..100), and how much damage and losses shake them
     morale_start: float = 75.0
     morale_steadiness: float = 1.0
+    # [E] how a race's captains take watching their allies battered (sim/systems/disposition.py):
+    # temper 0 = they are cowed, 1 = they are enraged; obstinacy = how hard they are to talk round at the start
+    temper: float = 0.5
+    obstinacy: float = 0.5
+    temperament_dev: float = 0.2
 
 
 @dataclass(slots=True)

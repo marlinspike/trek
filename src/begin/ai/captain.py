@@ -80,6 +80,10 @@ AI_FANATIC_RAM = 0.9
 # fighting to the ship's strengths [E]
 AI_KITE_MARGIN = 1.3             # × an enemy's phaser range: a torpedo boat keeps at least this far out
 AI_SHIELD_BACK_OFF = 35.0        # % effective on the shield facing the enemy: below it, turn a fresh one toward it
+# [E] an ally told (through the flagship's own orders) to disable a ship, not destroy her: Federation captains always
+# obey; others when loyal and disciplined enough, on average, to put the flagship's wishes before a kill
+ALLY_OBEY = 0.6
+ALLY_DISABLE_TORPEDO_HULL = 0.5   # as our own officers: below half her hull, torpedoes would tear her apart
 AI_CLOSE_HYSTERESIS = 1.15       # closing needs odds this much better than standing off, and the reverse
 AI_TORP_HIT = 0.45               # rough chance a torpedo connects; homing ones more often
 AI_TORP_HIT_HOMING = 0.7
@@ -131,6 +135,31 @@ class AICaptain:
     withdrawing: bool = False  # [E] the fight stalled and we are the weaker side: leave the field
     stall_mark: float = -1.0
     stall_since: int = 0
+    wishes: tuple[frozenset[int], dict[int, str]] = (frozenset(), {})   # the flagship's: spared, and disabling
+
+    def obeys_flagship(self, ship: Ship) -> bool:
+        """Will this captain hold back from a kill because the flagship wants the ship disabled? [E]"""
+        if ship.cls.faction == "federation":
+            return True
+        p = self.personality
+        return (p.loyalty + p.discipline) / 2.0 >= ALLY_OBEY
+
+    def _flagship_wishes(self, obs: Observation, ship: Ship) -> tuple[frozenset[int], dict[int, str]]:
+        """What the other ships of our side, the player's above all, want done with enemy ships: those to spare
+        (disabled already) and those being disabled, with the system. Empty for a captain who won't listen."""
+        if not self.obeys_flagship(ship):
+            return frozenset(), {}
+        spare: set[int] = set()
+        disable: dict[int, str] = {}
+        for s in obs.own_ships():
+            if s.id == ship.id:
+                continue
+            spare |= s.spared
+            for o in s.objectives:
+                if o.goal in ("disable", "capture"):
+                    for t in o.targets:
+                        disable.setdefault(t, "shields" if o.goal == "capture" else o.group)
+        return frozenset(spare - set(disable)), disable
 
     # ------------------------------------------------------------ entry
 
@@ -148,6 +177,14 @@ class AICaptain:
             out.extend(self._tactics(obs, ship))
         return out
 
+    def seat(self, world: object) -> None:
+        """Taking command: the ship's mood takes this captain's temperament [E] (called by World.add_controller)."""
+        from ..sim.systems.disposition import seat
+
+        ship = getattr(world, "ships", {}).get(self.ship_id)
+        if ship is not None:
+            seat(ship, self.personality)
+
     def _cmd(self, cls: type[Command], ship: Ship, **kw: object) -> Command:
         return cls(ship_id=ship.id, issuer=Authority.AI_CAPTAIN, source=f"Captain {ship.captain}".strip(), **kw)  # type: ignore[arg-type]
 
@@ -155,8 +192,11 @@ class AICaptain:
         self.trace.add(obs.tick, text)
 
     def helm_aggression(self, obs: Observation, ship: Ship) -> float:
-        """How boldly the helm flies: how little it weaves and how fast it closes. Officers temper it [E]."""
-        return self.personality.aggression
+        """How boldly the helm flies: how little it weaves and how fast it closes. Officers temper it [E].
+
+        An enraged captain flies harder at us, a shaken one more warily [E]."""
+        m = ship.mood
+        return max(0.0, min(1.0, self.personality.aggression + 0.25 * m.anger - 0.25 * m.fear))
 
     # ------------------------------------------------------------ strategy: morale and target
 
@@ -173,13 +213,22 @@ class AICaptain:
     def _strategy(self, obs: Observation, ship: Ship) -> list[Command]:
         out: list[Command] = []
         p = self.personality
+        self.wishes = self._flagship_wishes(obs, ship)
         dmg = self.damage_ratio(ship)
         # [E] a shaken crew makes a captain quicker to break off, a keen one slower
+        m = ship.mood
         threshold = (p.bravery * AI_RETREAT_DAMAGE * p.doctrine.retreat_threshold_scale
-                     * (1.0 + obs.rules.morale_nerve * ship.morale_factor))
+                     * (1.0 + obs.rules.morale_nerve * ship.morale_factor)
+                     * (1.0 - 0.5 * m.fear) * (1.0 + 0.6 * m.anger))   # [E] what they've watched happen to their side
+        if m.terms == "withdraw" and not self.withdrawing and not ship.cls.is_base:
+            self.withdrawing = self.retreating = True                  # [E] they agreed to leave over a hail
+            self._log(obs, "agreed to withdraw: leaving the field, weapons cold")
         if not self.retreating and dmg > threshold:
             self.retreating = True
             self._log(obs, f"morale broken: damage {dmg:.2f} > {threshold:.2f}; retreating")
+        if self.retreating and not self.withdrawing and m.fear > 0.6 and not ship.cls.is_base:
+            self.withdrawing = True     # [E] cowed by what they've watched: they leave the field rather than hover
+            self._log(obs, f"cowed (fear {m.fear:.2f}): leaving the field")
         st = obs.ally_order(ship.id)
         if st is not None and st.movement == "run":
             self.retreating = True  # told to run: never rejoins until the order is cancelled
@@ -202,10 +251,10 @@ class AICaptain:
             self._log(obs, "last stand: self-destruct and ram")
             out.append(self._cmd(SelfDestruct, ship, cycles=6.0))
 
-        # surrender when beaten and unable to run
-        if (self.retreating and not ship.can_move() and dmg > 0.7 and not self.last_stand
+        # surrender when beaten and unable to run; [E] or cowed by what they've seen, and still trusting us
+        if (self.retreating and (not ship.can_move() or m.fear > 0.6) and dmg > 0.7 and not self.last_stand
                 and self.rng.unit() < 0.05 * p.doctrine.surrender_willingness * (1.0 - p.bravery * 0.5)
-                * (1.0 - 0.5 * ship.morale_factor)):
+                * (1.0 - 0.5 * ship.morale_factor) * (1.0 + 3.0 * m.fear) * (1.0 - m.distrust)):
             self._log(obs, "striking colours")
             out.append(self._cmd(Surrender, ship))
             return out
@@ -231,8 +280,10 @@ class AICaptain:
         if new_target != self.target:
             self._log(obs, f"target -> {best.label if best else 'none'} (score {best_score:.1f})")
             self.target = new_target
-        if self.target is not None and ship.target != self.target:
-            sub = self._subsystem_choice(obs, ship, best)
+        wanted = self.wishes[1].get(self.target) if self.target is not None else None
+        if self.target is not None and (ship.target != self.target or
+                                        (wanted is not None and ship.target_subsystem != wanted)):
+            sub = wanted or self._subsystem_choice(obs, ship, best)
             out.append(self._cmd(SelectTarget, ship, target=self.target, subsystem=sub))
         # proximity tuned to the target's agility [R]: min(max warp × 50, design max)
         if best is not None and best.cls is not None and ship.tubes and self.autoload_set_for != best.id:
@@ -360,6 +411,10 @@ class AICaptain:
             score *= 2.0
         if c.id == self.target:
             score *= AI_TARGET_STICKINESS
+        if c.id in self.wishes[0]:
+            return 0.0      # the flagship disabled her and wants her spared
+        if c.id == ship.mood.nemesis:
+            score *= 1.0 + 1.5 * ship.mood.anger     # [E] the ship they blame for their friends
         if any(o.friendly and o.kind == "probe" and o.target == c.id for o in obs.ordnance()):
             score *= 0.5
         if not c.visible:
@@ -397,7 +452,7 @@ class AICaptain:
             self.order_seen = st.issued
             self.order_done = False
             self.last_helm = None
-        hold_fire = st is not None and st.hold_fire
+        hold_fire = (st is not None and st.hold_fire) or ship.hold_fire   # [E] or they agreed to stand down
         # a running ship still uses its weapons while an enemy is in range (manual p. 23)
         if c is not None and not hold_fire:
             out.extend(self._weapons(obs, ship, c, st))
@@ -427,6 +482,9 @@ class AICaptain:
     def _weapons(self, obs: Observation, ship: Ship, c: ContactView, st: AllyStanding | None = None) -> list[Command]:
         p = self.personality
         out: list[Command] = []
+        if c.id in self.wishes[0]:
+            return out          # spared on the flagship's word
+        aim = self.wishes[1].get(c.id)     # the flagship is disabling her: just that system, and gently
         d = c.distance_to(ship.x, ship.y)
         brg = bearing(c.x - ship.x, c.y - ship.y)
 
@@ -447,11 +505,14 @@ class AICaptain:
                 n = self._snap_count(obs, ship, c, charged, n)
                 if n > 0:
                     spread = AI_PHASER_SPREAD if p.competence > 0.35 else 30.0
-                    out.append(self._cmd(FirePhasers, ship, banks=tuple(charged[:n]), target=c.id, spread=spread))
+                    out.append(self._cmd(FirePhasers, ship, banks=tuple(charged[:n]), target=c.id, spread=spread,
+                                         subsystem=aim))
                     self._log(obs, f"phasers x{n} at {c.label} ({d:,.0f})")
 
         # torpedoes [R]: inside the envelope, volley sized by torpedo pressure
         loaded = [i for i, t in enumerate(ship.tubes) if t.loaded is not None]
+        if aim is not None and c.scan is not None and c.scan.structure_frac <= ALLY_DISABLE_TORPEDO_HULL:
+            loaded = []
         if loaded:
             spec = obs.content.torpedoes[ship.tubes[loaded[0]].loaded.ordnance]  # type: ignore[union-attr]
             lo, hi = torpedo_envelope(ship, c.x, c.y, c.vx, c.vy, spec.velocity, spec.arm_time,
@@ -474,11 +535,12 @@ class AICaptain:
                 volley = min(volley, len(loaded))  # fire what is loaded rather than wait for a full volley
                 if volley > 0 and not self._friendly_blocks(obs, ship, brg, hi, tol):
                     fan = AI_JINK_LEAD_OFFSET if (pressure > 80 and not spec.homing and volley > 1) else 0.0
-                    out.append(self._cmd(FireTorpedoes, ship, tubes=tuple(loaded[:volley]), target=c.id, fan=fan))
+                    out.append(self._cmd(FireTorpedoes, ship, tubes=tuple(loaded[:volley]), target=c.id, fan=fan,
+                                         subsystem=aim))
                     self._log(obs, f"torpedoes x{volley} at {c.label} ({d:,.0f}, pressure {pressure:.0f})")
 
         # probes [R]: launch when the target is slow or has no charged banks; doctrine scales use
-        loaded_p = [i for i, lch in enumerate(ship.launchers) if lch.loaded is not None]
+        loaded_p = [i for i, lch in enumerate(ship.launchers) if lch.loaded is not None and aim is None]
         if loaded_p:
             pspec = obs.content.probes[ship.launchers[loaded_p[0]].loaded.ordnance]  # type: ignore[union-attr]
             reach = pspec.velocity * obs.rules.units_per_warp * pspec.max_time_fuse * 0.7
@@ -782,6 +844,9 @@ class AICaptain:
             home = self._stay_home(obs, ship, c)
             if home is not None:
                 return home
+        if c is None and self.withdrawing:
+            # [E] leaving the field with no enemy left on sensors: hold the course away, full speed, until clear
+            return self._helm(obs, ship, ship.desired_course, ship.max_attainable_warp)
         if c is None:
             # wander [R]: hold course at cruise, occasionally sidestep
             turn = 0.0
@@ -791,6 +856,8 @@ class AICaptain:
         d = c.distance_to(ship.x, ship.y)
         brg = bearing(c.x - ship.x, c.y - ship.y)
         if self.retreating:
+            if self.withdrawing and d >= AI_WEAVE_THREAT_RANGE:
+                return self._helm(obs, ship, norm360(brg + 180.0), ship.max_attainable_warp)   # [E] clear out
             return self._weave(obs, ship, brg + 180.0, d)
         if self.pressing and not st:
             return self._close_for_phasers(obs, ship, c, d, brg)

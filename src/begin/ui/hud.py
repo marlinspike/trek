@@ -285,7 +285,7 @@ class OwnShipPanel(Panel):
 
 class TargetPanel(Panel):
     title = "Target"
-    min_height = 210
+    min_height = 236
     weight = 0.0
 
     def draw(self, surf: pygame.Surface, rect: pygame.Rect, hud: BattleScene) -> None:
@@ -453,6 +453,12 @@ class TargetPanel(Panel):
                       f"Beam {n} crew across as a boarding party (range {rules.beam_range:,.0f}). One of her shields "
                       "must be down, and ours facing her. Console: 'board <ship> <crew>'",
                       enabled=transporters, accent=theme.CREW)
+        # [E] open a channel: they answer at once, and the console is ready for your words to them
+        hud.ui.button(surf, pygame.Rect(x + 196, yy, 70, 22), "Hail", (lambda: hud.open_channel(tid)),
+                      "Open a channel to her captain: they answer, and the console is ready for what you want to "
+                      "say (demand surrender, order them off, threaten...). Console: 'hail <ship> <words>'",
+                      accent=theme.HAIL)
+        yy += 26
         if d <= rules.tractor_range:
             note, col = "in tractor and transporter range", theme.GOOD
         elif d <= rules.beam_range:
@@ -462,7 +468,7 @@ class TargetPanel(Panel):
         tgt = hud.world.ships.get(tid)
         if tgt is not None and tgt.boarders > 0 and tgt.boarder_side == ship.side:
             note, col = f"our boarders aboard: {tgt.boarders}", theme.CREW
-        theme.text(surf, note, (rect.right - 12, yy + 4), col, 11, anchor="topright")
+        theme.text(surf, note, (rect.x + 12, yy), col, 11)
 
 
 # ------------------------------------------------------------------ weapons

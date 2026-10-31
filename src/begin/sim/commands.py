@@ -170,9 +170,10 @@ def end_objectives(world: World, ship: Ship, ending: list[Objective], outcome: s
     from .events import ObjectiveEnded
 
     ship.objectives = [o for o in ship.objectives if o not in ending]
+    still = {t for o in ship.objectives for t in o.targets}   # "their shields and engines": the engines are next
     for o in ending:
         if outcome == "done" and o.goal == "disable":
-            ship.spared.update(o.targets)
+            ship.spared.update(set(o.targets) - still)
         if o.goal != "destroy" and ship.target_subsystem is not None:
             ship.target_subsystem = None     # the systems were the objective's aim: by default we aim at the hull
         world.emit(ObjectiveEnded(world.tick, ship.id, o.officer, o.goal, o.group, o.targets, outcome, reason))
@@ -1042,9 +1043,8 @@ class DelegateStation(Command):
         else:
             was = self.station in ship.delegated
             ship.delegated.discard(self.station)
-            if self.station in ("helm", "tactical") and ship.objectives:
-                # an objective flies and fights the ship: the captain taking the helm or the weapons ends it
-                end_objectives(world, ship, list(ship.objectives), "cancelled", f"the captain has the {self.station}")
+            # the officer who had the station stands down (the battle scene ends their objectives); the others keep at
+            # their work: "I have nav" doesn't stop Seven disabling their shields
             if not ship.delegated:
                 ship.conn, ship.conn_saved = "", set()   # every station taken back: the captain has the bridge again
             if was and self.station == "helm" and ship.helm_mode != HelmMode.COURSE:
@@ -1115,6 +1115,7 @@ class SetObjective(Command):
         # a new order about the same systems replaces the old one
         ship.objectives = [o for o in ship.objectives if not (o.goal == self.goal and o.group == self.group)]
         ship.spared.difference_update(self.targets)    # a new order about her: the officer may fire on her again
+        ship.hold_fire = False      # a new order to attack lifts an earlier cease fire, or the officer never shoots
         ship.objectives.append(Objective(self.goal, self.group, tuple(self.targets), self.officer, world.tick))
 
     def describe(self) -> str:
@@ -1408,6 +1409,63 @@ class Surrender(Command):
 
     def apply(self, world: World, ship: Ship) -> None:
         world.surrender(ship)
+
+
+@dataclass(kw_only=True)
+class Hail(Command):
+    """Hail an enemy ship [E]: demand surrender, tell them to withdraw, threaten, taunt or just talk.
+
+    The enemy captain answers from their state of mind (sim/systems/disposition.py). `persuasion` is
+    0..1.5 (1 = an ordinary hail), judged by the language model when there is one; `threat` and `bluff`
+    mark a hail backed by a threat, or by strength we don't have. `text` is what the captain said.
+    """
+
+    target: int
+    intent: str = "talk"
+    persuasion: float = 1.0
+    threat: bool = False
+    bluff: bool = False
+    text: str = ""
+    release: bool = False          # we offer to send back the prisoners we hold, if they agree
+    answered: object = None        # the HailAnswered event, once carried out (for whoever issued it)
+    name: ClassVar[str] = "hail"
+
+    def validate(self, world: World, ship: Ship) -> None:
+        from .systems.disposition import HAIL_GAP_CYCLES, INTENTS
+
+        if self.intent not in INTENTS:
+            raise Rejected(f"Unknown hail '{self.intent}'.")
+        t = world.ships.get(self.target)
+        if t is None or not t.exists:
+            raise Rejected("That ship no longer exists.")
+        if t.side == ship.side:
+            raise Rejected(f"{t.name} is one of ours: use 'tell' to give her orders.")
+        if world.apparent_position(ship.side, t.id) is None:
+            raise Rejected("No sensor contact with that ship.")
+        if t.status == ShipStatus.SURRENDERED:
+            raise Rejected(f"{t.name} has already surrendered. Beam a party of six or more across to take her.")
+        if not t.alive or t.crew <= 0:
+            raise Rejected(f"Nobody aboard {t.name} is answering.")
+        since = (world.tick - t.mood.last_hailed) / world.rules.ticks_per_cycle
+        if since < HAIL_GAP_CYCLES:
+            raise Rejected(f"{t.name} has just answered us (try again in {HAIL_GAP_CYCLES - since:.0f} cycles).")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        from .systems.disposition import answer
+
+        self.answered = answer(world, ship, world.ships[self.target], self.intent, self.persuasion, self.threat,
+                               self.bluff, self.release)
+
+    def validate_now(self, world: World, ship: Ship) -> str | None:
+        """The refusal, if any, before the hail is put into words (and maybe judged by the model)."""
+        try:
+            self.validate(world, ship)
+        except Rejected as r:
+            return str(r)
+        return None
+
+    def describe(self) -> str:
+        return "hail"
 
 
 @dataclass(kw_only=True)

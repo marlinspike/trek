@@ -2,7 +2,7 @@
 title: Disabling or taking out enemy ships
 category: Crew
 order: 2
-aliases: disable, cripple, disarm, knock out, target their, target all their, spared, objective, capture, seize, take her intact, prize, disable shields, disable weapons, disable torpedoes, disable phasers, destroy, eliminate, take out, bait, fire bait
+aliases: disable, cripple, disarm, knock out, target their, target her, target all their, hit their, bring down their, spared, objective, capture, seize, take her intact, prize, disable shields, disable weapons, disable torpedoes, disable phasers, destroy, eliminate, take out, bait, fire bait
 summary: Ask Worf or Seven to knock out the shields, phasers, torpedoes, engines or sensors of one ship or several, to take ships out altogether, or to capture one, and she works out how.
 see: crew, targeting, conn, deflector
 ---
@@ -26,7 +26,9 @@ disable off
 
 ## Just that system, and then she is spared
 
-Disabling means just the system you named. "Target their shields", "take out their shields" and "disable their shields" all mean the same: focus fire on the shields until they are out, then stop. "Target all their shields" does it to every enemy, one after another.
+Disabling means just the system you named. "Target their shields", "target her shields", "take out their shields", "hit their shields", "bring down their shields" and "disable their shields" all mean the same: focus fire on the shields until they are out, then stop. A slip of the keyboard is fine ("target thier sheilds"). "Target all their shields" does it to every enemy, one after another, and "target the other ship's shields" to the enemy you haven't targeted.
+
+Name two systems and both are done in turn: "target their shields and engines". The ship is spared only once the last of them is out.
 
 - Torpedoes tear the hull as well as the systems, so once her hull is half gone the officer uses aimed phasers only.
 - When the job is done, the ship is **spared**: nobody else on the bridge, and not the fire computer, shoots at her again. The officer tells you so. Your aim goes back to the hull, which is always the default.

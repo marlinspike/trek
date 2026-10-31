@@ -1,0 +1,199 @@
+# What enemy captains say over a hail when no language model is configured [E] (crew/hails.py).
+#
+# Each race's table overrides [default] line by line; anything a race leaves out comes from [default].
+# Put your own copy in <project>/config/hails.toml to change or add lines; it is read over this one.
+#
+# Placeholders: {captain} the enemy captain, {ship} their ship, {us} your ship, {lost} the ships of
+# theirs they have watched lost ("the Gr'oth and the Voh'tak"), {title} how their race styles a captain.
+#
+# Answers to a hail, by outcome:
+#   surrender  they agree, drop their shields and power down their weapons
+#   withdraw   they agree to leave the field, weapons cold
+#   refuse     a plain no          defy  an angry no          waver  no, but they are close to giving way
+#   silence    they cut the channel without answering
+#   talk_<mood>  their answer to a hail that asks nothing of them (calm, shaken, enraged, wavering, broken)
+# On their own, when what they have watched changes their mind:
+#   enraged  shaken  wavering  betrayed (you fired on a ship that had surrendered, or broke a truce)
+
+[default]
+title = "Captain"
+surrender = [
+    "Very well, {us}. We are lowering our shields. My crew will not resist.",
+    "Enough. Shields are down and our weapons are powered off. I ask that my crew be treated fairly.",
+    "We yield. Our shields are down. Send your people across.",
+]
+withdraw = [
+    "Agreed. We are breaking off. Hold your fire and we will hold ours.",
+    "Very well. We will leave this sector. Do not follow us.",
+]
+refuse = [
+    "Your terms are refused, {us}.",
+    "No. We will see this through.",
+    "I think not, Captain. We are far from finished.",
+]
+defy = [
+    "You will regret that demand, {us}.",
+    "Never. You will answer for what you have done here.",
+    "Come and take us, if you can.",
+]
+waver = [
+    "We... are considering our position. Give us time.",
+    "Your terms are noted, {us}. That is all I will say for now.",
+    "My officers are divided. Do not press me.",
+]
+silence = [
+    "(No reply. They have closed the channel.)",
+]
+talk_calm = [
+    "This is {title} {captain} of the {ship}. State your business.",
+    "We hear you, {us}. Say what you came to say.",
+]
+talk_shaken = [
+    "This is the {ship}. What... what do you want?",
+    "We have taken heavy losses, {us}. What are your intentions?",
+]
+talk_enraged = [
+    "You have nothing to say that I wish to hear.",
+    "Speak quickly, {us}. It will be the last thing you say to me.",
+]
+talk_wavering = [
+    "We are listening, {us}.",
+    "Speak. We may yet find terms.",
+]
+talk_broken = [
+    "Please. We have wounded aboard. What do you want from us?",
+]
+enraged = [
+    "You will pay for {lost}, {us}!",
+    "That was a mistake, {us}. Every ship here is coming for you.",
+]
+shaken = [
+    "{us}, this is the {ship}. Hold your fire. Perhaps there are terms we can discuss.",
+    "All ships, this is {captain}. We cannot take much more of this.",
+]
+wavering = [
+    "{us}, this is {title} {captain}. If we broke off, would you let us go?",
+]
+betrayed = [
+    "You fired on a ship that had yielded. There will be no surrender from us, {us}.",
+    "So that is what your word is worth. We will fight to the last.",
+]
+
+[klingon]
+title = "Captain"
+surrender = [
+    "Shields are down. Take the ship, {us}. There is no honour left in this fight.",
+    "We yield. My warriors will not resist. Treat them as warriors.",
+]
+withdraw = [
+    "We will withdraw, {us}. Not for you. For the ships I still command.",
+    "Very well. This battle is over. Another will come.",
+]
+refuse = [
+    "A Klingon does not surrender, {us}.",
+    "You will have to do better than words.",
+]
+defy = [
+    "Surrender? I will cut your ship apart!",
+    "You talk like a merchant, {us}. Fight like a warrior!",
+    "I will carry your ship's name home as a trophy!",
+]
+waver = [
+    "My warriors are... restless. Speak again and I may listen.",
+    "Do not mistake my silence for weakness, {us}.",
+]
+talk_calm = [
+    "This is {captain} of the {ship}. Speak, if you must.",
+]
+talk_enraged = [
+    "I have nothing to say to you except with my disruptors!",
+]
+enraged = [
+    "You will pay in blood for {lost}, {us}!",
+    "{lost} will be avenged! Every warrior here is coming for you!",
+    "Is that how you fight? Then I will show you how a Klingon fights!",
+]
+shaken = [
+    "{us}, this is {captain}. You fight well. Perhaps we should talk.",
+]
+wavering = [
+    "{us}. There may be a way for us both to leave this place.",
+]
+betrayed = [
+    "You fired on a ship that had laid down its arms! You have no honour, and you will get no mercy!",
+]
+
+[romulan]
+title = "Commander"
+surrender = [
+    "Your point is made, {us}. Our shields are lowered. My crew will not resist.",
+    "Very well. We submit. I trust the Federation keeps its word on prisoners.",
+]
+withdraw = [
+    "We will withdraw. The Empire will remember this encounter.",
+    "There is nothing more to be gained here. We are leaving, {us}.",
+]
+refuse = [
+    "Your demand is noted, and refused.",
+    "You overestimate your position, {us}.",
+    "The Romulan Empire does not take orders from the Federation.",
+]
+defy = [
+    "You presume a great deal, {us}. That will be your undoing.",
+    "Your arrogance will cost you your ship.",
+]
+waver = [
+    "An interesting proposal. Give us a moment to consider it.",
+    "We are not unreasonable, {us}. Nor are we fools.",
+]
+talk_calm = [
+    "This is {title} {captain} of the {ship}. You have entered contested space.",
+]
+enraged = [
+    "The loss of {lost} will be answered, {us}.",
+]
+shaken = [
+    "{us}. We are prepared to discuss... an arrangement.",
+]
+wavering = [
+    "{us}, this is {title} {captain}. Perhaps neither of us needs to lose another ship today.",
+]
+betrayed = [
+    "So this is Federation honour. We will not make the mistake of trusting it again.",
+]
+
+[orion]
+title = "Captain"
+surrender = [
+    "All right, all right! Shields are down. Nobody shoot. We're not getting paid enough for this.",
+    "We give up! Shields down, weapons off. Just keep your people civil.",
+]
+withdraw = [
+    "Fine, fine. We're leaving. No harm done, eh?",
+    "This job isn't worth it. We're out of here, {us}.",
+]
+refuse = [
+    "Nice try, Starfleet. Not today.",
+    "We've got more guns than you think.",
+]
+defy = [
+    "You'll pay for {lost}, and I mean pay.",
+    "Big talk from a ship that's about to be salvage.",
+]
+waver = [
+    "Let's not be hasty. What's in it for us?",
+    "Maybe. Make it worth our while.",
+]
+talk_calm = [
+    "This is {captain}. We're just passing through. Mind your own business.",
+]
+shaken = [
+    "{us}! Hold your fire! Let's talk about this like reasonable people.",
+    "Hey, hey, Starfleet! Maybe we can work something out!",
+]
+wavering = [
+    "{us}, how about we call it a draw and everybody goes home?",
+]
+enraged = [
+    "You blew up {lost}! That was our best crew!",
+]

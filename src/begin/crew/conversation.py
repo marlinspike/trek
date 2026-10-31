@@ -21,6 +21,7 @@ deterministic.
 
 from __future__ import annotations
 
+import difflib
 import json
 import math
 import random
@@ -102,6 +103,15 @@ _STAND_DOWN = re.compile(r"\b(stand down|belay|cancel (that|it|this|your|the)|ab
                          r"knock it off|never ?mind|stop (the attack|that|it|this|everything|now|there)|"
                          r"(stop|quit|cease) \w+ing|forget (it|that|the|about)|leave (it|them|her|him) alone|"
                          r"that'?s enough|(don'?t|do not) (?!stop\b))\b|^\s*(stop|halt|enough)\W*$")
+# "mr worf, ...", "lieutenant worf, ..."
+_HONORIFIC_WORDS = r"(?:(?:mister|mr|ms|miss|lieutenant|lt|commander|cmdr|ensign|chief|doctor|dr)\.?\s+)?"
+_HONORIFIC = re.compile(r"^\s*" + _HONORIFIC_WORDS, re.I)
+_WEAPONS_STATE = re.compile(r"^\s*weapons\s+(?:cold|hold|tight|safe|free|(?:is|are) mine)\b", re.I)
+# "can you target their shields?", "please take out their engines", "I want you to cease fire"
+_POLITE = re.compile(r"^(?:(?:please|can you|could you|would you|will you|go ahead and|i want you to|i need you to|"
+                     r"i'?d like you to|now)\s+)+|\s+(?:please|now|immediately|at once)\W*$")
+_SOFT_ORDER = re.compile(r"^(?:(?:i want|i need|we need|i'?d like)\s+(?:their|her|its|his)\b.*\b(?:down|out|gone|offline)\b|(?:hit|shoot(?: at)?|go after|bring down|take down|knock down|get|blast|pound|hammer|"
+                         r"fire (?:at|on))\s+.*\b(?:their|her|its|his)\b|finish\b|take\s+\S.*\s+out\W*$)")
 _STATION_HANDBACK = {"helm": "the helm is", "tactical": "the weapons station is", "engineering": "engineering is",
                      "science": "the science station is"}
 # "disable the Klingons' shields", "knock out Gorkon's torpedoes", "cancel that objective"
@@ -191,10 +201,14 @@ class Bridge:
         return self.crew.find(name)
 
     def addressed(self, text: str) -> tuple[OfficerProfile, str] | None:
-        """`worf, fire` / `spock: report` / `seven what do you see` → (officer, the rest)."""
+        """`worf, fire` / `spock: report` / `seven what do you see` / `mr worf, fire` / `wrof, cease fire`
+        → (officer, the rest)."""
+        if _WEAPONS_STATE.match(text):
+            return None          # "weapons cold": an order about the weapons, not to the weapons officer
+        text = _HONORIFIC.sub("", text, count=1)
         m = re.match(r"^\s*([a-z][a-z ]{1,24}?)\s*[,:]\s*(.*)$", text, re.I)
         if m:
-            o = self.find(m.group(1))
+            o = self.find(m.group(1)) or self._near(m.group(1))
             if o is not None:
                 return o, m.group(2).strip()
         # no comma: "seven take the bridge", "sev status", "Seven of Nine report"
@@ -210,13 +224,57 @@ class Bridge:
                 return o, " ".join(words[n:])
         return None
 
+    def _near(self, name: str) -> OfficerProfile | None:
+        """The officer a slip of the keyboard meant ("wrof", "sevn", "spok"), when only one is that close."""
+        q = name.lower().strip()
+        if len(q) < 3:
+            return None
+        names = {n: o for o in self.officers() for n in (o.id, o.name.lower(), *o.aliases) if len(n) >= 3}
+        close = difflib.get_close_matches(q, list(names), n=3, cutoff=0.7)
+        hits = list(dict.fromkeys(names[c] for c in close))
+        return hits[0] if len(hits) == 1 else None
+
+    def split_addressed(self, text: str) -> list[str]:
+        """'worf, target their shields and spock, take the helm': one line for each officer addressed."""
+        names = sorted({n for o in self.officers() for n in (o.id, o.name.lower(), *o.aliases) if len(n) >= 3},
+                       key=len, reverse=True)
+        alt = "|".join(re.escape(n) for n in names)
+        # a name after "and"/"then" needs its comma ("... and seven, take the conn"); after a comma it need not
+        cut = re.compile(r"\s*(?:(?:\band\s+then\b|\bthen\b|\band\b)\s*(?=" + _HONORIFIC_WORDS + r"(?:" + alt
+                         + r")\s*[,:])|[,;]\s*(?=" + _HONORIFIC_WORDS + r"(?:" + alt + r")(?:\s*[,:]|\s+[a-z])))", re.I)
+        pieces = [p.strip(" ,;") for p in cut.split(text) if p.strip(" ,;")]
+        return pieces if len(pieces) > 1 else [text]
+
+    def drop_orders(self, officer: str | None = None) -> None:
+        """Forget what the model was asked to do for these officers (all of them, by default): an answer that
+        arrives after a cease fire or a stand down must not set anyone to work again."""
+        if self.llm is None:
+            return
+        for oid in self.llm.forget(None if officer is None else {officer},
+                                   keep=lambda tag: tag == ADDRESS_TAG or tag.startswith(LINE_TAG)):
+            hist = self.history.get(oid)
+            if hist and hist[-1]["role"] == "user":
+                hist.pop()
+            self.asking.pop(oid, None)
+            self._nudged.discard(oid)
+
     # ------------------------------------------------------------ talking
 
     def ask(self, officer: OfficerProfile, text: str, ctx: HelpContext, run: RunCommand) -> list[Utterance]:
         """The captain speaks to an officer. Returns what is said now (an LLM answer arrives via `poll`)."""
         rel = self.relationships.get(officer.id)
         rel.exchanges += 1
-        low = text.lower().strip()
+        said = text.lower().strip()
+        # "can you target their shields?", "please cease fire": orders, put politely
+        low = _POLITE.sub("", said).strip(" ?!.") if (_POLITE.search(said) or not is_question(said)) else said
+        low = low or said
+        asked = is_question(low)     # "should we disable their shields?" asks for advice: nothing is fired
+        from ..console.parser import split_orders
+
+        pieces = [] if asked else split_orders(low)
+        if len(pieces) > 1:          # "worf, cease fire and target their engines": each order in turn
+            rel.exchanges -= 1
+            return [u for piece in pieces for u in self.ask(officer, piece, ctx, run)]
         if _PRAISE.search(low):
             rel.nudge(0.03)
         if _RUDE.search(low):
@@ -245,17 +303,20 @@ class Bridge:
         m = _RELEASE.search(low)
         if m is not None:
             return self.release(officer, ctx, run, named=next((g for g in m.groups()[1:] if g), ""))
-        m = _TARGET.match(low)
+        m = None if asked else _TARGET.match(low)
         if m is not None:      # "worf, target their shields" / "focus fire on their engines": no model, no delay
             return self.objective(officer, f"target {m.group(1)}", run)
-        m = _CAPTURE.search(low)
+        m = None if asked else _CAPTURE.search(low)
         if m is not None:
             if m.group(1) in ("capture", "seize"):
                 rest = low[m.end():]
             else:
                 rest = "" if m.group(2) in ("her", "it", "them") else m.group(2)   # "her": the current target
             return self.objective(officer, f"capture {rest}", run)
-        m = _DISABLE.search(low)
+        if not asked and _SOFT_ORDER.match(low):
+            # "hit their shields", "take down her shields", "finish her off", "take them out": the console's words
+            return self.objective(officer, low, run)
+        m = None if asked else _DISABLE.search(low)
         if m is not None:
             rest = low[m.end():]
             from ..console.parser import Parser
@@ -277,7 +338,7 @@ class Bridge:
             hist.append({"role": "user", "content": text or "Report."})
             del hist[:-16]
             self.llm.submit(officer.id, system, hist)
-            self.asking[officer.id] = is_question(low)
+            self.asking[officer.id] = is_question(said)
             return [self._say(officer, "…", "dim")]
         return self.offline(officer, low, ctx, run)
 
@@ -299,6 +360,7 @@ class Bridge:
     def cease(self, officer: OfficerProfile, low: str, run: RunCommand) -> list[Utterance]:
         """The captain tells an officer to cease fire: no language model, no delay. Every weapon ceases fire and
         the officers' objectives end; whoever is flying the ship keeps flying it."""
+        self.drop_orders()
         err = run("cease fire", officer)
         if err:
             return [self._say(officer, err, "caution")]
@@ -308,6 +370,7 @@ class Bridge:
         """The captain tells an officer to stop: no language model, no delay. Every weapon ceases fire, the
         objectives end, and the officer hands back what they were running: their station, the bridge if they
         had it, and the helm's evasive manoeuvres if they were flying."""
+        self.drop_orders()
         err = run("cease fire", officer)
         if err:
             return [self._say(officer, err, "caution")]
