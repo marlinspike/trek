@@ -1411,6 +1411,63 @@ class Surrender(Command):
 
 
 @dataclass(kw_only=True)
+class Hail(Command):
+    """Hail an enemy ship [E]: demand surrender, tell them to withdraw, threaten, taunt or just talk.
+
+    The enemy captain answers from their state of mind (sim/systems/disposition.py). `persuasion` is
+    0..1.5 (1 = an ordinary hail), judged by the language model when there is one; `threat` and `bluff`
+    mark a hail backed by a threat, or by strength we don't have. `text` is what the captain said.
+    """
+
+    target: int
+    intent: str = "talk"
+    persuasion: float = 1.0
+    threat: bool = False
+    bluff: bool = False
+    text: str = ""
+    release: bool = False          # we offer to send back the prisoners we hold, if they agree
+    answered: object = None        # the HailAnswered event, once carried out (for whoever issued it)
+    name: ClassVar[str] = "hail"
+
+    def validate(self, world: World, ship: Ship) -> None:
+        from .systems.disposition import HAIL_GAP_CYCLES, INTENTS
+
+        if self.intent not in INTENTS:
+            raise Rejected(f"Unknown hail '{self.intent}'.")
+        t = world.ships.get(self.target)
+        if t is None or not t.exists:
+            raise Rejected("That ship no longer exists.")
+        if t.side == ship.side:
+            raise Rejected(f"{t.name} is one of ours: use 'tell' to give her orders.")
+        if world.apparent_position(ship.side, t.id) is None:
+            raise Rejected("No sensor contact with that ship.")
+        if t.status == ShipStatus.SURRENDERED:
+            raise Rejected(f"{t.name} has already surrendered. Beam a party of six or more across to take her.")
+        if not t.alive or t.crew <= 0:
+            raise Rejected(f"Nobody aboard {t.name} is answering.")
+        since = (world.tick - t.mood.last_hailed) / world.rules.ticks_per_cycle
+        if since < HAIL_GAP_CYCLES:
+            raise Rejected(f"{t.name} has just answered us (try again in {HAIL_GAP_CYCLES - since:.0f} cycles).")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        from .systems.disposition import answer
+
+        self.answered = answer(world, ship, world.ships[self.target], self.intent, self.persuasion, self.threat,
+                               self.bluff, self.release)
+
+    def validate_now(self, world: World, ship: Ship) -> str | None:
+        """The refusal, if any, before the hail is put into words (and maybe judged by the model)."""
+        try:
+            self.validate(world, ship)
+        except Rejected as r:
+            return str(r)
+        return None
+
+    def describe(self) -> str:
+        return "hail"
+
+
+@dataclass(kw_only=True)
 class SetCloak(Command):
     on: bool
     name: ClassVar[str] = "cloak"

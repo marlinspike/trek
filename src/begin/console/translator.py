@@ -189,6 +189,8 @@ def system_prompt(brief: str) -> str:
         "sentences) and give no commands unless they also asked you to act. Quote console syntax in say when "
         "it helps them learn it.",
         "- To put a question or an order to a bridge officer, the command is: ask <officer> <their words>.",
+        "- To speak to an enemy captain (demand they surrender, tell them to leave, threaten, bluff or just talk), "
+        "the command is: hail <ship>|all <the captain's words, as they said them>.",
         "- If they typed a console command that is simply wrong (a tube the ship lacks, a ship that is not on "
         "sensors), give no commands and say what is wrong.",
         "- Never end the battle, self-destruct, surrender or change ships unless told to in so many words.",

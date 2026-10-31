@@ -92,6 +92,7 @@ class TourState:
     results: list[StopResult] = field(default_factory=list)
     lessons: dict[str, float] = field(default_factory=dict)   # what the enemy has learned: caution, press
     over: str = ""                                  # "" while under way, then "won" | "lost"
+    prisoners: int = 0                              # prisoners of war held in the flagship's brig [E]
     seed: int = 1
 
     # ------------------------------------------------------------ queries

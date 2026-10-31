@@ -55,6 +55,8 @@ def facts_of(run: TourRun, battle: Battle, fight: Fight, outcome: str, captured:
     escaped = [s.name for s in enemies if s.status == ShipStatus.ESCAPED]
     surrendered = [s.name for s in enemies if s.status == ShipStatus.SURRENDERED]
     st = flag.stats if flag is not None else None
+    taken = sum(s.prisoners for s in w.ships.values() if s.name in captured and s.side == side)
+    broken = [w.ships[i].name for i in w.faith_broken.get(side, set()) if i in w.ships]
     kinds: dict[str, int] = {}
     for s in enemies:
         k = f"{w.content.factions[s.faction].name} {s.cls.name.lower()}"
@@ -66,6 +68,7 @@ def facts_of(run: TourRun, battle: Battle, fight: Fight, outcome: str, captured:
         "cycles": round(w.time), "stardate": run.state.stardate(),
         "enemy": _force(kinds) or "no enemy",
         "destroyed": destroyed, "escaped": escaped, "surrendered": surrendered, "captured": captured, "lost": lost,
+        "prisoners": taken, "fired_on_surrendered": broken,
         "flagship": flag.name if flag else "", "standout": standout,
         "hull": round(max(0.0, flag.structure / max(1.0, flag.structure_max)), 3) if flag else 0.0,
         "crew": flag.crew if flag else 0, "crew_full": flag.cls.crew if flag else 0,
@@ -145,6 +148,8 @@ def station_entries(f: dict[str, Any]) -> dict[str, str]:
         w += f" Point defense destroyed {_n(f['intercepts'], 'incoming round')}."
     if f["captured"]:
         w += f" Our boarding parties took {_list(f['captured'])}. A worthy prize."
+        if f.get("prisoners"):
+            w += f" {f['prisoners']} of her crew surrendered without a fight and are held under guard."
     elif f["destroyed"]:
         w += f" {_list(f['destroyed'])} will not trouble the border again."
     if not won:
@@ -225,6 +230,12 @@ def captain_draft(f: dict[str, Any]) -> str:
             t += f"In all, {f['crew_lost']} of our people did not come home. "
     elif f["crew_lost"]:
         t += f"We lost {_n(f['crew_lost'], 'crewman' if f['crew_lost'] == 1 else 'crew member')}. "
+    if f.get("prisoners"):
+        t += (f"{f['prisoners']} of the enemy's crew surrendered and are held as prisoners of war; they will be "
+              "treated as the conventions of war require. ")
+    if f.get("fired_on_surrendered"):
+        t += (f"We fired on {_list(f['fired_on_surrendered'])} after they had yielded. Their captains will remember "
+              "it, and so will I. ")
     if f["standout"]:
         t += f"{f['standout']} "
     t += f"The {f['flagship']} stands at {_pct(f['hull'])} hull with {f['torps_left']} torpedoes in the magazine."
