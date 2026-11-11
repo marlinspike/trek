@@ -4,6 +4,8 @@ Part of `BattleScene` (see `ui/battle_scene.py`), which mixes these methods in; 
 
 from __future__ import annotations
 
+import time
+
 from typing import TYPE_CHECKING
 
 import pygame
@@ -131,6 +133,7 @@ class ConsoleMixin(SceneState):
         if res.error:
             self._log(res.error, theme.CAUTION)
             self.toast = (res.error, theme.CAUTION, 3.0)
+            self.audio.play("deny", time.monotonic(), 0.0, 0.7)
             return
         for line in res.info:
             self._log(line, theme.TEXT_DIM)
@@ -155,6 +158,7 @@ class ConsoleMixin(SceneState):
                     cmd.officer = o.id
             reason = self.issue(cmd)
             if reason is None:
+                self.audio.play("confirm", time.monotonic(), 0.0, 0.6)     # one chirp however many orders it held
                 self._log(f"  {cmd.describe()}: acknowledged", theme.TEXT_DIM)
                 self._after_captain(cmd)
                 if isinstance(cmd, AddressCrew) and self.bridge is not None:
@@ -249,6 +253,10 @@ class ConsoleMixin(SceneState):
         elif name == "prisoners":
             for line in prisoners_lines(self.world, self.side):
                 self._log(line, theme.TEXT)
+        elif name == "hud" and isinstance(val, str) and val.startswith("jolt"):
+            self.view.jolt = val.endswith("on")
+            self._log("The map jolts when your ship takes a heavy blow." if self.view.jolt else
+                      "The map stays still when your ship is hit. 'hud jolt on' brings the jolt back.", theme.TEXT_DIM)
         elif name == "hud":
             if val is not None:
                 self.hud_detail = val == "detail"

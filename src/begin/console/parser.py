@@ -1146,11 +1146,18 @@ class Parser:
             res.actions.append(("hud", "detail"))
         elif w in ("simple", "less", "off", "minimal", "clean"):
             res.actions.append(("hud", "simple"))
+        elif w in ("jolt", "shake"):
+            v = tok.next()
+            if v not in ("on", "off"):
+                raise ParseError("hud jolt on or hud jolt off: whether the map jolts when your ship takes a heavy blow.")
+            res.actions.append(("hud", f"jolt {v}"))
         else:
-            raise ParseError("hud detail (every number on the panels) or hud simple (hover a panel for the rest).")
+            raise ParseError("hud detail (every number on the panels), hud simple (hover a panel for the rest), "
+                             "or hud jolt on|off.")
 
     def _v_sound(self, tok: Tokens, res: ParseResult) -> None:
-        """`sound on|off|<0-100>`, `sound phaser b`: the battle's sound effects and which version (M mutes too)."""
+        """`sound on|off|<0-100>`, `sound phaser b`, `sound hum on|off|<0-100>`: the battle's sound effects, which
+        version, and the ship's engine hum (M mutes too)."""
         first = tok.toks[0] if tok.toks else ""
         w = tok.next()
         if first == "mute" and w is None:
@@ -1161,6 +1168,16 @@ class Parser:
             res.actions.append(("sound", w))
         elif is_num(w) and 0 <= float(w) <= 100:
             res.actions.append(("sound", float(w)))
+        elif w in ("hum", "engine", "engines", "drone", "ambience", "ambient"):
+            v = tok.next()
+            if v == "off":
+                res.actions.append(("sound", ("hum", 0.0)))
+            elif v == "on" or v is None:
+                res.actions.append(("sound", ("hum", None)))
+            elif is_num(v) and 0 <= float(v) <= 100:
+                res.actions.append(("sound", ("hum", float(v) / 100)))
+            else:
+                raise ParseError("sound hum on, sound hum off, or sound hum <0-100> for how loud the ship's hum is.")
         elif w in ("phaser", "phasers", "torpedo", "torpedoes", "launch"):
             which = "phaser" if w.startswith("phaser") else "torpedo"
             v = tok.next()
@@ -1168,7 +1185,8 @@ class Parser:
                 raise ParseError(f"sound {which} a, b, c or d: the versions of the {which} sound.")
             res.actions.append(("sound", (which, v)))
         else:
-            raise ParseError("sound on, sound off, sound <0-100> for the volume, or sound phaser|torpedo a|b|c|d.")
+            raise ParseError("sound on, sound off, sound <0-100> for the volume, sound hum on|off, "
+                             "or sound phaser|torpedo a|b|c|d.")
 
     def _v_translate(self, tok: Tokens, res: ParseResult) -> None:
         """`translate on|off|always`: plain-English console input through the language model [E]."""

@@ -82,6 +82,9 @@ class SceneState:
     order_run: OrderRun | None
     audio: Audio
     _was_alert: bool
+    _alert_since: float
+    fired_at: dict[int, float]
+    _channels: dict[int, str]
     deeds: list[Event]
     size: tuple[int, int]
     map_rect: pygame.Rect

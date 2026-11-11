@@ -15,7 +15,7 @@ You command a starship from a top-down tactical map and a Begin-style command co
 - every ship class drawn as a lit, detailed model;
 - synthesised sound and effects, and a HUD that keeps to the essentials until you ask for more.
 
-![Close quarters: the Enterprise's phasers on a Klingon battle cruiser, its shield taking the hit](docs/screenshots/close-quarters.png)
+![Close quarters: the Enterprise's phaser banks on a Klingon battle cruiser, the beams stopping on her lit shield](docs/screenshots/close-quarters.png)
 
 ## A campaign Begin never had
 
@@ -79,9 +79,9 @@ Every battle starts paused. **Space** runs and pauses the clock, and **[** and *
 
 Left-click a contact (or press **Tab**) to target it, and **R** cycles precision aim through propulsion, weapons, shields, power and sensors. Right-click the map to steer there, Shift + right-click a ship to pursue it, **W**/**S** change warp and **A**/**D** turn. **F** fires phasers, **T** torpedoes, **P** launches a probe and **X** scans the target. In the weapons panel, each weapon group can be Manual, Assisted or Automatic, and the **PD** button sets the point-defense doctrine.
 
-The map shows what your sensors know and nothing more. Phaser beams glow around a bright core, torpedoes pulse as they fly and leave a trail that fades behind them, shields ripple along the struck arc, ships leave engine wakes, shields light up where they're struck, hull hits burst into fire, a destroyed ship blows apart in a flash, fireball and shockwave with her hull torn into burning pieces, and the panel borders pulse red at red alert. When you pick a target, its brackets swing in from wide and close on it, then pulse gently while the lock holds. Zoom right in on a Federation heavy cruiser and the map swaps the outline for the same lit, plated ship as the menu; every other class, the Enterprise's Dreadnought included, has lit art of its own.
+The map shows what your sensors know and nothing more. A phaser bank lights up before it fires, then its beam races to the target and stops on the shield, or reaches the hull and throws sparks if it got through; Klingon and Orion disruptors fly as bolts. Torpedoes are drawn each nation's own way (a turning photon star, a harsh disruptor flare, a wobbling plasma ball) and leave a stream of sparks behind them, and an enemy round heading for you is ringed with its fuse radius. A shield facing that gives way bursts into sparks, breached hulls vent, shields ripple along the struck arc, ships leave engine wakes, shields light up where they're struck, hull hits burst into fire, a destroyed ship blows apart in a flash, fireball and shockwave with her hull torn into burning pieces, and the panel borders pulse red at red alert. When you pick a target, its brackets swing in from wide and close on it, then pulse gently while the lock holds. Zoom right in on a Federation heavy cruiser and the map swaps the outline for the same lit, plated ship as the menu; every other class, the Enterprise's Dreadnought included, has lit art of its own.
 
-![Torpedoes in flight with fading trails, glowing point-defense beams, and the lock closed on the target](docs/screenshots/torpedoes.png)
+![A phaser beam stops on the Wraith's shield while point defense lances a Klingon round; the rounds coming for us are ringed with their fuse radius](docs/screenshots/torpedoes.png)
 
 ### How much the HUD shows
 

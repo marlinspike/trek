@@ -60,6 +60,7 @@ FKEYS = {getattr(pygame, f"K_F{n}"): f"F{n}" for n in (2, 3, 4, 5, 6, 7, 8, 10, 
 
 
 RED_ALERT_FLOOR, RED_ALERT_PULSE, RED_ALERT_PERIOD = 0.22, 0.38, 1.8   # border tint and its pulse (seconds)
+RED_ALERT_SETTLE = 6.0     # seconds the red alert pulses before it settles to a steady edge
 ORDER_TRANSLATE_WAIT = 8.0     # seconds a named order waits for a step's translation before skipping it
 
 

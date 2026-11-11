@@ -17,7 +17,7 @@ from ...sim.ship import Kind
 from ...sim.systems.repair import in_battle, under_repair
 from .. import comms_view, officer_view, theme
 from ..hud import diagram_legend, hull_diagram
-from .common import CONTROLS, RED_ALERT_FLOOR, RED_ALERT_PERIOD, RED_ALERT_PULSE, SPEEDS, ratio
+from .common import CONTROLS, RED_ALERT_FLOOR, RED_ALERT_PERIOD, RED_ALERT_PULSE, RED_ALERT_SETTLE, SPEEDS, ratio
 from .state import SceneState
 
 if TYPE_CHECKING:
@@ -31,7 +31,7 @@ class RenderMixin(SceneState):
         alert = self._red_alert()
         theme.set_alert(alert)
         if alert > 0 and not self._was_alert:
-            self.audio.play("alert", time.monotonic(), 0.0, 0.8)
+            self.audio.play("alert", time.monotonic(), 0.0, 0.6)
         self._was_alert = alert > 0
         tick_len = 1.0 / self.world.rules.ticks_per_cycle
         alpha = 1.0 if self.paused else max(0.0, min(1.0, self.acc / tick_len))
@@ -62,17 +62,42 @@ class RenderMixin(SceneState):
             theme.text(surf, msg, r.center, col, 13, anchor="center")
         self.ui.draw_tooltip(surf)
         theme.set_alert(0.0)
+        now = time.monotonic()
         for name, x, y in self.view.take_sounds():
+            if name == "lock":                      # our own console: heard dead centre, wherever the target is
+                self.audio.play(name, now, 0.0, 0.7)
+                continue
             heard = self._heard_at(x, y)
             if heard is not None:
-                self.audio.play(name, time.monotonic(), *heard)
+                self.audio.play(name, now, *heard)
+        self._hear_channels(now)
+        p = self.player
+        drive = min(1.0, p.warp / 9.0) if p is not None and p.alive else 0.0
+        self.audio.tick(now, drive, running=p is not None and p.alive and not self.paused and not self.world.outcome.over)
+
+    def _hear_channels(self: BattleScene, now: float) -> None:
+        """A hail channel opening or closing gets its whistle."""
+        for sid, ch in self.comms.channels.items():
+            was = self._channels.get(sid)
+            if ch.status != was:
+                if ch.status == "open" and was != "open":
+                    self.audio.play("hail_open", now, 0.0, 0.7)
+                elif ch.status == "closed" and was == "open":
+                    self.audio.play("hail_close", now, 0.0, 0.7)
+                self._channels[sid] = ch.status
 
     def _red_alert(self: BattleScene) -> float:
         """How red the panel borders are right now: a slow pulse while the ship is in a fight, else 0."""
         p = self.player
         if p is None or not p.alive or self.world.outcome.over or not in_battle(self.world, p):
             return 0.0
-        return RED_ALERT_FLOOR + RED_ALERT_PULSE * (0.5 + 0.5 * math.sin(time.monotonic() * math.tau / RED_ALERT_PERIOD))
+        now = time.monotonic()
+        if not self._was_alert:
+            self._alert_since = now
+        # it pulses while the alert is new, then settles to a steady edge so a long fight isn't one long flash
+        settle = max(0.0, min(1.0, (now - self._alert_since - RED_ALERT_SETTLE) / 2.0))
+        beat = 0.5 + 0.5 * math.sin((now - self._alert_since) * math.tau / RED_ALERT_PERIOD)
+        return RED_ALERT_FLOOR + RED_ALERT_PULSE * ((1 - settle) * beat + settle * 0.35)
 
     def _map_overlay_text(self: BattleScene, surf: pygame.Surface) -> None:
         r = self.map_rect
@@ -81,8 +106,9 @@ class RenderMixin(SceneState):
         col = theme.CAUTION if self.paused else theme.GOOD
         theme.text(surf, f"Cycle {t:7.1f}", (r.x + 14, r.y + 10), theme.TEXT, 14, "mono")
         theme.text(surf, state, (r.x + 130, r.y + 10), col, 14, "mono", weight="medium")
-        if theme.border() != theme.BORDER:
-            theme.text(surf, "RED ALERT", (r.x + 180, r.y + 12), theme.mix(theme.TEXT_DIM, theme.ALERT, 0.8), 11,
+        if theme.border() != theme.BORDER:      # after the speed or PAUSED, never on top of it
+            x = r.x + 130 + theme.text_width(state, 14, "mono", "medium") + 16
+            theme.text(surf, "RED ALERT", (x, r.y + 12), theme.mix(theme.TEXT_DIM, theme.ALERT, 0.8), 11,
                        weight="semibold")
         if self.paused and not self.world.outcome.over:
             # hard to miss: nothing moves, charges or reloads while paused

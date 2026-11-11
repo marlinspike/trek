@@ -25,7 +25,8 @@ from ..sim.ship import Ship
 from . import theme
 from .camera import Camera
 from .blast import SHIELD as SHIELD_GLOW, Blast, HullHit as HitFlash, ShieldFlare
-from .effects import Effects
+from .effects import Effects, Spark
+from .torpedo_art import draw_round, round_size
 from .fleet_art import art_px, fleet_image, has_art
 from .showpiece import SPRITE_CENTRE_Y, SPRITE_PX, ship_image, ship_lights
 from .hulls import MIN_HULL_PX, draw_hull, hull_pixel_scale
@@ -42,6 +43,11 @@ TORP_TRAIL_POINT = 0.05   # cycles between the points of a torpedo trail
 LOCK_TIME = 0.35          # seconds the target brackets take to close in
 BLAST_MIN_PX = 12.0       # the fireball of the smallest ship on screen, pixels
 COLLAPSE = (255, 120, 90)  # a shield giving way flares red
+JOLT_FROM = 8.0           # hull damage in one blow that jolts the map (our ship only)
+JOLT_MAX = 6.0            # pixels
+INBOUND_RANGE = 9000.0    # an enemy round this close and heading for one of ours is marked as a threat
+INBOUND_CONE = 14.0       # degrees either side of dead on
+INCOMING_SOUND = 4500.0   # an inbound round this close is heard rushing in
 
 Pose = tuple[float, float, float]  # x, y, course
 
@@ -80,6 +86,7 @@ class Strike:
     bearing: float         # compass degrees from her centre toward the shot
     length: float
     k0: float
+    delay: float = 0.0     # seconds until the beam that struck it gets there
 
 
 def lerp_pose(a: Pose | None, b: Pose, t: float) -> Pose:
@@ -132,27 +139,43 @@ class TacticalView:
     show_arcs: bool = False
     hover_world: tuple[float, float] | None = None
     _overlay: pygame.Surface | None = None
+    _glow: pygame.Surface | None = None
     _label_rects: list[pygame.Rect] = field(default_factory=list)   # labels drawn this frame
     torp_trails: dict[int, list[tuple[float, float, float]]] = field(default_factory=dict)   # round -> [(x, y, time)]
     clock: float = 0.0                       # wall-clock seconds, for animation
     _lock: tuple[int | None, float] = (None, 0.0)   # the target the brackets are on, and when they started closing
     wrecks: list[Wreck] = field(default_factory=list)
     strikes: list[Strike] = field(default_factory=list)
+    jolt: bool = True                        # the map gives a small jolt when our ship takes a heavy blow
+    _shake: float = 0.0                      # pixels the map is jolting by right now
+    _jolts: list[list[float]] = field(default_factory=list)   # [seconds until it lands, pixels]
+    _player: int | None = None               # our ship, as last drawn
+    _warned: set[int] = field(default_factory=set)   # enemy rounds we've already heard coming
     _rng: random.Random = field(default_factory=lambda: random.Random(11))
     _last: dict[int, tuple[float, float, float, HullDef | None, str | None, bool]] = field(default_factory=dict)  # as last drawn
 
     def ingest(self, events: list[Event], obs: Observation) -> None:
         visible = {s.id for s in obs.own_ships(alive_only=False)} | {c.id for c in obs.contacts().values() if c.visible}
         friendly = {s.id for s in obs.own_ships(alive_only=False)}
-        self.effects.ingest(events, obs.side, visible, friendly, lambda sid: faction_seen(obs, sid))
+        self.effects.ingest(events, obs.side, visible, friendly, lambda sid: faction_seen(obs, sid),
+                            lambda sid: self._body(obs, sid))
         fresh: list[Wreck] = []
         for ev in events:
             if isinstance(ev, ShieldHit) and ev.ship_id in visible:
                 power = 0.35 + 0.65 * min(1.0, (ev.absorbed + ev.penetrated) / 40.0)
+                # a phaser's blow lights the shield when its beam gets there, not when the bank fires
+                wait = self.effects.landing.get((ev.attacker, ev.ship_id), 0.0) if ev.attacker is not None else 0.0
                 self.shield_flashes.setdefault(ev.ship_id, []).append(
-                    [float(ev.sector), 0.0, power, 1.0 if ev.collapsed else 0.0, ev.strength])
+                    [float(ev.sector), -wait, power, 1.0 if ev.collapsed else 0.0, ev.strength])
+                if ev.collapsed:
+                    self._collapse(obs, ev.ship_id, ev.sector, wait)
+                    if ev.ship_id == self._player:
+                        self._jolts.append([wait, 2.5])
             elif isinstance(ev, HullHit) and ev.ship_id in visible and ev.amount > 0:
                 self._strike(obs, ev)
+                if ev.ship_id == self._player and ev.amount >= JOLT_FROM:
+                    wait = self.effects.landing.get((ev.attacker, ev.ship_id), 0.0) if ev.attacker is not None else 0.0
+                    self._jolts.append([wait, min(JOLT_MAX, 2.0 + ev.amount / 8.0)])
             elif isinstance(ev, ShipArrived):
                 me = self._seen(obs, ev.ship_id)
                 if me is not None:
@@ -167,6 +190,30 @@ class TacticalView:
                 w = min(fresh, key=lambda w: math.hypot(w.x - ev.x, w.y - ev.y))
                 w.x, w.y = ev.x, ev.y
                 fresh.remove(w)
+
+    def _body(self, obs: Observation, sid: int | None) -> tuple[float, float, float] | None:
+        """Where we see a ship and how long she is: (x, y, hull length), for effects that land on her."""
+        me = self._seen(obs, sid)
+        if me is None:
+            return None
+        return me[0], me[1], me[3].length if me[3] is not None else 200.0
+
+    def _collapse(self, obs: Observation, sid: int, sector: int, wait: float) -> None:
+        """A shield facing giving way: its arc bursts into sparks that scatter outward."""
+        me = self._seen(obs, sid)
+        if me is None:
+            return
+        x, y, course, hull, _, _ = me
+        length = hull.length if hull is not None else 200.0
+        facing = math.radians(course + SHIELD_FACINGS[sector % len(SHIELD_FACINGS)])
+        for _ in range(16):
+            a = facing + self._rng.uniform(-0.5, 0.5)
+            r = length * 0.62
+            sp = length * self._rng.uniform(0.4, 1.1)
+            spark = Spark(x + math.sin(a) * r, y + math.cos(a) * r, math.sin(a) * sp, math.cos(a) * sp,
+                          self._rng.choice((COLLAPSE, (255, 220, 200), SHIELD_GLOW)), self._rng.uniform(0.3, 0.7))
+            spark.age = -wait
+            self.effects.sparks.append(spark)
 
     @staticmethod
     def _seen(obs: Observation, sid: int | None) -> tuple[float, float, float, HullDef | None, str | None, bool] | None:
@@ -192,7 +239,8 @@ class TacticalView:
         k0 = _k(length, self.cam.zoom)
         hit = HitFlash(0.0, 0.0, k0 * (9.0 + 9.0 * min(1.0, ev.amount / 40.0)))
         hit.start(self._rng)
-        self.strikes.append(Strike(hit, ev.ship_id, x, y, bearing, length, k0))
+        wait = self.effects.landing.get((ev.attacker, ev.ship_id), 0.0) if ev.attacker is not None else 0.0
+        self.strikes.append(Strike(hit, ev.ship_id, x, y, bearing, length, k0, wait))
 
     def _wreck(self, sid: int) -> Wreck | None:
         seen = self._last.pop(sid, None)          # a ship destroyed has already dropped off sensors: where we last saw her
@@ -216,11 +264,20 @@ class TacticalView:
 
     def update(self, dt: float) -> None:
         self.clock += dt
+        self._shake *= math.exp(-9.0 * dt)
+        for j in self._jolts:
+            j[0] -= dt
+            if j[0] <= 0:
+                self._shake = max(self._shake, j[1])
+        self._jolts = [j for j in self._jolts if j[0] > 0]
         self.effects.update(dt)
         for w in self.wrecks:
             w.blast.update(dt)
         self.wrecks = [w for w in self.wrecks if not w.blast.done]
         for st in self.strikes:
+            if st.delay > 0:
+                st.delay -= dt
+                continue
             st.hit.update(dt)
         self.strikes = [st for st in self.strikes if not st.hit.done]
         for x, y, frac in self._burning:
@@ -239,6 +296,22 @@ class TacticalView:
     def draw(self, surf: pygame.Surface, obs: Observation, prev: Snapshot | None, now: Snapshot, alpha: float,
              player_id: int | None, target_id: int | None, selected_sub: str | None,
              selected_ally: int | None = None) -> None:
+        self._player = player_id
+        cam = self.cam
+        if self.jolt and self._shake > 0.3:   # a heavy blow on our ship: the picture jumps, then settles
+            jx = self._rng.uniform(-1, 1) * self._shake / cam.zoom
+            jy = self._rng.uniform(-1, 1) * self._shake / cam.zoom
+            try:
+                cam.cx, cam.cy = cam.cx + jx, cam.cy + jy
+                self._draw(surf, obs, prev, now, alpha, player_id, target_id, selected_sub, selected_ally, (jx, jy))
+            finally:
+                cam.cx, cam.cy = cam.cx - jx, cam.cy - jy     # the rest of the screen stays put
+            return
+        self._draw(surf, obs, prev, now, alpha, player_id, target_id, selected_sub, selected_ally, (0.0, 0.0))
+
+    def _draw(self, surf: pygame.Surface, obs: Observation, prev: Snapshot | None, now: Snapshot, alpha: float,
+              player_id: int | None, target_id: int | None, selected_sub: str | None, selected_ally: int | None,
+              jolt: tuple[float, float]) -> None:
         cam = self.cam
         r = cam.rect
         if self._overlay is None or self._overlay.get_size() != surf.get_size():
@@ -261,7 +334,7 @@ class TacticalView:
         if me is not None and cam.follow == me.id:
             p = pose(me.id)
             if p:
-                cam.cx, cam.cy = p[0], p[1]
+                cam.cx, cam.cy = p[0] + jolt[0], p[1] + jolt[1]
 
         self._starfield(surf)
         self._grid(surf)
@@ -282,9 +355,17 @@ class TacticalView:
             if o.kind == "torpedo":
                 live.add(o.id)
                 self._torp_trail(overlay, o.id, p, obs.time, f)
+                if not o.friendly:
+                    near = self._inbound(obs, p)
+                    if near is not None:
+                        self._threat(surf, overlay, o, p)
+                        if near < INCOMING_SOUND and o.id not in self._warned:
+                            self._warned.add(o.id)            # heard once per round, as it closes
+                            self._sounds.append(("incoming", p[0], p[1]))
             self._ordnance(surf, o, p, f, overlay)
         for oid in [k for k in self.torp_trails if k not in live]:
             del self.torp_trails[oid]
+        self._warned &= live
 
         names = {s.id: s.name for s in obs.own_ships(alive_only=False)}
         names.update({c.id: c.label if c.identified else f"#{c.id}" for c in obs.contacts().values()})
@@ -309,7 +390,15 @@ class TacticalView:
                 self._dashed(surf, theme.dim(theme.HOSTILE, 0.75), cam.to_screen(pm[0], pm[1]), cam.to_screen(pt[0], pt[1]), 6, 6)
 
         self._ripples(obs, pose)
-        self.effects.draw(surf, cam, overlay)
+        glow = None
+        if self.effects.beams:            # soft light of the shots in flight, added on in one go
+            if self._glow is None or self._glow.get_size() != surf.get_size():
+                self._glow = pygame.Surface(surf.get_size())
+            glow = self._glow
+            glow.fill((0, 0, 0), r)
+        self.effects.draw(surf, cam, overlay, glow)
+        if glow is not None:
+            surf.blit(glow, r.topleft, area=r, special_flags=pygame.BLEND_RGB_ADD)
         self._fire(surf, pose)
         surf.blit(overlay, (0, 0))
         self._scale_bar(surf)
@@ -330,7 +419,7 @@ class TacticalView:
             p = pose(st.ship)
             if p is not None:
                 st.x, st.y = p[0], p[1]
-            if not cam.visible(st.x, st.y, 100):
+            if st.delay > 0 or not cam.visible(st.x, st.y, 100):
                 continue
             k = _k(st.length, cam.zoom)
             sx, sy = cam.to_screen(st.x, st.y)
@@ -395,9 +484,61 @@ class TacticalView:
         col = f.torpedo_color if f is not None else theme.TORPEDO
         path = [cam.to_screen(x, y) for x, y, _ in pts] + [cam.to_screen(p[0], p[1])]
         n = len(path) - 1
-        for i in range(n):                    # each segment fainter the older it is
+        for i in range(n):                    # a faint thread, fainter the older it is
             k = (i + 1) / n
-            pygame.draw.line(overlay, (*col, int(170 * k * k)), path[i], path[i + 1], 1 if k < 0.5 else 2)
+            pygame.draw.line(overlay, (*col, int(70 * k * k)), path[i], path[i + 1], 1)
+        warm = theme.mix(col, (255, 255, 255), 0.35)
+        for i, (x, y, born) in enumerate(pts):   # and a stream of sparks that drift apart and fade
+            age = now - born
+            k = max(0.0, 1.0 - age / TORP_TRAIL)
+            if k <= 0.05:
+                continue
+            q = path[i]
+            jit = (age * 9.0 + 1.0)
+            h = (oid * 92821 + i * 68917) & 0xFFFF
+            dx = ((h & 0xFF) / 255.0 - 0.5) * jit
+            dy = ((h >> 8) / 255.0 - 0.5) * jit
+            pygame.draw.circle(overlay, (*warm, int(190 * k * k)), (int(q[0] + dx), int(q[1] + dy)), 1 if k < 0.6 else 2)
+
+    @staticmethod
+    def _inbound(obs: Observation, p: Pose) -> float | None:
+        """How far this round is from the nearest of our ships it is heading for, or None if it isn't a threat."""
+        best: float | None = None
+        for s in obs.own_ships():
+            if not s.exists:
+                continue
+            dx, dy = s.x - p[0], s.y - p[1]
+            d = math.hypot(dx, dy)
+            if d > INBOUND_RANGE:
+                continue
+            if d < 1.0 or abs(norm180(math.degrees(math.atan2(dx, dy)) - p[2])) < INBOUND_CONE:
+                best = d if best is None else min(best, d)
+        return best
+
+    def _threat(self, surf: pygame.Surface, overlay: pygame.Surface, o: OrdnanceView, p: Pose) -> None:
+        """An enemy round inbound: its fuse radius ringed faintly on the map, or a marker at the edge if it's off screen."""
+        cam = self.cam
+        sx, sy = cam.to_screen(p[0], p[1])
+        r = cam.rect
+        beat = 0.6 + 0.4 * math.sin(self.clock * 8.0)
+        if r.collidepoint(sx, sy):
+            rad = o.prox * cam.zoom
+            if 10 < rad < 1500:
+                self._dashed_circle(overlay, (*theme.HOSTILE, int(70 * beat)), (sx, sy), rad, seg=24)
+            return
+        # off screen: a chevron on the edge of the map, pointing the way it is coming from
+        cx, cy = r.center
+        dx, dy = sx - cx, sy - cy
+        span = max(abs(dx) / max(r.width / 2 - 14, 1), abs(dy) / max(r.height / 2 - 14, 1))
+        if span <= 0:
+            return
+        ex, ey = cx + dx / span, cy + dy / span
+        ang = math.atan2(dy, dx)
+        tip = (ex + math.cos(ang) * 6, ey + math.sin(ang) * 6)
+        left = (ex + math.cos(ang + 2.5) * 8, ey + math.sin(ang + 2.5) * 8)
+        right = (ex + math.cos(ang - 2.5) * 8, ey + math.sin(ang - 2.5) * 8)
+        notch = (ex - math.cos(ang) * 2, ey - math.sin(ang) * 2)
+        pygame.draw.polygon(surf, theme.mix(theme.BG, theme.HOSTILE, 0.5 + 0.5 * beat), (tip, left, notch, right))
 
     def _ripples(self, obs: Observation, pose: Callable[[int], Pose | None]) -> None:
         """A ship that cloaks or decloaks in sight bends the light around it for a moment."""
@@ -484,7 +625,7 @@ class TacticalView:
 
     def _shield_ring(self, surf: pygame.Surface, ship_id: int, sx: float, sy: float, course: float, rad: float,
                      strengths: list[tuple[float, bool]] | None, overlay: pygame.Surface | None = None) -> None:
-        flashes = {int(f[0]): f for f in self.shield_flashes.get(ship_id, [])}
+        flashes = {int(f[0]): f for f in self.shield_flashes.get(ship_id, []) if f[1] >= 0}   # <0: the beam isn't there yet
         for i, facing in enumerate(SHIELD_FACINGS):
             hit = flashes.get(i)
             fl = hit[1] if hit is not None else None
@@ -627,7 +768,8 @@ class TacticalView:
             a = math.radians(s.desired_course)
             L = 50 * k
             pygame.draw.line(surf, theme.dim(theme.CAUTION, 0.7), (sx, sy), (sx + math.sin(a) * L, sy - math.cos(a) * L), 1)
-        if not (s.alive and not s.cloaked and k >= SPRITE_MIN_K and self._sprite(surf, s.cls, sx, sy, p[2], k)):
+        art = s.alive and not s.cloaked and k >= SPRITE_MIN_K and self._sprite(surf, s.cls, sx, sy, p[2], k)
+        if not art:
             draw_hull(surf, s.cls.hull, sx, sy, p[2], k, color)
         strengths = [(sh.effective if not sh.destroyed else 0.0, sh.up and not sh.destroyed and sh.effective > 0.5)
                      for sh in s.shields]
@@ -637,8 +779,13 @@ class TacticalView:
         label = s.name if s.alive else f"{s.name} — {s.status.value}"
         if s.alive and s.docked_to is not None:
             label += " · docked"
-        lx = sx + 34 * k + 6
-        top = self._free_label_y(lx, sy - 8, theme.text_width(label, 12, weight="medium"), 14)
+        lx = sx + (62 * k + 12 if art else 34 * k + 6)     # close in, the name sits clear of her art
+        lw = theme.text_width(label, 12, weight="medium")
+        if art and lx + lw > cam.rect.right - 6:            # no room on the right: her name goes on the left
+            lx = sx - 62 * k - 12 - lw
+        top = self._free_label_y(lx, sy - 8, lw, 14)
+        if art:
+            self._leader(surf, sx, sy, 62 * k, lx if lx > sx else lx + lw, top, color)
         theme.text(surf, label, (lx, top), color, 12, weight="medium")
         ly = top + 14
         if is_player:
@@ -679,15 +826,17 @@ class TacticalView:
                 a = math.radians(p[2])
                 L = 18 + c.warp * 6
                 pygame.draw.line(surf, theme.dim(color, 0.45), (sx, sy), (sx + math.sin(a) * L * 1.5, sy - math.cos(a) * L * 1.5))
-            if not (c.visible and c.identified and k >= SPRITE_MIN_K and self._sprite(surf, c.cls, sx, sy, p[2], k)):
+            art = c.visible and c.identified and k >= SPRITE_MIN_K and self._sprite(surf, c.cls, sx, sy, p[2], k)
+            if not art:
                 draw_hull(surf, c.cls.hull, sx, sy, p[2], k, color, fill_alpha=0.22 if c.visible else 0.08)
             self._shield_ring(surf, c.id, sx, sy, p[2], 62 * k, None, overlay)
             hurt = (c.assessed.hull if c.assessed is not None and c.assessed.hull is not None
                     else c.scan.structure_frac if c.scan is not None else None)
             if c.visible and hurt is not None and hurt < SMOULDER_BELOW:
                 self._burning.append((p[0], p[1], hurt))   # we've seen how badly she's hurt
-            rad = 40 * k
+            rad = 62 * k + 4 if art else 40 * k
         else:
+            art = False
             rad = 10
             pts = [(sx, sy - rad), (sx + rad, sy), (sx, sy + rad), (sx - rad, sy)]
             pygame.draw.polygon(surf, color, pts, 1)
@@ -702,13 +851,20 @@ class TacticalView:
         if c.visible and c.haze > 0:
             label = "~" + label
         lost = not c.visible
-        top = self._free_label_y(sx + rad + 8, sy - 8, theme.text_width(label, 12, weight="medium"), 26 if lost else 14)
-        theme.text(surf, label, (sx + rad + 8, top), color, 12, weight="medium")
+        lw = theme.text_width(label, 12, weight="medium")
+        lx = sx + rad + 8
+        if art and lx + lw > cam.rect.right - 6:            # no room on the right: the name goes on the left
+            lx = sx - rad - 8 - lw
+        top = self._free_label_y(lx, sy - 8, lw, 26 if lost else 14)
+        if art:
+            self._leader(surf, sx, sy, rad - 4, lx if lx > sx else lx + lw, top, color)
+        theme.text(surf, label, (lx, top), color, 12, weight="medium")
         if lost:
-            theme.text(surf, f"lost {c.age:.0f}s", (sx + rad + 8, top + 14), theme.TEXT_FAINT, 10)
+            theme.text(surf, f"lost {c.age:.0f}s", (lx, top + 14), theme.TEXT_FAINT, 10)
         if targeted:
             if self._lock[0] != c.id:
                 self._lock = (c.id, self.clock)             # a new target: the brackets close in on it
+                self._sounds.append(("lock", p[0], p[1]))
             t = min(1.0, (self.clock - self._lock[1]) / LOCK_TIME)
             ease = 1 - (1 - t) ** 3
             b = rad + 10 + 46 * (1 - ease)
@@ -737,24 +893,28 @@ class TacticalView:
         if not cam.visible(p[0], p[1], 20):
             return
         sx, sy = cam.to_screen(p[0], p[1])
-        a = math.radians(p[2])
         if o.kind == "torpedo":
             col = f.torpedo_color if f is not None else theme.TORPEDO
-            if overlay is not None:          # the glow of the warhead, pulsing faintly
-                pulse = 0.8 + 0.2 * math.sin(self.clock * 14 + o.id)
-                pygame.draw.circle(overlay, (*col, int(40 * pulse)), (int(sx), int(sy)), 9)
-                pygame.draw.circle(overlay, (*theme.mix(col, (255, 255, 255), 0.5), int(85 * pulse)), (int(sx), int(sy)), 5)
-            tail = min(28.0, 8 + o.speed * cam.zoom * 0.05)
-            pygame.draw.line(surf, theme.dim(col, 0.45), (sx, sy), (sx - math.sin(a) * tail, sy + math.cos(a) * tail), 1)
-            pts = [(sx + math.sin(a) * 4, sy - math.cos(a) * 4), (sx + math.cos(a) * 3, sy + math.sin(a) * 3),
-                   (sx - math.sin(a) * 3, sy + math.cos(a) * 3), (sx - math.cos(a) * 3, sy - math.sin(a) * 3)]
-            pygame.draw.polygon(surf, col if o.armed else theme.dim(col, 0.6), pts)
+            style = f.torpedo_style if f is not None else "photon"
+            size = round_size(o.yield_, cam.zoom)
+            if overlay is not None:
+                draw_round(surf, overlay, sx, sy, p[2], col, style, size, self.clock, o.id, o.armed)
+            if o.count > 1:
+                theme.text(surf, f"×{o.count}", (sx + size * 2 + 4, sy - 6), theme.dim(col, 0.9), 10, "mono")
         else:
             col = f.torpedo_color if f is not None else theme.PROBE
             pygame.draw.circle(surf, col, (int(sx), int(sy)), 4, 1)
             pygame.draw.circle(surf, col, (int(sx), int(sy)), 1)
             if o.code:
                 theme.text(surf, o.code, (sx + 7, sy - 6), theme.dim(col, 0.9), 10, "mono")
+
+    @staticmethod
+    def _leader(surf: pygame.Surface, sx: float, sy: float, ring: float, lx: float, top: float, col: theme.Color) -> None:
+        """A short line from a ship's shield ring out to her name, when the name has moved clear of her art."""
+        a = math.atan2(top + 7 - sy, lx - sx)
+        start = (sx + math.cos(a) * (ring + 2), sy + math.sin(a) * (ring + 2))
+        end = (lx - 3, top + 7) if lx > sx else (lx + 3, top + 7)
+        pygame.draw.line(surf, theme.dim(col, 0.5), start, end, 1)
 
     @staticmethod
     def _dashed(surf: pygame.Surface, col: theme.Color, a: tuple[float, float], b: tuple[float, float], on: float, off: float) -> None:

@@ -85,10 +85,28 @@ The providers (`llm/providers/`) share one `complete(system, messages) -> str` m
 
 It adds frame time × speed to an accumulator and steps the world in fixed ticks, at most 12 per frame. It keeps the previous tick's snapshot so motion is drawn smoothly between ticks. Each frame it draws:
 
-- the tactical map (`ui/tactical.py`, with `camera.py`, `hulls.py`, `effects.py` and `starfield.py`), which also keeps torpedo trails and the target-lock animation. Zoomed in, a ship class listed in `tactical.SHOWPIECE` is drawn from its baked sprite instead of its outline;
+- the tactical map (`ui/tactical.py`, with `camera.py`, `hulls.py`, `effects.py`, `beams.py` (phaser and disruptor shots), `torpedo_art.py` (rounds in flight by race) and `starfield.py`), which also keeps torpedo trails, inbound-torpedo markers and the target-lock animation. Zoomed in, a ship class listed in `tactical.SHOWPIECE` is drawn from its baked sprite instead of its outline;
 - the HUD panels (`ui/hud.py`): Own Ship, Target, Weapons, and a tabbed Contacts/Fleet/Crew column. Shown numbers go through `ui/tween.py`, which eases them and flashes changes; `BattleScene.hud_detail` (or the mouse over a panel) decides whether every number is shown;
 - the console and its log;
 - any open overlay: Begin's text reports (`console/reports.py`) or the manual (`ui/manual.py`, which renders `ui/markdown.py`).
+
+### Weapon effects, hits and sound
+
+The simulation decides every blow within one tick; the front end spreads what happened over the next fraction of a second so it reads the way it would on screen. The pieces fit together like this.
+
+`sim/events.py` carries what the drawing needs: `PhaserFired` names the bank that fired and its `power` (the bank's charge as a share of full, set in `sim/systems/phasers.py`), `ShieldHit` names the struck facing, its strength left and whether it collapsed, `HullHit` the damage that got through, and `SubsystemDamaged` the system hit.
+
+`ui/beams.py` draws a shot. A `Beam` follows a fixed timeline (`Beam.timeline()`): the firing bank glows as it charges (0.12 s, skipped for point defence), a bright tip races out to the target (0.07 s), the beam holds for a time that grows with its power, then fades. It is drawn in three layers: a soft wide glow, a coloured body and a white-hot core, so a full-power volley looks heavier than a weak or point-defence shot. A `Stop` cuts the beam where the blow really landed: at the target's shield circle if the shield held, or at the hull if the hit got through. Races whose `colors.phaser_style` is `pulse` (Klingons and Orions) fire disruptor bolts instead of a steady beam, real bolts that fly the distance one after another.
+
+`ui/torpedo_art.py` draws torpedoes in flight. Each faction's look (`colors.torpedo_style` in `factions.toml`: photon, disruptor, plasma or pulse) is its own function; `round_size` scales a round by its warhead and keeps it a few pixels across at any zoom.
+
+`ui/effects.py` (`Effects.ingest`) turns a tick's events into effects. It reads the shots first, because the simulation emits a shot's hits before the shot itself, and records in `Effects.landing` how long each shooter's beam takes to reach each target. Everything that a blow causes then waits for that delay: the shield flash on the struck arc, the sparks of a collapse, hull fire and venting, a system blast, the map's jolt when our own ship is hit hard, and the sounds. Torpedo blasts are sized by yield, and a launch shows a muzzle flash at the tube.
+
+Light is added rather than painted. `TacticalView` keeps one black `_glow` surface the size of the map, the effects draw their glow into it (`blast.add_light` stamps cached soft halos), and it is blitted onto the map with `BLEND_RGB_ADD`, so overlapping light brightens instead of greying. Crisp lines (beam cores, rays, rings) go on the alpha overlay as before.
+
+`TacticalView` also marks rounds heading for us (`_inbound`: within 9,000 units and pointed at us within 14°) with their fuse ring, or with a chevron at the edge of the map when they are off screen, and plays the incoming warning once per round. The jolt (`hud jolt on|off`) offsets the camera for a moment after a heavy hit and settles quickly.
+
+`ui/audio.py` synthesises every sound at start-up from plain sample arithmetic (no recordings, no numpy): phaser charge and ray, torpedo tube thunk, incoming whoosh, shield, collapse and hull hits, the three-whoop red alert, lock chirp, console confirm and deny tones, hail whistles, and the ship's hum. Each sound also has a low-passed copy that is played instead when the source is far away (level below `FAR_LEVEL`). `Audio.events` turns events into sounds, panned by position and delayed by `Effects.landing` (held in `Audio._later` and released by `Audio.tick`). The hum loops on a reserved channel, follows the warp setting, and ducks under the loud sounds in `LOUD`; its level is `settings.hum` (`sound hum off|on|0-100`). Nothing plays when sound is off.
 
 `MenuScene` draws the starfield and the flybys from `ui/showpiece.py`, which plans each pass as a straight line across the screen at one heading, fires phasers and torpedoes along it and draws them with additive glow. The ship sprites it uses are PNGs in `assets/ships/`, baked by `tools/render_ship.py` (which needs numpy; the game does not).
 
@@ -133,14 +151,16 @@ Measured in the cloud container (software rendering, no GPU, a 2.1 GHz Xeon) wit
 
 | Battle | Ships | Update | Draw (mean, 95th percentile) |
 |---|---|---|---|
-| Border Incident, 1600×900 | 2 | 0.11 ms | 5.8 ms, 8.4 ms |
-| Starbase Defense, 1600×900 | 6 | 0.15 ms | 6.0 ms, 8.1 ms |
-| Fleet Action, 1600×900 | 14 | 0.23 ms | 7.1 ms, 10.4 ms |
-| Fleet Action, 2560×1440 | 14 | 0.18 ms | 11.8 ms, 15.3 ms |
+| Border Incident, 1600×900 | 3 | 0.11 ms | 5.4 ms, 7.2 ms |
+| Starbase Defense, 1600×900 | 7 | 0.18 ms | 5.9 ms, 7.6 ms |
+| Fleet Action, 1600×900 | 15 | 0.32 ms | 7.0 ms, 10.2 ms |
+| Fleet Action, 2560×1440 | 15 | 0.18 ms | 11.2 ms, 13.0 ms |
+
+The weapon effects (charging banks, three-layer beams, additive glow, the torpedo art) cost a few tenths of a millisecond a frame on top of the figures before them (measured 11 November 2026).
 
 Drawing is nearly all of the frame. The same labels are drawn every frame, so `theme.render` caches finished lines of text and `hulls` caches the hull outlines; without those caches Fleet Action took 12.0 ms to draw at 1600×900 and 18.1 ms at 2560×1440, past the 16.7 ms a frame that 60 FPS allows. A surface returned by `theme.render` is shared, so draw it but never draw on it.
 
-The simulation costs about 0.3 ms a tick for a duel, 0.9 ms with 14 ships and 4 ms with Begin's limit of 60 (`tools/bench.py` times fleets of each size with AI on both sides). At 4× speed that is 40 ticks a second, well within budget even at the limit. Per-tick work that looks at every pair of ships gathers its lists once per tick or per choice rather than once per ship or per contact (`World._escapes`, `AICaptain._scoring_sets`).
+The simulation costs about 0.5 ms a tick for a duel, 4 ms with 14 ships and about 21 ms with Begin's limit of 60 (`tools/bench.py` times fleets of each size with AI on both sides). Most of that is enemy captains dodging torpedoes (`AICaptain._dodge`, which plans with the officers' `crew/helm.plan_helm` and tests each candidate course against every round in flight); before captains dodged, the same runs took about 0.4, 1 and 4.5 ms. The cost comes in bursts while torpedoes are in the air. The presets (15 ships at most) stay well inside the frame budget at every speed, but a custom battle near the 60-ship limit at 4× would drop frames. Per-tick work that looks at every pair of ships gathers its lists once per tick or per choice rather than once per ship or per contact (`World._escapes`, `AICaptain._scoring_sets`).
 
 ## Checking a change
 

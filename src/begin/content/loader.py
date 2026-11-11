@@ -43,7 +43,7 @@ def _hex(text: object, where: str) -> tuple[int, int, int]:
 
 
 def _weapon_colors(f: dict[str, Any]) -> dict[str, Any]:
-    """A faction's `colors = {phaser, torpedo, phaser_style}`; anything left out keeps the default look."""
+    """A faction's `colors = {phaser, torpedo, phaser_style, torpedo_style}`; anything left out keeps the default look."""
     c = f.get("colors", {})
     out: dict[str, Any] = {}
     if "phaser" in c:
@@ -54,7 +54,14 @@ def _weapon_colors(f: dict[str, Any]) -> dict[str, Any]:
         if c["phaser_style"] not in ("beam", "pulse"):
             raise ContentError(f"faction {f['id']}: phaser_style is beam or pulse")
         out["phaser_style"] = str(c["phaser_style"])
+    if "torpedo_style" in c:
+        if c["torpedo_style"] not in TORPEDO_STYLES:
+            raise ContentError(f"faction {f['id']}: torpedo_style is one of {', '.join(TORPEDO_STYLES)}")
+        out["torpedo_style"] = str(c["torpedo_style"])
     return out
+
+
+TORPEDO_STYLES = ("photon", "disruptor", "plasma", "pulse")   # how a race's rounds look in flight (ui/torpedo_art.py)
 
 
 def _pt(v: Any) -> tuple[float, float]:

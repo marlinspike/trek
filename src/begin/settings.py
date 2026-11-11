@@ -29,6 +29,8 @@ class Settings:
     volume: float = 0.6                                        # sound effects, 0 to 1
     muted: bool = False                                        # M in battle
     sounds: dict[str, str] = field(default_factory=dict)       # which version of a sound: {"phaser": "b", "torpedo": "c"}
+    hum: float = 0.35                                          # the ship's engine hum, as a share of the volume (0: off)
+    jolt: bool = True                                          # the map jolts when our ship takes a heavy blow
 
     @staticmethod
     def path() -> Path:
