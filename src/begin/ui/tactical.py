@@ -763,7 +763,9 @@ class TacticalView:
         if s.warp > 0.05:
             a = math.radians(p[2])
             L = 18 + s.warp * 6
-            pygame.draw.line(surf, theme.dim(color, 0.5), (sx, sy), (sx + math.sin(a) * L * 1.5, sy - math.cos(a) * L * 1.5))
+            b = 56 * k                           # from just past her bow, so the line never draws over her
+            pygame.draw.line(surf, theme.dim(color, 0.5), (sx + math.sin(a) * b, sy - math.cos(a) * b),
+                             (sx + math.sin(a) * (b + L * 1.5), sy - math.cos(a) * (b + L * 1.5)))
         if is_player and abs(norm180(s.desired_course - s.course)) > 1:
             a = math.radians(s.desired_course)
             L = 50 * k
@@ -781,8 +783,8 @@ class TacticalView:
             label += " · docked"
         lx = sx + (62 * k + 12 if art else 34 * k + 6)     # close in, the name sits clear of her art
         lw = theme.text_width(label, 12, weight="medium")
-        if art and lx + lw > cam.rect.right - 6:            # no room on the right: her name goes on the left
-            lx = sx - 62 * k - 12 - lw
+        if lx + lw > cam.rect.right - 6:                    # no room on the right: her name goes on the left
+            lx = sx - (62 * k + 12 if art else 34 * k + 6) - lw
         top = self._free_label_y(lx, sy - 8, lw, 14)
         if art:
             self._leader(surf, sx, sy, 62 * k, lx if lx > sx else lx + lw, top, color)
@@ -825,7 +827,9 @@ class TacticalView:
             if c.warp > 0.05 and c.visible:
                 a = math.radians(p[2])
                 L = 18 + c.warp * 6
-                pygame.draw.line(surf, theme.dim(color, 0.45), (sx, sy), (sx + math.sin(a) * L * 1.5, sy - math.cos(a) * L * 1.5))
+                b = 56 * k                       # from just past her bow, so the line never draws over her
+                pygame.draw.line(surf, theme.dim(color, 0.45), (sx + math.sin(a) * b, sy - math.cos(a) * b),
+                                 (sx + math.sin(a) * (b + L * 1.5), sy - math.cos(a) * (b + L * 1.5)))
             art = c.visible and c.identified and k >= SPRITE_MIN_K and self._sprite(surf, c.cls, sx, sy, p[2], k)
             if not art:
                 draw_hull(surf, c.cls.hull, sx, sy, p[2], k, color, fill_alpha=0.22 if c.visible else 0.08)
@@ -853,7 +857,7 @@ class TacticalView:
         lost = not c.visible
         lw = theme.text_width(label, 12, weight="medium")
         lx = sx + rad + 8
-        if art and lx + lw > cam.rect.right - 6:            # no room on the right: the name goes on the left
+        if lx + lw > cam.rect.right - 6:                    # no room on the right: the name goes on the left
             lx = sx - rad - 8 - lw
         top = self._free_label_y(lx, sy - 8, lw, 26 if lost else 14)
         if art:
@@ -931,12 +935,20 @@ class TacticalView:
 
     def _free_label_y(self, x: float, y: float, w: int, h: int) -> float:
         """Push a label down until it clears the labels already drawn this frame, so close ships stay legible."""
-        r = pygame.Rect(int(x), int(y), w, h)
+        area = self.cam.rect
+        r = pygame.Rect(int(x), int(min(max(y, area.top + 2), area.bottom - h - 2)), w, h)
         for _ in range(12):
             hit = r.collidelist(self._label_rects)
             if hit < 0:
                 break
             r.top = self._label_rects[hit].bottom + 1
+        if r.bottom > area.bottom - 2:      # pushed off the bottom of the map: stack it above instead
+            r.bottom = area.bottom - 2
+            for _ in range(12):
+                hit = r.collidelist(self._label_rects)
+                if hit < 0:
+                    break
+                r.bottom = self._label_rects[hit].top - 1
         self._label_rects.append(r)
         return r.top
 

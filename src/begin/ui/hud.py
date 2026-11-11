@@ -405,9 +405,10 @@ class TargetPanel(Panel):
         theme.text(surf, "No target. Choose one (or click it on the map, or press Tab):", (rect.x + 12, y),
                    theme.TEXT_DIM, 12)
         yy = y + 20
-        for c in cs:
-            if yy + 24 > rect.bottom - 6:
-                theme.text(surf, f"… and {len(cs) - cs.index(c)} more (Tab cycles through all)", (rect.x + 12, yy),
+        for i, c in enumerate(cs):
+            last = i == len(cs) - 1         # any other row must leave room for the "more" line under it
+            if yy + 24 + (0 if last else 16) > rect.bottom - 6:
+                theme.text(surf, f"… and {len(cs) - i} more (Tab cycles through all)", (rect.x + 12, yy),
                            theme.TEXT_FAINT, 11)
                 break
             name = c.label if c.identified else f"Unidentified #{c.id}"
@@ -700,7 +701,7 @@ class ContactsPanel(Panel):
         rh = 20
         for k, (d, name, col, sid, note) in enumerate(rows):
             ry = y + k * rh
-            if ry + rh > rect.bottom - 4:
+            if ry + rh + (0 if k == len(rows) - 1 else 14) > rect.bottom - 4:   # room for "+n more" under it
                 theme.text(surf, f"+{len(rows) - k} more", (rect.x + 12, ry), theme.TEXT_FAINT, 11)
                 break
             r = pygame.Rect(rect.x + 4, ry - 2, rect.width - 8, rh)

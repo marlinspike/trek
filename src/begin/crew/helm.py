@@ -74,7 +74,18 @@ def _path(ship: Ship, course: float, warp: float, upw: float, seconds: float) ->
     x, y, crs, w = ship.x, ship.y, ship.course, ship.warp
     want = max(0.0, min(warp, ship.max_attainable_warp))
     out: list[tuple[float, float]] = []
-    for _ in range(int(seconds / STEP)):
+    target = norm360(course)
+    n = int(seconds / STEP)
+    for i in range(n):
+        if w == want and crs == target:
+            # settled on the new course and speed: the rest of the path is a straight line
+            r = math.radians(crs)
+            dx, dy = math.sin(r) * w * upw * STEP, math.cos(r) * w * upw * STEP
+            for _ in range(n - i):
+                x += dx
+                y += dy
+                out.append((x, y))
+            break
         diff = want - w
         if abs(diff) < 0.05 or (want <= 1.0 and w <= 1.0):
             w = want
@@ -94,22 +105,55 @@ def _path(ship: Ship, course: float, warp: float, upw: float, seconds: float) ->
 
 
 def _miss(path: list[tuple[float, float]], t: OrdnanceView) -> float:
-    """The closest this torpedo comes to the ship along the predicted path."""
+    """The closest this torpedo comes to the ship along the predicted path.
+
+    Between samples the torpedo moves far, so each step checks the closest point of its segment to where
+    the ship is at the end of that step (which includes the sample itself). Squared distances, one root:
+    this runs for every candidate helm order against every torpedo, so it is the planner's hot loop."""
+    if not path:
+        return 1e9
     r = math.radians(t.course)
-    vx, vy = math.sin(r) * t.speed, math.cos(r) * t.speed
-    best = math.hypot(t.x - path[0][0], t.y - path[0][1]) if path else 1e9
-    for i, (x, y) in enumerate(path):
-        k = (i + 1) * STEP
-        best = min(best, math.hypot(t.x + vx * k - x, t.y + vy * k - y))
-        # between samples the torpedo moves far: check the segment's closest point too
-        k0 = i * STEP
-        ax, ay = t.x + vx * k0 - x, t.y + vy * k0 - y
-        sx, sy = vx * STEP, vy * STEP
-        seg = sx * sx + sy * sy
+    sx, sy = math.sin(r) * t.speed * STEP, math.cos(r) * t.speed * STEP
+    seg = sx * sx + sy * sy
+    tx, ty = t.x, t.y
+    x0, y0 = path[0]
+    best = (tx - x0) * (tx - x0) + (ty - y0) * (ty - y0)
+    for x, y in path:
+        ax, ay = tx - x, ty - y
         if seg > 0:
-            u = max(0.0, min(1.0, -(ax * sx + ay * sy) / seg))
-            best = min(best, math.hypot(ax + sx * u, ay + sy * u))
-    return best
+            u = -(ax * sx + ay * sy) / seg
+            if u > 1.0:
+                u = 1.0
+            elif u < 0.0:
+                u = 0.0
+            ax += sx * u
+            ay += sy * u
+        d = ax * ax + ay * ay
+        if d < best:
+            best = d
+        tx += sx
+        ty += sy
+    return math.sqrt(best)
+
+
+def _relevant(ship: Ship, threats: list[OrdnanceView], upw: float, seconds: float) -> list[OrdnanceView]:
+    """The torpedoes that could come near the ship under some helm order in the next `seconds`.
+
+    However the helm turns, the ship stays within (her top speed × time) of where she is now, so a
+    torpedo whose own straight path never comes within that reach of her start (plus its fuse and the
+    planner's margins) scores nothing on any path. Dropping it up front changes no plan."""
+    top = max(abs(ship.warp), ship.max_attainable_warp) * upw
+    out = []
+    for t in threats:
+        r = math.radians(t.course)
+        vx, vy = math.sin(r) * t.speed, math.cos(r) * t.speed
+        ax, ay = t.x - ship.x, t.y - ship.y
+        v2 = vx * vx + vy * vy
+        k = 0.0 if v2 <= 0 else max(0.0, min(seconds, -(ax * vx + ay * vy) / v2))
+        closest = math.hypot(ax + vx * k, ay + vy * k)
+        if closest <= top * seconds + t.prox + MARGIN + 300.0 + t.speed * STEP:
+            out.append(t)
+    return out
 
 
 def incoming(obs: Observation, ship: Ship) -> list[OrdnanceView]:
@@ -138,9 +182,22 @@ def threatened(obs: Observation, ship: Ship, threats: list[OrdnanceView]) -> int
 
 def _danger(path: list[tuple[float, float]], threats: list[OrdnanceView]) -> tuple[float, int]:
     cost, hits = 0.0, 0
+    if not path:
+        return cost, hits
+    xs = [p[0] for p in path]
+    ys = [p[1] for p in path]
+    px0, px1, py0, py1 = min(xs), max(xs), min(ys), max(ys)
+    reach = len(path) * STEP
     for t in threats:
-        m = _miss(path, t)
         zone = t.prox + MARGIN
+        # a torpedo whose whole flight stays well clear of the box round the path can't score: skip the sums
+        r = math.radians(t.course)
+        ex, ey = t.x + math.sin(r) * t.speed * reach, t.y + math.cos(r) * t.speed * reach
+        gx = max(0.0, min(t.x, ex) - px1, px0 - max(t.x, ex))
+        gy = max(0.0, min(t.y, ey) - py1, py0 - max(t.y, ey))
+        if gx * gx + gy * gy >= (zone + 300.0) ** 2:
+            continue
+        m = _miss(path, t)
         if m < zone + 300.0:
             cost += t.yield_ * t.count * min(1.0, (zone + 300.0 - m) / 300.0)
         if m < zone:
@@ -156,6 +213,7 @@ def plan_helm(obs: Observation, ship: Ship, c: ContactView | None, want: float |
         return None
     upw = obs.rules.units_per_warp
     look = max(HORIZON, THREAT_LOOK if threats else HORIZON)
+    threats = _relevant(ship, threats, upw, look)
     base = ship.desired_course
     courses = {norm360(base + d) for d in REL_COURSES}
     if c is not None:
