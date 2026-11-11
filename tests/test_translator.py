@@ -11,7 +11,7 @@ from begin.battle import build_battle
 from begin.console.translator import Translator, normalize_mode, parse_answer
 from begin.llm.providers.base import LLMError
 from begin.llm.service import LLMService
-from begin.presets import load_presets
+from .conftest import scenario_presets
 
 
 class _Script:
@@ -40,7 +40,7 @@ def scene(content):  # type: ignore[no-untyped-def]
     theme.font.cache_clear()
     theme._fallback.cache_clear()
     surf = pygame.display.set_mode((1400, 860))
-    b = build_battle(content, load_presets()[0].setup())
+    b = build_battle(content, scenario_presets()[0].setup())
     for ship in b.world.ships.values():
         if ship.side != b.world.ships[b.player_ship_id].side:
             ship.name = "Derango"

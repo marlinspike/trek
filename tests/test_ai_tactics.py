@@ -59,3 +59,139 @@ def test_a_failing_shield_is_turned_away(content) -> None:  # type: ignore[no-un
     assert cmd is not None and "turning shield" in cap.trace.recent(1)[0][1]
     after = me.shield_for_bearing(norm360(brg - cmd.course))   # type: ignore[attr-defined]
     assert after is not None and after is not facing and after.effective > 50.0
+
+
+# ------------------------------------------------------------------ Begin's reflexes, and dodging [R + E]
+
+def test_a_self_destruct_countdown_sends_a_captain_running(content) -> None:  # type: ignore[no-untyped-def]
+    """[R] Begin's flee reflex: inside the blast of a ship counting down, run directly away."""
+    cap, obs, me, c = _duel(content, "klingon.bc", "federation.hc", gap=1500.0)
+    from begin.core.angles import ang_dist, bearing
+
+    w = obs._w
+    w.ships[c.id].self_destruct = 4.0
+    obs = w.observe(me.side)
+    cmd = cap._flee_blast(obs, me)
+    assert cmd is not None
+    away = bearing(me.x - c.x, me.y - c.y)
+    assert ang_dist(cmd.course, away) < 3.0 and cmd.warp >= me.max_attainable_warp - 0.01   # type: ignore[attr-defined]
+    w.ships[c.id].self_destruct = -1.0
+    cap.last_helm = None
+    assert cap._flee_blast(w.observe(me.side), me) is None
+
+
+def test_snap_phasers_hit_a_ship_charging_us_that_is_not_the_target(content) -> None:  # type: ignore[no-untyped-def]
+    cap, obs, me, c = _duel(content, "klingon.bc", "federation.hc", gap=1500.0)
+    from begin.core.angles import bearing
+    from begin.sim.commands import FirePhasers
+
+    w = obs._w
+    rammer = w.ships[c.id]
+    rammer.course = rammer.desired_course = bearing(me.x - rammer.x, me.y - rammer.y)
+    rammer.warp = rammer.desired_warp = 6.0
+    w.run(0.2)
+    for bank in me.banks:
+        bank.charge = me.cls.banks_charge
+    obs = w.observe(me.side)
+    shots = cap._snap_phasers(obs, me, None)                             # nobody targeted: it still snaps
+    assert len(shots) == 1 and isinstance(shots[0], FirePhasers) and shots[0].target == rammer.id
+    assert cap._snap_phasers(obs, me, obs.contact(rammer.id)) == []      # the target gets the normal fire discipline
+    rammer.course = rammer.desired_course = rammer.course + 90.0        # turning away: no longer boring in
+    w.run(0.1)
+    assert cap._snap_phasers(w.observe(me.side), me, None) == []
+
+
+def test_weave_legs_are_held_for_two_cycles(content) -> None:  # type: ignore[no-untyped-def]
+    """[R] Begin's steering cadence: the weave swings to the other side every two cycles, not every helm order."""
+    cap, obs, me, c = _duel(content, "klingon.bc", "federation.hc", gap=8000.0)
+    first = cap._weave(obs, me, 0.0, 8000.0)
+    side = cap.weave_side
+    cap._weave(obs, me, 10.0, 8000.0)
+    assert cap.weave_side == side                                        # same leg: the base moved, the side didn't
+    obs.tick += 2 * obs.rules.ticks_per_cycle
+    cap._weave(obs, me, 10.0, 8000.0)
+    assert cap.weave_side == -side and first is not None
+
+
+def test_enemy_captains_dodge_a_torpedo_they_would_fly_into(content) -> None:  # type: ignore[no-untyped-def]
+    """[E] Enemy captains use the officers' predictor to get out of a torpedo's path."""
+    from begin.ai.captain import AICaptain
+    from begin.battle import BattleSetup, FleetSpec, ShipSpec, build_battle
+
+    dodged = 0
+    for seed in range(1, 5):
+        b = build_battle(content, BattleSetup([FleetSpec(0, [ShipSpec("federation.hc")]),
+                                               FleetSpec(1, [ShipSpec("klingon.bc")])], seed=seed))
+        b.world.run(60.0)
+        dodged += sum(c.dodges for c in b.world.controllers if isinstance(c, AICaptain))
+    assert dodged > 0
+
+
+def test_countdowns_are_seen_only_in_the_last_five_cycles(content) -> None:  # type: ignore[no-untyped-def]
+    cap, obs, me, c = _duel(content, "klingon.bc", "federation.hc", gap=3000.0)
+    w = obs._w
+    w.ships[c.id].self_destruct = 8.0
+    assert w.observe(me.side).countdowns() == []
+    w.ships[c.id].self_destruct = 3.0
+    (sid, _x, _y, left, radius), = w.observe(me.side).countdowns()
+    assert sid == c.id and left == 3.0 and radius > 0
+
+
+# ------------------------------------------------------------------ signature styles [E]
+
+def test_navies_roll_their_own_styles(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.ai.personality import Personality
+    from begin.core.rng import Rng
+
+    styles = {f: {Personality.roll(content.factions[f], Rng(i)).style for i in range(60)}
+              for f in ("klingon", "romulan", "orion", "federation")}
+    assert styles["klingon"] == {"", "charge"} and styles["romulan"] == {"", "feint"}
+    assert styles["orion"] == {"", "raid"} and styles["federation"] == {""}
+
+
+def test_a_raider_makes_one_pass_then_runs(content) -> None:  # type: ignore[no-untyped-def]
+    import dataclasses
+
+    from begin.core.angles import ang_dist, bearing
+
+    cap, obs, me, c = _duel(content, "orion.an", "federation.hc", gap=5000.0)
+    cap.personality = dataclasses.replace(cap.personality, style="raid")
+    for b in me.banks:
+        b.charge = me.cls.banks_charge
+    toward = bearing(c.x - me.x, c.y - me.y)
+    cmd = cap._style_helm(obs, me, c, c.distance_to(me.x, me.y), toward)
+    assert cap.style_phase == "run_in" and cmd is not None and ang_dist(cmd.course, toward) < 3.0  # type: ignore[attr-defined]
+    me.stats.phaser_shots += 1                                       # the pass is made
+    cap.last_helm = None
+    cmd = cap._style_helm(obs, me, c, c.distance_to(me.x, me.y), toward)
+    assert cap.style_phase == "break" and cmd is not None and ang_dist(cmd.course, toward) > 90.0  # type: ignore[attr-defined]
+
+
+def test_a_feint_holds_its_tubes_then_turns_on_the_pursuer(content) -> None:  # type: ignore[no-untyped-def]
+    import dataclasses
+
+    from begin.core.angles import ang_dist, bearing
+
+    cap, obs, me, c = _duel(content, "romulan.bp", "federation.hc", gap=6000.0)
+    cap.personality = dataclasses.replace(cap.personality, style="feint")
+    w = obs._w
+    them = w.ships[c.id]
+    them.course = them.desired_course = bearing(me.x - them.x, me.y - them.y)
+    them.warp = them.desired_warp = 6.0
+    w.run(0.3)
+    obs = w.observe(me.side)
+    c = obs.contact(c.id)
+    from begin.sim.ship import LoadedTorpedo
+
+    for t in me.tubes:
+        t.loaded = LoadedTorpedo(me.cls.torpedo, 500.0)
+    obs = w.observe(me.side)
+    c = obs.contact(c.id)
+    toward = bearing(c.x - me.x, c.y - me.y)
+    cmd = cap._style_helm(obs, me, c, c.distance_to(me.x, me.y), toward)
+    assert cap.style_phase == "feint" and cmd is not None and ang_dist(cmd.course, toward) > 120.0  # type: ignore[attr-defined]
+    assert not [x for x in cap._weapons(obs, me, c) if type(x).__name__ == "FireTorpedoes"]   # holding the spread
+    obs.tick += 7 * obs.rules.ticks_per_cycle                         # the run is long enough: turn
+    cap.last_helm = None
+    cmd = cap._style_helm(obs, me, c, c.distance_to(me.x, me.y), toward)
+    assert cap.style_phase == "turn" and cmd is not None and ang_dist(cmd.course, toward) < 3.0  # type: ignore[attr-defined]

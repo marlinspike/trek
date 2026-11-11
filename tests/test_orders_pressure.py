@@ -13,7 +13,7 @@ from begin.battle import build_battle
 from begin.console.parser import ParseContext, parse
 from begin.console.translator import Translator
 from begin.llm.service import LLMService
-from begin.presets import load_presets
+from .conftest import scenario_presets
 from begin.sim.commands import (
     CeaseFire, DelegateStation, Evasive, FirePhasers, SelectTarget, SetHelm, SetObjective, StandDown,
 )
@@ -21,7 +21,7 @@ from begin.sim.events import ObjectiveEnded, PhaserFired, TorpedoLaunched
 
 
 def _parsing(content, preset: str = "dreadnought-duel"):  # type: ignore[no-untyped-def]
-    b = build_battle(content, next(p for p in load_presets() if p.id == preset).setup())
+    b = build_battle(content, next(p for p in scenario_presets() if p.id == preset).setup())
     me = b.world.ships[b.player_ship_id]
     enemies = [s for s in b.world.ships.values() if s.side != me.side]
     me.target = enemies[0].id
@@ -40,7 +40,7 @@ def _scene(content, lines: list[str] = [], seed: int | None = None):  # type: ig
     theme.font.cache_clear()
     theme._fallback.cache_clear()
     surf = pygame.display.set_mode((1400, 860))
-    b = build_battle(content, next(p for p in load_presets() if p.id == "dreadnought-duel").setup(seed))
+    b = build_battle(content, next(p for p in scenario_presets() if p.id == "dreadnought-duel").setup(seed))
     sc = BattleScene(b, surf.get_size(), lambda: None, hidden={}, llm={})
     sc.overlay, sc.paused = None, False
     enemy = next(s for s in b.world.ships.values() if s.side != sc.player.side)
@@ -243,7 +243,8 @@ def test_a_new_order_after_a_cease_fire_gets_the_guns_firing_again(content, stop
 
 
 def test_disabling_two_systems_finishes_both_and_spares_her(content) -> None:  # type: ignore[no-untyped-def]
-    sc, enemy = _scene(content, ["delegate helm"], seed=2)
+    # a seed where she fights on until both are done (in others she strikes her colours first)
+    sc, enemy = _scene(content, ["delegate helm"], seed=1)
     seen = _spy(sc)
     sc.run_console("target their shields and engines")
     for _ in range(180 * 20):
@@ -326,7 +327,7 @@ def _hunt(content, seed: int = 1):  # type: ignore[no-untyped-def]
     theme.font.cache_clear()
     theme._fallback.cache_clear()
     surf = pygame.display.set_mode((1400, 860))
-    b = build_battle(content, next(p for p in load_presets() if p.id == "pirate-hunt").setup(seed))
+    b = build_battle(content, next(p for p in scenario_presets() if p.id == "pirate-hunt").setup(seed))
     sc = BattleScene(b, surf.get_size(), lambda: None, hidden={}, llm={})
     sc.overlay, sc.paused = None, False
     return sc
@@ -335,7 +336,7 @@ def _hunt(content, seed: int = 1):  # type: ignore[no-untyped-def]
 def test_a_federation_ally_disables_with_us_and_then_spares_them(content) -> None:  # type: ignore[no-untyped-def]
     from begin.ai.captain import AICaptain
 
-    sc = _hunt(content, seed=5)  # a seed where both raiders live through the shield work (the Enterprise is a Dreadnought)
+    sc = _hunt(content, seed=7)  # a seed where both raiders live through the shield work (the Enterprise is a Dreadnought)
     me, w = sc.player, sc.world
     enemies = [s for s in w.ships.values() if s.side != me.side]
     sc.run_console(f"target #{enemies[0].id}")

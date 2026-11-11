@@ -8,7 +8,7 @@ import pytest
 
 from begin.battle import build_battle
 from begin.console.parser import ParseContext, parse
-from begin.presets import load_presets
+from .conftest import scenario_presets
 from begin.sim.commands import (
     Authority, FirePhasers, LaunchProbe, OpenFire, SelectTarget, SetObjective, offensive_fire,
 )
@@ -23,7 +23,7 @@ def _scene(content, lines: list[str]):  # type: ignore[no-untyped-def]
     theme.font.cache_clear()
     theme._fallback.cache_clear()
     surf = pygame.display.set_mode((1400, 860))
-    b = build_battle(content, next(p for p in load_presets() if p.id == "dreadnought-duel").setup())
+    b = build_battle(content, next(p for p in scenario_presets() if p.id == "dreadnought-duel").setup())
     sc = BattleScene(b, surf.get_size(), lambda: None, hidden={}, llm={})
     sc.overlay, sc.paused = None, False
     enemy = next(s for s in b.world.ships.values() if s.side != sc.player.side)
@@ -124,7 +124,7 @@ def test_targeting_the_hull_or_firing_finishes_her(content, line: str) -> None: 
 
 
 def test_spared_in_the_simulation(content) -> None:  # type: ignore[no-untyped-def]
-    b = build_battle(content, next(p for p in load_presets() if p.id == "dreadnought-duel").setup())
+    b = build_battle(content, next(p for p in scenario_presets() if p.id == "dreadnought-duel").setup())
     w, me = b.world, b.world.ships[b.player_ship_id]
     enemy = next(s for s in w.ships.values() if s.side != me.side)
     w.execute(SelectTarget(ship_id=me.id, target=enemy.id))
@@ -141,7 +141,7 @@ def test_spared_in_the_simulation(content) -> None:  # type: ignore[no-untyped-d
 
 
 def test_hull_is_the_default_and_named_on_purpose(content) -> None:  # type: ignore[no-untyped-def]
-    b = build_battle(content, next(p for p in load_presets() if p.id == "dreadnought-duel").setup())
+    b = build_battle(content, next(p for p in scenario_presets() if p.id == "dreadnought-duel").setup())
     me = b.world.ships[b.player_ship_id]
     enemy = next(s for s in b.world.ships.values() if s.side != me.side)
     me.target = enemy.id
@@ -156,7 +156,7 @@ def test_hull_is_the_default_and_named_on_purpose(content) -> None:  # type: ign
 
 
 def _two_enemies(content):  # type: ignore[no-untyped-def]
-    b = build_battle(content, next(p for p in load_presets() if p.id == "pirate-hunt").setup())
+    b = build_battle(content, next(p for p in scenario_presets() if p.id == "pirate-hunt").setup())
     me = b.world.ships[b.player_ship_id]
     enemies = [s for s in b.world.ships.values() if s.side != me.side]
     assert len(enemies) >= 2

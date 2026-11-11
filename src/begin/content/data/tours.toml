@@ -26,11 +26,11 @@ eta = 90
 officer = "seven"
 seed = 11
 briefing = """
-Two Orion vessels are preying on shipping near Tau Ceti: an Anarchist and a Raider. They are fast and lightly
+Three Orion vessels are preying on shipping near Tau Ceti: two Anarchists and a Raider. They are fast and lightly
 built, and they will scatter rather than stand and fight. Destroy them or drive them off before they reach the
 shipping lanes. It is also a chance to see how the squadron works together before the border.
 """
-enemies = ["orion.an", "orion.ra"]
+enemies = ["orion.an", "orion.an", "orion.ra"]
 enemy_center = [5000, 10000]
 
 [[tour.stop]]
@@ -43,11 +43,11 @@ eta = 140
 officer = "worf"
 seed = 23
 briefing = """
-A Klingon battle cruiser and her escort are probing the border at Archanis. Their captain will test us. A
+A Klingon battle cruiser and two escorts are probing the border at Archanis. Their captain will test us. A
 battle cruiser carries five tubes and fights best at torpedo range. If we can knock out her life support and
 board her, she would make a fine addition to the squadron.
 """
-enemies = ["klingon.bc", "klingon.es"]
+enemies = ["klingon.bc", "klingon.fr", "klingon.es"]
 
 [[tour.stop]]
 id = "frigates"
@@ -59,11 +59,11 @@ eta = 170
 officer = "spock"
 seed = 37
 briefing = """
-Two Klingon frigates are holding the Kessik relay station. They are no match for us one at a time; the logical
+Three Klingon frigates are holding the Kessik relay station. They are no match for us one at a time; the logical
 course is to separate them. Their reports will reach the Klingon fleet whatever happens here, so it would be
 best if none of them escaped to make one.
 """
-enemies = ["klingon.fr", "klingon.fr"]
+enemies = ["klingon.fr", "klingon.fr", "klingon.fr"]
 
 [[tour.stop]]
 id = "ambush"
@@ -76,10 +76,10 @@ officer = "spock"
 seed = 41
 briefing = """
 A distress call from Galorndon Core. Sensors show nothing there, which is in itself suspicious: the Romulans
-have used this system for ambushes before. Expect two Birds of Prey under cloak and plasma torpedoes at close
+have used this system for ambushes before. Expect three Birds of Prey under cloak and plasma torpedoes at close
 range. Keep our weakest shields away from where they are likely to decloak.
 """
-enemies = ["romulan.bp", "romulan.bp"]
+enemies = ["romulan.bp", "romulan.bp", "romulan.bp"]
 enemy_center = [-4000, 7000]
 
 [[tour.stop.choice]]
@@ -104,11 +104,11 @@ officer = "worf"
 seed = 53
 win_flag = "dreadnought-beaten"
 briefing = """
-A Klingon dreadnought is scouting ahead of the main force, with a frigate in company. She carries eight tubes.
+A Klingon dreadnought is scouting ahead of the main force, with a frigate and an escort in company. She carries eight tubes.
 If we defeat her here, she will not be at the starbase when the Klingons attack. A dreadnought fights best at
 long range; we must close the distance, or not let her choose it.
 """
-enemies = ["klingon.dr", "klingon.fr"]
+enemies = ["klingon.dr", "klingon.fr", "klingon.es"]
 
 [[tour.stop]]
 id = "starbase"
@@ -129,16 +129,16 @@ The Klingon force has arrived at Starbase 12. They will come in waves: frigates 
 cruisers, then the heavy ships. Between waves, damaged ships should dock and repair; the starbase's docking
 bays are at our disposal. If the starbase falls, the tour has failed.
 """
-enemies = ["klingon.fr", "klingon.fr"]
+enemies = ["klingon.fr", "klingon.fr", "klingon.fr"]
 [tour.stop.add]
 refit = ["klingon.bc"]
 
 [[tour.stop.wave]]
-ships = ["klingon.bc", "klingon.es"]
+ships = ["klingon.bc", "klingon.bc"]
 after_clear = 60
 at = 420
 center = [6000, 17000]
-message = "A Klingon battle cruiser and her escort are dropping out of warp!"
+message = "Two Klingon battle cruisers are dropping out of warp!"
 
 [[tour.stop.wave]]
 ships = ["klingon.dr", "klingon.fr"]
@@ -149,12 +149,12 @@ unless_flag = "dreadnought-beaten"
 message = "Klingon dreadnought inbound with a frigate: the main force is here."
 
 [[tour.stop.wave]]
-ships = ["klingon.bc", "klingon.fr"]
+ships = ["klingon.bc", "klingon.bc", "klingon.fr"]
 after_clear = 75
 at = 900
 center = [-6000, 17000]
 if_flag = "dreadnought-beaten"
-message = "The Klingon main force is here: a battle cruiser and a frigate. Without their dreadnought, they can be beaten."
+message = "The Klingon main force is here: two battle cruisers and a frigate. Without their dreadnought, they can be beaten."
 
 
 [[tour]]
@@ -178,10 +178,10 @@ eta = 120
 officer = "seven"
 seed = 101
 briefing = """
-Outpost 4 has stopped answering. Two Romulan War Eagles are in the area. They are small and quick and will try
+Outpost 4 has stopped answering. Three Romulan War Eagles are in the area. They are small and quick and will try
 to draw us apart. A tachyon pulse from the deflector will show them if they cloak at close range.
 """
-enemies = ["romulan.we", "romulan.we"]
+enemies = ["romulan.we", "romulan.we", "romulan.we"]
 
 [[tour.stop]]
 id = "frigates"
@@ -193,10 +193,10 @@ eta = 150
 officer = "worf"
 seed = 113
 briefing = """
-A Romulan frigate screen is shadowing a Bird of Prey through Gamma Hromi. Destroy the screen and the Bird of
-Prey is exposed. Their plasma torpedoes are slow; we can outrun them if we see them in time.
+A Romulan frigate screen is shadowing two Birds of Prey through Gamma Hromi. Destroy the screen and the Birds of
+Prey are exposed. Their plasma torpedoes are slow; we can outrun them if we see them in time.
 """
-enemies = ["romulan.fr", "romulan.fr", "romulan.bp"]
+enemies = ["romulan.fr", "romulan.fr", "romulan.bp", "romulan.bp"]
 
 [[tour.stop]]
 id = "nebula"
@@ -208,14 +208,14 @@ eta = 180
 officer = "spock"
 seed = 127
 briefing = """
-The Bird of Prey that escaped us is regrouping in the Devron nebula with a second. Two cloaked ships at close
+The Birds of Prey that escaped us are regrouping in the Devron nebula. Two cloaked ships at close
 range: a dangerous combination. Fortunately they must decloak to fire.
 """
 enemies = ["romulan.bp", "romulan.bp"]
 
 [[tour.stop.choice]]
 label = "Refit at Starbase 47"
-consequence = "Repaired, rearmed and fully crewed, but the Romulans get time to bring a third Bird of Prey to the starbase."
+consequence = "Repaired, rearmed and fully crewed, but the Romulans get time to bring another Bird of Prey to the starbase."
 refit = true
 transit = 320
 flags = ["refit"]
@@ -275,10 +275,10 @@ eta = 90
 officer = "worf"
 seed = 201
 briefing = """
-An Orion Anarchist and two Assassins have hit a convoy near Rigel. They are fragile but fast. Their captains
+Two Orion Anarchists and two Assassins have hit a convoy near Rigel. They are fragile but fast. Their captains
 have no stomach for a fair fight.
 """
-enemies = ["orion.an", "orion.as", "orion.as"]
+enemies = ["orion.an", "orion.an", "orion.as", "orion.as"]
 
 [[tour.stop]]
 id = "saboteurs"
@@ -290,10 +290,10 @@ eta = 120
 officer = "seven"
 seed = 211
 briefing = """
-Two Orion Saboteurs are lying in wait. They will try to lure us in close. Their armour is thin; their probes
+Three Orion Saboteurs are lying in wait. They will try to lure us in close. Their armour is thin; their probes
 are not.
 """
-enemies = ["orion.sa", "orion.sa"]
+enemies = ["orion.sa", "orion.sa", "orion.sa"]
 
 [[tour.stop]]
 id = "armadillo"
@@ -305,7 +305,7 @@ eta = 150
 officer = "spock"
 seed = 223
 briefing = """
-The raiders' base of operations is an Armadillo: a slow, heavily armoured ship with two Raiders in company.
+The raiders' base of operations is an Armadillo: a slow, heavily armoured ship with three Raiders in company.
 Take her and the band is finished.
 """
-enemies = ["orion.ar", "orion.ra", "orion.ra"]
+enemies = ["orion.ar", "orion.ra", "orion.ra", "orion.ra"]

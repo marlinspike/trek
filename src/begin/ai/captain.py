@@ -39,9 +39,10 @@ from typing import Iterable
 from ..core.angles import ang_dist, bearing, norm360
 from ..core.rng import Rng
 from ..sim.commands import (
-    Authority, Command, ConfigureAutoload, Dock, FirePhasers, FireTorpedoes, LaunchProbe, ReinforceShield,
+    Authority, Command, ConfigureAutoload, ControlProbe, Dock, FirePhasers, FireTorpedoes, LaunchProbe, ReinforceShield,
     SelectTarget, SelfDestruct, SetCloak, SetHelm, SetShields, Surrender, Tractor, Transport,
 )
+from ..crew.helm import incoming, plan_helm, threatened
 from ..sim.allies import DEFAULT_APPROACH_RANGE, DEFAULT_ESCORT_RANGE, DEFEND_RANGE, AllyStanding
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import Ship
@@ -77,6 +78,19 @@ AI_KNIFE_FIGHT_RANGE = 1.5       # [E] × phaser range: inside it, fight rather 
 AI_BASE_STANDOFF = 0.6           # [E] × phaser range: the closest an attacker comes to a base
 AI_STANDOFF_OPEN_ANGLE = 70.0     # [E] degrees off dead astern when opening to torpedo standoff
 AI_FANATIC_RAM = 0.9
+AI_WEAVE_CADENCE = 2.0           # [R] cycles a weave leg is held before the helm swings to the other side
+AI_INCOMING_CONE = 10.0          # [R] degrees: a ship heading at us within this is "incoming"
+AI_FLEE_MARGIN = 1.2             # × a self-destruct's blast radius: inside it, run [R reflex, margin E]
+AI_SIDESTEP_CYCLES = 3.0         # [E] how long a captain whose torpedo lane is blocked by a friend steps aside
+# torpedo evasion [E]: the officers' predictor (crew/helm.py), flown as well as captain and crew can
+AI_DODGE_BASE = 0.3              # chance a tactics turn reacts to a torpedo it would otherwise fly into, at no skill
+AI_DODGE_SKILL = 0.7             # added at full skill (captain and crew competence averaged)
+# signature styles [E] (doctrine `styles`, Personality.style)
+AI_STYLE_REACH = 6.0             # × own phaser range: a charge or raid starts inside this
+AI_STYLE_BREAK_CYCLES = 10.0     # longest a ship spends breaking away before it comes again
+AI_STYLE_COOLDOWN = 6.0          # cycles between one run and the next
+AI_FEINT_CYCLES = 6.0            # how long a feigned retreat runs before the ship turns on its pursuer
+AI_FEINT_TURN_CYCLES = 5.0       # how long it has to land its spread once it has turned
 # fighting to the ship's strengths [E]
 AI_KITE_MARGIN = 1.3             # × an enemy's phaser range: a torpedo boat keeps at least this far out
 AI_SHIELD_BACK_OFF = 35.0        # % effective on the shield facing the enemy: below it, turn a fresh one toward it
@@ -136,6 +150,14 @@ class AICaptain:
     stall_mark: float = -1.0
     stall_since: int = 0
     wishes: tuple[frozenset[int], dict[int, str]] = (frozenset(), {})   # the flagship's: spared, and disabling
+    weave_leg: int = -10 ** 9  # tick the current weave leg began [R: brain+1Ch steering cadence]
+    weave_offset: float = 0.0  # degrees off the base bearing for this leg
+    lane_blocked: int = -10 ** 9   # tick a friend last blocked our torpedo lane [R: word_38684]
+    dodges: int = 0            # torpedo evasions flown (for traces and tests)
+    style_phase: str = ""      # [E] where a signature tactic is: "" idle, "run_in", "break", "feint", "turn"
+    style_since: int = 0       # tick the phase began
+    style_mark: int = 0        # shots fired (phaser shots + torpedoes) when the phase began
+    style_ready: int = 0       # tick the next run may start
 
     def obeys_flagship(self, ship: Ship) -> bool:
         """Will this captain hold back from a kill because the flagship wants the ship disabled? [E]"""
@@ -457,6 +479,7 @@ class AICaptain:
 
     def _tactics(self, obs: Observation, ship: Ship) -> list[Command]:
         out: list[Command] = []
+        self.wishes = self._flagship_wishes(obs, ship)   # fresh each turn: a ship spared a moment ago is not fired on
         c = obs.contact(self.target) if self.target is not None else None
         st = obs.ally_order(ship.id)
         if st is not None and st.issued != self.order_seen:
@@ -464,6 +487,13 @@ class AICaptain:
             self.order_done = False
             self.last_helm = None
         hold_fire = (st is not None and st.hold_fire) or ship.hold_fire   # [E] or they agreed to stand down
+        # Begin's reflexes [R]: run from a blast, snap phasers at whoever charges us, set our probes off
+        flee = self._flee_blast(obs, ship)
+        if flee is not None:
+            out.append(flee)
+        if not hold_fire:
+            out.extend(self._snap_phasers(obs, ship, c))
+            out.extend(self._remote_detonate(obs, ship))
         # a running ship still uses its weapons while an enemy is in range (manual p. 23)
         if c is not None and not hold_fire:
             out.extend(self._weapons(obs, ship, c, st))
@@ -475,11 +505,112 @@ class AICaptain:
         if not handled and self.docking:
             out.extend(self._go_dock(obs, ship))
             handled = True
+        if flee is not None:
+            handled = True
         if not handled:
             helm = self._maneuver(obs, ship, c, st)
+            dodge = self._dodge(obs, ship, c, st)
+            if dodge is not None:
+                helm = dodge
             if helm is not None:
                 out.append(helm)
         return out
+
+    # ------------------------------------------------------------ reflexes [R]
+
+    def _incoming(self, obs: Observation, ship: Ship) -> tuple[ContactView | None, float]:
+        """[R] The nearest visible enemy heading straight at us (within 10°), and its distance."""
+        best, best_d = None, float("inf")
+        for h in obs.hostile_contacts():
+            if not h.visible or (h.cls is not None and h.cls.is_base) or h.warp <= 0.5:
+                continue
+            if ang_dist(h.course, bearing(ship.x - h.x, ship.y - h.y)) > AI_INCOMING_CONE:
+                continue
+            d = h.distance_to(ship.x, ship.y)
+            if d < best_d:
+                best, best_d = h, d
+        return best, best_d
+
+    def _flee_blast(self, obs: Observation, ship: Ship) -> Command | None:
+        """[R] A ship counting down to self-destruct with us inside its blast: run directly away at full speed."""
+        if not ship.can_move() or ship.docked_to is not None or ship.cls.is_base or self.last_stand:
+            return None
+        worst = None
+        for sid, x, y, _left, radius in obs.countdowns():
+            if sid == ship.id:
+                continue
+            d = math.hypot(ship.x - x, ship.y - y)
+            if d < radius * AI_FLEE_MARGIN and (worst is None or d < worst[0]):
+                worst = (d, x, y)
+        if worst is None:
+            return None
+        _, x, y = worst
+        self._log(obs, "self-destruct countdown nearby: running from the blast")
+        return self._helm(obs, ship, bearing(ship.x - x, ship.y - y), ship.max_attainable_warp)
+
+    def _snap_phasers(self, obs: Observation, ship: Ship, target: ContactView | None) -> list[Command]:
+        """[R] A ship boring in on us inside phaser range gets exactly enough banks to break its facing shield,
+        even when it is not the ship we are fighting (the target is handled by the normal fire discipline)."""
+        if not ship.banks:
+            return []
+        h, d = self._incoming(obs, ship)
+        if h is None or (target is not None and h.id == target.id) or d >= ship.cls.banks_range:
+            return []
+        if h.id in self.wishes[0]:
+            return []
+        charged = [i for i, b in enumerate(ship.banks) if bank_ready(ship, b) and b.role.value != "defense"
+                   and bank_bears_point(ship, b, h.x, h.y)]
+        if not charged:
+            return []
+        brg = bearing(h.x - ship.x, h.y - ship.y)
+        if self._friendly_blocks(obs, ship, brg, ship.cls.banks_range, AI_FF_TOLERANCE):
+            return []
+        n = self._snap_count(obs, ship, h, charged, 1, any_captain=True)
+        self._log(obs, f"snap phasers x{n} at {h.label} closing ({d:,.0f})")
+        return [self._cmd(FirePhasers, ship, banks=tuple(charged[:n]), target=h.id, spread=AI_PHASER_SPREAD)]
+
+    def _remote_detonate(self, obs: Observation, ship: Ship) -> list[Command]:
+        """[R] One of our probes chasing a ship that now outruns it: set it off while she is inside its blast
+        and we are not."""
+        out: list[Command] = []
+        for o in obs.ordnance():
+            if not o.friendly or o.kind != "probe" or o.owner != ship.id or o.target is None or not o.code:
+                continue
+            c = obs.contact(o.target)
+            if c is None:
+                continue
+            radius = o.yield_ * obs.rules.splash_mult * obs.rules.splash_radius_per_damage
+            d = c.distance_to(o.x, o.y)
+            outrun = math.hypot(c.vx, c.vy) >= o.speed or o.fuse < 1.0
+            if d < radius * 0.8 and outrun and math.hypot(ship.x - o.x, ship.y - o.y) > radius:
+                self._log(obs, f"probe {o.code}: target outrunning it, detonating ({d:,.0f})")
+                out.append(self._cmd(ControlProbe, ship, code=o.code, detonate=True))
+        return out
+
+    def dodge_skill(self, ship: Ship) -> float:
+        """How reliably this captain and crew react to a torpedo they are about to fly into [E]."""
+        p = self.personality
+        skill = (p.competence + p.crew_competence) / 2.0
+        crew = max(0.0, min(1.0, ship.crew / max(1, ship.cls.crew)))
+        return max(0.0, min(1.0, (AI_DODGE_BASE + AI_DODGE_SKILL * skill) * (0.5 + 0.5 * crew)))
+
+    def _dodge(self, obs: Observation, ship: Ship, c: ContactView | None, st: AllyStanding | None) -> Command | None:
+        """[E] Fly out of the path of incoming torpedoes, as the player's officers do, keeping the range we had."""
+        if (ship.cls.is_base or not ship.can_move() or ship.docked_to is not None or self.last_stand
+                or (st is not None and st.movement in ("stop", "dock", "tow", "tractor", "board"))):
+            return None
+        threats = incoming(obs, ship)
+        if not threats or not threatened(obs, ship, threats):
+            return None
+        if self.rng.unit() >= self.dodge_skill(ship):
+            return None
+        want = c.distance_to(ship.x, ship.y) if c is not None else None
+        plan = plan_helm(obs, ship, c, want, self.combat_speed(ship, obs))
+        if plan is None or plan.reason != "evade":
+            return None
+        self.dodges += 1
+        self._log(obs, f"evading {plan.threats} torpedo{'es' if plan.threats != 1 else ''}: {plan.course:.0f} warp {plan.warp:.0f}")
+        return self._helm(obs, ship, plan.course, plan.warp)
 
     def _friendly_blocks(self, obs: Observation, ship: Ship, brg: float, rng_: float, tol: float) -> bool:
         for s in obs.own_ships():
@@ -522,6 +653,8 @@ class AICaptain:
 
         # torpedoes [R]: inside the envelope, volley sized by torpedo pressure
         loaded = [i for i, t in enumerate(ship.tubes) if t.loaded is not None]
+        if self.style_phase == "feint":
+            loaded = []                         # [E] holding the spread for when she turns on her pursuer
         if aim is not None and c.scan is not None and c.scan.structure_frac <= ALLY_DISABLE_TORPEDO_HULL:
             loaded = []
         if loaded:
@@ -544,7 +677,10 @@ class AICaptain:
                     volley = op_tubes // 2
                 tol = (12.0 + (AI_JINK_LEAD_OFFSET if pressure > 80 else 0.0)) / 2.0
                 volley = min(volley, len(loaded))  # fire what is loaded rather than wait for a full volley
-                if volley > 0 and not self._friendly_blocks(obs, ship, brg, hi, tol):
+                blocked = volley > 0 and self._friendly_blocks(obs, ship, brg, hi, tol)
+                if blocked:
+                    self.lane_blocked = obs.tick        # [R] step aside next time the helm is set
+                if volley > 0 and not blocked:
                     fan = AI_JINK_LEAD_OFFSET if (pressure > 80 and not spec.homing and volley > 1) else 0.0
                     out.append(self._cmd(FireTorpedoes, ship, tubes=tuple(loaded[:volley]), target=c.id, fan=fan,
                                          subsystem=aim))
@@ -569,9 +705,11 @@ class AICaptain:
                 self._log(obs, f"probe at {c.label}")
         return out
 
-    def _snap_count(self, obs: Observation, ship: Ship, c: ContactView, charged: list[int], n: int) -> int:
-        """Fire exactly enough banks to break the facing shield, if a scan says how strong it is."""
-        if c.scan is None or c.cls is None or self.personality.competence < 0.5:
+    def _snap_count(self, obs: Observation, ship: Ship, c: ContactView, charged: list[int], n: int,
+                    any_captain: bool = False) -> int:
+        """Fire exactly enough banks to break the facing shield, if a scan says how strong it is. The aimed volley
+        at the target needs a competent captain; the snap reflex at a ship charging us is Begin's, for everyone."""
+        if c.scan is None or c.cls is None or (self.personality.competence < 0.5 and not any_captain):
             return n
         rel = norm360(bearing(ship.x - c.x, ship.y - c.y) - c.course)
         facings = (0.0, 60.0, 300.0, 120.0, 240.0, 180.0)
@@ -622,11 +760,11 @@ class AICaptain:
         d = c.distance_to(ship.x, ship.y)
         loaded = any(t.loaded is not None for t in ship.tubes)
         # Romulan habit: cloak while closing or reloading, decloak to strike
-        want = (d > ship.cls.banks_range * 2.0 and not loaded) or self.retreating
+        want = (d > ship.cls.banks_range * 2.0 and not loaded) or self.retreating or self.style_phase == "feint"
         if want and not ship.cloaked and self.rng.unit() < self.personality.doctrine.cloak_ambush:
             self._log(obs, "cloaking")
             return [self._cmd(SetCloak, ship, on=True)]
-        if ship.cloaked and loaded and not self.retreating:
+        if ship.cloaked and loaded and not self.retreating and self.style_phase != "feint":
             spec = obs.content.torpedoes.get(ship.tubes[0].load_ordnance or ship.cls.torpedo)
             if spec is not None:
                 _, hi = torpedo_envelope(ship, c.x, c.y, c.vx, c.vy, spec.velocity, spec.arm_time,
@@ -809,13 +947,20 @@ class AICaptain:
         return self._cmd(SetHelm, ship, course=course, warp=warp)
 
     def _weave(self, obs: Observation, ship: Ship, base: float, d: float) -> Command | None:
-        """[R] weave around a base bearing; amplitude grows as the attacker gets closer."""
-        self.weave_side = -self.weave_side
-        amp = 0.0
-        if d < AI_WEAVE_THREAT_RANGE:
-            cap = (AI_WEAVE_AGGR_BASE - self.helm_aggression(obs, ship)) * max(0.0, AI_WEAVE_AMP_MAX - d / AI_WEAVE_DIST_DIV)
-            amp = self.rng.uniform(0.0, max(0.0, cap))
-        course = norm360(base + self.weave_side * amp)
+        """[R] weave around a base bearing. Each leg is held for two cycles (Begin's steering cadence) while the
+        base bearing follows the target; the amplitude grows as the nearest ship heading at us (within 10°) gets
+        closer, and is nil when nobody is. `d` (range to whoever the caller is flying against) is not used."""
+        if obs.tick - self.weave_leg >= AI_WEAVE_CADENCE * obs.rules.ticks_per_cycle:
+            self.weave_leg = obs.tick
+            self.weave_side = -self.weave_side
+            _, near = self._incoming(obs, ship)
+            amp = 0.0
+            if near < AI_WEAVE_THREAT_RANGE:
+                cap = (AI_WEAVE_AGGR_BASE - self.helm_aggression(obs, ship)) \
+                    * max(0.0, AI_WEAVE_AMP_MAX - near / AI_WEAVE_DIST_DIV)
+                amp = self.rng.uniform(0.0, max(0.0, cap))
+            self.weave_offset = self.weave_side * amp
+        course = norm360(base + self.weave_offset)
         warp = self.combat_speed(ship, obs)
         turn = ang_dist(ship.course, course)
         cur = max(1.0, abs(ship.warp))
@@ -867,6 +1012,7 @@ class AICaptain:
         d = c.distance_to(ship.x, ship.y)
         brg = bearing(c.x - ship.x, c.y - ship.y)
         if self.retreating:
+            self.style_phase = ""               # a broken captain has no tricks left
             if self.withdrawing and d >= AI_WEAVE_THREAT_RANGE:
                 return self._helm(obs, ship, norm360(brg + 180.0), ship.max_attainable_warp)   # [E] clear out
             return self._weave(obs, ship, brg + 180.0, d)
@@ -874,6 +1020,13 @@ class AICaptain:
             return self._close_for_phasers(obs, ship, c, d, brg)
         if self.last_stand:
             return self._helm(obs, ship, brg, ship.max_attainable_warp)  # ram
+        if (st is None or st.weapon is None) and any(
+                o.friendly and o.kind == "probe" and o.owner == ship.id and o.target == c.id for o in obs.ordnance()):
+            return self._weave(obs, ship, brg + 180.0, d)   # [R] our probes are working: stand off and let them
+        if (st is None or st.weapon is None) and self.personality.style:
+            styled = self._style_helm(obs, ship, c, d, brg)
+            if styled is not None:
+                return styled
 
         p = self.personality
         bias = p.doctrine.weapon_bias
@@ -932,12 +1085,110 @@ class AICaptain:
                 faster = c.cls is not None and c.cls.max_warp >= ship.max_attainable_warp
                 if knife_ok and ph_dom > 0 and d < ship.cls.banks_range * AI_KNIFE_FIGHT_RANGE and (faster or d < lo):
                     return self._close_for_phasers(obs, ship, c, d, brg)
+                if obs.tick - self.lane_blocked < AI_SIDESTEP_CYCLES * obs.rules.ticks_per_cycle:
+                    # [R] a friend is in the torpedo lane: step 90° aside to clear it
+                    side = 1.0 if ship.id % 2 else -1.0
+                    return self._weave(obs, ship, brg + side * AI_SIDESTEP, d)
                 if d < standoff:
                     # open the range obliquely, not straight away: running dead astern only invites a chase
                     side = 1.0 if ship.id % 2 else -1.0
                     return self._weave(obs, ship, brg + 180.0 - side * AI_STANDOFF_OPEN_ANGLE, d)
                 return self._weave(obs, ship, brg, d)
         return self._helm(obs, ship, ship.course, 0.0)  # helpless: full stop
+
+    # ------------------------------------------------------------ signature styles [E]
+
+    @staticmethod
+    def _shots(ship: Ship) -> int:
+        return ship.stats.phaser_shots + ship.stats.torpedoes_fired
+
+    def _phase(self, obs: Observation, ship: Ship, phase: str, why: str) -> None:
+        self.style_phase = phase
+        self.style_since = obs.tick
+        self.style_mark = self._shots(ship)
+        if phase == "":
+            self.style_ready = obs.tick + int(AI_STYLE_COOLDOWN * obs.rules.ticks_per_cycle)
+        self._log(obs, why)
+
+    def _charge_worth_it(self, obs: Observation, ship: Ship, c: ContactView) -> bool:
+        """A Klingon charge needs a reason: a target already hurt, or close-in odds that aren't hopeless once the
+        shipmates going in on the same target are counted (they split her banks and her shields)."""
+        sc = c.scan
+        if sc is not None:
+            up = [x for x in sc.shields if x >= 0]
+            if sc.structure_frac < 0.6 or (up and min(up) < 30.0) or (sc.shields and not up):
+                return True
+        close, _ = self._odds(obs, ship, c)
+        reach = ship.cls.banks_range * AI_STYLE_REACH
+        mates = sum(1 for o in obs.own_ships() if o.id != ship.id and o.target == c.id
+                    and math.hypot(o.x - c.x, o.y - c.y) < reach)
+        return close * (1 + mates) >= 1.0
+
+    def _style_helm(self, obs: Observation, ship: Ship, c: ContactView, d: float, brg: float) -> Command | None:
+        """Fly the captain's signature tactic when it fits the moment; None leaves the helm to the normal rules."""
+        style = self.personality.style
+        tpc = obs.rules.ticks_per_cycle
+        def age() -> float:
+            return (obs.tick - self.style_since) / tpc
+        rng_ = ship.cls.banks_range
+        speed = self.combat_speed(ship, obs)
+        side = 1.0 if ship.id % 2 else -1.0
+        banks = [b for b in ship.banks if b.intact and b.enabled and b.role.value != "defense"]
+        charged = sum(1 for b in banks if bank_ready(ship, b))
+        facing = ship.shield_for_bearing(norm360(brg - ship.course))
+        their_reach = c.cls.banks_range if c.cls is not None else 2000.0
+        if c.cls is not None and c.cls.is_base:
+            return None                                    # bases get the stand-off rule
+        if style in ("charge", "raid"):
+            if self.style_phase == "":
+                if obs.tick < self.style_ready or d > rng_ * AI_STYLE_REACH or len(banks) < 2:
+                    return None
+                if charged < max(2, int(len(banks) * 0.6)):
+                    return None
+                if style == "charge" and (facing is None or facing.effective < 50.0):
+                    return None
+                if style == "charge" and not self._charge_worth_it(obs, ship, c):
+                    return None
+                if style == "raid" and c.cls is not None and ship.max_attainable_warp < c.cls.max_warp * 0.95:
+                    return None                            # a raider needs the legs to get away again
+                self._phase(obs, ship, "run_in", "charging in for an alpha strike" if style == "charge"
+                            else "raiding: one pass, then out of reach")
+            if self.style_phase == "run_in":
+                fired = self._shots(ship) > self.style_mark
+                hurt = facing is not None and facing.effective < 25.0
+                if fired or hurt or age() > AI_STYLE_BREAK_CYCLES * 2:
+                    self._phase(obs, ship, "break", "breaking away to recharge" if style == "charge"
+                                else "pass made: running out of reach")
+                else:
+                    return self._helm(obs, ship, brg, speed)
+            if self.style_phase == "break":
+                clear = their_reach * (2.5 if style == "raid" else 1.5)
+                ready = charged >= max(2, int(len(banks) * 0.7))
+                if (d > clear and ready) or age() > AI_STYLE_BREAK_CYCLES:
+                    self._phase(obs, ship, "", "coming about for another run")
+                    return None
+                return self._helm(obs, ship, brg + 180.0 - side * AI_STANDOFF_OPEN_ANGLE, speed)
+            return None
+        if style == "feint":
+            loaded = sum(1 for t in ship.tubes if t.loaded is not None)
+            if self.style_phase == "":
+                if obs.tick < self.style_ready or not ship.tubes or loaded < max(1, len(ship.tubes) // 2):
+                    return None
+                closing = c.warp > 0.5 and ang_dist(c.course, bearing(ship.x - c.x, ship.y - c.y)) < 25.0
+                if not (closing and d < their_reach * 4.0):
+                    return None
+                self._phase(obs, ship, "feint", "breaking off: let her think we're running")
+            if self.style_phase == "feint":
+                if age() > AI_FEINT_CYCLES or d < their_reach * 0.9:
+                    self._phase(obs, ship, "turn", "turning on the pursuer: full spread")
+                else:
+                    return self._helm(obs, ship, brg + 180.0 + side * 15.0, speed)
+            if self.style_phase == "turn":
+                if self._shots(ship) > self.style_mark or age() > AI_FEINT_TURN_CYCLES:
+                    self._phase(obs, ship, "", "spread away")
+                    return None
+                return self._helm(obs, ship, brg, speed)
+        return None
 
     # ------------------------------------------------------------ fighting to the ship's strengths [E]
 

@@ -16,6 +16,8 @@ dimensions the remake models separately [E]:
   duty. Caution keeps a captain at range and quick to turn a fresh shield
   (they've seen what our aimed fire does); press sends them in close (they
   know our magazines are running low). Both are 0 outside a tour.
+* style [E]: a signature tactic some captains of a navy favour (doctrine `styles`): Klingons who charge for
+  a point-blank alpha strike, Romulans who feign a retreat and turn on their pursuer, Orions who raid and run.
 * temper and obstinacy [E]: how the captain takes watching their allies battered
   (0 cowed .. 1 enraged), and how hard they are to talk round over a hail at the
   start (sim/systems/disposition.py). Rolled from their own stream, so adding
@@ -51,6 +53,7 @@ class Personality:
     temper: float = 0.5
     obstinacy: float = 0.5
     trust: float = 0.0          # [E] -1..1: what their navy has heard of how we treat a surrender (tour)
+    style: str = ""             # [E] signature tactic from the doctrine's `styles` ("charge", "feint", "raid"), or none
 
     @property
     def reaction_ticks(self) -> int:
@@ -84,7 +87,19 @@ class Personality:
                  obstinacy=_clamp01(faction.obstinacy + trng.uniform(-tdev, tdev)))
         if overrides:
             p.update({k: v for k, v in overrides.items() if k in p})
-        return Personality(doctrine=faction.doctrine, **p)  # type: ignore[arg-type]
+        return Personality(doctrine=faction.doctrine, style=roll_style(faction, rng), **p)  # type: ignore[arg-type]
 
 
-__all__ = ["Personality"]
+def roll_style(faction: Faction, rng: Rng) -> str:
+    """A captain's signature tactic, if any [E], from its own stream so no other roll changes."""
+    srng = rng.derive("style")
+    roll = srng.unit()
+    acc = 0.0
+    for name, chance in sorted(faction.doctrine.styles.items()):
+        acc += chance
+        if roll < acc:
+            return name
+    return ""
+
+
+__all__ = ["Personality", "roll_style"]
