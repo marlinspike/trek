@@ -18,4 +18,4 @@ Then each side's losses, and a line for every ship: damage dealt and taken, phas
 
 ## During the battle
 
-The panel borders pulse red while your ship is at **red alert**: hit in the last few cycles, or with an enemy within 12,000. Two soft notes sound when it starts. A ship below half hull sheds sparks: always yours, and an enemy's only once a scan has shown the damage, so the map never gives away what your sensors don't know.
+The panel borders pulse red while your ship is at **red alert**: hit in the last few cycles, or with an enemy within 12,000. A two-tone whoop sounds three times when it starts. The borders pulse for a few seconds, then settle to a steady red edge for the rest of the fight. A ship below half hull sheds sparks: always yours, and an enemy's only once a scan has shown the damage, so the map never gives away what your sensors don't know.

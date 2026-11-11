@@ -85,7 +85,7 @@ The providers (`llm/providers/`) share one `complete(system, messages) -> str` m
 
 It adds frame time × speed to an accumulator and steps the world in fixed ticks, at most 12 per frame. It keeps the previous tick's snapshot so motion is drawn smoothly between ticks. Each frame it draws:
 
-- the tactical map (`ui/tactical.py`, with `camera.py`, `hulls.py`, `effects.py` and `starfield.py`), which also keeps torpedo trails and the target-lock animation. Zoomed in, a ship class listed in `tactical.SHOWPIECE` is drawn from its baked sprite instead of its outline;
+- the tactical map (`ui/tactical.py`, with `camera.py`, `hulls.py`, `effects.py`, `beams.py` (phaser and disruptor shots), `torpedo_art.py` (rounds in flight by race) and `starfield.py`), which also keeps torpedo trails, inbound-torpedo markers and the target-lock animation. Zoomed in, a ship class listed in `tactical.SHOWPIECE` is drawn from its baked sprite instead of its outline;
 - the HUD panels (`ui/hud.py`): Own Ship, Target, Weapons, and a tabbed Contacts/Fleet/Crew column. Shown numbers go through `ui/tween.py`, which eases them and flashes changes; `BattleScene.hud_detail` (or the mouse over a panel) decides whether every number is shown;
 - the console and its log;
 - any open overlay: Begin's text reports (`console/reports.py`) or the manual (`ui/manual.py`, which renders `ui/markdown.py`).

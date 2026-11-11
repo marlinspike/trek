@@ -108,7 +108,8 @@ def fire_bank(
     ship.stats.phaser_shots += 1
     ship.reveal_time = max(ship.reveal_time, rules.cloak_reveal_cycles)
 
-    ev = PhaserFired(world.tick, ship.id, bank.index, (ox, oy), world_bearing, spread, rng_, defensive=defensive)
+    ev = PhaserFired(world.tick, ship.id, bank.index, (ox, oy), world_bearing, spread, rng_, defensive=defensive,
+                     power=max(0.0, min(1.0, charge / max(ship.cls.banks_charge, 1e-6))))
     end_d = rng_
     # ordnance in the cone: any energy detonates torpedoes and probes; plasma bleeds [R]
     for t in world.torpedoes:

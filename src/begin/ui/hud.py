@@ -9,6 +9,7 @@ To add a panel, subclass `Panel` and append it to `BattleScene.panels`.
 from __future__ import annotations
 
 import math
+import time
 from functools import partial
 from typing import TYPE_CHECKING, Callable, ClassVar
 
@@ -65,6 +66,9 @@ class Panel:
         return self.title
 
 
+BANK_GLOW = 0.55      # seconds a phaser bank's button glows after it fires
+
+
 def _kv(surf: pygame.Surface, x: int, y: int, k: str, v: str, vcol: theme.Color = theme.TEXT, w: int = 92) -> None:
     theme.text(surf, k, (x, y), theme.TEXT_DIM, 12)
     theme.text(surf, v, (x + w, y), vcol, 12, "mono")
@@ -114,8 +118,11 @@ def hull_diagram(surf: pygame.Surface, ship: Ship, box: pygame.Rect, show_shield
             else:
                 col = theme.mix(theme.ALERT, theme.SHIELD, sh.effective / 100.0)
             pygame.draw.arc(surf, col, rect, a0, a1, 4 if sh.reinforced else 3)
-            if sh.flash > 0:
-                pygame.draw.arc(surf, (255, 255, 255), rect.inflate(6, 6), a0, a1, 1)
+            if sh.flash > 0:              # just hit: the facing flares, red if it has gone down
+                hot = theme.ALERT if (sh.destroyed or not sh.up) else (255, 255, 255)
+                k = min(1.0, sh.flash / 0.5)
+                pygame.draw.arc(surf, theme.mix(col, hot, k), rect, a0, a1, 4)
+                pygame.draw.arc(surf, theme.mix(theme.BG_PANEL, hot, 0.7 * k), rect.inflate(8, 8), a0, a1, 2)
             mid = math.radians(facing)
             lx, ly = cx + math.sin(mid) * (rad + 11), cy - math.cos(mid) * (rad + 11)
             key = f"shield{ship.id}.{i}"
@@ -497,6 +504,10 @@ class WeaponsPanel(Panel):
             edge = theme.GOOD if bears else theme.BORDER
             pygame.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
             pygame.draw.rect(surf, edge, r, 1, border_radius=3)
+            lit = 1.0 - (time.monotonic() - hud.fired_at.get(i, -99.0)) / BANK_GLOW
+            if lit > 0:                    # just fired: the button glows in the phaser's colour, fading as the beam does
+                pygame.draw.rect(surf, theme.mix(theme.BG_INPUT, theme.PHASER, 0.35 * lit), r.inflate(-2, -2), border_radius=3)
+                pygame.draw.rect(surf, theme.mix(edge, theme.PHASER, lit), r, 2, border_radius=3)
             col = theme.health_color(b.health, b.destroyed) if not b.intact else (
                 theme.GOOD if frac >= 0.999 else theme.CAUTION)
             theme.bar(surf, pygame.Rect(r.x + 4, r.bottom - 8, r.width - 8, 4), frac if b.intact else 0, col)
@@ -547,6 +558,10 @@ class WeaponsPanel(Panel):
                 lab, col = "empty", theme.TEXT_FAINT
             else:
                 lab, col = f"{t.charge:.0f}%", theme.CAUTION
+                fill = r.inflate(-4, -4)       # the tube filling as it loads
+                fill.width = max(0, int(fill.width * max(0.0, min(1.0, t.charge / 100.0))))
+                if fill.width > 0:
+                    pygame.draw.rect(surf, theme.mix(theme.BG_INPUT, theme.CAUTION, 0.18), fill, border_radius=2)
             theme.text(surf, f"{i + 1}", (r.x + 5, r.y + 3), theme.TEXT, 11, "mono")
             theme.text(surf, lab, (r.centerx + 4, r.bottom - 12), col, 10, "mono", anchor="center")
             prox = t.loaded.prox if t.loaded else t.load_prox

@@ -27,13 +27,13 @@ from ..crew.hails import Comms, load_lines
 from ..help.coach import HelpContext
 from ..sim.allies import AllyStanding
 from ..sim.commands import AllyOrder, Command, FirePhasers, FireTorpedoes, LaunchProbe, SetBanks
-from ..sim.events import Event, Message, ObjectiveEnded, ProjectCompleted, ScanCompleted
+from ..sim.events import CommandRejected, Event, Message, PhaserFired, ObjectiveEnded, ProjectCompleted, ScanCompleted
 from ..sim.observation import Observation
 from ..sim.scoring import Assessment
 from ..sim.ship import BankRole, Ship
 from ..sim.world import World
 from . import theme
-from .audio import Audio
+from .audio import HUM_LEVEL as HUM_DEFAULT, Audio
 from .battle.common import CONTROLS, SPEEDS, TONE_COLOR, LogLine, TourLink
 from .battle.comms import CommsMixin
 from .battle.console import ConsoleMixin
@@ -53,7 +53,8 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
     def __init__(self, battle: Battle, size: tuple[int, int], on_exit: Callable[[], None],
                  keys: dict[str, str] | None = None, hidden: dict[str, object] | None = None,
                  llm: dict[str, object] | None = None, chatter: bool = True, volume: float = 0.6,
-                 muted: bool = False, sounds: dict[str, str] | None = None) -> None:
+                 muted: bool = False, sounds: dict[str, str] | None = None, hum: float = 0.35,
+                 jolt: bool = True) -> None:
         self.battle: Battle = battle
         self.world: World = battle.world
         self.player_id: int | None = battle.player_ship_id
@@ -144,10 +145,14 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
                            officers=(lambda st: crew.officer(st)) if crew is not None else None)
         self.orders: OrderBook = OrderBook.load(config_dir())
         self.order_run: OrderRun | None = None
-        self.audio: Audio = Audio(volume, muted, sounds, config_dir() / "sounds")
+        self.audio: Audio = Audio(volume, muted, sounds, config_dir() / "sounds", hum=hum)
+        self.view.jolt = jolt
+        self._channels: dict[int, str] = {}     # how each hail channel stood last frame, to hear it open and close
         for problem in self.audio.problems:
             self._log(f"Couldn't use your sound {problem}", theme.TEXT_DIM)
         self._was_alert: bool = False
+        self._alert_since: float = 0.0
+        self.fired_at: dict[int, float] = {}   # our phaser banks: when each last fired
         self.deeds: list[Event] = []          # objectives and projects finished: the officers' record for the debrief
         if provider is not None and self.orders.orders:
             from ..llm.service import LLMService
@@ -290,8 +295,15 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
         self.deeds.extend(ev for ev in events if isinstance(ev, (ObjectiveEnded, ProjectCompleted)))
         if self.audio.available:
             visible = {s.id for s in self.obs.own_ships()} | {c.id for c in self.obs.contacts().values() if c.visible}
-            self.audio.events(events, time.monotonic(), self._heard_at, visible, self._beam_style, self._ship_at)
+            self.audio.events(events, time.monotonic(), self._heard_at, visible, self._beam_style, self._ship_at,
+                              self.view.effects.landing)
         self._crew_react(events)
+        for ev in events:
+            if isinstance(ev, PhaserFired) and ev.ship_id == self.player_id:
+                self.fired_at[ev.bank] = time.monotonic()      # its button glows while the beam is out
+        if any(isinstance(ev, CommandRejected) and ev.ship_id == self.player_id and ev.issuer == "captain"
+               for ev in events):
+            self.audio.play("deny", time.monotonic(), 0.0, 0.7)
         self.hits.attacker = self.player_id
         self.hits.ingest(events, self.world.tick)
         names = {c.id: c.label.split(" (")[0] for c in self.obs.contacts().values() if c.identified}
@@ -400,6 +412,7 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
             self.translator.close()
         self.comms.close()
         self.orders.close()
+        self.audio.stop()
 
     # ------------------------------------------------------------ manual
 
@@ -437,6 +450,12 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
 
     def _sound(self, val: object) -> None:
         a = self.audio
+        if isinstance(val, tuple) and val[0] == "hum":
+            level = val[1]
+            a.hum = HUM_DEFAULT if level is None else max(0.0, min(1.0, float(level)))   # type: ignore[arg-type]
+            self._log(f"Ship's hum: {a.hum * 100:.0f}% of the volume. 'sound hum off' silences it." if a.hum > 0 else
+                      "Ship's hum off. 'sound hum on' brings it back.", theme.TEXT_DIM)
+            return
         if isinstance(val, tuple):
             which, variant = val
             name = "launch" if which == "torpedo" else which

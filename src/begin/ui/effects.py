@@ -23,24 +23,14 @@ import pygame
 from collections.abc import Callable
 
 from ..content.schema import Faction
-from ..sim.events import DeflectorPulsed, Detonation, Event, OrdnanceDestroyed, PhaserFired, ShipStatusChanged
+from ..sim.events import (DeflectorPulsed, Detonation, Event, HullHit, OrdnanceDestroyed, PhaserFired, ShieldHit,
+                          ShipStatusChanged, SubsystemDamaged, TorpedoLaunched)
 from . import theme
+from .beams import Beam, Stop
+from .blast import add_light
 from .camera import Camera
 
-
-@dataclass
-class Beam:
-    x0: float
-    y0: float
-    x1: float
-    y1: float
-    spread: float
-    color: theme.Color
-    life: float = 0.38
-    age: float = 0.0
-    width: float = 2.0
-    cone: tuple[float, float, float] | None = None  # (facing, spread, range) for the faint cone
-    style: str = "beam"     # "beam" | "pulse" (a string of bolts)
+Body = tuple[float, float, float]     # where a ship is seen: x, y and her hull length, world units
 
 
 @dataclass
@@ -125,6 +115,32 @@ class Streak:
 
 
 @dataclass
+class Flash:
+    """A point of light that is the same size on screen at any zoom: a torpedo leaving its tube, a system
+    going up inside a hull."""
+    x: float
+    y: float
+    radius: float          # pixels
+    color: theme.Color
+    life: float = 0.25
+    age: float = 0.0
+    delay: float = 0.0
+
+
+@dataclass
+class Vent:
+    """Gas and fire venting from a breached hull: a soft puff drifting out from the wound, cooling as it spreads."""
+    x: float
+    y: float
+    vx: float
+    vy: float
+    life: float
+    age: float = 0.0
+    delay: float = 0.0
+    size: float = 3.0      # pixels at the start
+
+
+@dataclass
 class Effects:
     beams: list[Beam] = field(default_factory=list)
     rings: list[Ring] = field(default_factory=list)
@@ -135,46 +151,140 @@ class Effects:
     embers: list[Spark] = field(default_factory=list)
     ripples: list[Ripple] = field(default_factory=list)
     streaks: list[Streak] = field(default_factory=list)
+    flashes: list[Flash] = field(default_factory=list)
+    vents: list[Vent] = field(default_factory=list)
     rng: random.Random = field(default_factory=lambda: random.Random(7))
+    clock: float = 0.0
+    landing: dict[tuple[int, int], float] = field(default_factory=dict)   # (shooter, ship hit) -> seconds until the shot lands
 
     def ingest(self, events: list[Event], player_side: int, visible: set[int], friendly: set[int],
-               faction_of: Callable[[int | None], Faction | None] = lambda sid: None) -> None:
+               faction_of: Callable[[int | None], Faction | None] = lambda sid: None,
+               body_of: Callable[[int | None], Body | None] = lambda sid: None) -> None:
+        self.landing = {}
+        # how each blow this batch landed: did it stop on the shield, or get through to the hull?
+        got_through: dict[tuple[int, int], bool] = {}
+        for ev in events:
+            if isinstance(ev, ShieldHit) and ev.attacker is not None:
+                key = (ev.attacker, ev.ship_id)
+                got_through[key] = got_through.get(key, False) or ev.penetrated > 0.5 or ev.collapsed
+            elif isinstance(ev, HullHit) and ev.attacker is not None and ev.amount > 0:
+                got_through[(ev.attacker, ev.ship_id)] = True
+        for ev in events:      # shots first: the blows they land are reported before the shot itself
+            if isinstance(ev, PhaserFired) and ev.ship_id in visible:
+                self._shot(ev, faction_of(ev.ship_id), body_of, got_through)
         for ev in events:
             if isinstance(ev, PhaserFired):
-                if ev.ship_id not in visible:
-                    continue
-                f = faction_of(ev.ship_id)
-                col = f.phaser_color if f is not None else UNKNOWN_WEAPON
-                self.beams.append(Beam(ev.origin[0], ev.origin[1], ev.end[0], ev.end[1], ev.spread, col,
-                                       width=1.5 if ev.defensive else 2.2, cone=(ev.facing, ev.spread, ev.range),
-                                       style=f.phaser_style if f is not None else "beam"))
+                continue
             elif isinstance(ev, Detonation) and ev.cause == "intercepted":
                 # an armed round set off by a beam still blasts, but dully: a faint grey ring, no flash
                 self.rings.append(Ring(ev.x, ev.y, ev.radius, theme.dim(FIZZLE, 0.6), life=0.5, core=False))
             elif isinstance(ev, Detonation):
-                if ev.source in ("torpedo", "probe"):
-                    f = faction_of(ev.owner)
-                    col = theme.mix(f.torpedo_color if f is not None else UNKNOWN_WEAPON, (255, 255, 255), 0.25)
-                else:
-                    col = theme.BLAST if ev.source != "ship" else (255, 230, 190)
-                big = ev.source in ("ship", "destruct")      # a ship's flash is its own soft glow, not a hard disc
-                self.rings.append(Ring(ev.x, ev.y, max(ev.radius, 150.0), col, life=1.1 if big else 0.8, core=not big))
-                if ev.source in ("ship", "destruct"):
-                    self._breakup(ev.x, ev.y, max(ev.radius, 300.0))
-                n = 26 if ev.source in ("ship", "destruct") else 12
-                for _ in range(n):
-                    a = self.rng.uniform(0, math.tau)
-                    sp = self.rng.uniform(0.3, 1.0) * max(ev.radius, 200.0) * 1.2
-                    self.sparks.append(Spark(ev.x, ev.y, math.sin(a) * sp, math.cos(a) * sp, col,
-                                             self.rng.uniform(0.4, 1.2)))
+                self._burst(ev, faction_of)
             elif isinstance(ev, DeflectorPulsed):
                 a = math.radians(ev.facing)
                 self.beams.append(Beam(ev.x, ev.y, ev.x + math.sin(a) * ev.range, ev.y + math.cos(a) * ev.range,
-                                       ev.arc, theme.CREW, life=1.4, width=1.0, cone=(ev.facing, ev.arc, ev.range)))
+                                       ev.arc, theme.CREW, life=1.4, width=1.0, cone=(ev.facing, ev.arc, ev.range),
+                                       style="sweep"))
             elif isinstance(ev, OrdnanceDestroyed):
                 self._fizzle(ev.x, ev.y, 90.0)
+            elif isinstance(ev, TorpedoLaunched) and ev.ship_id in visible:
+                me = body_of(ev.ship_id)
+                f = faction_of(ev.ship_id)
+                if me is not None:          # the tube's flash: the round's own light as it leaves
+                    col = f.torpedo_color if f is not None else theme.TORPEDO
+                    self.flashes.append(Flash(me[0], me[1], 14.0, theme.mix(col, (255, 255, 255), 0.4), life=0.3))
+            elif isinstance(ev, HullHit) and ev.ship_id in visible and ev.amount > 0:
+                me = body_of(ev.ship_id)
+                if me is not None:
+                    self._vent(ev, me, body_of(ev.attacker))
+            elif isinstance(ev, SubsystemDamaged) and ev.ship_id in visible and ev.damage > 0:
+                me = body_of(ev.ship_id)
+                if me is not None:
+                    self._secondary(me, ev.destroyed)
             elif isinstance(ev, ShipStatusChanged) and ev.status == "destroyed":
                 pass  # the breakup Detonation carries the visuals
+
+    def _shot(self, ev: PhaserFired, f: Faction | None, body_of: Callable[[int | None], Body | None],
+              got_through: dict[tuple[int, int], bool]) -> None:
+        """A bank firing: its beam (or bolts), cut short on the shield or hull of whatever it hit."""
+        col = f.phaser_color if f is not None else UNKNOWN_WEAPON
+        me = body_of(ev.ship_id)
+        stop: Stop | None = None
+        for hit in ev.hits:
+            them = body_of(hit)
+            if them is not None:
+                stop = Stop(them[0], them[1], them[2], on_shield=not got_through.get((ev.ship_id, hit), False))
+                break
+        beam = Beam(ev.origin[0], ev.origin[1], ev.end[0], ev.end[1], ev.spread, col,
+                    width=1.5 if ev.defensive else 2.2, cone=(ev.facing, ev.spread, ev.range),
+                    style=f.phaser_style if f is not None else "beam", power=getattr(ev, "power", 1.0),
+                    defensive=ev.defensive, strip=(me[2] * 0.3) if me is not None else 0.0, stop=stop,
+                    seed=self.rng.randrange(1 << 16))
+        self.beams.append(beam)
+        for hit in ev.hits:
+            key = (ev.ship_id, hit)
+            self.landing[key] = max(self.landing.get(key, 0.0), beam.arrives)
+
+    def _burst(self, ev: Detonation, faction_of: Callable[[int | None], Faction | None]) -> None:
+        """A warhead or a ship going off: flash, shockwave and sparks, all sized by what actually went off."""
+        if ev.source in ("torpedo", "probe"):
+            f = faction_of(ev.owner)
+            col = theme.mix(f.torpedo_color if f is not None else UNKNOWN_WEAPON, (255, 255, 255), 0.25)
+        else:
+            col = theme.BLAST if ev.source != "ship" else (255, 230, 190)
+        big = ev.source in ("ship", "destruct")      # a ship's flash is its own soft glow, not a hard disc
+        heft = max(0.6, min(1.8, (max(ev.yield_, 1.0) / 15.0) ** 0.5))     # an MK8 is a bigger bang than an MK7
+        self.rings.append(Ring(ev.x, ev.y, max(ev.radius, 150.0), col, life=1.1 if big else 0.8, core=not big))
+        if big:
+            self._breakup(ev.x, ev.y, max(ev.radius, 300.0))
+        else:
+            self.glows.append(Glow(ev.x, ev.y, max(ev.radius, 150.0) * 0.55 * heft, theme.mix(col, (255, 255, 255), 0.4),
+                                   life=0.45))
+            self.flashes.append(Flash(ev.x, ev.y, 10 + 10 * heft, (255, 250, 235), life=0.18))
+        n = 26 if big else int(10 + 6 * heft)
+        for _ in range(n):
+            a = self.rng.uniform(0, math.tau)
+            sp = self.rng.uniform(0.3, 1.0) * max(ev.radius, 200.0) * 1.2
+            self.sparks.append(Spark(ev.x, ev.y, math.sin(a) * sp, math.cos(a) * sp, col,
+                                     self.rng.uniform(0.4, 1.2)))
+
+    def _vent(self, ev: HullHit, me: Body, them: Body | None) -> None:
+        """A breach: gas and fire vent from the side the blow came from, more the harder it hit."""
+        x, y, length = me
+        if them is not None:
+            a = math.atan2(them[0] - x, them[1] - y)
+        else:
+            a = self.rng.uniform(0, math.tau)
+        delay = self.landing.get((ev.attacker, ev.ship_id), 0.0) if ev.attacker is not None else 0.0
+        wx, wy = x + math.sin(a) * length * 0.2, y + math.cos(a) * length * 0.2
+        for _ in range(int(3 + min(7, ev.amount / 6))):
+            b = a + self.rng.uniform(-0.6, 0.6)
+            sp = length * self.rng.uniform(0.25, 0.7)
+            self.vents.append(Vent(wx, wy, math.sin(b) * sp, math.cos(b) * sp, self.rng.uniform(0.9, 1.8),
+                                   delay=delay + self.rng.uniform(0.0, 0.25), size=self.rng.uniform(2.0, 4.0)))
+
+    def _secondary(self, me: Body, destroyed: bool) -> None:
+        """A system hit inside her: a small blast somewhere on the hull, a moment after the blow."""
+        x, y, length = me
+        a = self.rng.uniform(0, math.tau)
+        r = length * self.rng.uniform(0.05, 0.3)
+        self.flashes.append(Flash(x + math.sin(a) * r, y + math.cos(a) * r, 16.0 if destroyed else 10.0,
+                                  (255, 200, 120), life=0.4 if destroyed else 0.3, delay=self.rng.uniform(0.2, 0.45)))
+
+    def _splash(self, b: Beam) -> None:
+        """A beam landing: sparks thrown off the shield where it stopped, or off the hull it reached."""
+        st = b.stop
+        assert st is not None
+        dx, dy = b.x0 - st.x, b.y0 - st.y
+        d = math.hypot(dx, dy) or 1.0
+        r = st.length * (0.62 if st.on_shield else 0.19)
+        x, y = st.x + dx / d * r, st.y + dy / d * r
+        out = math.atan2(dx, dy)
+        col = theme.mix(b.color, (255, 255, 255), 0.5) if st.on_shield else (255, 214, 140)
+        for _ in range(int(4 + 6 * min(1.0, b.weight))):
+            a = out + self.rng.uniform(-1.2, 1.2)
+            sp = st.length * self.rng.uniform(0.3, 1.0)
+            self.sparks.append(Spark(x, y, math.sin(a) * sp, math.cos(a) * sp, col, self.rng.uniform(0.2, 0.5)))
 
     def _breakup(self, x: float, y: float, radius: float) -> None:
         """A ship coming apart: a flash, a ring of shards flung outward, and embers that linger."""
@@ -220,8 +330,28 @@ class Effects:
             self.sparks.append(Spark(x, y, math.sin(a) * sp, math.cos(a) * sp, FIZZLE, self.rng.uniform(0.3, 0.7)))
 
     def update(self, dt: float) -> None:
+        self.clock += dt
         for b in self.beams:
             b.age += dt
+            if b.landing() and b.stop is not None and not b.defensive:
+                self._splash(b)
+        for fl in self.flashes:
+            if fl.delay > 0:
+                fl.delay -= dt
+            else:
+                fl.age += dt
+        self.flashes = [fl for fl in self.flashes if fl.age < fl.life]
+        for v in self.vents:
+            if v.delay > 0:
+                v.delay -= dt
+                continue
+            v.age += dt
+            v.x += v.vx * dt
+            v.y += v.vy * dt
+            drag = math.exp(-1.6 * dt)
+            v.vx *= drag
+            v.vy *= drag
+        self.vents = [v for v in self.vents if v.age < v.life]
         for r in self.rings:
             r.age += dt
         for pp in self.pops:
@@ -229,6 +359,8 @@ class Effects:
         self.pops = [pp for pp in self.pops if pp.age < pp.life]
         for s in self.sparks:
             s.age += dt
+            if s.age < 0:          # waiting for the blow that throws it to land
+                continue
             s.x += s.vx * dt
             s.y += s.vy * dt
             s.vx *= 0.96
@@ -260,7 +392,9 @@ class Effects:
         self.rings = [r for r in self.rings if r.age < r.life]
         self.sparks = [s for s in self.sparks if s.age < s.life]
 
-    def draw(self, surf: pygame.Surface, cam: Camera, overlay: pygame.Surface) -> None:
+    def draw(self, surf: pygame.Surface, cam: Camera, overlay: pygame.Surface,
+             glow: pygame.Surface | None = None) -> None:
+        """`glow` is a black layer the caller adds onto the map afterwards; without one, light goes on `surf`."""
         for g in self.glows:
             t = g.age / g.life
             sx, sy = cam.to_screen(g.x, g.y)
@@ -300,37 +434,39 @@ class Effects:
             sx, sy = cam.to_screen(e.x, e.y)
             col = theme.mix(theme.mix((255, 210, 120), EMBER, min(1.0, t * 2)), theme.BG, t ** 1.5)
             pygame.draw.circle(surf, col, (int(sx), int(sy)), 1)
-        for b in self.beams:
-            t = 1.0 - b.age / b.life
-            p0 = cam.to_screen(b.x0, b.y0)
-            p1 = cam.to_screen(b.x1, b.y1)
-            if b.cone is not None and b.spread > 12:
-                facing, spread, rng_ = b.cone
-                d = math.hypot(b.x1 - b.x0, b.y1 - b.y0)
-                pts = [p0]
-                for k in range(7):
-                    a = math.radians(facing - spread / 2 + spread * k / 6)
-                    pts.append(cam.to_screen(b.x0 + math.sin(a) * d, b.y0 + math.cos(a) * d))
-                pygame.draw.polygon(overlay, (*b.color, int(38 * t)), pts)
-            col = theme.mix(theme.BG, b.color, 0.35 + 0.65 * t)
-            for w, a in BEAM_GLOW:                     # the soft light around the shot
-                pygame.draw.line(overlay, (*b.color, int(a * t)), p0, p1, w)
-            pygame.draw.circle(overlay, (*theme.mix(b.color, (255, 255, 255), 0.4), int(90 * t)),
-                               (int(p1[0]), int(p1[1])), int(3 + 4 * t))      # where it strikes
-            if b.style == "pulse":
-                _bolts(surf, col, p0, p1, max(1, int(b.width * (0.8 + t))), b.age)
+        for v in self.vents:
+            if v.delay > 0:
                 continue
-            pygame.draw.line(surf, col, p0, p1, max(1, int(b.width * (0.6 + t))))
-            pygame.draw.line(surf, theme.mix(col, (255, 255, 255), 0.5 * t), p0, p1, 1)
+            t = v.age / v.life
+            sx, sy = cam.to_screen(v.x, v.y)
+            col = theme.mix((255, 190, 120), (150, 160, 175), min(1.0, t * 2.5))     # fire, cooling to grey gas
+            pygame.draw.circle(overlay, (*col, int(110 * (1 - t) ** 1.5)), (int(sx), int(sy)), max(1, int(v.size * (1 + 2.5 * t))))
+        if self.beams:
+            if glow is None:
+                glow = pygame.Surface(surf.get_size())
+                glow.fill((0, 0, 0))
+                for b in self.beams:
+                    b.draw(surf, glow, cam, self.clock)
+                surf.blit(glow, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+            else:
+                for b in self.beams:
+                    b.draw(surf, glow, cam, self.clock)
+        for fl in self.flashes:
+            if fl.delay > 0:
+                continue
+            t = fl.age / fl.life
+            sx, sy = cam.to_screen(fl.x, fl.y)
+            add_light(surf, sx, sy, fl.radius * (0.6 + 0.6 * t), fl.color, (1 - t) ** 1.5)
         for r in self.rings:
             t = r.age / r.life
             sx, sy = cam.to_screen(r.x, r.y)
             rad = max(3, int(r.radius * cam.zoom * (0.35 + 0.65 * math.sqrt(t))))
             col = theme.mix(r.color, theme.BG, t)
             pygame.draw.circle(surf, col, (int(sx), int(sy)), rad, max(1, int(3 * (1 - t))))
-            if r.core and t < 0.35:
-                pygame.draw.circle(surf, theme.mix((255, 255, 240), r.color, t / 0.35), (int(sx), int(sy)),
-                                   max(2, int(rad * 0.45 * (1 - t / 0.35))))
+            if r.core and t < 0.35:          # the fireball: a soft white-hot light, not a hard disc
+                u = t / 0.35
+                add_light(surf, sx, sy, max(4.0, rad * 0.8 * (1 - 0.5 * u)), theme.mix((255, 255, 240), r.color, u),
+                          (1 - u) ** 1.2)
         for pp in self.pops:
             t = pp.age / pp.life
             sx, sy = cam.to_screen(pp.x, pp.y)
@@ -341,6 +477,8 @@ class Effects:
                 pygame.draw.line(surf, col, (sx + math.cos(a) * r0, sy + math.sin(a) * r0),
                                  (sx + math.cos(a) * r1, sy + math.sin(a) * r1), 2)
         for s in self.sparks:
+            if s.age < 0:
+                continue
             t = s.age / s.life
             sx, sy = cam.to_screen(s.x, s.y)
             pygame.draw.circle(surf, theme.mix(s.color, theme.BG, t), (int(sx), int(sy)), 1 if t > 0.5 else 2)
@@ -370,27 +508,8 @@ FIZZLE = (150, 150, 150)           # a round shot down before it could go off pr
 EMBER = (255, 132, 60)
 CLOAK = (170, 225, 215)            # the shimmer of a cloak engaging or dropping
 GLOW_STEPS = 28             # burning fragments of a ship
-BEAM_GLOW = ((13, 30), (7, 60))
 STREAK_GLOW = ((15, 40), (7, 90))   # the halo round a warp streak
 STREAK_IN = 0.45                    # share of the warp-in spent on the streak shrinking into the ship   # (pixels wide, alpha at full strength): the halo around a beam
 
 
-def _bolts(surf: pygame.Surface, col: theme.Color, a: tuple[float, float], b: tuple[float, float], width: int,
-           age: float) -> None:
-    """A disruptor: short bright bolts racing from the firing ship to the end of the shot."""
-    dx, dy = b[0] - a[0], b[1] - a[1]
-    length = math.hypot(dx, dy)
-    if length < 1:
-        return
-    ux, uy = dx / length, dy / length
-    on, gap = 12.0, 9.0
-    t = (age * 400.0) % (on + gap)
-    hot = theme.mix(col, (255, 255, 255), 0.4)
-    while t < length:
-        e = min(length, t + on)
-        pygame.draw.line(surf, col, (a[0] + ux * t, a[1] + uy * t), (a[0] + ux * e, a[1] + uy * e), width + 1)
-        pygame.draw.line(surf, hot, (a[0] + ux * t, a[1] + uy * t), (a[0] + ux * e, a[1] + uy * e), 1)
-        t += on + gap
-
-
-__all__ = ["FIZZLE", "UNKNOWN_WEAPON", "Effects", "Streak"]
+__all__ = ["FIZZLE", "UNKNOWN_WEAPON", "Beam", "Effects", "Flash", "Streak", "Vent"]

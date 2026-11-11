@@ -53,6 +53,7 @@ class PhaserFired(Event):
     hits: list[int] = field(default_factory=list)          # ship ids hit
     end: tuple[float, float] = (0.0, 0.0)                  # where the beam visibly ends
     defensive: bool = False
+    power: float = 1.0     # the bank's charge as a share of a full one: how heavy the shot looks and sounds
 
 
 @dataclass(slots=True)

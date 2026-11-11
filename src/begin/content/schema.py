@@ -247,6 +247,7 @@ class Faction:
     phaser_color: tuple[int, int, int] = (255, 170, 90)
     phaser_style: str = "beam"          # "beam" (a steady line) | "pulse" (a string of bolts)
     torpedo_color: tuple[int, int, int] = (255, 120, 80)
+    torpedo_style: str = "photon"       # "photon" | "disruptor" | "plasma" | "pulse": the round's look in flight
     # [E] special helm and bridge orders this race's crews are drilled in, e.g. "evasive"
     orders: tuple[str, ...] = ()
     # [E] crew morale: spirits at the start of a battle (0..100), and how much damage and losses shake them

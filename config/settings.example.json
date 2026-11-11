@@ -5,6 +5,8 @@
   "chatter": true,
   "volume": 0.6,
   "sounds": {"phaser": "d", "torpedo": "d"},
+  "hum": 0.35,
+  "jolt": true,
   "llm": {"provider": "ollama", "model": "lfm3", "think": false},
   "keys": {"F5": "fire all phasers 10"}
 }

@@ -4,7 +4,7 @@ Everything you set for the game lives in this folder. Only this README and the e
 
 | File | What it holds |
 |---|---|
-| `settings.json` | Window size, speed, sound (`volume` 0 to 1, `muted`, and `sounds`: which version of the phaser and torpedo sounds, a to d), officer chatter, Custom battle choices and the officers' language model. The game writes it; `begin --llm ...` edits the `llm` part. Copy `settings.example.json` to start one by hand. |
+| `settings.json` | Window size, speed, sound (`volume` 0 to 1, `muted`, `sounds`: which version of the phaser and torpedo sounds, a to d, and `hum`: the ship's engine hum, 0 to 1, 0 for none), whether the map jolts when your ship takes a heavy blow (`jolt`), officer chatter, Custom battle choices and the officers' language model. The game writes it; `begin --llm ...` edits the `llm` part. Copy `settings.example.json` to start one by hand. |
 | `officers.toml` | Your officers' traits, a few words each ("dry wit", "coolly confident"), and each one's `response_style` (how they answer: length, tone, register). With a language model they shape how each officer talks. Copy `officers.example.toml` to start. |
 | `orders.toml` | Your named tactical orders: a name and a list of console lines, such as `beta-1`. In battle, `execute order beta-1` runs them. Copy `orders.example.toml` to start; until you do, the examples are loaded. |
 | `hails.toml` | Your own lines for enemy captains answering a hail, used when there is no language model. Same layout as `src/begin/content/data/hails.toml`: a `[klingon]`, `[romulan]`, `[orion]` or `[default]` table with any of its lines; yours replace the shipped ones line by line. |
