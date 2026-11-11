@@ -25,3 +25,12 @@ def make_world(content: ContentDB, seed: int = 1, **kw: object) -> World:
 def charge_all(world: World, cycles: float = 8.0) -> None:
     """Let every ship charge banks and load tubes without moving."""
     world.run(cycles)
+
+
+def scenario_presets() -> list:  # type: ignore[type-arg]
+    """The small fleets the scenario tests were written against (tests/scenarios.toml), not the tuned presets."""
+    from pathlib import Path
+
+    from begin.presets import load_presets
+
+    return load_presets(Path(__file__).with_name("scenarios.toml"))

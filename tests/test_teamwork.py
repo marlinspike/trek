@@ -8,7 +8,7 @@ import pytest
 from begin.battle import build_battle
 from begin.crew.helm import incoming, plan_helm, threatened
 from begin.crew.objectives import summary
-from begin.presets import load_presets
+from .conftest import scenario_presets
 from begin.sim.commands import (
     ConfigureAutoload,
     FireTorpedoes,
@@ -20,7 +20,7 @@ from begin.sim.world import World
 
 
 def _duel(content):  # type: ignore[no-untyped-def]
-    return build_battle(content, next(p for p in load_presets() if p.id == "dreadnought-duel").setup())
+    return build_battle(content, next(p for p in scenario_presets() if p.id == "dreadnought-duel").setup())
 
 
 def _incoming_salvo(content):  # type: ignore[no-untyped-def]

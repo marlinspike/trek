@@ -18,12 +18,12 @@ from begin.crew.officers import STATION_COMMANDS, station_of
 from begin.help.coach import HelpContext
 from begin.llm.providers.base import LLMConfig, LLMError, config_from_settings, make_provider
 from begin.llm.service import LLMService
-from begin.presets import load_presets
+from .conftest import scenario_presets
 from begin.sim.commands import Authority, DelegateStation, SelectTarget, SetHelm
 
 
 def _battle(content, preset: int = 0):  # type: ignore[no-untyped-def]
-    return build_battle(content, load_presets()[preset].setup())
+    return build_battle(content, scenario_presets()[preset].setup())
 
 
 def test_officer_roster() -> None:
@@ -461,9 +461,9 @@ def test_old_home_folder_is_copied_into_config(tmp_path) -> None:  # type: ignor
 def test_science_officer_gives_last_fix_on_lost_contact(content) -> None:  # type: ignore[no-untyped-def]
     from begin.crew.conversation import Bridge
     from begin.help.coach import HelpContext
-    from begin.presets import load_presets
+    from .conftest import scenario_presets
 
-    b = build_battle(content, load_presets()[0].setup())
+    b = build_battle(content, scenario_presets()[0].setup())
     assert b.crew is not None and b.player_ship_id is not None
     bridge = Bridge(b.crew, {})
     w = b.world
@@ -483,9 +483,9 @@ def test_a_configured_rapport_floor_holds(content) -> None:  # type: ignore[no-u
     import dataclasses
 
     from begin.crew.conversation import Bridge
-    from begin.presets import load_presets
+    from .conftest import scenario_presets
 
-    b = build_battle(content, load_presets()[0].setup())
+    b = build_battle(content, scenario_presets()[0].setup())
     assert b.crew is not None
     worf = b.crew.officers["tactical"]
     b.crew.officers["tactical"] = dataclasses.replace(worf, rapport_floor=0.5)     # as config/officers.toml can set it
@@ -686,9 +686,9 @@ def test_with_a_model_officers_put_remarks_in_their_own_words(content) -> None: 
     from begin.crew.conversation import Bridge
     from begin.help.coach import HelpContext
     from begin.llm.service import LLMService
-    from begin.presets import load_presets
+    from .conftest import scenario_presets
 
-    b = build_battle(content, load_presets()[0].setup())
+    b = build_battle(content, scenario_presets()[0].setup())
     assert b.crew is not None
     fake = _Voice()
     bridge = Bridge(b.crew, {}, LLMService(fake, workers=1))

@@ -11,7 +11,7 @@ from begin.battle import build_battle
 from begin.console.parser import ParseContext, parse
 from begin.console.translator import Translator
 from begin.llm.service import LLMService
-from begin.presets import load_presets
+from .conftest import scenario_presets
 from begin.sim.commands import Authority, CeaseFire, FirePhasers, FireTorpedoes, OpenFire
 from begin.sim.events import PhaserFired, TorpedoLaunched
 
@@ -26,7 +26,7 @@ def baiting(content):  # type: ignore[no-untyped-def]
     theme.font.cache_clear()
     theme._fallback.cache_clear()
     surf = pygame.display.set_mode((1400, 860))
-    b = build_battle(content, next(p for p in load_presets() if p.id == "dreadnought-duel").setup())
+    b = build_battle(content, next(p for p in scenario_presets() if p.id == "dreadnought-duel").setup())
     sc = BattleScene(b, surf.get_size(), lambda: None, hidden={}, llm={})
     sc.overlay, sc.paused = None, False
     me = sc.player
@@ -82,7 +82,7 @@ def test_stand_down_hands_the_station_back_too(baiting) -> None:  # type: ignore
 
 
 def test_a_bare_stop_is_still_all_stop(content) -> None:  # type: ignore[no-untyped-def]
-    b = build_battle(content, load_presets()[0].setup())
+    b = build_battle(content, scenario_presets()[0].setup())
     ctx = ParseContext(b.player_ship_id, b.world.observe(0))
     assert parse("stop", ctx).commands[0].name == "helm"
     assert isinstance(parse("stop shooting", ctx).commands[0], CeaseFire)
@@ -91,7 +91,7 @@ def test_a_bare_stop_is_still_all_stop(content) -> None:  # type: ignore[no-unty
 
 
 def test_the_hold_binds_officers_and_computer_until_the_captain_fires(content) -> None:  # type: ignore[no-untyped-def]
-    b = build_battle(content, next(p for p in load_presets() if p.id == "dreadnought-duel").setup())
+    b = build_battle(content, next(p for p in scenario_presets() if p.id == "dreadnought-duel").setup())
     w, me = b.world, b.world.ships[b.player_ship_id]
     enemy = next(s for s in w.ships.values() if s.id != me.id)
     enemy.x, enemy.y = me.x + 3000, me.y + 3000
