@@ -137,6 +137,7 @@ def load_content(data_dir: Path = DATA_DIR) -> ContentDB:
             cloak_ambush=float(v["cloak_ambush"]),
             self_destruct=float(v["self_destruct"]),
             prefers_disabling=bool(v["prefers_disabling"]),
+            styles={kk: float(vv) for kk, vv in v.get("styles", {}).items()},
         )
         for k, v in doctrines_raw.items()
     }

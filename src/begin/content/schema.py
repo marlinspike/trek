@@ -224,6 +224,7 @@ class Doctrine:
     cloak_ambush: float
     self_destruct: float
     prefers_disabling: bool
+    styles: dict[str, float] = field(default_factory=dict)   # [E] signature tactics: chance a captain fights this way
 
 
 @dataclass(frozen=True, slots=True)
