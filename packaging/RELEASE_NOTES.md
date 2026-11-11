@@ -1,3 +1,13 @@
+## What's new in 1.1
+
+**Weapons you can read at a glance.** A phaser bank glows as it charges, then its beam races to the target and stops where the blow really landed: on the shield if it held, on the hull if it got through. A full-power volley is heavier than a weak or point-defense shot. Klingon and Orion disruptors fly as real bolts. Torpedoes are drawn each nation's own way (a turning photon star, a harsh Klingon flare, a wobbling Romulan plasma ball) and stay easy to find at any zoom, and a round heading for you is ringed with its fuse radius, or marked at the edge of the map when it's off screen.
+
+**Hits you can feel.** The struck shield arc lights up, a facing that gives way bursts into sparks, breached hulls vent, system hits flash, and a heavy blow on your own ship jolts the map (`hud jolt off` turns that off).
+
+**A fuller soundscape**, all synthesised by the game, and only when sound is on: phaser charge and ray, the torpedo tube, an incoming warning, shield, collapse and hull hits, a three-whoop red alert, lock and console tones, hail whistles, distant fire heard muffled, and a low ship's hum that follows your warp and ducks under the big moments (`sound hum off`, or `sound hum 0-100`).
+
+**Tougher enemies.** The Enterprise is a Dreadnought from the start, and enemy captains now dodge torpedoes, fire snap shots, flee blasts and fight in their nation's style (Klingons charge, Romulans feint, Orions raid), with fleets sized to match. The HUD no longer overlaps PAUSED and RED ALERT, and drawing is faster.
+
 ## Download and play
 
 Pick the file for your computer below. You don't need Python or anything else installed.
