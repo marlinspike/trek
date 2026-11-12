@@ -1,14 +1,16 @@
 ## What's new in 1.2
 
+**Settings in the game.** A Settings page on the main menu (S) changes everything you used to edit in the config folder: display, sound with a sample of each phaser and torpedo, the speed battles start at, the bridge style and its parts, speaking orders, the officers' language model and the character voice model (each with a Test button), and your officers' names, ranks, traits and how they speak. Each change is saved at once; in `officers.toml` only the line you change is written.
+
 **Command from the bridge.** Every order you give is read back by the officer at that station ("Course 090, warp 6."), and officers speak in subtitles low on the map, with the log split into Bridge and Computer columns. Right-click a ship (or press E) for a command wheel; while you type, the battle eases to a quarter speed, the map shows a ghost of what Enter would do, and Tab finishes names. Officers now and then propose an order (Y makes it so, N belays it). `alert red`, `yellow` and `green` give a set of orders at once, `record` saves what you just did as a named order, the new Orders tab holds them all as cards, and `style` promises a way of commanding for a ribbon. Each officer's trust in you grows across battles, from Green to Veteran, and changes what they will do. None of it replaces anything: keys, clicks and the console work as before, and `hud bridge classic` turns it all off.
 
 **Speak your orders.** Hold Right Alt (Option on a Mac), say the order, let go. The Mac's own recogniser, whisper.cpp on your computer, a whisper.cpp server or a cloud service hears it; the `voice` page picks one and tests it. The first time, your computer asks whether Begin may use the microphone.
 
 **Patrols.** A new mode on the main menu (P): a fresh single battle each time, one of five situations (an ambush, a wolf pack, a second wave, an escort or an enemy flagship behind her screen) against a random enemy.
 
-**Sharp on Retina and 4K.** The game now draws at your screen's real pixel density through the graphics card, so text, hulls and beams are crisp. Weapon fire lights the hulls near it, beams and blasts have a soft glow, and panels cast a soft shadow. The new Display page (D) shows what is drawing and lets you choose; where the graphics card can't be used, the game draws as before.
+**Sharp on Retina and 4K.** The game now draws at your screen's real pixel density through the graphics card, so text, hulls and beams are crisp. Weapon fire lights the hulls near it, beams and blasts have a soft glow, and panels cast a soft shadow. The Display section of Settings (D) shows what is drawing and lets you choose; where the graphics card can't be used, the game draws as before.
 
-**Officers of your own, and voices for the aliens.** The `officers.toml` file in your config folder can now give an officer a new name, rank, background, interests, quirks and lines of their own. An optional second language model can speak for the characters alone, for richer Klingon, Romulan and other alien speech (Character voices on the main menu, V).
+**Officers of your own, and voices for the aliens.** The `officers.toml` file in your config folder can now give an officer a new name, rank, background, interests, quirks and lines of their own. An optional second language model can speak for the characters alone, for richer Klingon, Romulan and other alien speech (Settings → Character voices on the main menu, V).
 
 **Tougher fleets.** The enemy fleets in the preset battles are larger again, so the Dreadnought has a real fight: an AI captain flying her wins about two battles in three. Map labels are easier to read, ships in close formation share one label, and a faint nebula drifts behind the stars.
 
