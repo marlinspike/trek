@@ -22,6 +22,7 @@ from typing import Any, Sequence
 import pygame
 
 SCALE = 1.0            # physical pixels per logical pixel for new surfaces; 1 = draw as pygame always has
+LIGHTING = True        # weapon light on hulls, shadows under cards, and (on the GPU) bloom: the Display page's switch
 
 Point = Sequence[float]
 
@@ -30,6 +31,11 @@ def set_scale(s: float) -> None:
     """Set the density for every surface made from now on (the presenter calls it when the window opens)."""
     global SCALE
     SCALE = max(1.0, float(s))
+
+
+def set_lighting(on: bool) -> None:
+    global LIGHTING
+    LIGHTING = bool(on)
 
 
 def _ceil(v: float) -> int:
@@ -265,6 +271,37 @@ def _pts(c: Canvas, pts: Sequence[Point]) -> list[tuple[int, int]]:
     return [(int(round(p[0] * s)), int(round(p[1] * s))) for p in pts]
 
 
+STROKE_LINES = 16.0     # real pixels: strokes up to this wide are smooth lines laid side by side (solid cores);
+                        # wider ones (soft glow) are a filled band with smooth edges and round ends
+
+
+def _stroke(surf: pygame.Surface, color: Any, a: tuple[float, float], b: tuple[float, float], w: float) -> pygame.Rect:
+    """A straight stroke `w` real pixels wide, measured square to its direction, with round smooth ends and
+    smooth edges (pygame's own wide lines are cut flat across an axis and thin out on a diagonal)."""
+    r = w / 2.0
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    L = math.hypot(dx, dy)
+    if L < 1e-6:
+        return pygame.draw.aacircle(surf, color, a, max(0.5, r))
+    nx, ny = -dy / L, dx / L
+    if w <= STROKE_LINES:                                   # up to here: smooth lines side by side, under a pixel apart
+        n = max(2, math.ceil(w))
+        rects = []
+        for i in range(n):
+            o = (i - (n - 1) / 2.0) * (w - 1.0) / (n - 1)
+            rects.append(pygame.draw.aaline(surf, color, (a[0] + nx * o, a[1] + ny * o), (b[0] + nx * o, b[1] + ny * o)))
+        return rects[0].unionall(rects[1:])
+    ri = max(0.0, r - 0.5)                                  # the solid inside; the smooth edges go round it
+    quad = [(a[0] + nx * ri, a[1] + ny * ri), (b[0] + nx * ri, b[1] + ny * ri),
+            (b[0] - nx * ri, b[1] - ny * ri), (a[0] - nx * ri, a[1] - ny * ri)]
+    got = pygame.draw.polygon(surf, color, quad)
+    pygame.draw.aaline(surf, color, quad[0], quad[1])
+    pygame.draw.aaline(surf, color, quad[2], quad[3])
+    got.union_ip(pygame.draw.aacircle(surf, color, a, r))
+    got.union_ip(pygame.draw.aacircle(surf, color, b, r))
+    return got
+
+
 class _Draw:
     """`pygame.draw` that understands a Canvas: same calls, same arguments, logical coordinates."""
 
@@ -290,16 +327,29 @@ class _Draw:
         return surf.logical_rect(pygame.draw.lines(surf, color, closed, _pts(surf, points), _w(surf, width)))
 
     @staticmethod
-    def aaline(surf: pygame.Surface, color: Any, start: Point, end: Point, *a: Any) -> pygame.Rect:
-        if not isinstance(surf, Canvas):
-            return pygame.draw.aaline(surf, color, start, end, *a)
-        return surf.logical_rect(pygame.draw.line(surf, color, surf.phys_pt(start), surf.phys_pt(end), _w(surf, 1)))
+    def aaline(surf: pygame.Surface, color: Any, start: Point, end: Point, width: float = 1) -> pygame.Rect:
+        """A smooth straight line at sub-pixel positions, `width` wide: what beams and trails are drawn with.
+        Past a pixel and a half it is a true stroke with round ends (`_stroke`)."""
+        s = surf._s if isinstance(surf, Canvas) else 1.0
+        p, q, w = (start[0] * s, start[1] * s), (end[0] * s, end[1] * s), width * s
+        got = _stroke(surf, color, p, q, w) if w > 1.5 else pygame.draw.aaline(surf, color, p, q)
+        return surf.logical_rect(got) if isinstance(surf, Canvas) else got
 
     @staticmethod
     def aalines(surf: pygame.Surface, color: Any, closed: bool, points: Sequence[Point], *a: Any) -> pygame.Rect:
         if not isinstance(surf, Canvas):
             return pygame.draw.aalines(surf, color, closed, points, *a)
-        return surf.logical_rect(pygame.draw.lines(surf, color, closed, _pts(surf, points), _w(surf, 1)))
+        s = surf._s
+        return surf.logical_rect(pygame.draw.aalines(surf, color, closed, [(x * s, y * s) for x, y in points]))
+
+    @staticmethod
+    def aacircle(surf: pygame.Surface, color: Any, center: Point, radius: float, width: int = 0) -> pygame.Rect:
+        """A smooth round disc (or ring) centred at a sub-pixel position."""
+        if not isinstance(surf, Canvas):
+            return pygame.draw.aacircle(surf, color, center, max(0.5, radius), width)
+        s = surf._s
+        return surf.logical_rect(pygame.draw.aacircle(surf, color, (center[0] * s, center[1] * s), max(0.5, radius * s),
+                                                      _w(surf, width) if width else 0))
 
     @staticmethod
     def circle(surf: pygame.Surface, color: Any, center: Point, radius: float, width: int = 0, *a: Any, **kw: Any) -> pygame.Rect:
@@ -337,7 +387,7 @@ def _marking(fn: Any) -> Any:
     return staticmethod(drawn)
 
 
-for _name in ("rect", "line", "lines", "aaline", "aalines", "circle", "polygon", "arc", "ellipse"):
+for _name in ("rect", "line", "lines", "aaline", "aalines", "aacircle", "circle", "polygon", "arc", "ellipse"):
     setattr(_Draw, _name, _marking(getattr(_Draw, _name)))
 
 draw = _Draw()
@@ -393,5 +443,5 @@ class _Transform:
 transform = _Transform()
 
 
-__all__ = ["Canvas", "SCALE", "Surface", "adopt", "draw", "hires", "mark", "offer_light", "set_scale", "set_stage",
+__all__ = ["Canvas", "SCALE", "Surface", "adopt", "draw", "hires", "mark", "offer_light", "set_lighting", "set_scale", "set_stage",
            "take_dirty", "take_light", "track", "transform"]

@@ -255,8 +255,40 @@ def border() -> Color:
     return mix(BORDER, ALERT, _alert) if _alert > 0 else BORDER
 
 
+SHADOW_REACH = 10          # pixels a card's shadow spreads past its edge
+SHADOW_DROP = 4            # pixels it falls below the card
+SHADOW_ALPHA = 150         # how dark it is under the card
+
+
+def shadow(surf: pygame.Surface, rect: pygame.Rect, radius: int = 4) -> None:
+    """A soft shadow under a card, so it sits above the map rather than painted on it (off with the lighting
+    switch on the Display page). Only the rim that shows past the card is drawn: the card covers the rest."""
+    if not gfx.LIGHTING or rect.w <= 0 or rect.h <= 0:
+        return
+    img = _shadow(rect.w, rect.h, radius, gfx.SCALE)
+    pad, top = SHADOW_REACH, SHADOW_REACH - SHADOW_DROP      # where the card sits in the shadow image
+    iw, ih = img.get_size()
+    x0, y0 = rect.x - pad, rect.y - top
+    inset = radius + 2                                       # the card's rounded corners let a little show
+    for area in (pygame.Rect(0, 0, iw, top + inset), pygame.Rect(0, top + rect.h - inset, iw, ih - top - rect.h + inset),
+                 pygame.Rect(0, top + inset, pad + inset, rect.h - 2 * inset),
+                 pygame.Rect(pad + rect.w - inset, top + inset, iw - pad - rect.w + inset, rect.h - 2 * inset)):
+        if area.w > 0 and area.h > 0:
+            surf.blit(img, (x0 + area.x, y0 + area.y), area)
+
+
+@lru_cache(maxsize=128)
+def _shadow(w: int, h: int, radius: int, scale: float) -> pygame.Surface:
+    pad = SHADOW_REACH
+    img = gfx.Surface((w + pad * 2, h + pad * 2), pygame.SRCALPHA)
+    img.fill((0, 0, 0, 0))
+    gfx.draw.rect(img, (0, 0, 0, SHADOW_ALPHA), pygame.Rect(pad, pad, w, h), border_radius=radius + 2)
+    return gfx.transform.gaussian_blur(img, pad // 2)
+
+
 def panel(surf: pygame.Surface, rect: pygame.Rect, title: str | None = None, accent: Color = FRIEND) -> int:
     """Draw a panel frame; returns the y where content should start."""
+    shadow(surf, rect)
     gfx.draw.rect(surf, BG_PANEL, rect, border_radius=4)
     gfx.draw.rect(surf, border(), rect, 1, border_radius=4)
     if title:

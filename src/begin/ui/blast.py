@@ -36,18 +36,28 @@ def level(col: tuple[int, int, int], k: float) -> tuple[int, int, int]:
     return (int(col[0] * q) // 8 * 8, int(col[1] * q) // 8 * 8, int(col[2] * q) // 8 * 8)
 
 
-@lru_cache(maxsize=512)
 def halo(radius: int, col: tuple[int, int, int]) -> pygame.Surface:
-    """A soft round light (black outside), for adding onto the scene: brightest at the centre."""
-    d = radius * 2 + 1
-    g = gfx.Surface((d, d))
+    """A soft round light (black outside), for adding onto the scene: brightest at the centre.
+
+    Drawn four times over-size and shrunk smoothly, so even a small halo is round, not a stepped octagon."""
+    return _halo(radius, col, gfx.SCALE)
+
+
+@lru_cache(maxsize=512)
+def _halo(radius: int, col: tuple[int, int, int], s: float) -> pygame.Surface:
+    phys = max(1, round(radius * s))            # the halo's radius in real pixels
+    ss = 4 if phys < 40 else 2 if phys < 120 else 1     # big halos are soft enough already
+    big = phys * ss
+    d = big * 2 + ss
+    g = pygame.Surface((d, d))
     g.fill((0, 0, 0))
-    steps = min(radius, 40)                   # nested discs, outermost first
+    steps = min(big, 48)                         # nested discs, outermost first
     for i in range(steps, 0, -1):
-        r = max(1, round(radius * i / steps))
-        k = (1.0 - r / radius) ** 2.2
-        gfx.draw.circle(g, (int(col[0] * k), int(col[1] * k), int(col[2] * k)), (radius, radius), r)
-    return g
+        r = max(1, round(big * i / steps))
+        k = (1.0 - r / big) ** 2.2
+        pygame.draw.circle(g, (int(col[0] * k), int(col[1] * k), int(col[2] * k)), (d // 2, d // 2), r)
+    out = pygame.transform.smoothscale(g, (phys * 2 + 1, phys * 2 + 1))
+    return gfx.adopt(out, s) if s > 1.0 else out
 
 
 def add_light(glow: pygame.Surface, x: float, y: float, radius: float, col: tuple[int, int, int], k: float) -> None:

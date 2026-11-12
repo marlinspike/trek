@@ -138,12 +138,15 @@ def _icon(class_id: str, _hull_id: int, course: float, k: float, color: Color, f
 
 
 def draw_hull(surf: pygame.Surface, hull: HullDef, sx: float, sy: float, course: float, k: float,
-              color: Color, fill_alpha: float = 0.28, engine: Color | None = None, outline: int = 1) -> None:
+              color: Color, fill_alpha: float = 0.28, engine: Color | None = None,
+              outline: int = 1) -> tuple[pygame.Surface, pygame.Rect] | None:
+    """Draws the hull; a small one is a cached icon, returned with where it went (None when drawn as lines)."""
     if outline == 1 and _span(hull) * 2 * k <= ICON_MAX_PX:
         turn = round(course / ICON_TURN) * ICON_TURN % 360.0
         img, off = hull_icon(hull, turn, round(k, 3), color, round(fill_alpha, 2), engine)
-        surf.blit(img, (round(sx - off), round(sy - off)))
-        return
+        rect = img.get_rect(topleft=(round(sx - off), round(sy - off)))
+        surf.blit(img, rect)
+        return img, rect
     fill = theme.dim(color, fill_alpha)
     eng = engine or theme.mix(color, (255, 255, 255), 0.25)
     for shp in hull.shapes:
@@ -161,6 +164,7 @@ def draw_hull(surf: pygame.Surface, hull: HullDef, sx: float, sy: float, course:
             gfx.draw.polygon(surf, eng, pts, outline)
         else:
             gfx.draw.polygon(surf, theme.dim(color, 0.75), pts, 1)
+    return None
 
 
 __all__ = ["MIN_HULL_PX", "draw_hull", "hull_icon", "ellipse_points", "hull_pixel_scale", "transform"]

@@ -70,6 +70,7 @@ class RenderMixin(SceneState):
             w = theme.text_width(msg, 13) + 24
             r = pygame.Rect(0, 0, w, 30)
             r.midbottom = (self.map_rect.centerx, self.map_rect.bottom - 14)
+            theme.shadow(surf, r)
             gfx.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=4)
             gfx.draw.rect(surf, col, r, 1, border_radius=4)
             theme.text(surf, msg, r.center, col, 13, anchor="center")
@@ -159,6 +160,7 @@ class RenderMixin(SceneState):
             msg = "PAUSED  ·  press Space to run"
             b = pygame.Rect(0, 0, theme.text_width(msg, 14, weight="semibold") + 32, 30)
             b.midtop = (r.centerx, r.y + 10)
+            theme.shadow(surf, b)
             gfx.draw.rect(surf, theme.BG_PANEL_HI, b, border_radius=4)
             gfx.draw.rect(surf, theme.CAUTION, b, 1, border_radius=4)
             theme.text(surf, msg, b.center, theme.CAUTION, 14, weight="semibold", anchor="center")
@@ -187,6 +189,7 @@ class RenderMixin(SceneState):
         msg = f"{o.name.upper()} HAS THE CONN  ·  say \"I have the bridge\" to take it back"
         box = pygame.Rect(0, 0, theme.text_width(msg, 13, weight="semibold") + 32, 28)
         box.midtop = (self.map_rect.centerx, top)
+        theme.shadow(surf, box)
         gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
         gfx.draw.rect(surf, theme.CREW, box, 2, border_radius=4)
         theme.text(surf, msg, box.center, theme.CREW, 13, weight="semibold", anchor="center")
@@ -200,6 +203,7 @@ class RenderMixin(SceneState):
         col = theme.CAUTION if dodging else theme.FRIEND
         box = pygame.Rect(0, 0, theme.text_width(msg, 13, weight="semibold") + 32, 28)
         box.midtop = (self.map_rect.centerx, top)
+        theme.shadow(surf, box)
         gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
         gfx.draw.rect(surf, col, box, 2, border_radius=4)
         theme.text(surf, msg, box.center, col, 13, weight="semibold", anchor="center")
@@ -215,6 +219,7 @@ class RenderMixin(SceneState):
         w = min(self.map_rect.width - 24, max(theme.text_width(t, size, "mono") for t in lines) + 24)
         h = lh * len(lines) + 30
         r = pygame.Rect(self.map_rect.x + 12, self.map_rect.bottom - h - 12, w, h)
+        theme.shadow(surf, r)
         panel = gfx.Surface(r.size, pygame.SRCALPHA)
         panel.fill((*theme.BG_PANEL, 228))
         surf.blit(panel, r)
@@ -319,6 +324,7 @@ class RenderMixin(SceneState):
         if o == "help_brief":
             r = pygame.Rect(0, 0, 520, 132)
             r.center = self.map_rect.center
+            theme.shadow(surf, r, 6)
             gfx.draw.rect(surf, theme.BG_PANEL, r, border_radius=6)
             gfx.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=6)
             theme.text(surf, "Space to begin.  Left-click a contact to target it,", (r.centerx, r.y + 22), theme.TEXT, 15, anchor="center")

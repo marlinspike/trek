@@ -25,7 +25,7 @@ from ..sim.ship import Ship
 from . import theme
 from .camera import Camera
 from .blast import SHIELD as SHIELD_GLOW, Blast, HullHit as HitFlash, ShieldFlare
-from .effects import Effects, Spark
+from .effects import Effects, Light, Spark
 from .torpedo_art import draw_round, round_size
 from .fleet_art import art_px, fleet_image, has_art
 from .showpiece import SPRITE_CENTRE_Y, SPRITE_PX, ship_image, ship_lights
@@ -38,6 +38,9 @@ TRAIL_POINT = 0.25        # cycles between the points of an engine trail
 TRAIL_BANDS = 4           # strokes per wake, each fainter toward the tail
 SMOULDER_BELOW = 0.5      # hull fraction below which a ship trails sparks
 SPRITE_MIN_K = 0.9         # pixels per hull unit at which a ship is drawn with her baked art
+HULL_LIGHT_MAX = 0.8       # the most a hull is lit by weapon light (1 would wash her out)
+LIT_CACHE = 96             # lit copies of ship art kept, keyed by the art and the light's colour step
+_LIT: dict[tuple[pygame.Surface, tuple[int, ...]], pygame.Surface] = {}
 SHOWPIECE = frozenset({"federation.hc"})     # the hand-built art (showpiece.py); the rest is fleet_art.py
 TORP_TRAIL = 1.4          # cycles of exhaust a torpedo leaves behind it
 TORP_TRAIL_POINT = 0.05   # cycles between the points of a torpedo trail
@@ -144,6 +147,7 @@ class TacticalView:
     _overlay_used: pygame.Rect | None = None       # what was drawn on the overlay last frame, to clear
     _glow_used: pygame.Rect | None = None
     _glow: pygame.Surface | None = None
+    _lights: list[Light] = field(default_factory=list)
     _label_rects: list[pygame.Rect] = field(default_factory=list)   # labels drawn this frame
     _label_more: dict[int, int] = field(default_factory=dict)      # a group's named ship: how many more fly with her
     _label_quiet: set[int] = field(default_factory=set)            # ships named by their group's label this frame
@@ -322,6 +326,7 @@ class TacticalView:
         cam = self.cam
         r = cam.rect
         gfx.set_stage(r)
+        self._lights = self.effects.lights(cam) if gfx.LIGHTING else []
         if self._overlay is None or self._overlay.get_size() != surf.get_size():
             self._overlay = gfx.Surface(surf.get_size(), pygame.SRCALPHA)
             gfx.track(self._overlay)
@@ -511,7 +516,7 @@ class TacticalView:
         n = len(path) - 1
         for i in range(n):                    # a faint thread, fainter the older it is
             k = (i + 1) / n
-            gfx.draw.line(overlay, (*col, int(70 * k * k)), path[i], path[i + 1], 1)
+            gfx.draw.aaline(overlay, (*col, int(70 * k * k)), path[i], path[i + 1], 0.75)   # a hair-thin thread
         warm = theme.mix(col, (255, 255, 255), 0.35)
         for i, (x, y, born) in enumerate(pts):   # and a stream of sparks that drift apart and fade
             age = now - born
@@ -739,22 +744,64 @@ class TacticalView:
                     self._dashed(surf, theme.dim(theme.HOSTILE, bright * 0.8), a, cam.to_screen(pt[0], pt[1]), 3, 7)
 
     @staticmethod
-    def _sprite(surf: pygame.Surface, cls: ShipClass, sx: float, sy: float, course: float, k: float) -> bool:
-        """Close in, a ship is drawn with her baked art. False when there's none for the class."""
+    def _sprite(surf: pygame.Surface, cls: ShipClass, sx: float, sy: float, course: float,
+                k: float) -> tuple[pygame.Surface, pygame.Rect] | None:
+        """Close in, a ship is drawn with her baked art; returns the art and where it went (None: no art)."""
         cls_id = cls.hull.class_id                 # a class built on another's hull wears its art
         img = _art(cls_id, cls.hull.length, course, k)
         if img is None:
-            return False
+            return None
         if cls_id not in SHOWPIECE:                # fleet art is centred on the hull origin
-            surf.blit(img, img.get_rect(center=(int(sx), int(sy))))
-            return True
+            rect = img.get_rect(center=(int(sx), int(sy)))
+            surf.blit(img, rect)
+            return img, rect
         scale = round(k / SPRITE_PX, 2)
         a = math.radians(course)
         off = -SPRITE_CENTRE_Y * k                 # the sprite's centre sits a little aft of the hull origin
         cx, cy = sx - math.sin(a) * off, sy + math.cos(a) * off
-        surf.blit(img, img.get_rect(center=(int(cx), int(cy))))
+        rect = img.get_rect(center=(int(cx), int(cy)))
+        surf.blit(img, rect)
         ship_lights(surf, cx, cy, round(course) % 360, scale, pygame.time.get_ticks() / 1000.0)
-        return True
+        return img, rect
+
+    def _light_on(self, sx: float, sy: float, size: float) -> tuple[theme.Color, float] | None:
+        """The weapon light falling on a ship `size` pixels across at (sx, sy): its colour and strength."""
+        r = g = b = tot = 0.0
+        for lt in self._lights:
+            d = max(0.0, math.hypot(lt.x - sx, lt.y - sy) - size * 0.5)
+            if d >= lt.reach:
+                continue
+            f = lt.k * (1.0 - d / lt.reach) ** 2
+            r += lt.color[0] * f
+            g += lt.color[1] * f
+            b += lt.color[2] * f
+            tot += f
+        if tot < 0.04:
+            return None
+        return (int(r / tot), int(g / tot), int(b / tot)), min(HULL_LIGHT_MAX, tot)
+
+    @staticmethod
+    def _light_art(surf: pygame.Surface, art: tuple[pygame.Surface, pygame.Rect],
+                   light: tuple[theme.Color, float] | None) -> None:
+        """Baked art catching the light: the art again, tinted by the light and added on, only where it is."""
+        if light is None:
+            return
+        img, rect = art
+        col, amount = light
+        c = tuple(min(255, int(v * amount * 0.75)) // 8 * 8 for v in col)   # in steps, so a fading light reuses
+        key = (img, c)
+        lit = _LIT.get(key)
+        if lit is None:
+            tint = pygame.Surface(pygame.Surface.get_size(img), pygame.SRCALPHA, 32)   # physical pixels
+            pygame.Surface.blit(tint, img, (0, 0), special_flags=pygame.BLEND_RGBA_MAX)
+            pygame.Surface.fill(tint, (*c, 255), special_flags=pygame.BLEND_RGBA_MULT)
+            lit = tint.premul_alpha()              # light only where the art is, however soft its edge
+            if isinstance(img, gfx.Canvas):
+                lit = gfx.adopt(lit, img.density)
+            if len(_LIT) >= LIT_CACHE:
+                _LIT.pop(next(iter(_LIT)))
+            _LIT[key] = lit
+        surf.blit(lit, rect, special_flags=pygame.BLEND_RGB_ADD)
 
     @staticmethod
     def _beam(overlay: pygame.Surface, a: tuple[float, float], b: tuple[float, float], col: theme.Color) -> None:
@@ -795,9 +842,13 @@ class TacticalView:
             a = math.radians(s.desired_course)
             L = 50 * k
             gfx.draw.line(surf, theme.dim(theme.CAUTION, 0.7), (sx, sy), (sx + math.sin(a) * L, sy - math.cos(a) * L), 1)
-        art = s.alive and not s.cloaked and k >= SPRITE_MIN_K and self._sprite(surf, s.cls, sx, sy, p[2], k)
-        if not art:
-            draw_hull(surf, s.cls.hull, sx, sy, p[2], k, color)
+        light = self._light_on(sx, sy, 100 * k) if s.alive and not s.cloaked else None
+        drawn = self._sprite(surf, s.cls, sx, sy, p[2], k) if s.alive and not s.cloaked and k >= SPRITE_MIN_K else None
+        art = drawn is not None
+        if drawn is None:
+            drawn = draw_hull(surf, s.cls.hull, sx, sy, p[2], k, color)
+        if drawn is not None:
+            self._light_art(surf, drawn, light)
         strengths = [(sh.effective if not sh.destroyed else 0.0, sh.up and not sh.destroyed and sh.effective > 0.5)
                      for sh in s.shields]
         self._shield_ring(surf, s.id, sx, sy, p[2], 62 * k, strengths, overlay)
@@ -878,9 +929,14 @@ class TacticalView:
                 b = 56 * k                       # from just past her bow, so the line never draws over her
                 gfx.draw.line(surf, theme.dim(color, 0.45), (sx + math.sin(a) * b, sy - math.cos(a) * b),
                                  (sx + math.sin(a) * (b + L * 1.5), sy - math.cos(a) * (b + L * 1.5)))
-            art = c.visible and c.identified and k >= SPRITE_MIN_K and self._sprite(surf, c.cls, sx, sy, p[2], k)
-            if not art:
-                draw_hull(surf, c.cls.hull, sx, sy, p[2], k, color, fill_alpha=0.22 if c.visible else 0.08)
+            light = self._light_on(sx, sy, 100 * k) if c.visible else None
+            drawn = (self._sprite(surf, c.cls, sx, sy, p[2], k) if c.visible and c.identified and k >= SPRITE_MIN_K
+                     else None)
+            art = drawn is not None
+            if drawn is None:
+                drawn = draw_hull(surf, c.cls.hull, sx, sy, p[2], k, color, fill_alpha=0.22 if c.visible else 0.08)
+            if drawn is not None:
+                self._light_art(surf, drawn, light)
             self._shield_ring(surf, c.id, sx, sy, p[2], 62 * k, None, overlay)
             hurt = (c.assessed.hull if c.assessed is not None and c.assessed.hull is not None
                     else c.scan.structure_frac if c.scan is not None else None)

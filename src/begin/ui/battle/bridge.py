@@ -269,6 +269,7 @@ class BridgeMixin(SceneState):
         w = max(420, min(int(r.width * 0.86), text_w + 76))
         box = pygame.Rect(0, 0, w, 56)
         box.midbottom = (r.centerx, r.bottom - 18)
+        theme.shadow(surf, box, 6)
         glass = gfx.Surface(box.size, pygame.SRCALPHA)
         glass.fill((*theme.BG_PANEL_HI, 232))
         surf.blit(glass, box)

@@ -227,7 +227,7 @@ class MenuScene:
         ]
         if self.display is not None:
             items += [("Display", lambda: setattr(self, "page", "display"),
-                       "How the game is drawn: sharpness on Retina and 4K screens, the glow round weapon light (D)")]
+                       "How the game is drawn: sharpness on Retina and 4K screens, light and glow from weapon fire (D)")]
         items += [
             ("Character voices", lambda: setattr(self, "page", "voices"),
              "A second language model for alien captains and officers: more Klingon, more Romulan (V)"),
@@ -342,13 +342,14 @@ class MenuScene:
         y = self._para(surf, RENDERER_INFO[choice][1], (x + 160, y), 460, theme.TEXT_DIM, 13) + 14
 
         gpu = pr.name == "gpu"
-        theme.text(surf, "Weapon glow", (x, y + 9), theme.TEXT_DIM, 14)
+        theme.text(surf, "Light and glow", (x, y + 9), theme.TEXT_DIM, 14)
         self.ui.button(surf, pygame.Rect(x + 160, y, 300, 36), "On" if st.bloom else "Off",
                        lambda: d.set_bloom(not st.bloom),
-                       "A soft halo round phaser beams, disruptor bolts and blasts, and a slightly darker edge to "
-                       "the map. Never on text or panels.", active=st.bloom, accent=theme.GOOD, size=14)
+                       "Weapon fire lights the hulls near it, cards cast a soft shadow, and phasers, bolts and "
+                       "blasts get a soft halo. Never on text.", active=st.bloom, accent=theme.GOOD, size=14)
         y += 46
-        y = self._para(surf, "Takes effect at once." if gpu else "Shown when the graphics card draws the game.",
+        y = self._para(surf, "Takes effect at once." if gpu else
+                       "Takes effect at once. The halo round weapon light needs the graphics card.",
                        (x + 160, y), 460, theme.TEXT_DIM, 13) + 26
 
         # what is drawing now, and why
