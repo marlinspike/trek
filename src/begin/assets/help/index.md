@@ -22,8 +22,14 @@ This manual covers every command, how each weapon works, and how to win. Open it
 Begin's commands all work as written. On top of them:
 
 - [[crew|Bridge officers]] who run stations for you, [[conn|take the whole bridge]], and [[talking|talk back]], with traits and a response style you can change.
-- [[orders|Named tactical orders]]: a battle plan written before the fight, run with one word.
+- [[bridge|The bridge]]: officers who read your orders back, a command wheel on every ship, proposals you accept with **Y**, and [[voice-orders|orders you speak aloud]].
+- [[alert|Alert conditions]], [[styles|command styles and your officers' trust]].
+- [[orders|Named tactical orders]]: a battle plan written before the fight or recorded during it, run with one word.
+- [[patrol|Patrols]] and [[tour|tours of duty]]: a fresh mission each time, or battles linked into a campaign.
+- [[hailing|Hailing enemy captains]], who can be talked into surrendering or leaving.
+- [[display|Sharp drawing on Retina and 4K screens]], with weapon light on the hulls.
 - [[plain-english|Orders in plain English]] with a language model; exact commands and short forms like `tor al` always run at once.
+- [[llm|Language models]], including an optional second model for character voices: richer Klingon, Romulan and other alien speech.
 - [[repair|Hull repairs]] and an engineer who can direct the crews, [[morale|crew morale]] and `address crew`, and [[helm|evasive manoeuvres]].
 - [[sound|Sound]] with a choice of phaser and torpedo sounds, or your own WAV files.
 - [[after-battle|The battle assessment]], with the officer who did the most.
