@@ -147,7 +147,7 @@ The page also picks the push-to-talk key and has a **Test** button that tells yo
 
 I brought my own favourite Star Trek characters onto the bridge. Begin never had officers you could talk to, so I picked the crew I'd most want beside me in a fight: Spock, Worf, Geordi La Forge and Seven of Nine.
 
-Spock (helm), Worf (tactical), Geordi La Forge (engineering) and Seven of Nine (science) can run their stations for you (`delegate tactical`, `delegate all`, or the toggles in the Crew tab), or take the whole bridge (`seven, take the bridge`; "I have the bridge" takes it back). Your own orders always override them for a few seconds, and they never retreat, surrender or self-destruct on their own. Talk to them by name, as in `spock, what do you recommend?` or `worf, fire all torpedoes`. Seven also takes standing objectives such as `seven, disable their shields`, and she and Spock can design a tachyon detector to find cloaked ships.
+Spock (helm), Worf (tactical), Geordi La Forge (engineering) and Seven of Nine (science) can run their stations for you (`delegate tactical`, `delegate all`, or the toggles in the Crew tab), or take the whole bridge (`seven, take the bridge`; "I have the bridge" takes it back). Your own orders always override them for a few seconds, and they never retreat, surrender or self-destruct on their own. Talk to them by name, as in `spock, what do you recommend?` or `worf, fire all torpedoes`. Seven also takes standing objectives such as `seven, disable their shields`, and she and Spock can design a tachyon detector to find cloaked ships. Tell her to find one by name (`seven, find the talon`, or `hunt talon`) and she hunts until it shows, then targets it for you.
 
 ![Seven of Nine has the conn](docs/screenshots/bridge-crew.png)
 

@@ -135,7 +135,92 @@ def launch_torpedoes(
         ship.reveal_time = max(ship.reveal_time, rules.cloak_reveal_cycles)
         if target_id is not None:
             world.note_torpedo_pressure(target_id, fired)
+            _mark_blind(world, ship, list(salvo.values()) if fan <= 0 else world.torpedoes[-fired:], target_id)
     return fired
+
+
+def _mark_blind(world: World, ship: Ship, torps: list[Torpedo], target_id: int | None) -> None:
+    """[E] Rounds fired at a ship our sensors can't see go to its last known position. Tell the captain so,
+    and mark them, so that how they end (a hit, a burst on nothing, a fuse run out) is reported too."""
+    if target_id is None or ship.side != world.player_side or world.is_visible(ship.side, target_id):
+        return
+    for t in torps:
+        if t.spec.reveal_radius <= 0:
+            t.blind = target_id
+    if not any(t.blind is not None for t in torps):
+        return
+    pos = world.apparent_position(ship.side, target_id)
+    where = f" (bearing {_fix(ship, pos)})" if pos is not None else ""
+    n = sum(t.salvo for t in torps if t.blind is not None)
+    world.emit(Message(world.tick, f"No sensor lock on {_name(world, ship.side, target_id)}: "
+                                   f"{'torpedo' if n == 1 else f'{n} torpedoes'} going to her last known position{where}.",
+                       Tone.CAUTION, ship_id=ship.id, visible_to=frozenset({ship.side})))
+
+
+def _name(world: World, side: int, ship_id: int) -> str:
+    """The ship's name if we know it, as the crew would say it."""
+    s = world.ships.get(ship_id)
+    c = world.intel.get(side)
+    contact = c.contacts.get(ship_id) if c is not None else None
+    if s is not None and contact is not None and contact.identified:
+        return f"the {s.name}"
+    return "the contact"
+
+
+def _fix(ship: Ship, pos: tuple[float, float]) -> str:
+    return f"{bearing(pos[0] - ship.x, pos[1] - ship.y):.0f}, range {math.hypot(pos[0] - ship.x, pos[1] - ship.y):,.0f}"
+
+
+def report_blind_shots(world: World, done: list[tuple[Torpedo, str, set[int]]]) -> None:
+    """[E] Tell the captain how rounds fired at an unseen ship ended: one line per firing ship.
+
+    `done` holds (torpedo, how it ended, ships its blast reached); how it ended is "burst" or "fizzled".
+    Without this, a miss in the dark is silent and a hit shows nothing, so the captain can't tell either.
+    """
+    by_owner: dict[int, list[tuple[Torpedo, str, set[int]]]] = {}
+    for item in done:
+        if item[0].blind is not None:
+            by_owner.setdefault(item[0].owner, []).append(item)
+    for owner_id, items in by_owner.items():
+        owner = world.ships.get(owner_id)
+        if owner is None or not owner.exists:
+            continue
+        target = items[0][0].blind
+        assert target is not None
+        name = _name(world, owner.side, target)
+        enemies = {sid for _, _, hit in items for sid in hit
+                   if (s := world.ships.get(sid)) is not None and s.side != owner.side}
+        hit = next(((t, hit) for t, _, hit in items if target in hit), None)
+        if hit is not None:
+            t = hit[0]
+            text = (f"Torpedo hit at bearing {_fix(owner, (t.x, t.y))}: that was {name}. "
+                    f"She shows through her cloak for a moment.") if _cloaked(world, target) else (
+                    f"Torpedo hit {name} at bearing {_fix(owner, (t.x, t.y))}.")
+            tone = Tone.GOOD
+        elif enemies:
+            t = items[0][0]
+            text = f"Torpedo hit something at bearing {_fix(owner, (t.x, t.y))}, but not {name}."
+            tone = Tone.GOOD
+        else:
+            n = sum(t.salvo for t, _, _ in items)
+            t = items[0][0]
+            shot = [x for x, how, _ in items if x.shot_down]
+            if shot:
+                text = (f"Torpedo shot down at bearing {_fix(owner, (shot[0].x, shot[0].y))}. "
+                        f"Someone's point defense is close by.")
+            elif all(how == "fizzled" for _, how, _ in items):
+                text = (f"{'Torpedo' if n == 1 else f'{n} torpedoes'} ran out of fuse with no hit. "
+                        f"No sign of {name} where we aimed.")
+            else:
+                text = (f"{'Torpedo' if n == 1 else f'{n} torpedoes'} burst at bearing {_fix(owner, (t.x, t.y))} "
+                        f"with nothing in reach. No sign of {name} there.")
+            tone = Tone.CAUTION
+        world.emit(Message(world.tick, text, tone, ship_id=owner.id, visible_to=frozenset({owner.side})))
+
+
+def _cloaked(world: World, ship_id: int) -> bool:
+    s = world.ships.get(ship_id)
+    return s is not None and s.cloaked
 
 
 def launch_probe(
@@ -290,12 +375,14 @@ def _fuse_point(world: World, x0: float, y0: float, x1: float, y1: float, entry:
 
 def resolve_detonations(world: World) -> None:
     """Blast every detonating weapon; chains continue until quiet [R §7, §13]."""
+    ended: list[tuple[Torpedo, str, set[int]]] = []   # how each torpedo ended, for the blind-shot report
     for _ in range(64):  # chain guard
         boom_t = [t for t in world.torpedoes if t.detonate]
         boom_p = [p for p in world.probes if p.detonate]
         quiet = [t for t in world.torpedoes if t.fizzle and not t.detonate]
         if quiet:
             world.torpedoes = [t for t in world.torpedoes if not (t.fizzle and not t.detonate)]
+            ended.extend((t, "fizzled", set()) for t in quiet)
         if not boom_t and not boom_p:
             break
         world.torpedoes = [t for t in world.torpedoes if not t.detonate]
@@ -307,11 +394,14 @@ def resolve_detonations(world: World) -> None:
             kind = DamageKind.SHIELD_BORE if t.spec.is_shield_bore else (
                 DamageKind.PLASMA if t.spec.is_plasma else DamageKind.BLAST)
             cause = "intercepted" if t.shot_down else "fuse" if t.burst_at_fuse and t.fuse <= 0.0 else "proximity"
-            blast(world, t.x, t.y, t.yield_, "torpedo", t.owner, t.salvo, kind,
-                  t.target if t.target is not None else t.aim_ship, t.target_subsystem, cause=cause,
-                  radius_scale=t.spec.blast_scale)
+            reached = blast(world, t.x, t.y, t.yield_, "torpedo", t.owner, t.salvo, kind,
+                            t.target if t.target is not None else t.aim_ship, t.target_subsystem, cause=cause,
+                            radius_scale=t.spec.blast_scale)
+            ended.append((t, "burst", reached))
         for p in boom_p:
             blast(world, p.x, p.y, p.yield_, "probe", p.owner, 1, DamageKind.BLAST, p.target, None)
+    if any(t.blind is not None for t, _, _ in ended):
+        report_blind_shots(world, ended)
 
 
 def reveal_burst(world: World, t: Torpedo) -> None:
@@ -378,6 +468,7 @@ def launch_at_point(world: World, ship: Ship, tube: Tube, x: float, y: float, pr
     world.emit(TorpedoLaunched(world.tick, ship.id, torp.id, tube.index, 1, spec.id))
     ship.stats.torpedoes_fired += 1
     ship.reveal_time = max(ship.reveal_time, world.rules.cloak_reveal_cycles)
+    _mark_blind(world, ship, [torp], target)
     return torp
 
 
@@ -395,22 +486,26 @@ def blast(
     exclude: int | None = None,
     cause: str = "",
     radius_scale: float = 1.0,
-) -> None:
-    """[R] total = yield × 5; radius = total × 10; dmg = total × sqrt(1 − d/radius)."""
+) -> set[int]:
+    """[R] total = yield × 5; radius = total × 10; dmg = total × sqrt(1 − d/radius).
+
+    Returns the ships the blast reached."""
     if yield_ <= 0:
-        return
+        return set()
     rules = world.rules
     total = yield_ * rules.splash_mult
     radius = total * rules.splash_radius_per_damage * radius_scale
     world.emit(Detonation(world.tick, x, y, radius, source, yield_ * salvo, owner, cause))
     att = world.ships.get(owner) if owner is not None else None
     hit_any = False
+    reached: set[int] = set()
     for s in list(world.ships.values()):
         if s.id == exclude or not s.exists or s.docked_to is not None:
             continue
         d = math.hypot(s.x - x, s.y - y)
         if d >= radius:
             continue
+        reached.add(s.id)
         dmg = total * math.sqrt(1.0 - d / radius)
         aim = None
         if selector and target == s.id and att is not None:
@@ -443,3 +538,4 @@ def blast(
         if not p.detonate and math.hypot(p.x - x, p.y - y) < radius:
             p.detonate = True
             p.remote = True
+    return reached

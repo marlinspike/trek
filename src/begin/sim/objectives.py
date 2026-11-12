@@ -17,7 +17,7 @@ from .ship import TARGETABLE_GROUPS
 if TYPE_CHECKING:
     from .observation import ContactView, Observation
 
-GOALS = ("disable", "destroy", "capture")
+GOALS = ("disable", "destroy", "capture", "hunt")
 
 # what the captain can ask to have disabled, and how each is spoken of
 DISABLE_GROUPS: dict[str, str] = {
@@ -26,6 +26,7 @@ DISABLE_GROUPS: dict[str, str] = {
 }
 DESTROY_GROUP = "hull"   # the group a destroy objective is filed under
 CAPTURE_GROUP = "crew"   # and a capture: her crew are what stands between us and her
+HUNT_GROUP = "hunt"      # and a hunt for a ship we've lost (most often cloaked): no weapon is fired for it
 assert set(DISABLE_GROUPS) <= set(TARGETABLE_GROUPS)
 
 
@@ -39,9 +40,16 @@ class Objective:
 
     def describe(self, names: dict[int, str] | None = None) -> str:
         who = ", ".join((names or {}).get(t, f"#{t}") for t in self.targets)
+        if self.goal == "hunt":
+            return f"find {who}"
         if self.goal in ("destroy", "capture"):
             return f"{self.goal} {who}"
         return f"{self.goal} {DISABLE_GROUPS.get(self.group, self.group)} on {who}"
+
+
+def attacking(objectives: list[Objective]) -> list[Objective]:
+    """The objectives that fire on someone: all but a hunt, which only looks."""
+    return [o for o in objectives if o.goal != "hunt"]
 
 
 def baitable(obs: Observation, c: ContactView) -> bool:
@@ -56,4 +64,4 @@ def baitable(obs: Observation, c: ContactView) -> bool:
     return discipline < 0.6
 
 
-__all__ = ["CAPTURE_GROUP", "DESTROY_GROUP", "DISABLE_GROUPS", "GOALS", "Objective", "baitable"]
+__all__ = ["CAPTURE_GROUP", "DESTROY_GROUP", "DISABLE_GROUPS", "GOALS", "HUNT_GROUP", "Objective", "attacking", "baitable"]

@@ -78,7 +78,7 @@ def apply_damage(
         return 0.0
     rules = world.rules
     rel = relative_bearing_from(target, from_x, from_y)
-    target.reveal_time = max(target.reveal_time, rules.cloak_reveal_cycles)
+    target.reveal_time = max(target.reveal_time, rules.cloak_hit_reveal_cycles)
     att = world.ships.get(attacker) if attacker is not None else None
     if att is not None:
         att.stats.damage_dealt += amount

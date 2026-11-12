@@ -66,6 +66,13 @@ CAPTURE = re.compile(r"\b(capture|seize|take (her|it|them|the [\w'-]+) (intact|a
 
 KILL_VERBS = ("take out", "destroy", "eliminate", "finish off", "kill", "sink", "blow up", "knock out")
 
+# "seven, find the Talon" / "locate her" / "hunt for the cloaked ship" / "track down the Romulan" [E]
+HUNT = re.compile(r"^\s*(?:find|locate|hunt(?:\s+(?:for|down))?|search\s+for|look\s+for|scan\s+for|track\s+down|"
+                  r"seek(?:\s+out)?)\b\s*(.*?)\W*$")
+
+# "where is the Talon?" / "where did she go?" / "where's that Romulan" [E]
+WHERE = re.compile(r"^\s*where(?:'s|\s+is|\s+are|\s+did|\s+has)\s+(.*?)(?:\s+(?:go|gone|went|now))?\W*$")
+
 FIRING = re.compile(r"^\s*(fire\b|tachyon\s+\S)")  # an order to fire the round, not to design one
 
 # "spock, manage repairs" / "repairs are yours"; "I'll handle repairs" takes them back [E]
@@ -102,4 +109,4 @@ def is_question(low: str) -> bool:
         r"(what|why|how|which|where|when|who|should|can|could|would|is|are|do|does|did)\b", low))
 
 
-__all__ = ["ADVICE", "BRIDGE_RELEASE", "BRIDGE_TAKE", "CAPTURE", "CEASE", "DISABLE_ORDER", "FIRING", "GREET", "HAVE_STATION", "HONORIFIC", "HONORIFIC_WORDS", "KILL_VERBS", "POLITE", "PRAISE", "RELEASE", "REPAIRS_RELEASE", "REPAIRS_TAKE", "RUDE", "SOFT_ORDER", "STAND_DOWN", "STATUS", "TAKE", "TARGET_ORDER", "WEAPONS_STATE", "WHOLE_BRIDGE", "could_be_officer", "is_question", "whole_bridge_stand_down"]
+__all__ = ["ADVICE", "BRIDGE_RELEASE", "BRIDGE_TAKE", "CAPTURE", "CEASE", "DISABLE_ORDER", "FIRING", "GREET", "HAVE_STATION", "HONORIFIC", "HONORIFIC_WORDS", "HUNT", "KILL_VERBS", "POLITE", "PRAISE", "RELEASE", "REPAIRS_RELEASE", "REPAIRS_TAKE", "RUDE", "SOFT_ORDER", "STAND_DOWN", "STATUS", "TAKE", "TARGET_ORDER", "WEAPONS_STATE", "WHERE", "WHOLE_BRIDGE", "could_be_officer", "is_question", "whole_bridge_stand_down"]

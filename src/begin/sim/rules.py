@@ -59,7 +59,8 @@ class Rules:
     sensor_haze_limit: float = 1.5     # [E] × rated range: beyond 1.0 contacts are hazy, beyond this they fade
     sensor_haze_error: float = 0.08    # [E] × rated range: position error at the haze limit
     probe_reflect: float = 0.5
-    cloak_reveal_cycles: float = 1.0
+    cloak_reveal_cycles: float = 1.0       # a cloaked ship that fires shows for this long
+    cloak_hit_reveal_cycles: float = 3.0   # [E] and one that is hit, long enough for the crew to call it and aim
     # [E] the deflector tachyon pulse (Spock and Seven reconfigure the dish; sim/projects.py)
     deflector_pulse_range: float = 15000.0
     deflector_pulse_arc: float = 60.0      # full width of the cone ahead of the ship, degrees

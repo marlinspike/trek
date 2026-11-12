@@ -29,6 +29,7 @@ class Torpedo:
     aim_ship: int | None = None  # [E] whose systems a point-fused blast is aimed at (no homing)
     burst_at_fuse: bool = False  # [E] fused to burst at a chosen point instead of expiring
     shot_down: bool = False      # [E] set off by a phaser beam rather than by its own fuse
+    blind: int | None = None     # [E] fired at this ship while it was off our sensors: report how the shot went
     trail: list[tuple[float, float]] = field(default_factory=list)
 
     @property

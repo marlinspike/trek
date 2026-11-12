@@ -28,6 +28,7 @@ import re
 from collections import deque
 from typing import Iterable
 
+from ..console.parser import NOTHING_LOST
 from ..console.plain import split_orders
 from ..console.reports import morale_words
 from ..console.vocab import DISABLE_WORDS, HAVE_WORDS
@@ -42,7 +43,8 @@ from . import collaborations
 from .characters import OfficerProfile, Relationships
 from .chatter import Chatter
 from .intents import (
-    ADVICE, BRIDGE_RELEASE, BRIDGE_TAKE, CAPTURE, CEASE, DISABLE_ORDER, FIRING, GREET, HONORIFIC, HONORIFIC_WORDS, KILL_VERBS, POLITE,
+    ADVICE, BRIDGE_RELEASE, BRIDGE_TAKE, CAPTURE, CEASE, DISABLE_ORDER, FIRING, GREET, HONORIFIC, HONORIFIC_WORDS, HUNT, KILL_VERBS,
+    POLITE, WHERE,
     PRAISE, RELEASE, REPAIRS_RELEASE, REPAIRS_TAKE, RUDE, SOFT_ORDER, STAND_DOWN, STATUS, TAKE, TARGET_ORDER, WEAPONS_STATE,
     could_be_officer, is_question,
 )
@@ -81,6 +83,7 @@ class Bridge(Chatter):
         self._last_line: dict[str, int] = {}
         self._last_any: int = -999
         self._hull_band: int = 4
+        self._cloaked: dict[int, int] = {}       # ship -> tick the science officer said she cloaked [E]
         self._repair_seen: set[str] = set()        # damaged systems already reported
         self._repair_band: int = 4                      # quarter of the hull last reported
         self._repair_said: int = -999                   # tick of the last repair report
@@ -186,7 +189,11 @@ class Bridge(Chatter):
             rel.nudge(-0.08)
         said_now = self._bridge_order(officer, low, ctx, run)
         if said_now is None and not asked:
+            said_now = self._hunt_order(officer, low, run)
+        if said_now is None and not asked:
             said_now = self._combat_order(officer, low, run)
+        if said_now is None and asked:
+            said_now = self._where(officer, low, ctx)
         if said_now is not None:
             return said_now
         collab = None if FIRING.match(low) else collaborations.matching(officer.id, low)
@@ -223,6 +230,53 @@ class Bridge(Chatter):
         if m is not None:
             return self.release(officer, ctx, run, named=next((g for g in m.groups()[1:] if g), ""))
         return None
+
+    def _hunt_order(self, officer: OfficerProfile, low: str, run: RunCommand) -> list[Utterance] | None:
+        """'Seven, find the Talon': the officer hunts for a lost or cloaked ship until she shows, then targets her [E].
+        Words that name no ship ('look for an opening') are left for the rest of the bridge to understand."""
+        m = HUNT.match(low)
+        if m is None:
+            return None
+        err = run(f"hunt {m.group(1)}".strip(), officer)
+        if err and (err.startswith(("No ship named", "Unknown command", "'")) or err == NOTHING_LOST):
+            return None     # "find the cloaked ship" with none lost yet: Spock and Seven build a detector instead
+        if err:
+            return [self._say(officer, err, "caution")]
+        if any(w in m.group(1).split() for w in ("off", "cancel", "stop", "belay", "abort")):
+            return [self._line(officer, "ack") or self._say(officer, "Understood.")]
+        return [self._line(officer, "hunt")
+                or self._say(officer, "I'll find her, Captain. A tachyon burst where she should be will show her up.")]
+
+    def _where(self, officer: OfficerProfile, low: str, ctx: HelpContext) -> list[Utterance] | None:
+        """'Where is the Talon?': the last fix, straight from the sensor log, and what to do if she has cloaked [E]."""
+        import math
+
+        from ..core.angles import bearing
+        from .station_reports import contact_name
+
+        m = WHERE.match(low)
+        s, obs = ctx.ship, ctx.obs
+        if m is None or s is None or obs is None:
+            return None
+        words = [w.strip(".,!?'\"").removesuffix("'s") for w in m.group(1).split()]
+        words = [w for w in words if w and w not in ("the", "she", "he", "it", "they", "her", "that", "this", "ship", "enemy")]
+        hostile = [c for c in obs.hostile_contacts() if c.id not in obs.gone()]
+        if words:
+            phrase = " ".join(words)
+            found = [c for c in hostile if c.identified and contact_name(obs, c.id).lower().startswith(phrase)]
+        else:
+            found = [c for c in hostile if c.id == s.target] or [c for c in hostile if c.cloaked_hint]
+        if len(found) != 1:
+            return None
+        c = found[0]
+        name = contact_name(obs, c.id)
+        fix = f"bearing {bearing(c.x - s.x, c.y - s.y):.0f}, {math.hypot(c.x - s.x, c.y - s.y):,.0f} units"
+        if c.visible:
+            return [self._say(officer, f"{name} is at {fix}.")]
+        if c.cloaked_hint:
+            return [self._say(officer, f"{name} has cloaked. Last fix: {fix}, heading {c.course:.0f}. "
+                                       f"Say 'find {name.lower()}' and I'll hunt for her.")]
+        return [self._say(officer, f"{name} is off our sensors. Last fix: {fix}, heading {c.course:.0f}.")]
 
     def _combat_order(self, officer: OfficerProfile, low: str, run: RunCommand) -> list[Utterance] | None:
         """Targeting, capture, disable and destroy orders in plain words: standing objectives, no model, no delay."""
@@ -617,6 +671,7 @@ COMMAND_SYNTAX = """\
   scan <ship> | design tachyon (Spock and Seven build a detector round for cloaked ships)
   tachyon <bearing> <range> | tachyon <ship> (burst the loaded detector round there)
   design deflector (set the dish up for tachyon pulses) | pulse (expose cloaked ships ahead of the bow)
+  hunt <ship> (a standing order to find a cloaked or lost ship and target her) | hunt off
   disable <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> | disable off   (a standing objective)
   delegate <helm|tactical|engineering|science> | assume <station>   (hand a station to its officer, or take it back)
   stand down   (cease fire, every objective ends, every station and the bridge back to the captain)"""

@@ -359,6 +359,10 @@ def _crew_tips(s: Ship, obs: Observation, c: ContactView | None, tip: AddTip) ->
     if s.objectives:
         o = s.objectives[0]
         known = {t: _contact_name(ct) for t in o.targets if (ct := obs.contact(t)) is not None}
+        if o.goal == "hunt":
+            tip(3, "Hunting a lost ship", f"Your officers are working to {o.describe(known)}: a tachyon burst where it "
+                "should be, then it is targeted for you. Keep your tubes loaded.", "hunt off")
+            return
         tip(3, "Seven's objective", f"Seven is working to {o.describe(known)}. "
             "Keep the target within torpedo range (3,500 to 7,500) and she does the rest.", "disable off")
     elif c is not None and c.scan is not None and c.visible and s.tubes:
@@ -380,9 +384,10 @@ def _cloak_tips(s: Ship, obs: Observation, tip: AddTip) -> None:
     elif any(t.loaded is not None and t.loaded.ordnance == "tachyon" for t in s.tubes):
         tip(1, "Tachyon round ready", f"Burst the tachyon detector where **{name}** vanished to light it up.",
             f"tachyon {name.lower()}")
-    elif "tachyon" not in s.projects:       # otherwise Spock and Seven are already on it
-        tip(2, "Cloaked ship nearby", f"**{name}** has probably cloaked. Spock and Seven can build a tachyon "
-            "detector torpedo, or set the deflector up for tachyon pulses.", "design tachyon", "design deflector")
+    elif "tachyon" not in s.projects and not any(o.goal == "hunt" for o in s.objectives):   # else they're on it
+        tip(2, "Cloaked ship nearby", f"**{name}** has probably cloaked. Tell your science officer to find it: they "
+            "build a tachyon detector, burst it where it should be, and target it for you.",
+            f"hunt {name.lower()}", "design tachyon", "design deflector")
 
 
 def _ship_tips(s: Ship, obs: Observation, tip: AddTip) -> None:

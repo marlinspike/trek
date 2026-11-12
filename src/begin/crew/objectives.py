@@ -38,7 +38,8 @@ from typing import TYPE_CHECKING
 
 from ..core.angles import bearing, norm360
 from ..sim.commands import (
-    Authority, Command, EndObjective, FireAtPoint, FireBait, FirePhasers, Pursue, Scan, SelectTarget, SetHelm, SetShields, Transport,
+    Authority, Command, DeflectorPulse, EndObjective, FireAtPoint, FireBait, FirePhasers, FireSpecialRound, Pursue, Scan,
+    SelectTarget, SetHelm, SetShields, Transport,
 )
 from ..sim.factory import SHIELD_FACINGS
 from ..sim.objectives import Objective, baitable
@@ -236,6 +237,9 @@ def progress(obs: Observation, o: Objective, names: dict[int, str] | None = None
             parts.append(f"{name} gone")
             continue
         c = obs.contact(t)
+        if o.goal == "hunt":
+            parts.append(f"{name} {'in sight' if c is not None and c.visible else 'not on sensors'}")
+            continue
         if c is None or c.scan is None:
             parts.append(f"{name} not scanned yet")
             continue
@@ -485,10 +489,49 @@ def plan_capture(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: 
 
 
 Plan = Callable[[Planner, Observation, Ship, Objective, "OfficerBrain | None"], list[Command]]
-PLANNERS: dict[str, Plan] = {"disable": plan_disable, "destroy": plan_disable, "capture": plan_capture}
+def plan_hunt(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: OfficerBrain | None) -> list[Command]:
+    """Find a ship we have lost, most often one that cloaked [E]: "Seven, find the Talon".
+
+    Nothing is fired at her. The officer sets up the tachyon detector (and the deflector), bursts the
+    round at her last known position, dead-reckoned along her heading, and keeps at it until she shows.
+    Once she does, she becomes our target and the job is done, so the captain can open fire at once.
+    """
+    t = o.targets[0]
+    name = label(obs, t)
+    if t in obs.gone():
+        return [p._cmd(EndObjective, ship, group=o.group, outcome="impossible", reason=f"{name} is gone")]
+    c = obs.contact(t)
+    if c is None:
+        return [p._cmd(EndObjective, ship, group=o.group, outcome="impossible",
+                       reason=f"we have never had {name} on sensors")]
+    if c.visible:
+        out: list[Command] = []
+        if ship.target != t:
+            out.append(p._cmd(SelectTarget, ship, target=t))
+        out.append(p._cmd(EndObjective, ship, group=o.group, outcome="done"))
+        return out
+    if c.cls is not None and not c.cls.can_cloak:
+        return [p._cmd(EndObjective, ship, group=o.group, outcome="impossible",
+                       reason=f"{name} can't cloak, so she is out of sensor range. Close on her last fix to find her")]
+    out = brain._collaborate(obs, ship, target=t, anyone=True) if brain is not None else []
+    if any(isinstance(cmd, FireSpecialRound) for cmd in out):
+        p.count("rounds")
+        p.note(obs, "hunt", f"Tachyon burst where {name} should be")
+    elif any(isinstance(cmd, DeflectorPulse) for cmd in out):
+        p.note(obs, "hunt", f"Deflector pulse toward {name}")
+    elif ship.projects:
+        left = min(ship.projects.values())
+        p.note(obs, "hunt", f"Building a tachyon detector to find {name} ({left:.0f}s)")
+    else:
+        brg = bearing(c.x - ship.x, c.y - ship.y)
+        p.note(obs, "hunt", f"Searching for {name}: last fix bearing {brg:.0f}, range {c.distance_to(ship.x, ship.y):,.0f}")
+    return out
+
+
+PLANNERS: dict[str, Plan] = {"disable": plan_disable, "destroy": plan_disable, "capture": plan_capture, "hunt": plan_hunt}
 
 
 __all__ = [
-    "PLANNERS", "Planner", "baitable", "disabled", "group_state", "label", "open_shields", "plan_capture", "plan_disable",
+    "PLANNERS", "Planner", "baitable", "disabled", "group_state", "label", "open_shields", "plan_capture", "plan_disable", "plan_hunt",
     "progress", "summary",
 ]
