@@ -175,7 +175,7 @@ def test_the_character_voices_page_toggles_and_saves(tmp_path, monkeypatch) -> N
     st = Settings(llm={"provider": "ollama", "model": "a", "character": {"provider": "ollama", "model": "b"}})
     menu = MenuScene(default_content(), st, lambda setup: None, lambda: None)
     menu.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_v, mod=0, unicode="v"))
-    assert menu.page == "voices"
+    assert menu.page == "settings" and menu.hub.section == "voices"
     menu.draw(surf)
     toggle = next(h for h in menu.ui.hotspots if h.tooltip.startswith("Off keeps"))
     toggle.action()               # On -> Off: saved under llm.character, the model's settings kept

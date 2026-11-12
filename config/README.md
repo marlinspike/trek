@@ -2,6 +2,8 @@
 
 Everything you set for the game lives in this folder. Only this README and the example files are in git; your own files stay on your machine.
 
+You don't need a text editor for most of it: **Settings** on the game's main menu (or **S**) changes `settings.json` and your officers' names, ranks, traits and response style in `officers.toml`, saving each change at once. It writes only the line you change in `officers.toml`; everything else there stays as you wrote it.
+
 | File | What it holds |
 |---|---|
 | `settings.json` | Window size, speed, sound (`volume` 0 to 1, `muted`, `sounds`: which version of the phaser and torpedo sounds, a to d, and `hum`: the ship's engine hum, 0 to 1, 0 for none), whether the map jolts when your ship takes a heavy blow (`jolt`), how the game is drawn (`renderer`: `auto`, `gpu` or `software`, and `bloom`: the *Light and glow* switch, both set on the main menu's Display page), officer chatter, Custom battle choices, the officers' language model, the Bridge setting (`bridge`: `hud bridge full|quiet|classic` and its parts), speaking orders (`voice`: engine, push-to-talk key, server address, model) and your career (`career`: each officer's trust and the ribbons you've earned). The game writes it; `begin --llm ...` edits the `llm` part, including `llm.character`, an optional second model for character voices (richer Klingon, Romulan and other alien speech for enemy captains and officers; set on the main menu's Character voices page, or see the in-game manual's language model page). Copy `settings.example.json` to start one by hand. |

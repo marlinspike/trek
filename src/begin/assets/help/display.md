@@ -6,7 +6,7 @@ aliases: display, graphics, renderer, gpu, opengl, retina, 4k, sharp, blurry, gl
 summary: How the game is drawn: sharp on Retina and 4K screens through the graphics card, with weapon light that falls on nearby hulls and a soft glow round it.
 see: weapon-colors, sound
 ---
-Open **Display** from the main menu (or press **D** there) to see how the game is being drawn and to change it.
+Open **Settings** from the main menu and choose **Display** (or press **D** on the main menu) to see how the game is being drawn and to change it.
 
 **Renderer** has three choices:
 

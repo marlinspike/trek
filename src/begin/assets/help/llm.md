@@ -14,7 +14,7 @@ Requests run in the background, so a slow or failing model never stalls the batt
 
 ## Setting it up
 
-The quickest way is from a terminal, which saves the `llm` section of `config/settings.json` in the project folder for you and then asks Spock one question to prove it works:
+The easiest way is the main menu's **Settings** page, under **Language model**: pick the provider, type the model's name, and press **Test it** to see an answer (see [[settings]]). From a terminal, `begin --llm` saves the same `llm` section of `config/settings.json` in the project folder, and `--llm-test` asks Spock one question to prove it works:
 
 ```
 begin --llm provider=ollama model=lfm3 think=off
@@ -49,7 +49,7 @@ The console log says which provider the officers are using when a battle starts.
 
 ## A second model for character voices
 
-A second model can speak for the game's characters while the first keeps the jobs that follow rules. It suits a model that is better at staying in character, or at alien languages: Klingon captains who use tlhIngan Hol, Romulans who are coldly formal. Turn it on, and choose who it speaks for, on the main menu's **Character voices** page (V); the model itself is set in `config/settings.json` under `llm`, or from a terminal:
+A second model can speak for the game's characters while the first keeps the jobs that follow rules. It suits a model that is better at staying in character, or at alien languages: Klingon captains who use tlhIngan Hol, Romulans who are coldly formal. Set it up on the main menu's **Settings** page, under **Character voices** (or press **V** on the main menu): its model, who it speaks for, and a **Test it** button. It is kept in `config/settings.json` under `llm`, and a terminal works too:
 
 ```
 begin --llm character.provider=ollama character.model=<model> character.for=captains,taunts

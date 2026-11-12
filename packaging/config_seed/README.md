@@ -2,11 +2,11 @@
 
 This folder holds everything you set for Begin. The game made it beside itself the first time it ran, and it never keeps settings anywhere else on your computer. Every file here is plain text: open it with Notepad (Windows), TextEdit (Mac) or any text editor. The **Open config folder** button on the game's main menu brings you straight here.
 
-You don't need to touch anything. The game saves your window, speed, sound and battle choices in `settings.json` by itself. The files below are for when you want more.
+You don't need to touch anything. The game saves your window, speed, sound and battle choices in `settings.json` by itself, and **Settings** on the main menu (S) changes the rest from inside the game: display, sound, the bridge, speaking orders, the language models, and your officers' names, ranks, traits and how they speak. The files below are for when you want more.
 
 | File | What it holds |
 |---|---|
-| `settings.json` | Window size, speed, sound (`volume` 0 to 1, `muted`, `sounds`: which version of the phaser and torpedo sounds, a to d, and `hum`), how the game is drawn (`renderer` and `bloom`, set on the main menu's **Display** page), officer chatter, Custom battle choices, the officers' language model (`llm`) and an optional second one for character voices (`llm.character`), the Bridge setting (`bridge`), speaking orders (`voice`) and your career (`career`: each officer's trust in you and the ribbons you've earned). The game writes it; `settings.example.json` shows the layout. |
+| `settings.json` | Window size, speed, sound (`volume` 0 to 1, `muted`, `sounds`: which version of the phaser and torpedo sounds, a to d, and `hum`), how the game is drawn (`renderer` and `bloom`, set under **Settings → Display** on the main menu), officer chatter, Custom battle choices, the officers' language model (`llm`) and an optional second one for character voices (`llm.character`), the Bridge setting (`bridge`), speaking orders (`voice`) and your career (`career`: each officer's trust in you and the ribbons you've earned). The game writes it; `settings.example.json` shows the layout. |
 | `officers.toml` | Your officers, shaped however you like: name and rank, traits, how each one answers, a new persona or a background, interests and quirks, and their own lines for any moment. Copy `officers.example.toml` to `officers.toml` and edit it. |
 | `orders.toml` | Your named tactical orders, run in battle with `execute order <name>`. Orders you `record` in battle are saved here too. Copy `orders.example.toml` to `orders.toml` to start. |
 | `wheel.toml`, `alerts.toml` | Your own command wheel and alert conditions (`alert red`, `yellow`, `green`), if you want to change them: start from a copy of the game's own, in `src/begin/content/data/` on [GitHub](https://github.com/marlinspike/trek). Each step is a console line. |
@@ -29,7 +29,7 @@ The game plays fully without any of this: the officers use their written lines. 
 "llm": {"provider": "ollama", "model": "lfm3", "think": false}
 ```
 
-A second model can speak for the game's characters only, for richer Klingon, Romulan and other alien speech from enemy captains and more colour from the officers. Set it up on the main menu's **Character voices** page, or under `"character"` inside `"llm"`; the main model keeps reading your orders and judging hails.
+A second model can speak for the game's characters only, for richer Klingon, Romulan and other alien speech from enemy captains and more colour from the officers. Set it up under **Settings → Character voices** on the main menu, or under `"character"` inside `"llm"`; the main model keeps reading your orders and judging hails.
 
 Cloud models work too, with `"provider"` set to `anthropic`, `openai` or `openrouter` and that provider's model id. Their API keys are never stored here: they come only from the `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `OPENROUTER_API_KEY` environment variable.
 
