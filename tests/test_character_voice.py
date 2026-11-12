@@ -129,6 +129,8 @@ def test_cli_configures_and_removes_the_character_model(tmp_path, monkeypatch) -
                   "notes": {"klingon": "Use a few words of Klingon."}}
     with pytest.raises(LLMError):
         configure(["character.colour=red"], s)
+    s = configure(["character.only=worf,seven"], s)
+    assert s.llm["character"]["only"] == ["worf", "seven"]
     s = configure(["character=off"], s)
     assert "character" not in s.llm
 
@@ -183,5 +185,25 @@ def test_the_character_voices_page_toggles_and_saves(tmp_path, monkeypatch) -> N
     menu.draw(surf)               # Off: the race buttons stand idle
     assert not any(h.tooltip.startswith("None picked") for h in menu.ui.hotspots)
     del klingon
+    next(h for h in menu.ui.hotspots if h.tooltip.startswith("Off keeps")).action()   # back on
+    menu.draw(surf)               # one button per officer for "only this model"
+    pin = [h for h in menu.ui.hotspots if h.tooltip.startswith("Everything this officer says")]
+    assert len(pin) == 4
+    pin[1].action()
+    assert Settings.load().llm["character"]["only"] == ["worf"]
     menu.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE, mod=0, unicode=""))
     assert menu.page == "main"
+
+
+def test_pinned_characters_use_only_the_character_model() -> None:
+    route = route_from_settings({"for": ["captains"], "only": ["worf", "romulan"]})
+    p, main, char = routed(route)
+    for tag in ("worf", "\0line:worf", "log:worf", "\0hailvoice:8"):     # pinned, whatever "for" says
+        assert ask(p, tag) == "character", tag
+    assert ask(p, "spock") == "main"
+    assert ask(p, "\0address") == "main" and ask(p, "console") == "main"   # judgements never move
+    p, main, _ = routed(route, fail=True)
+    with pytest.raises(LLMError):
+        ask(p, "worf")                       # no stand-in: the officer answers offline instead
+    assert main.asked == [] and p.fallbacks == 0
+    assert ask(p, "\0hail:7") == "main"      # not pinned: the main model still stands in

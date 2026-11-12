@@ -160,7 +160,7 @@ begin --llm-voice-test klingon    # hails a Klingon captain and prints who answe
 begin --llm character=off         # back to one model for everyone
 ```
 
-`for` picks the situations: `captains` (answering your hails), `taunts` (calling you unprompted), `officers` (answering you), `chatter` (their remarks in battle) and `log` (their parts of a tour's captain's log). `factions` and `officers` narrow it to some races or some officers, and `notes` adds a line to that character's prompt (`*` for all of them). The same keys as the main model work under `character.` (`base_url`, `think`, `timeout`, ...). It lives in `config/settings.json` under `llm.character`.
+`for` picks the situations: `captains` (answering your hails), `taunts` (calling you unprompted), `officers` (answering you), `chatter` (their remarks in battle) and `log` (their parts of a tour's captain's log). `factions` and `officers` narrow it to some races or some officers, and `notes` adds a line to that character's prompt (`*` for all of them). `only` pins characters to the second model: everything they say goes there, and if it fails they answer offline rather than through the main model (`character.only=worf`, or the **Only this model** buttons on the page). The same keys as the main model work under `character.` (`base_url`, `think`, `timeout`, ...). It lives in `config/settings.json` under `llm.character`.
 
 **Watching what the model costs.** Two debug logs, both off by default, show exactly how hard the game is working the model:
 

@@ -38,6 +38,7 @@ class MenuScene:
                  tours: Callable[[], None] | None = None, display: DisplayControl | None = None) -> None:
         self.content = content
         self.display = display
+        self._officers: list[tuple[str, str]] | None = None     # the Character voices page's officer buttons
         self.tours = tours
         self.settings = settings
         self.start = start
@@ -433,10 +434,37 @@ class MenuScene:
                            partial(save, "factions", [f for f in FACTIONS[1:] if (f in facs) != (f == fac)]),
                            "None picked: captains of every race", active=fac in facs, enabled=on, size=12)
             bx += 98
+        y += 44
+        raw_only = ch.get("only", [])
+        only = [str(v) for v in raw_only] if isinstance(raw_only, list) else [str(raw_only)]
+        theme.text(surf, "Only this model", (x, y + 9), theme.TEXT_DIM, 14)
+        bx = x + 180
+        crew = self._officer_names()
+        for oid, name in crew:
+            self.ui.button(surf, pygame.Rect(bx, y, 92, 32), name,
+                           partial(save, "only", [o for o, _ in crew if (o in only) != (o == oid)]
+                                   + [o for o in only if o not in dict(crew)]),
+                           "Everything this officer says goes to the second model, whatever is picked above; if it "
+                           "fails they answer offline, never through the main model", active=oid in only, enabled=on,
+                           size=12)
+            bx += 98
         y += 56
         self.ui.button(surf, pygame.Rect(x, y, 140, 36), "Back", lambda: setattr(self, "page", "main"), size=13)
         theme.text(surf, "Saved in config/settings.json (llm.character). Takes effect in the next battle.",
                    (x + 160, y + 10), theme.TEXT_FAINT, 12)
+
+    def _officer_names(self) -> list[tuple[str, str]]:
+        """(id, short name) for each bridge officer, as the captain has named them; read once."""
+        if self._officers is None:
+            from ..crew.characters import load_officers
+            from ..paths import config_dir
+
+            try:
+                profiles = load_officers(traits_file=config_dir() / "officers.toml")
+            except Exception:  # noqa: BLE001 - a broken officers file must not break the menu
+                profiles = load_officers()
+            self._officers = [(o.id, o.name if len(o.name) <= 10 else o.name.split()[0]) for o in profiles.values()]
+        return self._officers
 
     @staticmethod
     def _para(surf: pygame.Surface, text: str, at: tuple[int, int], width: int, color: theme.Color,

@@ -65,6 +65,7 @@ begin --llm-voice-test klingon
 
 - `for` is any of `captains` (answering a hail), `taunts` (an enemy calling you), `officers` (answering you), `chatter` (their remarks) and `log` (the captain's log). Left out, it is `captains` and `taunts`.
 - `factions` and `officers` narrow it (left out: everyone). `notes` adds a line to a faction's or officer's prompt, or to everyone's with `"*"`.
+- `only` pins characters (officer ids, or a faction for its captains) to the second model: everything they say goes there, whatever `for` says, and if it fails they answer offline instead of through the main model. The page's **Only this model** buttons set it for each officer.
 - `enabled: false` keeps the settings and lets the main model speak for everyone. `--llm character=off` removes it.
 - Plain-English orders, named orders and judging your speeches always stay with the main model. If the second model fails, the main one answers that line, so nobody goes silent.
 - Its requests appear in the debug logs under its own model name.

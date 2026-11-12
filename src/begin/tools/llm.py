@@ -14,7 +14,7 @@ Keys accepted by --llm: provider, model, base_url, think, effort, timeout, max_t
 log_prompts, log_tokens (console = on | off | always: plain-English orders at the console;
 log_prompts / log_tokens = on | off: see `llm/usage.py`).
 character.<key>: the character voice model, with the same keys (provider, model, base_url, think, effort, timeout,
-max_tokens) plus enabled (on | off), for, factions and officers (comma-separated lists) and notes.<faction or
+max_tokens) plus enabled (on | off), for, factions, officers and only (comma-separated lists) and notes.<faction or
 officer id> (a line added to that character's prompt). character=off removes it.
 API keys are never written; they come from the environment.
 """
@@ -71,7 +71,7 @@ def configure(pairs: list[str], settings: Settings | None = None) -> Settings:
 
 
 CHARACTER_KEYS = ("provider", "model", "base_url", "think", "effort", "timeout", "max_tokens", "enabled", "for",
-                  "factions", "officers")
+                  "factions", "officers", "only")
 
 
 def _configure_character(llm: dict[str, object], key: str, value: str) -> None:
@@ -95,7 +95,7 @@ def _configure_character(llm: dict[str, object], key: str, value: str) -> None:
         raise LLMError(f"character.<key> takes one of {', '.join(CHARACTER_KEYS)} or notes.<who>; got '{key}'.")
     elif not value:
         ch.pop(key, None)
-    elif key in ("for", "factions", "officers"):
+    elif key in ("for", "factions", "officers", "only"):
         ch[key] = [v.strip().lower() for v in value.split(",") if v.strip()]
     elif key == "think":
         ch[key] = parse_think(value)

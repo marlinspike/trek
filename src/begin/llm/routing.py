@@ -12,9 +12,14 @@ taunting you, an officer's chatter, the officers' parts of the captain's log.
         "for": ["captains"],                 # which situations: captains, taunts, officers, chatter, log
         "factions": ["klingon"],             # captains of these factions only (left out: every faction)
         "officers": [],                      # officers by id (worf, spock, ...) (left out: every officer)
-        "notes": {"klingon": "Use a few words of Klingon (tlhIngan Hol), each followed by its meaning."}
+        "notes": {"klingon": "Use a few words of Klingon (tlhIngan Hol), each followed by its meaning."},
+        "only": ["worf"]                     # these characters speak through this model alone (see below)
       }
     }
+
+"only" pins characters (officer ids, or factions for enemy captains) to the character model: everything they say
+goes there, whatever "for", "factions" and "officers" say, and if it fails the main model does not stand in (an
+officer then answers offline, as with no model at all). Pinning never covers the console or the game's judgements.
 
 Every other key of "character" (base_url, think, timeout, max_tokens, effort) means what it means for the main model.
 "enabled": false keeps the settings but sends everything to the main model. The debug logs follow the main model's
@@ -54,6 +59,7 @@ class CharacterRoute:
     factions: frozenset[str] = frozenset()     # empty: every faction
     officers: frozenset[str] = frozenset()     # empty: every officer
     notes: Mapping[str, str] = field(default_factory=dict)   # faction or officer id (or "*") -> added to the prompt
+    only: frozenset[str] = frozenset()         # officer ids or factions that speak through the character model alone
 
     def place(self, tag: str) -> tuple[str, str] | None:
         """(situation, who) for a request tag: who is a ship id for captains, an officer id for the crew."""
@@ -74,17 +80,23 @@ class CharacterRoute:
     def subject(self, tag: str, faction_of: Callable[[str], str | None]) -> str | None:
         """The faction or officer the request speaks for when the character model should answer it, else None."""
         where = self.place(tag)
-        if where is None or where[0] not in self.situations:
+        if where is None:
             return None
         situation, who = where
         if situation in ("captains", "taunts"):
             fac = faction_of(who)
-            if fac is None or (self.factions and fac not in self.factions):
+            if fac is None:
                 return None
-            return fac
-        if self.officers and who not in self.officers:
-            return None
-        return who
+            if fac in self.only:
+                return fac
+            return fac if situation in self.situations and (not self.factions or fac in self.factions) else None
+        if who in self.only:
+            return who
+        return who if situation in self.situations and (not self.officers or who in self.officers) else None
+
+    def pinned(self, subject: str) -> bool:
+        """True when this character speaks through the character model alone, with no main model standing in."""
+        return subject in self.only
 
     def note(self, subject: str) -> str:
         return " ".join(n for n in (self.notes.get("*", ""), self.notes.get(subject, "")) if n).strip()
@@ -106,7 +118,8 @@ def route_from_settings(ch: Mapping[str, object]) -> CharacterRoute:
                        f"Use: {', '.join(SITUATIONS)}.")
     notes = ch.get("notes")
     return CharacterRoute(situations, _names(ch.get("factions")), _names(ch.get("officers")),
-                          {str(k).lower(): str(v) for k, v in notes.items()} if isinstance(notes, Mapping) else {})
+                          {str(k).lower(): str(v) for k, v in notes.items()} if isinstance(notes, Mapping) else {},
+                          _names(ch.get("only")))
 
 
 def character_from_settings(llm: Mapping[str, object]) -> tuple[LLMConfig, CharacterRoute] | None:
@@ -118,7 +131,7 @@ def character_from_settings(llm: Mapping[str, object]) -> tuple[LLMConfig, Chara
     ch = llm.get(CHARACTER_KEY)
     if not isinstance(ch, Mapping) or not ch or not parse_switch(ch.get("enabled", True)):
         return None
-    sub = {k: v for k, v in ch.items() if k not in ("for", "factions", "officers", "notes", "enabled")}
+    sub = {k: v for k, v in ch.items() if k not in ("for", "factions", "officers", "notes", "only", "enabled")}
     sub.update({k: llm[k] for k in ("log_prompts", "log_tokens") if k in llm})
     cfg = config_from_settings(sub, env={})
     if cfg is None:
@@ -151,7 +164,9 @@ class RoutedProvider:
         note = self.route.note(subject)
         try:
             return self.character.complete(system + ("\n\n" + note if note else ""), messages)
-        except Exception:  # noqa: BLE001 - the main model is the safety net for anything the second one can't do
+        except Exception as e:  # noqa: BLE001 - the main model is the safety net for anything the second one can't do
+            if self.route.pinned(subject):
+                raise e if isinstance(e, LLMError) else LLMError(f"{type(e).__name__}: {e}") from e
             self.fallbacks += 1
             return self.main.complete(system, messages)
 
