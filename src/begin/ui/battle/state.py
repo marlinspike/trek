@@ -8,6 +8,12 @@ import pygame
 
 if TYPE_CHECKING:
     from ...battle import Battle
+    from ...console.complete import Completer
+    from ...crew.career import Career
+    from ...crew.proposals import Proposer
+    from .command import Recording
+    from ...voice.recorder import Recorder
+    from ...voice.settings import VoiceSettings
     from ...console.orders import OrderBook, OrderRun
     from ...console.translator import Translator
     from ...crew.conversation import Bridge
@@ -18,6 +24,8 @@ if TYPE_CHECKING:
     from ...sim.world import World
     from .. import theme
     from ..audio import Audio
+    from ..bridge_prefs import BridgePrefs
+    from ..subtitles import Subtitles
     from ..camera import Camera
     from ..hit_report import HitReport
     from ..hud import Panel, TabbedPanel
@@ -86,6 +94,38 @@ class SceneState:
     fired_at: dict[int, float]
     _channels: dict[int, str]
     deeds: list[Event]
+    bridge_store: dict[str, object]
+    prefs: BridgePrefs
+    subs: Subtitles
+    _toast_seen: object
+    focus_k: float
+    focus_idle: float
+    wheel: object | None
+    proposal: object | None
+    _wheel_t: float
+    completer: Completer
+    _preview_key: object
+    _preview: object | None
+    proposer: Proposer
+    _propose_t: float
+    career: Career
+    alerts: dict[str, tuple[str, list[str]]]
+    condition: str | None
+    recording: Recording | None
+    ran: list[str]
+    style: str | None
+    style_broken: str | None
+    ribbon_won: str | None
+    _career_done: bool
+    ever_delegated: set[str]
+    trust_news: list[str]
+    phrasebook: dict[str, list[str]]
+    voice_store: dict[str, object]
+    vset: VoiceSettings
+    recorder: Recorder | None
+    voice_state: str
+    voice_note: str
+    wheels: dict
     size: tuple[int, int]
     map_rect: pygame.Rect
     col_rect: pygame.Rect

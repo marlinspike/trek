@@ -109,6 +109,8 @@ class OrdersMixin(SceneState):
             self._log(f"≈ {c}   (not run: type it yourself if you mean it)", theme.CAUTION)
         for c in t.commands:
             self._run_one(c, translate=False, echo="≈ ")
+        if t.commands and not t.held and not t.clarify:
+            self.remember_phrase(t.text, t.commands)     # the same words work at once next time
 
     def _translate_mode(self: BattleScene, mode: object) -> None:
         tr = self.translator

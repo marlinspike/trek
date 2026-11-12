@@ -14,7 +14,9 @@ from ...console import reports
 from ...console.parser import ParseContext, ParseResult, parse
 from ...crew.intents import whole_bridge_stand_down
 from ...crew.hails import prisoners_lines
-from ...sim.commands import AddressCrew, CeaseFire, Command, DelegateStation, EndObjective, Evasive, SetHelm, SetObjective, StandDown
+from ...sim.commands import (
+    AddressCrew, CeaseFire, Command, DelegateStation, EndObjective, Evasive, SetHelm, SetObjective, StandDown, TakeConn,
+)
 from .. import theme
 from .common import exact_verb
 from .state import SceneState
@@ -34,7 +36,7 @@ class ConsoleMixin(SceneState):
                 self._run_one(part)
 
     def _run_one(self: BattleScene, text: str, translate: bool = True, echo: str = "> ") -> None:
-        self._log(f"{echo}{text}", theme.FRIEND)
+        self._log(f"{echo}{text}", theme.FRIEND, channel="bridge")
         if self.player_id is None:
             self._log("No ship under command.", theme.CAUTION)
             return
@@ -52,6 +54,7 @@ class ConsoleMixin(SceneState):
                 return
             hit = self.bridge.addressed(text)
             if hit is not None:
+                self.note_ran(text)
                 self._ask(*hit)
                 return
             holder = self.bridge.find(self.player.conn) if self.player is not None and self.player.conn else None
@@ -62,6 +65,12 @@ class ConsoleMixin(SceneState):
         tr = self.translator
         if any(isinstance(c, (CeaseFire, StandDown)) for c in res.commands):
             self._execute_now(text, res)
+            return
+        known = self.recalled(text) if res.error is not None and translate else None
+        if known:          # plain words the model worked out before: no need to ask again
+            self._log("  (remembered)", theme.TEXT_DIM)
+            for c in known:
+                self._run_one(c, translate=False, echo="≈ ")
             return
         if (translate and tr is not None and not any(n == "translate" for n, _ in res.actions)
                 and tr.wants(res.error is None, exact_verb(text) or len(text.split()) >= 2)):
@@ -159,10 +168,17 @@ class ConsoleMixin(SceneState):
             reason = self.issue(cmd)
             if reason is None:
                 self.audio.play("confirm", time.monotonic(), 0.0, 0.6)     # one chirp however many orders it held
-                self._log(f"  {cmd.describe()}: acknowledged", theme.TEXT_DIM)
+                self._readback(cmd)
+                self.style_check(cmd)
+                if isinstance(cmd, DelegateStation) and cmd.on:
+                    self.ever_delegated.add(cmd.station)
+                elif isinstance(cmd, TakeConn) and cmd.officer:
+                    self.ever_delegated.update(("helm", "tactical", "engineering", "science"))
                 self._after_captain(cmd)
                 if isinstance(cmd, AddressCrew) and self.bridge is not None:
                     self._speak(self.bridge.address_reaction(cmd))
+        if res.commands:
+            self.note_ran(text)
         if res.commands and self.bridge is not None:
             self.bridge.captain_ran(text, self.world.tick, self.world.rules.ticks_per_cycle)
 
@@ -253,6 +269,16 @@ class ConsoleMixin(SceneState):
         elif name == "prisoners":
             for line in prisoners_lines(self.world, self.side):
                 self._log(line, theme.TEXT)
+        elif name == "bridge":
+            self.bridge_setting(val)
+        elif name == "alert":
+            self.alert(val)  # type: ignore[arg-type]
+        elif name == "record":
+            self.record(val)  # type: ignore[arg-type]
+        elif name == "style":
+            self.choose_style(val)  # type: ignore[arg-type]
+        elif name == "voice":
+            self.voice_command(val)
         elif name == "hud" and isinstance(val, str) and val.startswith("jolt"):
             self.view.jolt = val.endswith("on")
             self._log("The map jolts when your ship takes a heavy blow." if self.view.jolt else

@@ -61,7 +61,8 @@ class App:
         scene = BattleScene(battle, self.screen.get_size(), self.back_to_menu, keys=self.settings.keys,
                             hidden=self.settings.hidden, llm=self.settings.llm, chatter=self.settings.chatter,
                             volume=self.settings.volume, muted=self.settings.muted,
-                            sounds=self.settings.sounds, hum=self.settings.hum, jolt=self.settings.jolt)
+                            sounds=self.settings.sounds, hum=self.settings.hum, jolt=self.settings.jolt,
+                            bridge=self.settings.bridge, career=self.settings.career, voice=self.settings.voice)
         scene.speed = float(self.settings.speed) if float(self.settings.speed) in (0.25, 0.5, 1.0, 2.0, 4.0) else 1.0
         self.scene = scene
         return scene

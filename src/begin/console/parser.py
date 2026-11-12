@@ -40,6 +40,18 @@ from .vocab import (
     system_word,
 )
 
+# `hud <switch> <value>`: the Bridge setting and its parts (see ui/bridge_prefs.py) [E]
+BRIDGE_SWITCHES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "bridge": ("bridge", ("full", "quiet", "classic")),
+    "wheel": ("wheel", ("on", "off")),
+    "focus": ("focus", ("slow", "pause", "off")),
+    "proposals": ("proposals", ("often", "rarely", "off")),
+    "orders": ("map_orders", ("on", "off")),
+    "subtitles": ("subtitles", ("all", "urgent", "off")),
+    "readbacks": ("readbacks", ("voiced", "log", "off")),
+    "preview": ("preview", ("on", "off")),
+}
+
 _HAIL_ALL = ("all", "everyone", "everybody", "enemies", "them", "fleet")
 # a hail of one word that is still something a captain would say, not a misheard ship's name
 _HAIL_SPEECH = frozenset("""surrender yield withdraw retreat leave greetings hello hi hail respond answer identify
@@ -1151,9 +1163,20 @@ class Parser:
             if v not in ("on", "off"):
                 raise ParseError("hud jolt on or hud jolt off: whether the map jolts when your ship takes a heavy blow.")
             res.actions.append(("hud", f"jolt {v}"))
+        elif w in BRIDGE_SWITCHES:
+            key, choices = BRIDGE_SWITCHES[w]
+            v = tok.next()
+            if v is None:
+                res.actions.append(("bridge", None))
+                return
+            v = {"slower": "slow", "rare": "rarely", "seldom": "rarely", "never": "off", "none": "off",
+                 "normal": "full", "voice": "voiced", "quieter": "quiet"}.get(v, v)
+            if v not in choices:
+                raise ParseError(f"hud {w} {'|'.join(choices)}")
+            res.actions.append(("bridge", (key, v)))
         else:
             raise ParseError("hud detail (every number on the panels), hud simple (hover a panel for the rest), "
-                             "or hud jolt on|off.")
+                             "hud jolt on|off, or hud bridge full|quiet|classic.")
 
     def _v_sound(self, tok: Tokens, res: ParseResult) -> None:
         """`sound on|off|<0-100>`, `sound phaser b`, `sound hum on|off|<0-100>`: the battle's sound effects, which
@@ -1187,6 +1210,53 @@ class Parser:
         else:
             raise ParseError("sound on, sound off, sound <0-100> for the volume, sound hum on|off, "
                              "or sound phaser|torpedo a|b|c|d.")
+
+    def _v_alert(self, tok: Tokens, res: ParseResult) -> None:
+        """`alert red|yellow|green` [E]: the bundle of orders for that condition (config/alerts.toml)."""
+        w = tok.next()
+        if w in ("red", "r"):
+            w = "red"
+        elif w in ("yellow", "y", "amber"):
+            w = "yellow"
+        elif w in ("green", "g", "stand", "secure"):
+            w = "green"
+        elif w is not None:
+            raise ParseError("alert red, alert yellow or alert green.")
+        tok.rest()
+        res.actions.append(("alert", w))
+
+    def _v_record(self, tok: Tokens, res: ParseResult) -> None:
+        """`record <name>`, `record stop|save`, `record off|discard`, `record last <n> as <name>` [E]."""
+        w = tok.next()
+        if w is None:
+            res.actions.append(("record", ("start", "")))
+        elif w in ("stop", "save", "end", "done", "finish"):
+            tok.rest()
+            res.actions.append(("record", ("stop", "")))
+        elif w in ("off", "discard", "cancel", "abort", "scrap"):
+            tok.rest()
+            res.actions.append(("record", ("discard", "")))
+        elif w == "last":
+            n = tok.number("how many")
+            tok.take_word("as", "called", "named")
+            name = "-".join(tok.toks[tok.i:])
+            tok.i = len(tok.toks)
+            res.actions.append(("record", ("last", f"{int(n)} {name}")))
+        else:
+            name = "-".join([w] + tok.toks[tok.i:])
+            tok.i = len(tok.toks)
+            res.actions.append(("record", ("start", name)))
+
+    def _v_style(self, tok: Tokens, res: ParseResult) -> None:
+        """`style` lists the command styles and ribbons; `style <name>` promises one for this battle [E]."""
+        words = "".join(tok.toks[tok.i:]).replace("-", "")
+        tok.i = len(tok.toks)
+        res.actions.append(("style", words or None))
+
+    def _v_voice(self, tok: Tokens, res: ParseResult) -> None:
+        """`voice`: the voice page (engine, push-to-talk, test, models) [E]. `voice off|on`."""
+        rest = " ".join(tok.rest())
+        res.actions.append(("voice", rest or None))
 
     def _v_translate(self, tok: Tokens, res: ParseResult) -> None:
         """`translate on|off|always`: plain-English console input through the language model [E]."""

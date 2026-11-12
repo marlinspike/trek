@@ -2,7 +2,7 @@
 title: Talking to your officers
 category: Crew
 order: 1
-aliases: ask, say, talk, conversation, question, rapport, relationship, traits, response style, response_style, character, personality, voice
+aliases: ask, say, talk, conversation, question, rapport, relationship, traits, response style, response_style, character, personality, officer voice
 summary: Ask an officer for a report or advice, or give an order in plain words.
 see: crew, llm, coach
 ---

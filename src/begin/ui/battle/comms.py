@@ -40,6 +40,7 @@ class CommsMixin(SceneState):
         if p is None or not p.alive:
             self._log("No ship under command.", theme.CAUTION)
             return
+        self.style_check(why="a hail")
         self._speak(self.comms.hail(p, target, words, self.issue))
 
     def open_channel(self: BattleScene, sid: int) -> None:
@@ -147,9 +148,15 @@ class CommsMixin(SceneState):
     def _speak(self: BattleScene, lines: list[Utterance]) -> None:
         tone = {"crew": theme.CREW, "caution": theme.CAUTION, "dim": theme.TEXT_DIM, "enemy": theme.HAIL}
         for u in lines:
-            self._log(f"{u.speaker}: {u.text}", tone.get(u.tone, theme.CREW))
+            col = tone.get(u.tone, theme.CREW)
+            self._log(f"{u.speaker}: {u.text}", col, channel="bridge")
             for c in u.commands:
-                self._log(f"    › {c}", theme.TEXT_DIM)
+                self._log(f"    › {c}", theme.TEXT_DIM, channel="bridge")
+            if u.tone != "dim":
+                o = self.bridge.find(u.officer) if self.bridge is not None and u.officer else None
+                name = o.name if o is not None else u.speaker
+                self._voice(name, u.text, col, o.station if o is not None else None, o.id if o is not None else None,
+                            urgent=u.tone == "caution")
 
     def address_crew(self: BattleScene) -> None:
         """Open the console ready for a speech to the crew."""
@@ -167,6 +174,7 @@ class CommsMixin(SceneState):
             self._speak(self.bridge.react(events, self._help_context()))
 
     def _crew_outcome(self: BattleScene) -> None:
+        self.career_outcome()
         if self.bridge is None:
             return
         o = self.world.outcome

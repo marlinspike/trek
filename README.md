@@ -95,6 +95,20 @@ Press **Enter** for a Begin-style console. Every command in the Begin manual wor
 
 The remake adds `autoload`, `mode`, `pd`, `hud detail|simple`, `role`, `target <ship> <subsystem>`, `repair hull`, `evasive` (Federation ships dodge incoming torpedoes and then resume your course), `address crew <words>` to rally a shaken crew, `cease fire` (also `hold fire`, `stop firing`, or `seven, cease fire`) to stop every weapon and the officers' objectives until you fire again or say `open fire`, and `key F5 <commands>` to bind a key.
 
+### Giving orders from the bridge
+
+Every way of giving an order still works, and the bridge adds to them. The officer at each station reads your order back in a sentence built from the order itself ("Course 090, warp 6.", "Firing all phasers at the Hydra, aiming for her shields."), so a slip is caught at once, and officers' words show as subtitles low on the map, one voice at a time. The log keeps everything, in a **Bridge** column (who said what) and a **Computer** column.
+
+Right-click a ship, or press **E** for your target, for the **command wheel**: eight slices always in the same places (Phasers, Torpedoes, Disable, Close to, Hail, Board, Elude, Target), each a console line the log shows. Right-clicking empty space still steers. While you type, the battle eases to a quarter speed with an amber edge on the map, a faint line under the console says what Enter would do, the map shows a ghost of it, and **Tab** finishes ship, officer and command names. With the mouse on a ship, "fire at her" or "scan that one" means that ship.
+
+Now and then an officer proposes an order ("Torpedoes inbound, Captain. Evasive manoeuvres?"): **Y** makes it so, **N** belays it. `alert red|yellow|green` gives a set of orders at once, `record <name>` ... `record stop` saves what you just did as a named order (the **Orders** tab holds them as cards), `style chair|book|silent|green|iron` promises a way of commanding for a ribbon, and officers' trust in you grows from Green to Veteran across battles and tours.
+
+![The command wheel open on a Klingon dreadnought](docs/screenshots/bridge-wheel.png)
+
+![Worf proposes a target; condition red, recording an order](docs/screenshots/bridge-proposal.png)
+
+Hold **Right Alt** (Option on a Mac) and speak an order: the Mac's own recogniser, whisper.cpp on your computer, a whisper.cpp server, or a cloud service hears it (`voice` opens the voice page). `hud bridge full|quiet|classic` sets how much of this you want; classic is the console as it was. See `help bridge` in the game.
+
 ### Bridge officers
 
 I brought my own favourite Star Trek characters onto the bridge. Begin never had officers you could talk to, so I picked the crew I'd most want beside me in a fight: Spock, Worf, Geordi La Forge and Seven of Nine.
@@ -217,9 +231,12 @@ Everything you set lives in the project's [`config/`](config/README.md) folder, 
 
 | File | What it holds |
 |---|---|
-| `settings.json` | Window, speed, volume, mute, sound versions, chatter, custom battle choices and the language model settings. The game writes it. |
+| `settings.json` | Window, speed, volume, mute, sound versions, chatter, custom battle choices, the language model, the Bridge and voice settings, and your officers' trust and ribbons. The game writes it. |
 | `officers.toml` | Your officers' traits and response styles. |
-| `orders.toml` | Your named tactical orders. |
+| `orders.toml` | Your named tactical orders, including the ones you record in battle. |
+| `wheel.toml`, `alerts.toml` | Your own command wheel and alert conditions (copy them from `src/begin/content/data/`). |
+| `phrasebook.json` | Plain words the language model worked out once, remembered so they work at once next time. |
+| `voice/` | The local Whisper models and the Mac speech helper, when you use them. |
 | `hails.toml` | Your own lines for enemy captains, read over the shipped ones race by race. |
 | `tours/` | Your tours of duty in progress (`<tour>.json`), their captain's logs (`<tour>-log.md`) and tours you write yourself (`*.toml`). |
 | `sounds/` | Your own WAV files, replacing the game's sounds. |

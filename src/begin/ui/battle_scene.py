@@ -20,11 +20,16 @@ import pygame
 
 from ..battle import Battle
 from ..console import reports
+from ..console.complete import Completer
+from ..crew.career import Career
+from ..crew.proposals import Proposer
+from .battle.command import Recording
 from ..console.orders import OrderBook, OrderRun
 from ..console.translator import Translator
 from ..crew.conversation import Bridge
 from ..crew.hails import Comms, load_lines
 from ..help.coach import HelpContext
+from ..paths import config_dir
 from ..sim.allies import AllyStanding
 from ..sim.commands import AllyOrder, Command, FirePhasers, FireTorpedoes, LaunchProbe, SetBanks
 from ..sim.events import CommandRejected, Event, Message, PhaserFired, ObjectiveEnded, ProjectCompleted, ScanCompleted
@@ -35,26 +40,34 @@ from ..sim.world import World
 from . import theme
 from .audio import HUM_LEVEL as HUM_DEFAULT, Audio
 from .battle.common import CONTROLS, SPEEDS, TONE_COLOR, LogLine, TourLink
+from .battle.bridge import BridgeMixin
+from .battle.command import CommandMixin, load_alerts, load_phrasebook
 from .battle.comms import CommsMixin
+from .battle.voice import VoiceMixin
 from .battle.console import ConsoleMixin
 from .battle.input import InputMixin
 from .battle.orders import OrdersMixin
 from .battle.render import RenderMixin
+from .bridge_prefs import BridgePrefs
 from .camera import Camera
 from .hit_report import HitReport
 from .hud import ContactsPanel, CrewPanel, FleetPanel, OwnShipPanel, Panel, TabbedPanel, TargetPanel, WeaponsPanel
 from .manual import ManualView
+from .orders_panel import OrdersPanel
+from .subtitles import Subtitles
+from .wheel import load_wheels
 from .tactical import Snapshot, TacticalView
 from .tween import Tweens
 from .widgets import UI
 
 
-class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin):
+class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, BridgeMixin, CommandMixin, VoiceMixin, RenderMixin):
     def __init__(self, battle: Battle, size: tuple[int, int], on_exit: Callable[[], None],
                  keys: dict[str, str] | None = None, hidden: dict[str, object] | None = None,
                  llm: dict[str, object] | None = None, chatter: bool = True, volume: float = 0.6,
                  muted: bool = False, sounds: dict[str, str] | None = None, hum: float = 0.35,
-                 jolt: bool = True) -> None:
+                 jolt: bool = True, bridge: dict[str, object] | None = None,
+                 career: dict[str, object] | None = None, voice: dict[str, object] | None = None) -> None:
         self.battle: Battle = battle
         self.world: World = battle.world
         self.player_id: int | None = battle.player_ship_id
@@ -80,7 +93,7 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
         self.toast: tuple[str, theme.Color, float] | None = None
         self.hits: HitReport = HitReport(None)   # "Hits on Wraith: ..." lines in the log
         self.overlay: str | None = "help_brief"
-        self.side_tabs: TabbedPanel = TabbedPanel([ContactsPanel(), FleetPanel(), CrewPanel()])
+        self.side_tabs: TabbedPanel = TabbedPanel([ContactsPanel(), FleetPanel(), CrewPanel(), OrdersPanel()])
         self.panels: list[Panel] = [OwnShipPanel(), TargetPanel(), WeaponsPanel(), self.side_tabs]
         self.selected_ally: int | None = None
         self.assessment: Assessment = Assessment.begin(self.world)
@@ -99,6 +112,35 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
         self.chart_all: bool = False
         self.chart_origin: int | None = None
         self.keys: dict[str, str] = keys if keys is not None else {}
+        # the Bridge setting (full, quiet, classic and its parts), kept in settings.json's "bridge"
+        self.bridge_store: dict[str, object] = bridge if bridge is not None else {}
+        self.prefs: BridgePrefs = BridgePrefs.from_dict(self.bridge_store)
+        self.subs: Subtitles = Subtitles()
+        self._toast_seen: object = None
+        self.focus_k: float = 0.0           # tactical focus, eased 0..1
+        self.focus_idle: float = 0.0        # seconds since the captain's last keystroke in the console
+        self.wheel: object | None = None    # the open command wheel, if any
+        self._wheel_t: float = 0.0
+        self.completer: Completer = Completer()
+        self._preview_key: object = None
+        self._preview: object | None = None
+        self.proposer: Proposer = Proposer()
+        self._propose_t: float = 0.0
+        self.career: Career = Career(career)
+        self.alerts = load_alerts(config_dir() / "alerts.toml")
+        self.condition: str | None = None
+        self.recording: Recording | None = None
+        self.ran: list[str] = []
+        self.style: str | None = None
+        self.style_broken: str | None = None
+        self.ribbon_won: str | None = None
+        self._career_done: bool = False
+        self.ever_delegated: set[str] = set()
+        self.trust_news: list[str] = []
+        self.phrasebook: dict[str, list[str]] = load_phrasebook()
+        self._voice_setup(voice)
+        self.wheels = load_wheels(config_dir() / "wheel.toml")
+        self.proposal: object | None = None # an officer's proposed order, waiting on Y or N
         self.manual: ManualView = ManualView(self._help_context, self._try_command, self._close_manual)
         self.hidden: dict[str, object] = hidden if hidden is not None else {}
         self.bridge: Bridge | None = None
@@ -131,8 +173,6 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
 
                 service = LLMService(provider)
             self.bridge = Bridge(battle.crew, self.hidden, service, seed=battle.setup.seed, chatter=chatter)
-        from ..paths import config_dir
-
         # [E] hailing enemy captains: its own model worker, so a hail never queues behind an officer
         hail_llm = None
         if provider is not None:
@@ -217,11 +257,13 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
 
     def fire_phasers(self, banks: tuple[int, ...] | None) -> None:
         p = self.player
+        self.style_check(why="a fire key")
         if p is not None:
             self.issue(FirePhasers(ship_id=p.id, banks=banks))
 
     def fire_torpedoes(self, tubes: tuple[int, ...] | None) -> None:
         p = self.player
+        self.style_check(why="a fire key")
         if p is not None:
             self.issue(FireTorpedoes(ship_id=p.id, tubes=tubes))
 
@@ -229,6 +271,7 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
         p = self.player
         if p is None:
             return
+        self.style_check(why="a fire key")
         if p.target is None:
             self.toast = ("Select a target for the probe (or use the console: 'fire probes course 90').", theme.CAUTION, 3.0)
             return
@@ -280,8 +323,8 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
     def take_command(self, sid: int) -> None:
         self._transfer(sid)
 
-    def _log(self, text: str, color: theme.Color = theme.TEXT, mono: bool = False) -> None:
-        self.log.append(LogLine(self.world.tick, text, color, mono))
+    def _log(self, text: str, color: theme.Color = theme.TEXT, mono: bool = False, channel: str = "computer") -> None:
+        self.log.append(LogLine(self.world.tick, text, color, mono, channel))
         self.log_scroll = 0
         if len(self.log) > 400:
             del self.log[:100]
@@ -316,7 +359,7 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
                 if ev.text.startswith("Scanning ") and self.player is not None and "science" in self.player.delegated:
                     continue  # Seven reports what matters herself
                 who = f"{ev.speaker}: " if ev.speaker and ev.speaker not in ev.text else ""
-                self._log(who + ev.text, TONE_COLOR.get(ev.tone, theme.TEXT))
+                self._log(who + ev.text, TONE_COLOR.get(ev.tone, theme.TEXT), channel="bridge" if ev.speaker and ev.speaker != "captain" else "computer")
             elif (isinstance(ev, ScanCompleted) and ev.ship_id == self.player_id
                   and not (self.player is not None and "science" in self.player.delegated)):  # Seven's routine scans stay quiet
                 c = self.obs.contact(ev.target_id)
@@ -343,7 +386,15 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
         self._advance_order()
         if self.toast:
             msg, col, t = self.toast
+            if self.toast is not self._toast_seen and not self.prefs.classic and self.prefs.subtitles != "off":
+                self.subs.say("", msg, col, urgent=col in (theme.CAUTION, theme.ALERT))   # the computer's voice
             self.toast = (msg, col, t - dt) if t - dt > 0 else None
+            self._toast_seen = self.toast
+        self.subs.update(dt)
+        self._focus_update(dt)
+        self._proposals_tick(dt)
+        self._voice_poll()
+        self._style_tick()
         self.view.update(dt)
         if self.chart_auto and self.printout is None:
             self._show(self._chart_lines(), None)
@@ -354,7 +405,7 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
             self.obs = self.world.observe(self.side)
             return
         tick_len = 1.0 / self.world.rules.ticks_per_cycle
-        self.acc += dt * self.speed
+        self.acc += dt * self.effective_speed()
         steps = 0
         while self.acc >= tick_len and steps < 12:
             self.prev = Snapshot.take(self.world.observe(self.side))

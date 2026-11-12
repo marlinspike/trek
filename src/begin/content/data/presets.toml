@@ -1,16 +1,17 @@
 # Curated battles [E]. The first ship of the player's fleet is the player's ship (the Enterprise, always a
-# Dreadnought). The enemy fleets were enlarged for her in 2026-11 (DEVIATIONS.md, AI captains);
+# Dreadnought). The enemy fleets were enlarged for her in 2026-11 (DEVIATIONS.md, AI captains), and again on
+# 2026-11-12 so an AI-flown Enterprise wins about two battles in three (`begin --balance 24`);
 # every other ship gets an AI captain rolled from its faction. `center` places a
 # fleet (world units); ships are spread line abreast facing the battle centre.
 
 [[preset]]
 id = "border-incident"
 title = "Border Incident"
-description = "The Enterprise meets two Klingon battle cruisers probing the Neutral Zone. Begin's classic duel, doubled to face a Dreadnought."
+description = "The Enterprise meets four Klingon battle cruisers probing the Neutral Zone. Begin's classic duel, grown to face a Dreadnought."
 seed = 1650
 fleets = [
   {side = 0, player = true, center = [0, -11000], ships = ["federation.dn"]},
-  {side = 1, center = [0, 11000], ships = ["klingon.bc", "klingon.bc"]},
+  {side = 1, center = [0, 11000], ships = ["klingon.bc", "klingon.bc", "klingon.bc", "klingon.bc"]},
 ]
 
 [[preset]]
@@ -30,17 +31,17 @@ description = "Run down an Orion raiding party before it scatters. Orions are fa
 seed = 7710
 fleets = [
   {side = 0, player = true, center = [-6000, -9000], ships = ["federation.dn", "federation.in"]},
-  {side = 1, center = [5000, 9000], ships = ["orion.an", "orion.an", "orion.ar", "orion.ar", "orion.ra", "orion.sa"]},
+  {side = 1, center = [5000, 9000], ships = ["orion.an", "orion.an", "orion.an", "orion.an", "orion.an", "orion.an", "orion.ra", "orion.ra", "orion.sa", "orion.sa"]},
 ]
 
 [[preset]]
 id = "dreadnought-duel"
 title = "Dreadnought Duel"
-description = "Two Klingon dreadnoughts and a battle cruiser against yours. Manage your shields and your power budget."
+description = "Two Klingon dreadnoughts, two battle cruisers and a frigate against yours. Manage your shields and your power budget."
 seed = 2950
 fleets = [
   {side = 0, player = true, center = [0, -12000], ships = ["federation.dn"]},
-  {side = 1, center = [0, 12000], ships = ["klingon.dr", "klingon.dr", "klingon.bc"]},
+  {side = 1, center = [0, 12000], ships = ["klingon.dr", "klingon.dr", "klingon.bc", "klingon.bc", "klingon.fr"]},
 ]
 
 [[preset]]
@@ -50,17 +51,17 @@ description = "Break a Klingon outpost's defensive screen. The outpost cannot mo
 seed = 4404
 fleets = [
   {side = 0, player = true, center = [0, -14000], ships = ["federation.dn", "federation.de", "federation.de", "federation.in"]},
-  {side = 1, center = [0, 9000], ships = ["klingon.op", "klingon.bc", "klingon.fr", "klingon.fr", "klingon.es"]},
+  {side = 1, center = [0, 9000], ships = ["klingon.op", "klingon.dr", "klingon.bc", "klingon.bc", "klingon.bc", "klingon.fr", "klingon.fr", "klingon.es"]},
 ]
 
 [[preset]]
 id = "fleet-action"
 title = "Fleet Action"
-description = "Seven ships against eight. Your wingmen fight on their own; use 'tell <ship> attack <target>' to direct them."
+description = "Seven ships against ten. Your wingmen fight on their own; use 'tell <ship> attack <target>' to direct them."
 seed = 9001
 fleets = [
   {side = 0, player = true, center = [0, -16000], ships = ["federation.dn", "federation.hc", "federation.hc", "federation.de", "federation.de", "federation.in", "federation.in"]},
-  {side = 1, center = [0, 16000], ships = ["klingon.dr", "klingon.dr", "klingon.bc", "klingon.bc", "klingon.fr", "klingon.fr", "klingon.es", "klingon.es"]},
+  {side = 1, center = [0, 16000], ships = ["klingon.dr", "klingon.dr", "klingon.dr", "klingon.bc", "klingon.bc", "klingon.bc", "klingon.fr", "klingon.fr", "klingon.es", "klingon.es"]},
 ]
 
 [[preset]]
@@ -71,20 +72,20 @@ seed = 3333
 fleets = [
   {side = 0, player = true, ships = ["federation.dn"]},
   {side = 1, ships = ["klingon.bc", "klingon.bc"]},
-  {side = 2, ships = ["romulan.bp", "romulan.bp", "romulan.fr"]},
+  {side = 2, ships = ["romulan.bp", "romulan.bp", "romulan.bp", "romulan.fr"]},
 ]
 
 [[preset]]
 id = "starbase-defense"
 title = "Starbase Defense"
-description = "Hold the line at the starbase against three Klingon waves: frigates, then two battle cruisers, then a dreadnought with her escort. Between waves, damaged ships can dock to repair (2.0 rules)."
+description = "Hold the line at the starbase against three Klingon waves: frigates, then three battle cruisers, then two dreadnoughts with their escort. Between waves, damaged ships can dock to repair (2.0 rules)."
 seed = 5150
 fleets = [
   {side = 0, player = true, center = [0, -4000], ships = ["federation.dn", "federation.sb", "federation.de"]},
-  {side = 1, center = [0, 17000], ships = ["klingon.fr", "klingon.fr", "klingon.fr", "klingon.es"]},
+  {side = 1, center = [0, 17000], ships = ["klingon.fr", "klingon.fr", "klingon.fr", "klingon.fr", "klingon.es"]},
 ]
 # later waves drop out of warp `after_clear` cycles after the last one is beaten, or at cycle `at`, whichever is first
 waves = [
-  {side = 1, ships = ["klingon.bc", "klingon.bc"], after_clear = 60, at = 420, center = [6000, 17000], message = "Two Klingon battle cruisers are dropping out of warp!"},
-  {side = 1, ships = ["klingon.dr", "klingon.bc", "klingon.fr"], after_clear = 75, at = 900, center = [-6000, 17000], message = "Klingon dreadnought inbound with an escort: the main force is here."},
+  {side = 1, ships = ["klingon.bc", "klingon.bc", "klingon.bc"], after_clear = 60, at = 420, center = [6000, 17000], message = "Two Klingon battle cruisers are dropping out of warp!"},
+  {side = 1, ships = ["klingon.dr", "klingon.dr", "klingon.bc", "klingon.bc", "klingon.fr"], after_clear = 75, at = 900, center = [-6000, 17000], message = "Klingon dreadnought inbound with an escort: the main force is here."},
 ]

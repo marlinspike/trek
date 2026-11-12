@@ -26,6 +26,7 @@ CONTROLS = [
     ("W  S", "Warp up / down"),
     ("A  D", "Turn 15° port / starboard (Shift: 5°)"),
     ("Right-click map", "Steer toward that point"),
+    ("Right-click ship, E", "Command wheel on that ship (E: your target); 1-8 pick a slice"),
     ("Shift + right-click ship", "Pursue that ship"),
     ("Left-click ship", "Select target"),
     ("Tab", "Next target"),
@@ -54,6 +55,7 @@ class LogLine:
     text: str
     color: theme.Color
     mono: bool = False
+    channel: str = "computer"     # "bridge": people speaking (the captain, officers, other captains); "computer": the rest
 
 
 FKEYS = {getattr(pygame, f"K_F{n}"): f"F{n}" for n in (2, 3, 4, 5, 6, 7, 8, 10, 11, 12)}

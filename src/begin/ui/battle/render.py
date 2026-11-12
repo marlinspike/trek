@@ -15,7 +15,7 @@ from ...console import reports
 from ...crew.review import standout
 from ...sim.ship import Kind
 from ...sim.systems.repair import in_battle, under_repair
-from .. import comms_view, officer_view, theme
+from .. import comms_view, officer_view, order_marks, theme
 from ..hud import diagram_legend, hull_diagram
 from .common import CONTROLS, RED_ALERT_FLOOR, RED_ALERT_PERIOD, RED_ALERT_PULSE, RED_ALERT_SETTLE, SPEEDS, ratio
 from .state import SceneState
@@ -42,17 +42,26 @@ class RenderMixin(SceneState):
         self.ui.add(self.map_rect, lambda: None)
         acts = self._activity(obs)
         officer_view.draw_intent(surf, self.cam, obs, p, acts, self._officer_name)
+        if self.prefs.map_orders:
+            order_marks.draw_orders(surf, self.cam, obs, p)
+        self._draw_preview(surf)
         comms_view.draw_map(surf, self.cam, self.world, self.side, self.player_id, self.comms, time.monotonic(),
                             self.map_rect)
         self._map_overlay_text(surf)
         officer_view.draw_panel(surf, (self.map_rect.x + 14, self.map_rect.y + 36), acts, self._officer_name,
-                                self.world.tick, self.world.rules.ticks_per_cycle)
+                                self.world.tick, self.world.rules.ticks_per_cycle, self.subs.speaking)
         self._draw_printout(surf)
+        self._draw_focus(surf)
+        lift = self._proposal_height()
+        area = self.map_rect.inflate(0, -lift).move(0, -lift // 2) if lift else self.map_rect
+        self.subs.draw(surf, area, self._keep_clear(p))
+        self._draw_proposal(surf)
+        self._draw_wheel(surf)
         self._bottom(surf)
         self._column(surf)
         if self.overlay:
             self._draw_overlay(surf)
-        if self.toast:
+        if self.toast and (self.prefs.classic or self.prefs.subtitles == "off"):
             msg, col, t = self.toast
             w = theme.text_width(msg, 13) + 24
             r = pygame.Rect(0, 0, w, 30)
@@ -74,6 +83,15 @@ class RenderMixin(SceneState):
         p = self.player
         drive = min(1.0, p.warp / 9.0) if p is not None and p.alive else 0.0
         self.audio.tick(now, drive, running=p is not None and p.alive and not self.paused and not self.world.outcome.over)
+
+    def _keep_clear(self: BattleScene, p: object) -> list[tuple[float, float]]:
+        """Screen points nothing of ours may cover: our ship and her target."""
+        pts = []
+        for sid in (self.player_id, getattr(p, "target", None)):
+            pose = self.now.ships.get(sid) if sid is not None else None
+            if pose is not None:
+                pts.append(self.cam.to_screen(pose[0], pose[1]))
+        return pts
 
     def _hear_channels(self: BattleScene, now: float) -> None:
         """A hail channel opening or closing gets its whistle."""
@@ -106,8 +124,33 @@ class RenderMixin(SceneState):
         col = theme.CAUTION if self.paused else theme.GOOD
         theme.text(surf, f"Cycle {t:7.1f}", (r.x + 14, r.y + 10), theme.TEXT, 14, "mono")
         theme.text(surf, state, (r.x + 130, r.y + 10), col, 14, "mono", weight="medium")
+        x = r.x + 130 + theme.text_width(state, 14, "mono", "medium") + 16
+        if self.focus_k > 0.05:                 # tactical focus: the battle has stepped back while you give an order
+            eff = self.effective_speed()
+            tag = f"FOCUS {eff:.2g}×" if eff > 0.01 else "FOCUS ❚❚"
+            theme.text(surf, tag, (x, r.y + 12), theme.mix(theme.TEXT_DIM, theme.CAUTION, self.focus_k), 11,
+                       weight="semibold")
+            x += theme.text_width(tag, 11, weight="semibold") + 16
+        if self.condition is not None:
+            from .command import ALERT_COLOR
+
+            tag = f"CONDITION {self.condition.upper()}"
+            theme.text(surf, tag, (x, r.y + 12), ALERT_COLOR[self.condition], 11, weight="semibold")
+            x += theme.text_width(tag, 11, weight="semibold") + 16
+        if self.recording is not None:
+            tag = f"● REC {self.recording.name}"
+            blink = (pygame.time.get_ticks() // 600) % 2 == 0
+            theme.text(surf, tag, (x, r.y + 12), theme.ALERT if blink else theme.dim(theme.ALERT, 0.6), 11,
+                       weight="semibold")
+            x += theme.text_width(tag, 11, weight="semibold") + 16
+        if self.style is not None:
+            from ...crew.career import STYLES
+
+            tag = STYLES[self.style].name.upper() + (" · broken" if self.style_broken else "")
+            theme.text(surf, tag, (x, r.y + 12), theme.TEXT_FAINT if self.style_broken else theme.CREW, 11,
+                       weight="semibold")
+            x += theme.text_width(tag, 11, weight="semibold") + 16
         if theme.border() != theme.BORDER:      # after the speed or PAUSED, never on top of it
-            x = r.x + 130 + theme.text_width(state, 14, "mono", "medium") + 16
             theme.text(surf, "RED ALERT", (x, r.y + 12), theme.mix(theme.TEXT_DIM, theme.ALERT, 0.8), 11,
                        weight="semibold")
         if self.paused and not self.world.outcome.over:
@@ -199,13 +242,19 @@ class RenderMixin(SceneState):
                            "Simulation speed ([ and ])", active=self.speed == s)
             x += 50
         theme.text(surf, "Orders also work while paused.", (x + 8, y + 5), theme.TEXT_FAINT, 11)
-        # log
+        # log: two columns, the bridge (who said what) and the computer (everything else), when there is room
         lines_area = pygame.Rect(r.x + 10, r.y + 40, r.width - 20, r.height - 76)
-        n = lines_area.height // 16
-        end = len(self.log) - self.log_scroll
-        for i, line in enumerate(self.log[max(0, end - n):end]):
-            theme.text(surf, line.text[:160], (lines_area.x, lines_area.y + i * 16), line.color, 12,
-                       "mono" if line.mono else "ui")
+        if self.prefs.classic or lines_area.width < 760:
+            self._log_column(surf, lines_area, self.log)
+        else:
+            left = pygame.Rect(lines_area.x, lines_area.y, int(lines_area.width * 0.56) - 10, lines_area.height)
+            right = pygame.Rect(left.right + 20, lines_area.y, lines_area.right - left.right - 20, lines_area.height)
+            pygame.draw.line(surf, theme.BORDER, (left.right + 10, left.y + 2), (left.right + 10, left.bottom - 4))
+            theme.text(surf, "BRIDGE", (left.right + 4, r.y + 14), theme.TEXT_FAINT, 10, weight="semibold",
+                       anchor="topright")
+            theme.text(surf, "COMPUTER", (right.x, r.y + 14), theme.TEXT_FAINT, 10, weight="semibold")
+            self._log_column(surf, left, [ln for ln in self.log if ln.channel == "bridge"])
+            self._log_column(surf, right, [ln for ln in self.log if ln.channel != "bridge"])
         if self.log_scroll:
             theme.text(surf, f"↑ {self.log_scroll} older · wheel to scroll", (lines_area.right, lines_area.y),
                        theme.TEXT_FAINT, 11, anchor="topright")
@@ -221,6 +270,28 @@ class RenderMixin(SceneState):
                        (self.console_rect.x + 10, self.console_rect.y + 5), theme.TEXT_FAINT, 12)
         else:
             theme.text(surf, prompt, (self.console_rect.x + 10, self.console_rect.y + 4), theme.TEXT, 13, "mono")
+            hint = self.preview_text()
+            if hint:      # what Enter would do, in the words the officer will read it back with
+                room = self.console_rect.width - theme.text_width(prompt, 13, "mono") - 60
+                hint = "→ " + hint
+                while len(hint) > 6 and theme.text_width(hint, 12) > room:
+                    hint = hint[:-4] + "…"
+                if room > 80:
+                    theme.text(surf, hint, (self.console_rect.right - 10, self.console_rect.y + 6), theme.TEXT_DIM, 12,
+                               anchor="topright")
+        self._draw_completions(surf)
+        self._draw_mic(surf)
+
+    def _log_column(self: BattleScene, surf: pygame.Surface, area: pygame.Rect, lines: list) -> None:
+        n = area.height // 16
+        end = len(lines) - self.log_scroll
+        for i, line in enumerate(lines[max(0, end - n):max(0, end)]):
+            size = 12
+            text = line.text[:160]
+            family = "mono" if line.mono else "ui"
+            while len(text) > 8 and theme.text_width(text, size, family) > area.width:
+                text = text[:-4] + "…"
+            theme.text(surf, text, (area.x, area.y + i * 16), line.color, size, family)
 
     def _column(self: BattleScene, surf: pygame.Surface) -> None:
         r = self.col_rect
@@ -279,6 +350,8 @@ class RenderMixin(SceneState):
             self._scan_view(surf)
         elif o == "debrief":
             self._debrief(surf)
+        elif o == "voice":
+            self._voice_page(surf)
 
     def _damage_view(self: BattleScene, surf: pygame.Surface) -> None:
         p = self.player
@@ -394,6 +467,10 @@ class RenderMixin(SceneState):
         elif crew is not None:
             theme.text(surf, "You fought the ship yourself: your officers gave no orders of their own.", (r.x + 24, y + 8),
                        theme.TEXT_DIM, 12)
+        honours = ([self.ribbon_won] if self.ribbon_won else []) + [f"{t} officer" for t in self.trust_news]
+        if honours:
+            theme.text(surf, "  ·  ".join(honours), (r.right - 24, y - 2), theme.GOOD, 12, weight="medium",
+                       anchor="topright")
         y += 44
         for side, sr in sorted(res.items()):
             name = w.side_names.get(side, f"Side {side}")

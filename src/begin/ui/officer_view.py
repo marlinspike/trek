@@ -42,15 +42,16 @@ def _fit(s: str, size: int, width: int) -> str:
 
 
 def draw_panel(surf: pygame.Surface, top_left: tuple[int, int], acts: list[Activity],
-               name_of: Callable[[str], str], tick: int, tpc: int) -> pygame.Rect | None:
-    """The activity panel; returns the area it covers."""
+               name_of: Callable[[str], str], tick: int, tpc: int, speaking: str | None = None) -> pygame.Rect | None:
+    """The activity panel; returns the area it covers. The block of the officer who is speaking (`speaking`, an
+    officer id) is lit, so the captain sees who is talking without a portrait on the screen."""
     if not acts:
         return None
     x, y = top_left
     rows: list[tuple[str, theme.Color, int, str]] = []
     for a in acts:
         head = f"{name_of(a.officer_id).upper()}  ·  {ROLE_WORDS.get(a.role, a.role)}"
-        rows.append((head, theme.CREW, 12, "semibold"))
+        rows.append((head, theme.TEXT if speaking == a.officer_id else theme.CREW, 12, "semibold"))
         fresh = (tick - a.since) < 2 * tpc
         col = theme.CAUTION if a.kind == "evade" else (theme.TEXT if fresh else theme.TEXT_DIM)
         rows.append((a.doing, col, 13, "regular"))
@@ -60,6 +61,8 @@ def draw_panel(surf: pygame.Surface, top_left: tuple[int, int], acts: list[Activ
     box = pygame.Rect(x, y, PANEL_W, h)
     pygame.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
     pygame.draw.rect(surf, theme.dim(theme.CREW, 0.6), box, 1, border_radius=4)
+    if speaking is not None and any(a.officer_id == speaking for a in acts):
+        pygame.draw.rect(surf, theme.CREW, box, 2, border_radius=4)
     cy = y + 7
     for i, (s, col, size, weight) in enumerate(rows):
         if i and weight == "semibold":

@@ -51,6 +51,9 @@ if sys.platform == "darwin":
             "CFBundleVersion": VERSION,
             "NSHighResolutionCapable": True,
             "LSMinimumSystemVersion": "11.0",
+            # speaking orders (voice/): macOS asks before the microphone and the speech recogniser are used
+            "NSMicrophoneUsageDescription": "Begin hears the orders you speak on the bridge.",
+            "NSSpeechRecognitionUsageDescription": "Begin hears the orders you speak on the bridge.",
         },
     )
 else:

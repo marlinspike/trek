@@ -26,6 +26,10 @@ class InputMixin(SceneState):
         if ev.type == pygame.VIDEORESIZE:
             self.layout((ev.w, ev.h))
             return
+        if self.wheel is not None and self.overlay is None and self._wheel_event(ev):
+            return
+        if self.overlay in (None, "voice") and self._voice_event(ev):
+            return          # push to talk
         if self.overlay == "manual":
             if ev.type == pygame.KEYDOWN:
                 self.manual.key(ev)
@@ -38,10 +42,12 @@ class InputMixin(SceneState):
                 return
         if ev.type == pygame.KEYDOWN:
             if self.console_focus:
+                self.focus_keystroke()
                 self._console_key(ev)
             else:
                 self._key(ev)
         elif ev.type == pygame.TEXTINPUT and self.console_focus:
+            self.focus_keystroke()
             self.console += ev.text
         elif ev.type == pygame.MOUSEBUTTONDOWN:
             self._mouse_down(ev)
@@ -62,7 +68,7 @@ class InputMixin(SceneState):
                 self.cam.zoom_at(1.15 ** ev.y, *self.ui.mouse)
 
     def _mouse_down(self: BattleScene, ev: pygame.event.Event) -> None:
-        if self.overlay in ("debrief", "menu", "manual"):
+        if self.overlay in ("debrief", "menu", "manual", "voice"):
             h = self.ui.hit(ev.pos)
             if h and ev.button == 1:
                 h.action()
@@ -113,6 +119,9 @@ class InputMixin(SceneState):
         if sid is not None and sid != p.id and mods & pygame.KMOD_SHIFT:
             self.issue(Pursue(ship_id=p.id, target=sid, warp=max(p.desired_warp, 1.0)))
             return
+        if sid is not None and self.open_wheel(sid, pos):
+            return          # a ship: the command wheel (empty space still steers)
+        self.style_check(why="a steering click")
         wx, wy = self.cam.to_world(*pos)
         crs = bearing(wx - p.x, wy - p.y)
         warp = p.desired_warp if p.desired_warp > 0.5 else min(p.cls.cruise_warp, p.max_attainable_warp)
@@ -134,6 +143,10 @@ class InputMixin(SceneState):
         if self.overlay and self.overlay.startswith("help") and k not in (pygame.K_F1, pygame.K_h):
             self.overlay = None
         shift = bool(ev.mod & pygame.KMOD_SHIFT)
+        if k == pygame.K_y and self.accept_proposal():
+            return          # an officer's proposal: Y makes it so
+        if k == pygame.K_n and self.belay_proposal():
+            return
         scene_action = SCENE_KEYS.get(k)
         if scene_action is not None:
             scene_action(self, k, shift)
@@ -170,6 +183,12 @@ class InputMixin(SceneState):
 
     def _console_key(self: BattleScene, ev: pygame.event.Event) -> None:
         k = ev.key
+        if k == pygame.K_TAB:
+            self.complete_console()
+            return
+        if k == pygame.K_y and ev.mod & pygame.KMOD_CTRL and self.accept_proposal():
+            return
+        self.completer.reset()
         if k == pygame.K_ESCAPE:
             self.console_focus = False
         elif k in (pygame.K_RETURN, pygame.K_KP_ENTER):
@@ -191,7 +210,7 @@ class InputMixin(SceneState):
             return
         self.history.append(text)
         self.hist_i = len(self.history)
-        self.run_console(text)
+        self.run_console(self._with_pointing(text, self.pointed_ship()))   # "fire at him": the ship under the mouse
 
     def _key_binding(self: BattleScene, val: tuple[str, str] | None) -> None:
         if val is None:
@@ -221,6 +240,7 @@ class InputMixin(SceneState):
 
 def _open_console(s: BattleScene, k: int, shift: bool) -> None:
     s.console_focus = True
+    s.focus_keystroke()
     pygame.key.start_text_input()
 
 
@@ -290,11 +310,13 @@ SCENE_KEYS: dict[int, SceneKey] = {
 
 
 def _warp(s: BattleScene, p: Ship, step: int) -> None:
+    s.style_check(why="a warp key")
     warp = min(p.cls.max_warp, math.floor(p.desired_warp + 1)) if step > 0 else max(0.0, math.ceil(p.desired_warp - 1))
     s.issue(SetHelm(ship_id=p.id, warp=warp))
 
 
 def _turn(s: BattleScene, p: Ship, sign: int, shift: bool) -> None:
+    s.style_check(why="a helm key")
     s.issue(SetHelm(ship_id=p.id, course=norm360(p.desired_course + sign * (5 if shift else 15))))
 
 
@@ -331,6 +353,7 @@ SHIP_KEYS: dict[int, ShipKey] = {
     pygame.K_r: _cycle_aim,
     pygame.K_g: lambda s, p, shift: s.issue(SetShields(ship_id=p.id, up=not any(sh.up for sh in p.shields))),
     pygame.K_v: _cycle_pd,
+    pygame.K_e: lambda s, p, shift: s.open_wheel(p.target if p.target is not None else p.id),
 }
 
 

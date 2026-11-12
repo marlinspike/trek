@@ -1,0 +1,15 @@
+# Alert conditions [E]: `alert red`, `alert yellow`, `alert green` run a set of console lines at once,
+# and the condition shows at the top of the map. Copy this file to config/alerts.toml to make them your own.
+# Any console line works, including an order to an officer ("geordi, manage repairs").
+
+[red]
+note = "Battle stations: shields up, point defense balanced, torpedoes loading"
+steps = ["raise shields all", "pd balanced", "autoload torpedoes on"]
+
+[yellow]
+note = "Shields up and point defense watching; weapons as they are"
+steps = ["raise shields all", "pd conservative"]
+
+[green]
+note = "Stand down from alert: shields down, point defense off"
+steps = ["lower shields all", "pd off"]
