@@ -7,14 +7,16 @@ A real-time 2D tactical starship simulation in Python and pygame-ce, and my own 
 You command a starship from a top-down tactical map and a Begin-style command console. The core is Begin's: six shield sectors, phaser banks that hit harder up close, torpedoes with arming and proximity fuses, heat, power, probes and cloaks. Around it I've built a lot that Begin never had:
 
 - a bridge crew who can fight the ship for you, take orders in plain words, and talk back;
-- named battle plans and a coach that reads the fight;
+- a bridge you command like a captain: officers read each order back, a command wheel on every ship, proposals you accept with a key, alert conditions, and orders you can speak aloud;
+- named battle plans, recorded as you fight or written beforehand, and a coach that reads the fight;
 - aimed fire at a ship's systems, and boarding parties that take and keep enemy ships;
 - enemy captains you can hail, who are cowed or enraged by what you do to their allies, and who can be talked into surrendering or leaving;
 - a campaign: tours of duty that link battle after battle, with a squadron that carries its scars;
 - patrols: a random mission each time, from an ambush on two sides to a flagship behind her screen;
-- officers you shape yourself in a config file, from a new name to a Worf who cooks for the crew;
+- officers you shape yourself in a config file, from a new name to a Worf who cooks for the crew, and whose trust in you grows across battles;
+- an optional second language model just for the characters, for richer Klingon, Romulan and other alien speech;
 - crew morale and hull repairs;
-- every ship class drawn as a lit, detailed model;
+- every ship class drawn as a lit, detailed model, sharp on Retina and 4K screens, with weapon fire that lights the hulls around it;
 - synthesised sound and effects, and a HUD that keeps to the essentials until you ask for more.
 
 ![Close quarters: the Enterprise's phaser banks on a Klingon battle cruiser, the beams stopping on her lit shield](docs/screenshots/close-quarters.png)
@@ -45,7 +47,7 @@ pip install -e ".[dev]"
 begin                      # or: python -m begin
 ```
 
-You need Python 3.10 or newer. macOS's system `python3` is 3.9, which is too old, so install a newer Python first (for example from python.org or with `brew install python`) and create the venv with it. On 3.10, `tomli` is installed automatically. Any Python version with a pygame-ce wheel works.
+You need Python 3.10 or newer. macOS's system `python3` is 3.9, which is too old, so install a newer Python first (for example from python.org or with `brew install python`) and create the venv with it. On 3.10, `tomli` is installed automatically. Any Python version with a pygame-ce wheel works. The install also brings [moderngl](https://github.com/moderngl/moderngl) for drawing through the graphics card; if your venv predates it, run `pip install -e .` again (without it the game still runs, drawing in software).
 
 If `begin` works but `python -m begin` says `No module named begin`, the venv's `python` link points at a different Python from the one the game was installed into. That happens when a venv first made with macOS's Python 3.9 is upgraded in place. Check with `ls -l .venv/bin/python*`, then rebuild the venv with the newer Python (`python3.15 -m venv --clear .venv`, then reinstall), or just use the `begin` command.
 
@@ -72,7 +74,7 @@ Useful shortcuts:
 
 ### Before you start
 
-The main menu sits over a slowly drifting starfield. Every so often the Enterprise glides across it in a slow straight line, from a new direction and a new distance each time, as if seen from a different vantage point, and on most passes she fires: a phaser volley from the saucer banks that face the unseen enemy, or a spread of torpedoes from the forward tubes. Then she is gone and the stars have the screen until the next pass. The menu's sound is quieter than the battle's. From the menu you can start quick, preset and custom battles, or open **Coach & training** (or **C**). That opens the coach before any battle, with a short training run: how to find and target the enemy, close the range, use torpedoes at long range and phasers up close, and keep a good shield toward them, each with the command to type. **Manual** (or **H**) opens the whole manual.
+The main menu sits over a slowly drifting starfield. Every so often the Enterprise glides across it in a slow straight line, from a new direction and a new distance each time, as if seen from a different vantage point, and on most passes she fires: a phaser volley from the saucer banks that face the unseen enemy, or a spread of torpedoes from the forward tubes. Then she is gone and the stars have the screen until the next pass. The menu's sound is quieter than the battle's. From the menu you can start a quick battle (**Enter**), a [patrol](#patrols) (**P**), a [tour of duty](#tours-of-duty) (**T**), a preset or a custom battle; choose how the game is drawn on **Display** (**D**, see [Sharp screens and the GPU](#sharp-screens-and-the-gpu)); set up a second model for the characters on **Character voices** (**V**, see [Language models](#language-models-optional)); and **Open config folder** takes you to your settings files. **Quick battle side** under the list picks the faction you command in quick battles and patrols. Or open **Coach & training** (or **C**). That opens the coach before any battle, with a short training run: how to find and target the enemy, close the range, use torpedoes at long range and phasers up close, and keep a good shield toward them, each with the command to type. **Manual** (or **H**) opens the whole manual.
 
 ![The main menu, with the Enterprise passing and firing a phaser volley](docs/screenshots/menu.png)
 
@@ -102,17 +104,40 @@ The remake adds `autoload`, `mode`, `pd`, `hud detail|simple`, `role`, `target <
 
 ### Giving orders from the bridge
 
-Every way of giving an order still works, and the bridge adds to them. The officer at each station reads your order back in a sentence built from the order itself ("Course 090, warp 6.", "Firing all phasers at the Hydra, aiming for her shields."), so a slip is caught at once, and officers' words show as subtitles low on the map, one voice at a time. The log keeps everything, in a **Bridge** column (who said what) and a **Computer** column.
+Every way of giving an order still works (keys, clicks and the console), and the bridge adds to them, the way orders are given on a starship's bridge. None of it takes anything away, and `hud bridge classic` puts the console back exactly as it was.
 
-Right-click a ship, or press **E** for your target, for the **command wheel**: eight slices always in the same places (Phasers, Torpedoes, Disable, Close to, Hail, Board, Elude, Target), each a console line the log shows. Right-clicking empty space still steers. While you type, the battle eases to a quarter speed with an amber edge on the map, a faint line under the console says what Enter would do, the map shows a ghost of it, and **Tab** finishes ship, officer and command names. With the mouse on a ship, "fire at her" or "scan that one" means that ship.
+**Readbacks and subtitles.** The officer at each station reads your order back in a sentence built from the order itself ("Course 090, warp 6.", "Firing all phasers at the Hydra, aiming for her shields."), so a slip is caught at once. Nothing in a readback is guessed: it says what will happen. Officers' words show as subtitles low on the map, one voice at a time, each with their station's mark, placed so they never cover your ship or her target. The log keeps everything, in a **Bridge** column (who said what) and a **Computer** column.
 
-Now and then an officer proposes an order ("Torpedoes inbound, Captain. Evasive manoeuvres?"): **Y** makes it so, **N** belays it. `alert red|yellow|green` gives a set of orders at once, `record <name>` ... `record stop` saves what you just did as a named order (the **Orders** tab holds them as cards), `style chair|book|silent|green|iron` promises a way of commanding for a ribbon, and officers' trust in you grows from Green to Veteran across battles and tours.
+**The command wheel.** Right-click a ship, or press **E** for your target, and pick an order. An enemy's wheel has eight slices always in the same places (Phasers, Torpedoes, Disable, Close to, Hail, Board, Elude, Target), so your hand learns where they are; a slice marked with a `›` opens a second ring (Disable: shields, weapons, engines or warp core), and keys **1** to **8** pick a slice too. Allies and your own ship have wheels of their own. Every slice is a console line, and the log shows it, so the wheel teaches you the console. Right-clicking empty space still steers, and Shift + right-click still pursues. `config/wheel.toml` makes the wheel your own.
+
+**While you type.** The battle eases to a quarter speed (**tactical focus**: an amber edge on the map, the sound steps back) and runs again as soon as you press Enter, or after eight seconds without a key; `hud focus pause` stops it altogether instead. A faint line under the console says what Enter would do, and the map shows a ghost of it: the course, the ship. **Tab** finishes command, ship, officer and order names. With the mouse on a ship, "fire at her", "pursue him" or "scan that one" means that ship, and the log shows the line with her name in it. The orders you have given are drawn on the map as well: a tether to the ship you are pursuing or eluding, the course the helm is turning to, a tractor beam held, and HOLD FIRE while a cease fire stands.
+
+![Typing an order: the battle at a quarter speed, the readback of the line under the console, and Spock proposing evasive manoeuvres](docs/screenshots/bridge-typing.png)
 
 ![The command wheel open on a Klingon dreadnought](docs/screenshots/bridge-wheel.png)
 
+**Proposals.** Now and then an officer at a station you're running offers an order ("Torpedoes inbound, Captain. Evasive manoeuvres?"): **Y** makes it so, **N** belays it, or let it lapse. They are rare by design: one at a time, and an officer at most once a minute. While you type, only an urgent one shows, as a chip above the console that **Ctrl+Y** accepts.
+
+**Alert conditions.** `alert red`, `alert yellow` and `alert green` each run a set of orders at once (out of the box, red raises all shields, sets point defense to balanced and turns autoload on) and show the condition at the top of the map. `config/alerts.toml` changes what each one does, and any console line works there, an order to an officer included.
+
+**Orders you record.** `record <name>`, then fight, then `record stop` saves what you just did as a named order in `config/orders.toml`, tidied up: status displays and repeats are dropped, and pauses of two cycles or more become `wait` steps. `record last 3 as flank` saves the last three lines you ran. The **Orders** tab beside Contacts, Fleet and Crew holds every named order and key macro as a card: click one to run it, right-click to see its steps, or start a recording from its **Record** button.
+
 ![Worf proposes a target; condition red, recording an order](docs/screenshots/bridge-proposal.png)
 
-Hold **Right Alt** (Option on a Mac) and speak an order: the Mac's own recogniser, whisper.cpp on your computer, a whisper.cpp server, or a cloud service hears it (`voice` opens the voice page). `hud bridge full|quiet|classic` sets how much of this you want; classic is the console as it was. See `help bridge` in the game.
+**Command styles and trust.** Before a battle starts you can promise a way of commanding with `style <name>`, and win keeping it for a ribbon: `chair` (never hand a station or the conn to an officer), `book` (every order by its words, no fire, helm or warp keys), `silent` (no hails, never above warp 5), `green` (no proposals, no station handed over) and `iron` (win with the hull above 75%). Separately, each officer's trust in you grows as you fight together and is kept between battles and tours: Green, Steady, Trusted and Veteran. Each level changes something real: a Steady officer's proposals wait longer for your answer, a Trusted one may propose while you are typing, and a Veteran carries out an urgent proposal you leave unanswered. The Crew tab shows where each one stands.
+
+**Speaking orders.** Hold **Right Alt** (Option on a Mac), say the order and let go. What was heard goes to the console exactly as if you had typed it, so the parser (and the language model, if you have one) understands it, and the officer reads it back; an order that was misheard waits in the console for you to fix. Four speech engines can hear you, chosen on the voice page (`voice`):
+
+- **Mac speech**, the Mac's own recogniser, on the Mac with no network. The game builds a small helper the first time, which needs Xcode's command line tools (`xcode-select --install`), and macOS asks once for the microphone and speech recognition.
+- **Whisper on this computer**: [whisper.cpp](https://github.com/ggml-org/whisper.cpp)'s `whisper-cli` (on a Mac, `brew install whisper-cpp`), with a model the voice page downloads into `config/voice/models/`.
+- **A Whisper server**: a `whisper-server` on this computer or another on your network (`voice server <address>`).
+- **Cloud transcription**, an OpenAI-compatible service, with its key read from the environment (`OPENAI_API_KEY` by default) and never stored.
+
+The page also picks the push-to-talk key and has a **Test** button that tells you what it heard and how long it took. A chat model such as one on Ollama doesn't hear speech itself: the speech engine hears, then the console (and your model) understands.
+
+![The voice page: four speech engines, the push-to-talk key and a test](docs/screenshots/bridge-voice.png)
+
+**How much of it you want.** `hud bridge full` is everything above (the default), `hud bridge quiet` keeps the tools but puts readbacks in the log, shows subtitles only when urgent and slows nothing down, and `hud bridge classic` is the console as it was. Each part can then be switched on its own (`hud wheel off`, `hud focus pause`, `hud proposals rarely`, `hud subtitles urgent`, `hud readbacks log`, `hud orders off`, `hud preview off`). In the game, `help bridge`, `help alert`, `help styles` and `help voice` cover all of it.
 
 ### Bridge officers
 
@@ -126,7 +151,7 @@ Taking a station back is as quick as saying so. "I have nav", "I have weapons" (
 
 Orders to cripple a ship rather than destroy her read the way you'd say them. "Target their shields", "take out their engines", "hit their shields" and "disable their shields" all mean the same thing: fire is focused on that system until it is out, and then it stops there. The ship is **spared**, so nobody on the bridge and not the fire computer shoots at her again, and your aim goes back to the hull, which is always the default. Name two systems ("target their shields and engines") and both are done in turn. "Target all their torps" does it to every enemy, one after another. Typos and possessives are fine (`target thier sheilds`, `target the other ship's shields`, or `target the orions' shields` for every Orion), and an allied captain told to disable a ship holds back from the kill too: Federation captains always, others when they're loyal and disciplined enough. To finish a spared ship, fire on her yourself or say `target their hull`, `destroy her` or `open fire`.
 
-Each officer has **traits** and a **response style** that shape how they talk; change them in `config/officers.toml` (copy `config/officers.example.toml`). Officers answer from the battle state on their own, and a language model can give them their own words: see [Language models (optional)](#language-models-optional).
+Every officer is yours to shape in `config/officers.toml` (copy `config/officers.example.toml`, whose example is a Worf who cooks for the crew): their name, rank and the names you can call them by, their **traits** and **response style** (how long, how formal, what tone), a whole new persona or a background, interests and quirks added to the one they have, and their own lines for any moment, including `idle` lines they say in quiet moments, when no enemy is in sight. The lines work without a language model; with one, the rest shapes how each officer talks. Officers answer from the battle state on their own, and a language model can give them their own words: see [Language models (optional)](#language-models-optional).
 
 ### Language models (optional)
 
@@ -162,6 +187,8 @@ begin --llm character=off         # back to one model for everyone
 
 `for` picks the situations: `captains` (answering your hails), `taunts` (calling you unprompted), `officers` (answering you), `chatter` (their remarks in battle) and `log` (their parts of a tour's captain's log). `factions` and `officers` narrow it to some races or some officers, and `notes` adds a line to that character's prompt (`*` for all of them). `only` pins characters to the second model: everything they say goes there, and if it fails they answer offline rather than through the main model (`character.only=worf`, or the **Only this model** buttons on the page). The same keys as the main model work under `character.` (`base_url`, `think`, `timeout`, ...). It lives in `config/settings.json` under `llm.character`.
 
+![The Character voices page: a second model speaking for Klingon captains when they answer a hail or taunt you](docs/screenshots/character-voices.png)
+
 **Watching what the model costs.** Two debug logs, both off by default, show exactly how hard the game is working the model:
 
 ```bash
@@ -173,7 +200,7 @@ begin --llm-usage       # all-time totals, then the last ten games, broken down 
 
 ### Named orders
 
-Write a battle plan before the fight in `config/orders.toml`: a name and a list of console lines, with `wait N` between steps, "their" meaning whatever you have targeted, and officer orders as steps. In battle, `execute order beta-1` (or just `beta-1`) runs it, `orders` lists them and `belay` stops one (and ceases fire). With a language model, plain-English steps are translated once and remembered.
+Write a battle plan before the fight in `config/orders.toml`: a name and a list of console lines, with `wait N` between steps, "their" meaning whatever you have targeted, and officer orders as steps. In battle, `execute order beta-1` (or just `beta-1`) runs it, `orders` lists them and `belay` stops one (and ceases fire). Orders you `record` in battle are added to the same file, and the **Orders** tab shows them all as cards (see [Giving orders from the bridge](#giving-orders-from-the-bridge)). With a language model, plain-English steps are translated once and remembered in `config/phrasebook.json`, so the same words work at once next time.
 
 ![Named orders, from the shipped examples](docs/screenshots/orders.png)
 
@@ -186,6 +213,8 @@ Click an ally to open the **Fleet** tab: escort, defend, attack my target, hold 
 ### How the AI fights
 
 Enemy captains, and your allies, fight to their ship's strengths. Each one weighs its loadout against the target's: phaser banks and torpedo tubes on both sides, and how much punishment each hull and shield can take. A torpedo ship facing a phaser brawler holds its distance outside the enemy's banks (at least 1.3 times their reach) and works the tubes; it only closes once the target's scan shows its hull or shields failing. A ship with no tubes closes, because its banks are all it has, and a faster ship that is outgunned stays out of reach. When the shield facing the enemy drops below about a third, the captain turns a fresh one toward them. In AI-versus-AI testing over 420 battles this kept ships out of enemy phaser range noticeably more (27% of the time, against 32% before) and lifted survival in the big fights, for example Fleet Action from 86% to 93%.
+
+They also have Begin's quick reflexes (snap shots at a ship boring straight in, running from a ship about to self-destruct) and dodge torpedoes they would otherwise fly into, as reliably as their skill and their crew allow. Many captains fight in their navy's own style: about half of Klingon captains charge in for a point-blank strike when it is worth it, break away to recharge and come again; about half of Romulans feint, turning to run (under cloak if they can) and then rounding on a pursuer with a full spread; and most Orions raid, making one fast pass and running out past your reach. Since the Enterprise is a Dreadnought in every battle, the enemy fleets are sized to give her a real fight: in balance runs with an AI captain flying her (`begin --balance 24`, 24 seeds a preset) she wins about seven presets in ten, 136 of 192, where she used to win 86% and finish most of them unscathed. [docs/DEVIATIONS.md](docs/DEVIATIONS.md#ai-captains) has the numbers.
 
 ### Damage, repairs and morale
 
@@ -208,6 +237,12 @@ The game synthesises all of its sound when it starts. You only hear what you can
 The assessment shows the score, your ship's record, every ship's damage and hits, and the officer who did the most for you.
 
 ![The battle assessment](docs/screenshots/debrief.png)
+
+### Patrols
+
+**Patrol** on the main menu (or **P**, or `begin --patrol <number>`) makes up a fresh single battle each time: one of five situations against an enemy picked at random, and the briefing at battle stations tells you which. An **ambush** puts a group on each side of the patrol lane, so turning to face one puts the other on your stern; a **wolf pack** is many fast, light ships spread out; a **second wave** drops out of warp once the first is beaten, or soon anyway; on an **escort** you have wingmen and the enemy has brought more to match; and a **flagship** is an enemy heavy behind a screen that makes you pay for going straight at her. The enemy is sized against your flagship, so it is a fair fight rather than an easy one: an AI captain flying the Enterprise wins about seven in ten, and Romulans are the hardest. Each patrol has a number in its title, and the same number always gives the same patrol.
+
+![Patrol #1, an ambush: three Klingon escorts and a battle cruiser close from one side of the lane while a frigate comes in from the other, and the officers proposing targets and evasive manoeuvres](docs/screenshots/patrol-ambush.png)
 
 ### Tours of duty
 
@@ -253,8 +288,8 @@ Everything you set lives in the project's [`config/`](config/README.md) folder, 
 
 | File | What it holds |
 |---|---|
-| `settings.json` | Window, speed, volume, mute, sound versions, chatter, custom battle choices, the language model, the Bridge and voice settings, and your officers' trust and ribbons. The game writes it. |
-| `officers.toml` | Your officers' traits and response styles. |
+| `settings.json` | Window, speed, volume, mute, sound versions, chatter, custom battle choices, the renderer and *Light and glow*, the language model and the optional character voice model, the Bridge and voice settings, and your officers' trust and ribbons. The game writes it. |
+| `officers.toml` | Your officers, shaped however you like: names, ranks, traits, response styles, personas, backgrounds, quirks and their own lines. |
 | `orders.toml` | Your named tactical orders, including the ones you record in battle. |
 | `wheel.toml`, `alerts.toml` | Your own command wheel and alert conditions (copy them from `src/begin/content/data/`). |
 | `phrasebook.json` | Plain words the language model worked out once, remembered so they work at once next time. |
@@ -281,16 +316,17 @@ src/begin/
   crew/      bridge officers: delegation, officer AI, conversation, rapport, traits, the end-of-battle review
   tour/      tours of duty: the tours, the squadron between battles, reinforcements and the captain's log
   session/   one battle played for a captain, with no screen: clock, orders, officers, hails, news; the Session contract and orders as JSON
-  llm/       optional LLM providers (Anthropic, OpenAI, OpenRouter, Ollama) on a background thread, and their debug logs
+  llm/       optional LLM providers (Anthropic, OpenAI, OpenRouter, Ollama) on a background thread, the character voice router, and their debug logs
   assets/    fonts and the manual's Markdown pages
-  ui/        pygame presentation of a Session: tactical map, HUD panels, menus, effects, synthesised sound, microphone
-  voice/     speech-to-text engines for spoken orders
+  ui/        pygame presentation of a Session: the GPU and software presenters, tactical map, HUD panels, command wheel, menus, effects, synthesised sound, microphone
+  voice/     speech-to-text engines for spoken orders (Mac speech, whisper.cpp local or server, cloud)
   battle.py  builds a World with AI attached from a battle description
   modes.py   the game modes the main menu offers
 config/      your settings, officers, orders, sounds, key macros and manual pages (gitignored apart from README and examples)
 docs/        REFERENCE (mechanics digest), PLAN, ARCHITECTURE, EXTENDING, DEVIATIONS
 tests/       headless tests
-tools/       content importer and the ship-art bakers (render_ship.py, render_klingon.py, render_fleet.py)
+packaging/   the PyInstaller recipe, release notes and the config folder a download starts with
+tools/       content importer, the ship-art bakers (render_ship.py, render_klingon.py, render_fleet.py), the app icon and the frame-time bench (bench.py)
 ```
 
 Start with [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together, and [docs/EXTENDING.md](docs/EXTENDING.md) to add ships, weapons, AI policies or HUD panels. [docs/DEVIATIONS.md](docs/DEVIATIONS.md) lists where the remake departs from Begin and why, and [LICENSING.md](LICENSING.md) covers the code, the original game and the fonts.

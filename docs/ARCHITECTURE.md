@@ -60,6 +60,10 @@ The TOML files in `content/data/` describe everything that isn't a rule:
 | `doctrines.toml` | Faction tactics: weapon preferences, focus fire, point defense, cloaking. |
 | `officers.toml` | Bridge officers: stations, personalities, LLM personas and offline lines. |
 | `presets.toml` | The curated battles. |
+| `tours.toml` | The shipped tours of duty. |
+| `hails.toml` | Enemy captains' offline lines, by race and mood. |
+| `wheel.toml` | The command wheel's slices for an enemy, an ally and our own ship, each a console line. |
+| `alerts.toml` | The lines `alert red`, `yellow` and `green` run. |
 
 `content/loader.py` reads them into the typed dataclasses in `content/schema.py` (`ContentDB`), checks cross-references, and supports `base = "<class id>"` so a variant class lists only what differs. `battle.py` turns a `BattleSetup` (fleets of `ShipSpec`s, a seed, rules) into a `Battle`: it places the ships, rolls each captain's personality, and attaches the controllers. `presets.py` and `quick_battle` make setups.
 
@@ -112,7 +116,9 @@ So the AI, the rules, the officers, a game mode or a network link can change wit
 - `GLPresenter` (`ui/glpresent.py`) opens a high-density OpenGL window with moderngl. The screen surface is a `gfx.Canvas` at the display's real density (2 on a Retina Mac), so everything is drawn sharp while the layout stays in points. Each frame is uploaded as a texture and drawn by one shader that adds a bloom to the weapon light the map offers (`gfx.offer_light`: the glow layer under beams and blasts, shrunk through mipmaps, blurred and added back) and a slight vignette at the edge of the map (`gfx.set_stage`). Text and panels are never bloomed. The GPU work lives in `Compositor`, which needs no window, so `tests/test_gpu_present.py` checks it on an offscreen context.
 - `SoftwarePresenter` is pygame's own window at density 1, as before. Headless runs, screenshots and the tests use it, and `open_presenter` falls back to it whenever the GPU path fails or OpenGL is drawn on the CPU.
 
-`gfx` (`ui/gfx.py`) is what makes density invisible to the rest of the UI: a `Canvas` stores `SCALE` times the pixels but answers in logical ones, `gfx.draw` and `gfx.transform` scale coordinates and widths, and text is rendered at the real size. On Windows the presenter asks SDL for per-monitor DPI scaling, so Windows behaves like macOS: the window in points, the frame in pixels. It swaps between `MenuScene` (game modes, presets and Custom setup), `TourScene` (tours of duty, between battles) and `BattleScene`.
+`gfx` (`ui/gfx.py`) is what makes density invisible to the rest of the UI: a `Canvas` stores `SCALE` times the pixels but answers in logical ones, `gfx.draw` and `gfx.transform` scale coordinates and widths, and text is rendered at the real size. On Windows the presenter asks SDL for per-monitor DPI scaling, so Windows behaves like macOS: the window in points, the frame in pixels. The renderer is chosen by the `renderer` setting (or `--renderer`) and can only change at a restart, so the Display page offers one (`DisplayControl`, `relaunch_command`).
+
+`App` swaps between `MenuScene` (`ui/menu_scene.py`: game modes, presets, Custom setup, the Display page and the Character voices page), `TourScene` (tours of duty, between battles) and `BattleScene`.
 
 `BattleScene` (`ui/battle_scene.py`) presents a session. Given a `Battle` it builds a `BattleSession`; given anything that honours `Session` it presents that. It subscribes to the news and turns it into log lines, subtitles, sound, printouts and overlays, and it mixes in its other parts from `ui/battle/`: `input.py` (keys and mouse, with the single-key controls as tables), `bridge.py` (the console line, completion and the order preview), `voice.py` (push-to-talk), `comms.py` (the hail prompt and buttons) and `render.py` (drawing). `ui/battle/state.py` declares the state they share; scene attributes such as `paused` and `obs` read and write the session's through `Forward` descriptors, so there is one source of truth.
 
@@ -153,6 +159,20 @@ Panels subclass `Panel` and draw themselves into a rectangle, using small immedi
 
 The manual (`help/docs.py`) is a folder of Markdown pages with front matter. Pages in `config/help/` replace or add to the bundled ones. `{{blocks}}` insert live content such as the coach or weapon tables.
 
+## The bridge
+
+How the captain gives orders is layered over the console rather than beside it: the wheel, proposals, alert conditions, recorded orders and voice all end as console lines, so the parser is the one place an order is understood, and the log always shows the line that ran.
+
+- **Readbacks** (`console/readback.py`): `readback(cmd, name_of)` builds the sentence an officer says back from the command's own fields, so it says exactly what will happen; commands without a phrase fall back to `Command.describe()`. `session/voices.py` picks who speaks (the officer at that order's station) and publishes a `Voice`, and the screen shows it as a subtitle and in the log's Bridge column.
+- **Proposals** (`session/voices.py`): an officer at a station the captain runs can offer an order, one at a time and at most once a minute per officer; `accept_proposal` and `belay_proposal` answer it. How long it waits, whether it may interrupt typing and whether an urgent one is carried out unanswered depend on the officer's trust.
+- **Trust and command styles** (`crew/career.py`): `Career` is a view on settings' `career` (points per officer, ribbons per style). Levels are Green 0, Steady 10, Trusted 30 and Veteran 70. A `Style` is a promise checked against what the captain does during the battle (`session/command.py`).
+- **Alert conditions and recording** (`session/command.py`): `alert` runs the lines of `content/data/alerts.toml` (or `config/alerts.toml`); `record` keeps the lines that ran, tidies them (`tidy`: displays and repeats dropped, pauses of two cycles or more kept as `wait N`) and writes them to `config/orders.toml`. Plain English that the model turned into commands is remembered in `config/phrasebook.json`.
+- **How much of it** (`session/prefs.py`): `BridgePrefs` holds `full`, `quiet` or `classic` and each part's switch; everything above asks it before speaking, proposing or slowing time.
+- **Tactical focus** (`BattleScene._focus_update`): while the captain types, the screen eases the rate it passes to `session.update` down to a quarter (or to a pause), until Enter or eight idle seconds; it also tells the session the captain is typing (`captain_typing`), so proposals wait or come as a chip.
+- **Pointing and completion** (`console/pointing.py`, `ui/battle/bridge.py`): with the mouse on a ship, pointing words ("her", "that one") after a word that takes a ship are replaced by her name before parsing; Tab completes from the vocabulary, the ships, the officers and the orders. The preview line under the console is the readback of what Enter would run, parsed but not executed.
+- **On the screen**: `ui/wheel.py` (`CommandWheel`, slices from `wheel.toml` via `load_wheels`, the captain's file winning kind by kind), `ui/order_marks.py` (the captain's standing orders drawn on the map, and the ghost of the typed line), and `ui/orders_panel.py` (the Orders tab's cards).
+- **Voice** (`voice/`, `ui/microphone.py`, `ui/battle/voice.py`): `Recorder` captures 16 kHz mono through SDL while the push-to-talk key is held and returns a WAV; an `Engine` from `voice/engines.make_engine` (`MacSpeech`, `WhisperLocal`, `WhisperServer`, `CloudWhisper`) turns it into text on a worker thread, and the text is typed into the console as if by hand. `MacSpeech` builds `mac_transcribe.swift` into `config/voice/` the first time; a failure is a `VoiceError` shown as it is.
+
 ## Tours of duty
 
 A tour links battles. `tour/model.py` reads tours from `content/data/tours.toml` and `config/tours/*.toml` into frozen `TourDef`s (stops, choices, waves). `tour/state.py` holds how a tour stands: a `ShipRecord` per ship of the squadron (hull, system damage, crew, magazines, morale, lost or in reserve), the flags set by choices and wins, what the enemy has learned, and the log. `TourState` is saved as JSON after every change.
@@ -170,7 +190,7 @@ The screens are `ui/tour_scene.py` (the tour list, the squadron, the Ready Room,
 
 ## Settings
 
-`paths.py` decides where the player's files live: `<project>/config/` in a source checkout, or the folder named by `BEGIN_HOME`. `settings.py` reads and writes `settings.json` there. The `llm` section configures the officers' language model; API keys are read only from the environment.
+`paths.py` decides where the player's files live: `<project>/config/` in a source checkout, the `Begin config` folder beside a packaged build, or the folder named by `BEGIN_HOME`. `settings.py` reads and writes `settings.json` there. Its sections belong to the parts that use them: `llm` (the officers' model, and `llm.character` for the character voice model, read by `llm/routing.py`), `bridge` (`session/prefs.py`), `voice` (`voice/engines.py`), `career` (`crew/career.py`), and `renderer` and `bloom` (`ui/present.py`, `ui/gfx.py`). API keys are read only from the environment.
 
 ## Tools and tests
 
@@ -191,7 +211,7 @@ Measured in the cloud container (software rendering, no GPU, a 2.1 GHz Xeon) wit
 | Fleet Action, 1600×900 | 15 | 0.32 ms | 7.0 ms, 10.2 ms |
 | Fleet Action, 2560×1440 | 15 | 0.18 ms | 11.2 ms, 13.0 ms |
 
-The weapon effects (charging banks, three-layer beams, additive glow, the torpedo art) cost a few tenths of a millisecond a frame on top of the figures before them (measured 11 November 2026).
+The weapon effects (charging banks, three-layer beams, additive glow, the torpedo art) cost a few tenths of a millisecond a frame on top of the figures before them (measured 11 November 2026). Drawing at a density of 2 for a Retina screen, with *Light and glow* on, costs about another millisecond a frame in Fleet Action on the same CPU (roughly 15 to 16.5 ms at 2×, measured 12 November 2026); the overlay and glow layers track what was drawn on them and clear only that, which is what keeps 2× affordable. With the GPU presenter the upload and the bloom shader run on the graphics card.
 
 Drawing is nearly all of the frame. The same labels are drawn every frame, so `theme.render` caches finished lines of text and `hulls` caches the hull outlines; without those caches Fleet Action took 12.0 ms to draw at 1600×900 and 18.1 ms at 2560×1440, past the 16.7 ms a frame that 60 FPS allows. A surface returned by `theme.render` is shared, so draw it but never draw on it.
 

@@ -35,6 +35,17 @@ see: console, keys
 | **V** | Cycle the point-defense doctrine |
 | **G** | Raise or lower all shields |
 
+## Bridge
+
+| Key or mouse | Action |
+|---|---|
+| Right-click a ship, or **E** for your target | Open the command wheel. See [[bridge]]. |
+| **1**–**8** with the wheel open | Pick a slice |
+| **Y** / **N** | Make an officer's proposal so, or belay it |
+| **Ctrl+Y** while typing | Accept the urgent proposal shown above the console |
+| **Tab** while typing | Finish a command, ship, officer or order name |
+| Hold **Right Alt** (Option on a Mac) | Speak an order; let go to send it. See [[voice-orders]]. |
+
 ## View
 
 | Key or mouse | Action |

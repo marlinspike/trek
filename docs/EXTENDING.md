@@ -97,10 +97,19 @@ There are three levels, from least to most code:
 1. Subclass `Command` in `sim/commands.py`. Implement `validate` (raise `Rejected("why")` when it can't be done now) and `apply`, and return the channels it controls from `channels()` so the captain's hold applies to it.
 2. Teach the console the words: add the verb and its synonyms to `VERBS` in `console/vocab.py`, and write a `_v_<verb>` method in `console/parser.py` that reads the tokens and appends the command to the result.
 3. Write a manual page for it (below) and add a parser test in `tests/test_manual_commands.py`.
+4. Give it a readback: a branch in `readback` in `console/readback.py` that says, from the command's own fields, exactly what it will do ("Course 090, warp 6."). Without one, the officer reads back `Command.describe()`.
 
 If an officer should be able to use it, map it to a station in `station_of` in `crew/officers.py`.
 
 Commands travel as JSON (`session/wire.py`) with no extra code, as long as every field has a plain type hint (numbers, text, true or false, enums, `Literal`, tuples, optionals). A field typed `object` is treated as a result filled in when the order runs, and is not sent. `tests/test_architecture.py` round-trips every command automatically.
+
+## The command wheel and alert conditions
+
+Both are data. `content/data/wheel.toml` has three lists of slices, `[[enemy]]`, `[[ally]]` and `[[own]]`, clockwise from the top. Each slice has a `label`, a console `line` (with `{ship}` for the ship the wheel is open on, `{me}` for your own ship and `{target}` for your target; a line starting with `type:` is put in the console for the captain to finish) and a `station` for its officer's mark and colour, or a `ring` of further slices instead of a line. Keep the enemy wheel's eight slices where they are: the hand learns them. `content/data/alerts.toml` lists the console lines each of `red`, `yellow` and `green` runs. A player overrides either by copying it to `config/`; the wheel's override replaces kind by kind (`ui/wheel.load_wheels`).
+
+## A speech engine
+
+An engine turns a WAV of the captain's words into text. Subclass `Engine` in `voice/engines.py` with a `transcribe(wav, hints) -> str` (raise `VoiceError` with a message the captain can act on), give it `ready()` (None when it can hear, otherwise what is missing, which the voice page shows), and add it to `make_engine`. Engines run on a worker thread, so they may block; `clean` tidies Whisper-style output into one console line. Read any key from the environment only.
 
 ## A game mode
 
@@ -156,6 +165,8 @@ To change a page without touching the bundled ones, put your version in `config/
 
 All the lines are original writing; keep it that way (see [LICENSING.md](../LICENSING.md)).
 
+A player reshapes the shipped officers without touching this file: `config/officers.toml` (see `config/officers.example.toml` and [config/README.md](../config/README.md)) can set `name`, `rank`, `aliases`, `traits`, `response_style`, `persona`, `background`, `interests`, `quirks`, `rapport_floor` and `[<id>.lines]` for any event, including `idle` lines for quiet moments. `crew/characters.load_officers` reads the player's file over the shipped one, officer by officer.
+
 ## Enemy captains and hails
 
 A race's captains take their `temperament` from `factions.toml` (`temper`: 0 cowed by losses, 1 enraged by them; `obstinacy`: how hard they are to talk round at the start; `deviation`). What they watch, and how a hail is answered, lives in `sim/systems/disposition.py`: the shock each event deals, how fast fear and anger build and fade, and the odds of a demand being accepted. Their words come from `content/data/hails.toml`, one table per race over `[default]`; a player's `config/hails.toml` is read over it. `crew/hails.py` reads the captain's words (keywords, or the language model) and puts the answer into words, and `ui/comms_view.py` draws the comms card and the mood marks.
@@ -180,4 +191,4 @@ The Bridge reports progress (`objective_progress`, `objective_done` and `objecti
 
 ## A language model provider
 
-Write a class with a `name` and `complete(system, messages) -> str` in `llm/providers/`. Raise `LLMError` with a readable message on failure. Then add a branch for it in `make_provider` in `llm/providers/base.py`. Read API keys from environment variables only, never from settings. `post_json` in `base.py` handles plain HTTP, including bypassing the proxy for local hosts. The officers, threading and command handling need no changes.
+Write a class with a `name` and `complete(system, messages) -> str` in `llm/providers/`. Raise `LLMError` with a readable message on failure. Then add a branch for it in `make_provider` in `llm/providers/base.py`. Read API keys from environment variables only, never from settings. `post_json` in `base.py` handles plain HTTP, including bypassing the proxy for local hosts. The officers, threading and command handling need no changes, and the character voice router (`llm/routing.py`) works with any provider, so the new one can also serve as the second model under `llm.character`.
