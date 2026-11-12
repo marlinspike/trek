@@ -1,5 +1,7 @@
 ## What's new in 1.2
 
+**Begin : Trek.** The title screen now carries the remake's own name; Begin is the original game it remakes.
+
 **Settings in the game.** A Settings page on the main menu (S) changes everything you used to edit in the config folder: display, sound with a sample of each phaser and torpedo, the speed battles start at, the bridge style and its parts, speaking orders, the officers' language model and the character voice model (each with a Test button), and your officers' names, ranks, traits and how they speak. Each change is saved at once; in `officers.toml` only the line you change is written.
 
 **Command from the bridge.** Every order you give is read back by the officer at that station ("Course 090, warp 6."), and officers speak in subtitles low on the map, with the log split into Bridge and Computer columns. Right-click a ship (or press E) for a command wheel; while you type, the battle eases to a quarter speed, the map shows a ghost of what Enter would do, and Tab finishes names. Officers now and then propose an order (Y makes it so, N belays it). `alert red`, `yellow` and `green` give a set of orders at once, `record` saves what you just did as a named order, the new Orders tab holds them all as cards, and `style` promises a way of commanding for a ribbon. Each officer's trust in you grows across battles, from Green to Veteran, and changes what they will do. None of it replaces anything: keys, clicks and the console work as before, and `hud bridge classic` turns it all off.
