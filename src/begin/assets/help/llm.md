@@ -2,7 +2,7 @@
 title: Officers and language models
 category: Crew
 order: 2
-aliases: llm, language model, ai, anthropic, claude, openai, openrouter, ollama, provider, api key, think, nothink, local model
+aliases: llm, language model, character voices, second model, klingon language, ai, anthropic, claude, openai, openrouter, ollama, provider, api key, think, nothink, local model
 summary: Let your officers answer in their own words through Anthropic, OpenAI, OpenRouter or a local Ollama model.
 see: talking, crew, plain-english
 ---
@@ -46,6 +46,28 @@ You can also edit the file by hand, or use environment variables. Keys are read 
 - The environment variables `BEGIN_LLM_PROVIDER`, `BEGIN_LLM_MODEL`, `BEGIN_LLM_BASE_URL` and `BEGIN_LLM_THINK` override the file. Set `BEGIN_LLM_PROVIDER=off` to turn it off for one session.
 
 The console log says which provider the officers are using when a battle starts.
+
+## A second model for character voices
+
+A second model can speak for the game's characters while the first keeps the jobs that follow rules. It suits a model that is better at staying in character, or at alien languages: Klingon captains who use tlhIngan Hol, Romulans who are coldly formal. Turn it on, and choose who it speaks for, on the main menu's **Character voices** page (V); the model itself is set in `config/settings.json` under `llm`, or from a terminal:
+
+```
+begin --llm character.provider=ollama character.model=<model> character.for=captains,taunts
+begin --llm-voice-test klingon
+```
+
+```
+"llm": {"provider": "ollama", "model": "lfm3",
+        "character": {"provider": "ollama", "model": "<model>", "for": ["captains", "taunts"],
+                      "factions": ["klingon"],
+                      "notes": {"klingon": "Use a few words of Klingon, each followed by its meaning."}}}
+```
+
+- `for` is any of `captains` (answering a hail), `taunts` (an enemy calling you), `officers` (answering you), `chatter` (their remarks) and `log` (the captain's log). Left out, it is `captains` and `taunts`.
+- `factions` and `officers` narrow it (left out: everyone). `notes` adds a line to a faction's or officer's prompt, or to everyone's with `"*"`.
+- `enabled: false` keeps the settings and lets the main model speak for everyone. `--llm character=off` removes it.
+- Plain-English orders, named orders and judging your speeches always stay with the main model. If the second model fails, the main one answers that line, so nobody goes silent.
+- Its requests appear in the debug logs under its own model name.
 
 ## What the model sees
 

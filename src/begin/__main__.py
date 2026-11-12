@@ -10,6 +10,7 @@ Extra options exist for development and testing:
   --llm KEY=VALUE ...    save the officers' language model settings (e.g. provider=ollama model=lfm3 think=off)
   --llm-test             ask Spock one question through the configured model and print the answer
   --llm-usage            print the language model's token totals (with log_tokens=on)
+  --llm-voice-test [FACTION]  hail an enemy captain (default klingon) through the model that would answer
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--llm", nargs="+", metavar="KEY=VALUE")
     ap.add_argument("--llm-test", nargs="?", const="Spock, what do you recommend?", metavar="QUESTION")
     ap.add_argument("--llm-usage", action="store_true")
+    ap.add_argument("--llm-voice-test", nargs="?", const="klingon", metavar="FACTION")
     args = ap.parse_args(argv)
 
     if args.llm_usage:
@@ -44,13 +46,15 @@ def main(argv: list[str] | None = None) -> int:
 
         return usage()
 
-    if args.llm or args.llm_test:
-        from .tools.llm import configure, test
+    if args.llm or args.llm_test or args.llm_voice_test:
+        from .tools.llm import configure, test, voice_test
         from .llm.providers.base import LLMError
 
         try:
             if args.llm:
                 configure(args.llm)
+            if args.llm_voice_test:
+                return voice_test(args.llm_voice_test)
             return test(args.llm_test) if args.llm_test else 0
         except LLMError as e:
             print(e, file=sys.stderr)

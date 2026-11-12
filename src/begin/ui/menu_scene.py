@@ -1,4 +1,4 @@
-"""Main menu, preset list, custom battle setup and the Display page."""
+"""Main menu, preset list, custom battle setup, the Display page and the Character voices page."""
 
 from __future__ import annotations
 
@@ -126,6 +126,8 @@ class MenuScene:
                 self._tours()
             elif self.page == "main" and ev.key == pygame.K_d and self.display is not None:
                 self.page = "display"
+            elif self.page == "main" and ev.key == pygame.K_v:
+                self.page = "voices"
             elif self.page == "main" and ev.key == pygame.K_k:
                 self.flybys.summon()               # a Klingon on demand, for anyone who wants to see one
             elif self.page == "main" and ev.key in (pygame.K_c, pygame.K_h, pygame.K_F1):
@@ -206,6 +208,8 @@ class MenuScene:
             self._about(surf)
         elif self.page == "display" and self.display is not None:
             self._display(surf)
+        elif self.page == "voices":
+            self._voices(surf)
         self.ui.draw_tooltip(surf)
 
     def _main(self, surf: pygame.Surface) -> None:
@@ -224,6 +228,8 @@ class MenuScene:
             items += [("Display", lambda: setattr(self, "page", "display"),
                        "How the game is drawn: sharpness on Retina and 4K screens, the glow round weapon light (D)")]
         items += [
+            ("Character voices", lambda: setattr(self, "page", "voices"),
+             "A second language model for alien captains and officers: more Klingon, more Romulan (V)"),
             ("About & licensing", lambda: setattr(self, "page", "about"), ""),
             ("Open config folder", self._open_config, "Your settings, officers, orders and sounds: plain text files you can edit"),
             ("Quit", self.quit, "Esc"),
@@ -367,6 +373,70 @@ class MenuScene:
             y += 50
         self.ui.button(surf, pygame.Rect(x, y + 6, 140, 36), "Back", lambda: setattr(self, "page", "main"), size=13)
         theme.text(surf, "Saved in config/settings.json (renderer, bloom).", (x + 160, y + 16), theme.TEXT_FAINT, 12)
+
+    def _voices(self, surf: pygame.Surface) -> None:
+        """The character voice model (llm/routing.py): what it is, whether it is on, and who it speaks for."""
+        from ..session.models import CHARACTER_KEY, CHARACTER_SITUATIONS as SITUATIONS, DEFAULT_CHARACTER_FOR as DEFAULT_FOR
+
+        st = self.settings
+        raw = st.llm.get(CHARACTER_KEY)
+        ch: dict[str, object] = dict(raw) if isinstance(raw, dict) else {}
+        x, y = 84, 210
+        y = self._para(surf, "A second language model can speak for the game's characters: enemy captains with more "
+                       "of their own language and temper, officers with more colour. The main model still reads your "
+                       "orders and judges every hail; if the second one fails, the main one answers.",
+                       (x, y), 640, theme.TEXT_DIM, 14) + 16
+
+        def save(key: str, value: object) -> None:
+            ch[key] = value
+            st.llm = {**st.llm, CHARACTER_KEY: ch}
+            st.save()
+
+        model = str(ch.get("model") or "")
+        main = str(st.llm.get("model") or "")
+        r = pygame.Rect(x, y, 640, 92)
+        yy = theme.panel(surf, r, "Model")
+        if model:
+            where = f"{ch.get('provider', 'ollama')} · {model}" + (f" · {ch['base_url']}" if ch.get("base_url") else "")
+            theme.text(surf, where, (r.x + 16, yy), theme.TEXT, 15, weight="medium")
+        else:
+            theme.text(surf, "None set up", (r.x + 16, yy), theme.TEXT_DIM, 15, weight="medium")
+        hint = ("Set it with: begin --llm character.provider=ollama character.model=<name>" if not model else
+                "Main model: " + (main or "none") + ". Change either in config/settings.json or with begin --llm.")
+        theme.text(surf, hint, (r.x + 16, yy + 26), theme.TEXT_FAINT, 12)
+        y = r.bottom + 16
+
+        on = bool(model) and ch.get("enabled", True) not in (False, "off", "false")
+        theme.text(surf, "Character voices", (x, y + 9), theme.TEXT_DIM, 14)
+        self.ui.button(surf, pygame.Rect(x + 180, y, 200, 36), "On" if on else "Off", lambda: save("enabled", not on),
+                       "Off keeps the settings but lets the main model speak for everyone", active=on,
+                       accent=theme.GOOD, enabled=bool(model), size=14)
+        y += 50
+
+        raw_for = ch.get("for", list(DEFAULT_FOR))
+        chosen = [str(v) for v in raw_for] if isinstance(raw_for, list) else [str(raw_for)]
+        theme.text(surf, "Speaks for", (x, y + 9), theme.TEXT_DIM, 14)
+        bx = x + 180
+        for name, tip in SITUATIONS.items():
+            picked = name in chosen
+            self.ui.button(surf, pygame.Rect(bx, y, 92, 32), name.capitalize(),
+                           partial(save, "for", [n for n in SITUATIONS if (n in chosen) != (n == name)]),
+                           tip, active=picked, enabled=on, size=12)
+            bx += 98
+        y += 44
+        raw_facs = ch.get("factions", [])
+        facs = [str(v) for v in raw_facs] if isinstance(raw_facs, list) else [str(raw_facs)]
+        theme.text(surf, "Captains of", (x, y + 9), theme.TEXT_DIM, 14)
+        bx = x + 180
+        for fac in FACTIONS[1:]:
+            self.ui.button(surf, pygame.Rect(bx, y, 92, 32), self.content.factions[fac].name,
+                           partial(save, "factions", [f for f in FACTIONS[1:] if (f in facs) != (f == fac)]),
+                           "None picked: captains of every race", active=fac in facs, enabled=on, size=12)
+            bx += 98
+        y += 56
+        self.ui.button(surf, pygame.Rect(x, y, 140, 36), "Back", lambda: setattr(self, "page", "main"), size=13)
+        theme.text(surf, "Saved in config/settings.json (llm.character). Takes effect in the next battle.",
+                   (x + 160, y + 10), theme.TEXT_FAINT, 12)
 
     @staticmethod
     def _para(surf: pygame.Surface, text: str, at: tuple[int, int], width: int, color: theme.Color,

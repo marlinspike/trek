@@ -113,10 +113,15 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
 
             cfg = config_from_settings(self.llm_settings)
             if cfg is not None:
-                provider = make_provider(cfg)
+                from ..llm.routing import with_character
+
+                routed = with_character(make_provider(cfg), self.llm_settings, self._faction_of)
+                provider = routed.provider
                 think = "" if cfg.think is None else f", thinking {'on' if cfg.think is True else 'off' if cfg.think is False else cfg.think}"
                 who = "Officers are talking" if battle.crew is not None else "The console understands plain English"
                 llm_note = f"{who} through {cfg.provider} ({cfg.model}{think})."
+                if routed.note():
+                    llm_note += " " + str(routed.note())
         except Exception as e:  # noqa: BLE001 - a bad LLM setup must never stop a battle
             llm_note = f"LLM not available ({e}); officers will answer offline."
         if provider is not None:
@@ -264,6 +269,11 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
         return HelpContext(self.world.content, self.world.observe(self.side), self.player)
 
     help_context = _help_context
+
+    def _faction_of(self, ship: str) -> str | None:
+        """An enemy ship's faction, by the id a hail's request carries (for the character voice model)."""
+        s = self.world.ships.get(int(ship))
+        return s.faction if s is not None else None
 
     def _target_id(self) -> int | None:
         p = self.player

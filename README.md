@@ -65,6 +65,7 @@ Useful shortcuts:
 | `begin --llm-test` | Asks Spock one question through that model and prints the answer and timing. |
 | `begin --llm log_prompts=on log_tokens=on` | Turns on the language model's debug logs in `config/logs/`. |
 | `begin --llm-usage` | Prints the token totals: all time and the last ten games. |
+| `begin --llm-voice-test klingon` | Hails an enemy captain of that race through the character voice model (or the main one) and prints the answer. |
 | `pytest` | Runs the test suite. |
 
 ## Playing
@@ -149,6 +150,17 @@ begin --llm-test        # asks Spock one question and prints the answer and timi
 `think=off` turns off a model's long "thinking" step, which these jobs don't need. Add `base_url=http://<host>:11434` if Ollama runs on another machine.
 
 **Cloud.** Use `provider=anthropic`, `openai` or `openrouter` with that provider's model id (`model=` is always required; the game has no default), and put the key in an environment variable: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `OPENROUTER_API_KEY`. Keys are never written to disk. The settings are saved in `config/settings.json`, and `BEGIN_LLM_PROVIDER`, `BEGIN_LLM_MODEL` and `BEGIN_LLM_BASE_URL` override them for one session.
+
+**A second model for character voices.** You can add a second model that speaks only for the game's characters, so enemy captains sound more like their race: a Klingon who swears in tlhIngan Hol, a Romulan whose courtesy is a threat. The main model keeps every job that has to follow the rules (your plain-English orders, the console, judging a hail), and if the second model fails, the main one answers instead. Set it up from the main menu's **Character voices** page (V), or from a terminal:
+
+```bash
+begin --llm character.provider=ollama character.model=<another model> character.for=captains,taunts
+begin --llm character.factions=klingon "character.notes.klingon=Use a few words of Klingon, each followed by its meaning."
+begin --llm-voice-test klingon    # hails a Klingon captain and prints who answered
+begin --llm character=off         # back to one model for everyone
+```
+
+`for` picks the situations: `captains` (answering your hails), `taunts` (calling you unprompted), `officers` (answering you), `chatter` (their remarks in battle) and `log` (their parts of a tour's captain's log). `factions` and `officers` narrow it to some races or some officers, and `notes` adds a line to that character's prompt (`*` for all of them). The same keys as the main model work under `character.` (`base_url`, `think`, `timeout`, ...). It lives in `config/settings.json` under `llm.character`.
 
 **Watching what the model costs.** Two debug logs, both off by default, show exactly how hard the game is working the model:
 
