@@ -1,10 +1,21 @@
-# Your officers' traits. Copy this file to officers.toml (in this folder) and edit it.
+# Your officers, your way. Copy this file to officers.toml (in this folder) and edit it.
 #
-# Each officer's traits are a few words on how they come across. With a language model set up, the
-# officers' lines are written fresh in their own voice, coloured by these traits. Traits change how an
-# officer talks, never how well they do the job. An officer's response_style tells the model how they answer:
-# length, tone, register. An officer you leave out keeps the traits the game ships with. Optionally,
-# rapport_floor (-1 to 1) is the lowest an officer's regard for you can fall, however you treat them.
+# Anything you write here replaces what the game ships with, officer by officer and key by key; an officer
+# or a key you leave out stays as shipped. None of it changes how well an officer does the job.
+#
+#   name, rank        who they are on your bridge ("Worf" can become anyone you like; they answer to the new name)
+#   aliases           more names you can address them by in the console
+#   traits            a few words on how they come across ("dry wit", "coolly confident")
+#   response_style    how they answer when a language model writes their words: length, tone, register
+#   persona           replaces their whole character brief for the language model
+#   background        who they are beyond the station, added to the brief
+#   interests         what they care about off duty; it shows in quiet moments, when no enemy is in sight
+#   quirks            habits of speech or manner
+#   rapport_floor     -1 to 1: the lowest their regard for you can fall, however you treat them
+#   [<id>.lines]      their own offline lines for any event (they work without a language model); `idle`
+#                     lines are said in quiet moments. See src/begin/content/data/officers.toml for the events.
+#
+# With a language model set up, the officers' lines are written fresh in their own voice from all of this.
 #
 # Officers: spock, worf, geordi, seven
 
@@ -15,6 +26,14 @@ response_style = "precise and measured, with dry understatement; short, exact se
 [worf]
 traits = ["honour-bound", "blunt", "impatient for battle", "fiercely loyal"]
 response_style = "terse, clipped reports; few words and no pleasantries"
+# An example of going further: a Worf who is, of all things, a delightfully good cook.
+# interests = ["cooking for the crew", "Klingon opera"]
+# quirks = ["judges a battle the way he judges a meal"]
+#
+# [worf.lines]
+# idle = ["I have made rokeg blood pie for the crew. You will find it... honourable.",
+#         "A good sauce is like a good battle plan, Captain. Patience, then fire."]
+# victory = ["Victory. Tonight, the crew eats well."]
 
 [geordi]
 traits = ["upbeat", "technically fluent", "born problem-solver", "calm under pressure"]

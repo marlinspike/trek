@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import random
+from typing import Sequence, TypeVar
+
+T = TypeVar("T")
 
 
 class Rng:
@@ -40,7 +43,7 @@ class Rng:
     def gauss(self, mu: float, sigma: float) -> float:
         return self._r.gauss(mu, sigma)
 
-    def choice(self, seq: list):  # type: ignore[no-untyped-def]
+    def choice(self, seq: Sequence[T]) -> T:
         return seq[self._r.randrange(len(seq))]
 
     def shuffle(self, seq: list) -> None:  # type: ignore[type-arg]

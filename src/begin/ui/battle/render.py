@@ -12,13 +12,13 @@ from typing import TYPE_CHECKING
 import pygame
 
 from ...console import reports
-from ...crew.review import standout
 from ...sim.ship import Kind
-from ...sim.systems.repair import in_battle, under_repair
-from .. import comms_view, officer_view, theme
+from .. import comms_view, officer_view, order_marks, theme
 from ..hud import diagram_legend, hull_diagram
-from .common import CONTROLS, RED_ALERT_FLOOR, RED_ALERT_PERIOD, RED_ALERT_PULSE, RED_ALERT_SETTLE, SPEEDS, ratio
+from ...session.news import ALERT_TONE
+from .common import TONE_COLOR, CONTROLS, RED_ALERT_FLOOR, RED_ALERT_PERIOD, RED_ALERT_PULSE, RED_ALERT_SETTLE, SPEEDS, ratio
 from .state import SceneState
+from .. import gfx
 
 if TYPE_CHECKING:
     from ..battle_scene import BattleScene
@@ -27,38 +27,52 @@ if TYPE_CHECKING:
 class RenderMixin(SceneState):
     def draw(self: BattleScene, surf: pygame.Surface) -> None:
         self.ui.begin_frame()
-        surf.fill((5, 9, 18))
+        m, W, H = self.map_rect, surf.get_width(), surf.get_height()
+        for strip in ((0, 0, W, m.top), (0, m.bottom, W, H - m.bottom), (0, m.top, m.left, m.height),
+                      (m.right, m.top, W - m.right, m.height)):
+            surf.fill((5, 9, 18), strip)    # the map paints its own field: only the frame round it is cleared
         alert = self._red_alert()
         theme.set_alert(alert)
         if alert > 0 and not self._was_alert:
             self.audio.play("alert", time.monotonic(), 0.0, 0.6)
         self._was_alert = alert > 0
-        tick_len = 1.0 / self.world.rules.ticks_per_cycle
+        tick_len = self.session.tick_length
         alpha = 1.0 if self.paused else max(0.0, min(1.0, self.acc / tick_len))
-        obs = self.world.observe(self.side)
+        obs = self.obs
         p = self.player
         self.view.draw(surf, obs, self.prev, self.now, alpha, self.player_id,
                        p.target if p else None, p.target_subsystem if p else None, self.selected_ally)
         self.ui.add(self.map_rect, lambda: None)
-        acts = self._activity(obs)
-        officer_view.draw_intent(surf, self.cam, obs, p, acts, self._officer_name)
-        comms_view.draw_map(surf, self.cam, self.world, self.side, self.player_id, self.comms, time.monotonic(),
+        acts = self.session.officer_activity(obs)
+        officer_view.draw_intent(surf, self.cam, obs, p, acts, self.session.officer_name)
+        if self.prefs.map_orders:
+            order_marks.draw_orders(surf, self.cam, obs, p)
+        self._draw_preview(surf)
+        comms_view.draw_map(surf, self.cam, self.obs, self.player_id, self.comms, time.monotonic(),
                             self.map_rect)
         self._map_overlay_text(surf)
-        officer_view.draw_panel(surf, (self.map_rect.x + 14, self.map_rect.y + 36), acts, self._officer_name,
-                                self.world.tick, self.world.rules.ticks_per_cycle)
+        officer_view.draw_panel(surf, (self.map_rect.x + 14, self.map_rect.y + 36), acts, self.session.officer_name,
+                                obs.tick, obs.rules.ticks_per_cycle, self.subs.speaking)
         self._draw_printout(surf)
+        self._draw_focus(surf)
+        lift = self._proposal_height()
+        area = self.map_rect.inflate(0, -lift).move(0, -lift // 2) if lift else self.map_rect
+        self.subs.draw(surf, area, self._keep_clear(p))
+        self._draw_proposal(surf)
+        self._draw_wheel(surf)
         self._bottom(surf)
         self._column(surf)
         if self.overlay:
             self._draw_overlay(surf)
-        if self.toast:
+            gfx.set_stage((0, 0, 0, 0))          # a page over the map: no viewscreen edge on it
+        if self.toast and (self.prefs.classic or self.prefs.subtitles == "off"):
             msg, col, t = self.toast
             w = theme.text_width(msg, 13) + 24
             r = pygame.Rect(0, 0, w, 30)
             r.midbottom = (self.map_rect.centerx, self.map_rect.bottom - 14)
-            pygame.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=4)
-            pygame.draw.rect(surf, col, r, 1, border_radius=4)
+            theme.shadow(surf, r)
+            gfx.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=4)
+            gfx.draw.rect(surf, col, r, 1, border_radius=4)
             theme.text(surf, msg, r.center, col, 13, anchor="center")
         self.ui.draw_tooltip(surf)
         theme.set_alert(0.0)
@@ -73,7 +87,16 @@ class RenderMixin(SceneState):
         self._hear_channels(now)
         p = self.player
         drive = min(1.0, p.warp / 9.0) if p is not None and p.alive else 0.0
-        self.audio.tick(now, drive, running=p is not None and p.alive and not self.paused and not self.world.outcome.over)
+        self.audio.tick(now, drive, running=p is not None and p.alive and not self.paused and not self.obs.outcome.over)
+
+    def _keep_clear(self: BattleScene, p: object) -> list[tuple[float, float]]:
+        """Screen points nothing of ours may cover: our ship and her target."""
+        pts = []
+        for sid in (self.player_id, getattr(p, "target", None)):
+            pose = self.now.ships.get(sid) if sid is not None else None
+            if pose is not None:
+                pts.append(self.cam.to_screen(pose[0], pose[1]))
+        return pts
 
     def _hear_channels(self: BattleScene, now: float) -> None:
         """A hail channel opening or closing gets its whistle."""
@@ -88,8 +111,7 @@ class RenderMixin(SceneState):
 
     def _red_alert(self: BattleScene) -> float:
         """How red the panel borders are right now: a slow pulse while the ship is in a fight, else 0."""
-        p = self.player
-        if p is None or not p.alive or self.world.outcome.over or not in_battle(self.world, p):
+        if not self.session.in_battle():
             return 0.0
         now = time.monotonic()
         if not self._was_alert:
@@ -101,42 +123,65 @@ class RenderMixin(SceneState):
 
     def _map_overlay_text(self: BattleScene, surf: pygame.Surface) -> None:
         r = self.map_rect
-        t = self.world.time
+        t = self.obs.time
         state = "PAUSED" if self.paused else f"{self.speed:g}×"
         col = theme.CAUTION if self.paused else theme.GOOD
         theme.text(surf, f"Cycle {t:7.1f}", (r.x + 14, r.y + 10), theme.TEXT, 14, "mono")
         theme.text(surf, state, (r.x + 130, r.y + 10), col, 14, "mono", weight="medium")
+        x = r.x + 130 + theme.text_width(state, 14, "mono", "medium") + 16
+        if self.focus_k > 0.05:                 # tactical focus: the battle has stepped back while you give an order
+            eff = self.effective_speed()
+            tag = f"FOCUS {eff:.2g}×" if eff > 0.01 else "FOCUS ❚❚"
+            theme.text(surf, tag, (x, r.y + 12), theme.mix(theme.TEXT_DIM, theme.CAUTION, self.focus_k), 11,
+                       weight="semibold")
+            x += theme.text_width(tag, 11, weight="semibold") + 16
+        if self.condition is not None:
+            tag = f"CONDITION {self.condition.upper()}"
+            theme.text(surf, tag, (x, r.y + 12), TONE_COLOR[ALERT_TONE[self.condition]], 11, weight="semibold")
+            x += theme.text_width(tag, 11, weight="semibold") + 16
+        if self.recording is not None:
+            tag = f"● REC {self.recording.name}"
+            blink = (pygame.time.get_ticks() // 600) % 2 == 0
+            theme.text(surf, tag, (x, r.y + 12), theme.ALERT if blink else theme.dim(theme.ALERT, 0.6), 11,
+                       weight="semibold")
+            x += theme.text_width(tag, 11, weight="semibold") + 16
+        if self.style is not None:
+            from ...crew.career import STYLES
+
+            tag = STYLES[self.style].name.upper() + (" · broken" if self.style_broken else "")
+            theme.text(surf, tag, (x, r.y + 12), theme.TEXT_FAINT if self.style_broken else theme.CREW, 11,
+                       weight="semibold")
+            x += theme.text_width(tag, 11, weight="semibold") + 16
         if theme.border() != theme.BORDER:      # after the speed or PAUSED, never on top of it
-            x = r.x + 130 + theme.text_width(state, 14, "mono", "medium") + 16
             theme.text(surf, "RED ALERT", (x, r.y + 12), theme.mix(theme.TEXT_DIM, theme.ALERT, 0.8), 11,
                        weight="semibold")
-        if self.paused and not self.world.outcome.over:
+        if self.paused and not self.obs.outcome.over:
             # hard to miss: nothing moves, charges or reloads while paused
             msg = "PAUSED  ·  press Space to run"
             b = pygame.Rect(0, 0, theme.text_width(msg, 14, weight="semibold") + 32, 30)
             b.midtop = (r.centerx, r.y + 10)
-            pygame.draw.rect(surf, theme.BG_PANEL_HI, b, border_radius=4)
-            pygame.draw.rect(surf, theme.CAUTION, b, 1, border_radius=4)
+            theme.shadow(surf, b)
+            gfx.draw.rect(surf, theme.BG_PANEL_HI, b, border_radius=4)
+            gfx.draw.rect(surf, theme.CAUTION, b, 1, border_radius=4)
             theme.text(surf, msg, b.center, theme.CAUTION, 14, weight="semibold", anchor="center")
-        self._draw_conn_banner(surf, r.y + (46 if self.paused and not self.world.outcome.over else 10))
-        theme.text(surf, self.battle.setup.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
+        self._draw_conn_banner(surf, r.y + (46 if self.paused and not self.obs.outcome.over else 10))
+        theme.text(surf, self.session.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
         theme.text(surf, f"range {self.display_range():,.0f}  ·  F1 controls", (r.right - 14, r.y + 28), theme.TEXT_FAINT,
                    11, anchor="topright")
         y = r.y + 48
-        for names, eta in self._inbound():
+        for names, eta in self.session.inbound():
             # reinforcements on the way: a countdown that pulses as they get close
             close = eta < 15
             pulse = 0.5 + 0.5 * math.sin(time.monotonic() * math.tau / 0.9) if close else 1.0
             col = theme.mix(theme.TEXT_DIM, theme.GOOD, 0.4 + 0.6 * pulse)
             theme.text(surf, f"{names}  ·  ETA {eta:4.0f} cycles", (r.right - 14, y), col, 13, "mono", anchor="topright")
             y += 20
-        comms_view.draw_card(surf, (r.right - 14, y + 4), self.world, self.side, self.player_id, self.comms, self.ui,
+        comms_view.draw_card(surf, (r.right - 14, y + 4), self.obs, self.player_id, self.comms, self.ui,
                              time.monotonic(), self._comms_button)
 
     def _draw_conn_banner(self: BattleScene, surf: pygame.Surface, top: int) -> None:
         """Who has the conn, when it isn't the captain; click it to take the bridge back."""
-        ship, b = self.player, self.bridge
-        o = b.find(ship.conn) if ship is not None and ship.conn and b is not None else None
+        ship, o = self.player, self.session.in_command()
         if o is None:
             if ship is not None and ship.evasive:
                 self._draw_evasive_banner(surf, top)
@@ -144,21 +189,23 @@ class RenderMixin(SceneState):
         msg = f"{o.name.upper()} HAS THE CONN  ·  say \"I have the bridge\" to take it back"
         box = pygame.Rect(0, 0, theme.text_width(msg, 13, weight="semibold") + 32, 28)
         box.midtop = (self.map_rect.centerx, top)
-        pygame.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
-        pygame.draw.rect(surf, theme.CREW, box, 2, border_radius=4)
+        theme.shadow(surf, box)
+        gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
+        gfx.draw.rect(surf, theme.CREW, box, 2, border_radius=4)
         theme.text(surf, msg, box.center, theme.CREW, 13, weight="semibold", anchor="center")
         self.ui.add(box, lambda: self.run_console("I have the bridge"), "Take the bridge back")
 
     def _draw_evasive_banner(self: BattleScene, surf: pygame.Surface, top: int) -> None:
         """Evasive manoeuvres are on: amber while the helm is dodging; click to end them."""
-        dodging = any(a.role == "evasive" and a.kind == "evade" for a in self._activity(self.obs))
+        dodging = any(a.role == "evasive" and a.kind == "evade" for a in self.session.officer_activity(self.obs))
         msg = "EVASIVE MANOEUVRES  ·  " + ("dodging torpedoes" if dodging else "watching for torpedoes") + \
               "  ·  any helm order ends them"
         col = theme.CAUTION if dodging else theme.FRIEND
         box = pygame.Rect(0, 0, theme.text_width(msg, 13, weight="semibold") + 32, 28)
         box.midtop = (self.map_rect.centerx, top)
-        pygame.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
-        pygame.draw.rect(surf, col, box, 2, border_radius=4)
+        theme.shadow(surf, box)
+        gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
+        gfx.draw.rect(surf, col, box, 2, border_radius=4)
         theme.text(surf, msg, box.center, col, 13, weight="semibold", anchor="center")
         self.ui.add(box, lambda: self.run_console("evasive off"), "End evasive manoeuvres (or give any helm order)")
 
@@ -172,10 +219,11 @@ class RenderMixin(SceneState):
         w = min(self.map_rect.width - 24, max(theme.text_width(t, size, "mono") for t in lines) + 24)
         h = lh * len(lines) + 30
         r = pygame.Rect(self.map_rect.x + 12, self.map_rect.bottom - h - 12, w, h)
-        panel = pygame.Surface(r.size, pygame.SRCALPHA)
+        theme.shadow(surf, r)
+        panel = gfx.Surface(r.size, pygame.SRCALPHA)
         panel.fill((*theme.BG_PANEL, 228))
         surf.blit(panel, r)
-        pygame.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=4)
+        gfx.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=4)
         y = r.y + 8
         for t in lines:
             theme.text(surf, t, (r.x + 12, y), theme.TEXT, size, "mono")
@@ -185,8 +233,8 @@ class RenderMixin(SceneState):
 
     def _bottom(self: BattleScene, surf: pygame.Surface) -> None:
         r = self.bottom_rect
-        pygame.draw.rect(surf, theme.BG_PANEL, r, border_radius=4)
-        pygame.draw.rect(surf, theme.border(), r, 1, border_radius=4)
+        gfx.draw.rect(surf, theme.BG_PANEL, r, border_radius=4)
+        gfx.draw.rect(surf, theme.border(), r, 1, border_radius=4)
         # time controls
         x = r.x + 10
         y = r.y + 8
@@ -199,20 +247,26 @@ class RenderMixin(SceneState):
                            "Simulation speed ([ and ])", active=self.speed == s)
             x += 50
         theme.text(surf, "Orders also work while paused.", (x + 8, y + 5), theme.TEXT_FAINT, 11)
-        # log
+        # log: two columns, the bridge (who said what) and the computer (everything else), when there is room
         lines_area = pygame.Rect(r.x + 10, r.y + 40, r.width - 20, r.height - 76)
-        n = lines_area.height // 16
-        end = len(self.log) - self.log_scroll
-        for i, line in enumerate(self.log[max(0, end - n):end]):
-            theme.text(surf, line.text[:160], (lines_area.x, lines_area.y + i * 16), line.color, 12,
-                       "mono" if line.mono else "ui")
+        if self.prefs.classic or lines_area.width < 760:
+            self._log_column(surf, lines_area, self.log)
+        else:
+            left = pygame.Rect(lines_area.x, lines_area.y, int(lines_area.width * 0.56) - 10, lines_area.height)
+            right = pygame.Rect(left.right + 20, lines_area.y, lines_area.right - left.right - 20, lines_area.height)
+            gfx.draw.line(surf, theme.BORDER, (left.right + 10, left.y + 2), (left.right + 10, left.bottom - 4))
+            theme.text(surf, "BRIDGE", (left.right + 4, r.y + 14), theme.TEXT_FAINT, 10, weight="semibold",
+                       anchor="topright")
+            theme.text(surf, "COMPUTER", (right.x, r.y + 14), theme.TEXT_FAINT, 10, weight="semibold")
+            self._log_column(surf, left, [ln for ln in self.log if ln.channel == "bridge"])
+            self._log_column(surf, right, [ln for ln in self.log if ln.channel != "bridge"])
         if self.log_scroll:
             theme.text(surf, f"↑ {self.log_scroll} older · wheel to scroll", (lines_area.right, lines_area.y),
                        theme.TEXT_FAINT, 11, anchor="topright")
         # console
         self.console_rect = pygame.Rect(r.x + 8, r.bottom - 32, r.width - 16, 26)
-        pygame.draw.rect(surf, theme.BG_INPUT, self.console_rect, border_radius=3)
-        pygame.draw.rect(surf, theme.FRIEND if self.console_focus else theme.BORDER, self.console_rect, 1, border_radius=3)
+        gfx.draw.rect(surf, theme.BG_INPUT, self.console_rect, border_radius=3)
+        gfx.draw.rect(surf, theme.FRIEND if self.console_focus else theme.BORDER, self.console_rect, 1, border_radius=3)
         prompt = "› " + self.console
         if self.console_focus and (pygame.time.get_ticks() // 500) % 2 == 0:
             prompt += "▏"
@@ -221,6 +275,28 @@ class RenderMixin(SceneState):
                        (self.console_rect.x + 10, self.console_rect.y + 5), theme.TEXT_FAINT, 12)
         else:
             theme.text(surf, prompt, (self.console_rect.x + 10, self.console_rect.y + 4), theme.TEXT, 13, "mono")
+            hint = self.preview_text()
+            if hint:      # what Enter would do, in the words the officer will read it back with
+                room = self.console_rect.width - theme.text_width(prompt, 13, "mono") - 60
+                hint = "→ " + hint
+                while len(hint) > 6 and theme.text_width(hint, 12) > room:
+                    hint = hint[:-4] + "…"
+                if room > 80:
+                    theme.text(surf, hint, (self.console_rect.right - 10, self.console_rect.y + 6), theme.TEXT_DIM, 12,
+                               anchor="topright")
+        self._draw_completions(surf)
+        self._draw_mic(surf)
+
+    def _log_column(self: BattleScene, surf: pygame.Surface, area: pygame.Rect, lines: list) -> None:
+        n = area.height // 16
+        end = len(lines) - self.log_scroll
+        for i, line in enumerate(lines[max(0, end - n):max(0, end)]):
+            size = 12
+            text = line.text[:160]
+            family = "mono" if line.mono else "ui"
+            while len(text) > 8 and theme.text_width(text, size, family) > area.width:
+                text = text[:-4] + "…"
+            theme.text(surf, text, (area.x, area.y + i * 16), line.color, size, family)
 
     def _column(self: BattleScene, surf: pygame.Surface) -> None:
         r = self.col_rect
@@ -235,7 +311,7 @@ class RenderMixin(SceneState):
             y += h + gap
 
     def _modal(self: BattleScene, surf: pygame.Surface, w: int, h: int, title: str, accent: theme.Color = theme.FRIEND) -> pygame.Rect:
-        shade = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        shade = gfx.Surface(surf.get_size(), pygame.SRCALPHA)
         shade.fill((2, 5, 12, 170))
         surf.blit(shade, (0, 0))
         r = pygame.Rect(0, 0, w, h)
@@ -248,8 +324,9 @@ class RenderMixin(SceneState):
         if o == "help_brief":
             r = pygame.Rect(0, 0, 520, 132)
             r.center = self.map_rect.center
-            pygame.draw.rect(surf, theme.BG_PANEL, r, border_radius=6)
-            pygame.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=6)
+            theme.shadow(surf, r, 6)
+            gfx.draw.rect(surf, theme.BG_PANEL, r, border_radius=6)
+            gfx.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=6)
             theme.text(surf, "Space to begin.  Left-click a contact to target it,", (r.centerx, r.y + 22), theme.TEXT, 15, anchor="center")
             theme.text(surf, "right-click the map to steer, F / T / P to fire.", (r.centerx, r.y + 46), theme.TEXT, 15, anchor="center")
             theme.text(surf, "Enter opens the console. H opens the manual, F1 the controls.", (r.centerx, r.y + 78),
@@ -279,6 +356,8 @@ class RenderMixin(SceneState):
             self._scan_view(surf)
         elif o == "debrief":
             self._debrief(surf)
+        elif o == "voice":
+            self._voice_page(surf)
 
     def _damage_view(self: BattleScene, surf: pygame.Surface) -> None:
         p = self.player
@@ -286,7 +365,7 @@ class RenderMixin(SceneState):
             self.overlay = None
             return
         r = self._modal(surf, 860, 560, f"Damage assessment — {p.name}")
-        fixing, hull_fixing = under_repair(self.world, p)
+        fixing, hull_fixing = self.obs.repairs(p.id)
         hull_diagram(surf, p, pygame.Rect(r.x + 20, r.y + 40, 380, 400), repairing=fixing, ui=self.ui)
         diagram_legend(surf, r.x + 20, r.y + 446)
         x = r.x + 420
@@ -294,8 +373,8 @@ class RenderMixin(SceneState):
         hf = max(0.0, p.structure) / p.structure_max
         hull_note = "  under repair" if hull_fixing else ""
         theme.text(surf, f"Hull {hf * 100:.0f}%{hull_note}", (x, y), theme.REPAIR if hull_fixing else theme.TEXT_DIM, 12)
-        if hull_fixing and p.docked_to is None and hf < self.world.rules.hull_field_limit:
-            theme.text(surf, f"(crews patch it to {self.world.rules.hull_field_limit * 100:.0f}%; a base does the rest)",
+        if hull_fixing and p.docked_to is None and hf < self.obs.rules.hull_field_limit:
+            theme.text(surf, f"(crews patch it to {self.obs.rules.hull_field_limit * 100:.0f}%; a base does the rest)",
                        (x + 170, y), theme.TEXT_FAINT, 11)
         y += 24
         groups: dict[Kind, list] = {}
@@ -310,9 +389,9 @@ class RenderMixin(SceneState):
                 theme.bar(surf, rr, s.health, col)
                 if s.sid in fixing:
                     prio = s.kind == p.repair_priority
-                    pygame.draw.rect(surf, theme.REPAIR, rr.inflate(4, 4), 2 if prio else 1, border_radius=2)
+                    gfx.draw.rect(surf, theme.REPAIR, rr.inflate(4, 4), 2 if prio else 1, border_radius=2)
                 if s.damage:
-                    theme.text(surf, f"{s.damage}", (rr.centerx, rr.bottom + 1), col, 9, "mono", anchor="midtop")
+                    theme.text(surf, f"{s.damage}", (rr.centerx, rr.bottom + 1), col, 10, "mono", anchor="midtop")
                 xx += 40
                 if xx > r.right - 40:
                     xx = x + 120
@@ -352,22 +431,18 @@ class RenderMixin(SceneState):
 
     def _debrief(self: BattleScene, surf: pygame.Surface) -> None:
         """The end of the battle: how it went, your ship's record, the officer who stood out, every ship's tally."""
-        w = self.world
-        res = self.assessment.sides(w)
-        score = self.assessment.score(w, self.side)
-        rows = list(w.ships.values())[:9]
-        r = self._modal(surf, 800, 330 + 46 * len(res) + 18 * len(rows), "Battle assessment", theme.CAUTION)
-        verdict = self.assessment.verdict(score)
-        theme.text(surf, w.outcome.reason or "The engagement is over.", (r.x + 24, r.y + 36), theme.TEXT, 20, "display", weight="semibold")
-        theme.text(surf, verdict, (r.x + 24, r.y + 68), theme.CAUTION, 14)
-        theme.text(surf, f"Score {score:+.1f}   ·   {w.time:.0f} cycles", (r.right - 24, r.y + 44), theme.TEXT, 14, "mono",
-                   anchor="topright")
+        d = self.session.debrief()
+        r = self._modal(surf, 800, 330 + 46 * len(d.sides) + 18 * len(d.ships), "Battle assessment", theme.CAUTION)
+        theme.text(surf, d.reason, (r.x + 24, r.y + 36), theme.TEXT, 20, "display", weight="semibold")
+        theme.text(surf, d.verdict, (r.x + 24, r.y + 68), theme.CAUTION, 14)
+        theme.text(surf, f"Score {d.score:+.1f}   ·   {d.cycles:.0f} cycles", (r.right - 24, r.y + 44), theme.TEXT, 14,
+                   "mono", anchor="topright")
         y = r.y + 100
-        me = w.ships.get(self.player_id) if self.player_id is not None else None
+        me = d.ship
         if me is not None:
             st = me.stats
             card = pygame.Rect(r.x + 16, y, r.width - 32, 72)
-            pygame.draw.rect(surf, theme.BG_PANEL_HI, card, border_radius=4)
+            gfx.draw.rect(surf, theme.BG_PANEL_HI, card, border_radius=4)
             theme.text(surf, f"{me.name} · {me.status.value}", (card.x + 12, card.y + 8), theme.FRIEND, 14, weight="medium")
             hull = max(0.0, me.structure / me.structure_max)
             stats = [("hull", f"{hull:.0%}", theme.health_color(hull)),
@@ -384,29 +459,28 @@ class RenderMixin(SceneState):
                 theme.text(surf, label, (x, card.y + 32), theme.TEXT_FAINT, 10)
                 theme.text(surf, val, (x, card.y + 46), colr, 13, "mono")
             y = card.bottom + 14
-        crew = self.battle.crew
-        best = None
-        if crew is not None and self.player_id is not None:
-            best = standout(crew.officers.values(), self.player_id, w.command_log, self.deeds)
-        if best is not None:
+        if d.standout is not None:
             theme.text(surf, "STANDOUT OFFICER", (r.x + 24, y - 2), theme.TEXT_DIM, 11, "display", weight="medium")
-            theme.text(surf, best.line(), (r.x + 24, y + 15), theme.CREW, 13)
-        elif crew is not None:
+            theme.text(surf, d.standout, (r.x + 24, y + 15), theme.CREW, 13)
+        elif d.had_crew:
             theme.text(surf, "You fought the ship yourself: your officers gave no orders of their own.", (r.x + 24, y + 8),
                        theme.TEXT_DIM, 12)
+        if d.honours:
+            theme.text(surf, "  ·  ".join(d.honours), (r.right - 24, y - 2), theme.GOOD, 12, weight="medium",
+                       anchor="topright")
         y += 44
-        for side, sr in sorted(res.items()):
-            name = w.side_names.get(side, f"Side {side}")
-            col = theme.FRIEND if side == self.side else theme.HOSTILE
-            theme.text(surf, name + (" (you)" if side == self.side else ""), (r.x + 24, y), col, 14, weight="medium")
+        for t in d.sides:
+            sr = t.result
+            col = theme.FRIEND if t.ours else theme.HOSTILE
+            theme.text(surf, t.name + (" (you)" if t.ours else ""), (r.x + 24, y), col, 14, weight="medium")
             theme.text(surf, f"{sr.ships} ships · lost {sr.lost} · disabled {sr.disabled} · escaped {sr.escaped} · "
                              f"surrendered {sr.surrendered} · strength {sr.loss * -100:+.0f}%",
                        (r.x + 24, y + 20), theme.TEXT_DIM, 12)
             y += 46
         y += 6
-        for s in rows:
+        for s in d.ships:
             st = s.stats
-            col = theme.FRIEND if s.side == self.side else theme.HOSTILE
+            col = theme.FRIEND if s.side == d.side else theme.HOSTILE
             theme.text(surf, f"{s.name} ({s.cls.abbrev})", (r.x + 24, y), col, 12)
             theme.text(surf, f"{s.status.value:<11} dealt {st.damage_dealt:6.0f}  taken {st.damage_taken:6.0f}  "
                              f"phaser hits {st.phaser_hits}/{st.phaser_shots}  torps {st.torpedo_hits}/{st.torpedoes_fired}  "

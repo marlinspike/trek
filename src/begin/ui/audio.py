@@ -590,6 +590,8 @@ class Audio:
     engine drone as a share of the volume (0 turns it off).
     """
 
+    focus: float = 0.0     # 0..1 while the captain gives an order in tactical focus: the battle steps back
+
     def __init__(self, volume: float = 0.6, muted: bool = False, choice: dict[str, str] | None = None,
                  folder: Path | None = None, hum: float = HUM_LEVEL) -> None:
         self.volume = max(0.0, min(1.0, float(volume)))
@@ -614,7 +616,8 @@ class Audio:
                 pygame.mixer.set_reserved(1)                  # channel 0 keeps the hum
             except pygame.error:
                 pass
-            self._stereo = stereo = pygame.mixer.get_init()[2] == 2
+            init = pygame.mixer.get_init()
+            self._stereo = stereo = init is not None and init[2] == 2
             for name in SOUNDS:
                 self.sounds[name] = pygame.mixer.Sound(buffer=_samples(name, stereo, self.choice.get(name, "")))
             for name in FAR:
@@ -678,7 +681,7 @@ class Audio:
         self._last[name] = now
         if name in LOUD and level > 0.5:
             self._duck = now
-        v = self.volume * level
+        v = self.volume * level * (1.0 - 0.45 * self.focus)
         ch.set_volume(v * min(1.0, 1 - pan), v * min(1.0, 1 + pan))
         ch.play(snd)
 
@@ -697,7 +700,7 @@ class Audio:
         want = 0.0
         if running and not self.muted and self.hum > 0 and "hum" in self.sounds:
             dip = min(1.0, max(0.0, now - self._duck) / 1.2)          # ducks under a blast, then swells back
-            want = self.volume * self.hum * (0.55 + 0.45 * self._drive) * (0.35 + 0.65 * dip)
+            want = self.volume * self.hum * (0.55 + 0.45 * self._drive) * (0.35 + 0.65 * dip) * (1.0 - 0.4 * self.focus)
         if want <= 0.002:
             if self._hum_ch is not None:
                 self._hum_ch.fadeout(400)

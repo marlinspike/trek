@@ -89,6 +89,7 @@ class Bridge(Chatter):
         self._addresses: list[AddressCrew] = []              # judged speeches, ready to take effect
         self._morale_said: int = -999
         self._threats: int = 0
+        self.proposals_on = False     # the helm's own proposal asks about incoming torpedoes, so its advice stays quiet
         self._llm_note_given: bool = False
         self._conn_target: int | None = None
         self._disabled_seen: set[tuple[str, int]] = set()
@@ -522,7 +523,7 @@ class Bridge(Chatter):
 
     def character(self, o: OfficerProfile) -> str:
         """Who the officer is for the model: the persona, their traits, and what they said lately."""
-        out = o.persona
+        out = o.brief()
         if o.traits:
             out += (f" Your character traits: {', '.join(o.traits)}. Let them colour how you speak and how you are "
                     "with the captain; they never change how well you do your job.")

@@ -12,11 +12,10 @@ import math
 from ..content.schema import ContentDB, ShipClass
 from .rules import Rules
 from .ship import (
-    Battery, Drive, Kind, Launcher, PhaserBank, Reactor, Shield, Ship, Subsystem, Tube,
+    SHIELD_FACINGS, Battery, Drive, Kind, Launcher, PhaserBank, Reactor, Shield, Ship, Subsystem, Tube,
 )
 
 # Begin's shield numbering: 1 fore, 2 fore-starboard, 3 fore-port, 4 aft-starboard, 5 aft-port, 6 aft.
-SHIELD_FACINGS: tuple[float, ...] = (0.0, 60.0, 300.0, 120.0, 240.0, 180.0)
 
 
 def _ring(center: tuple[float, float], n: int, radius: float, phase: float = 0.0) -> list[tuple[float, float]]:

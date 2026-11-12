@@ -20,6 +20,8 @@ def settings_dir() -> Path:
 class Settings:
     window: tuple[int, int] = (1600, 900)
     fullscreen: bool = False
+    renderer: str = "auto"                                     # auto (GPU if it can), gpu, or software (see ui/present.py)
+    bloom: bool = True                                         # GPU only: soft glow round weapon light, a calm map edge
     speed: float = 1.0
     custom: dict[str, object] = field(default_factory=dict)
     llm: dict[str, object] = field(default_factory=dict)       # provider settings (no secrets: keys come from env)
@@ -31,6 +33,9 @@ class Settings:
     sounds: dict[str, str] = field(default_factory=dict)       # which version of a sound: {"phaser": "b", "torpedo": "c"}
     hum: float = 0.35                                          # the ship's engine hum, as a share of the volume (0: off)
     jolt: bool = True                                          # the map jolts when our ship takes a heavy blow
+    bridge: dict[str, object] = field(default_factory=dict)    # the Bridge setting: full|quiet|classic and its parts
+    voice: dict[str, object] = field(default_factory=dict)     # speaking orders: engine, push-to-talk key, models
+    career: dict[str, object] = field(default_factory=dict)    # officers' trust and command-style ribbons, across battles
 
     @staticmethod
     def path() -> Path:

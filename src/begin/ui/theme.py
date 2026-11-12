@@ -10,6 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import pygame
+from . import gfx
 
 Color = tuple[int, int, int]
 
@@ -24,7 +25,7 @@ BORDER_HI = (66, 98, 146)
 
 TEXT = (206, 219, 236)
 TEXT_DIM = (124, 142, 170)
-TEXT_FAINT = (76, 92, 120)
+TEXT_FAINT = (104, 122, 154)   # still quiet, but readable on the panels (about 4.5:1)
 
 FRIEND = (79, 209, 232)       # Federation / own side cyan
 FRIEND_DIM = (44, 120, 140)
@@ -132,7 +133,7 @@ def _tracked(s: str, color: Color, size: int, family: str, weight: str) -> pygam
     gap = round(size * _TRACK[family])
     glyphs = [f.render(c, True, color) for c in s]
     w = sum(g.get_width() for g in glyphs) + gap * max(0, len(s) - 1)
-    out = pygame.Surface((max(1, w), f.get_height()), pygame.SRCALPHA)
+    out = pygame.Surface((max(1, w), f.get_height()), pygame.SRCALPHA)   # at the size asked: plain pixels
     x = 0
     for g in glyphs:
         out.blit(g, (x, 0))
@@ -144,11 +145,19 @@ def render(s: str, color: Color, size: int = 14, family: str = "ui", weight: str
     """Render a line of text, never raising: a string the font can't measure falls back to the default font.
 
     The same labels are drawn every frame, so finished lines are cached; callers must not draw on the result."""
-    return _render_cached(s, tuple(color), size, family, weight)    # type: ignore[arg-type]
+    return _render_cached(s, tuple(color), size, family, weight, gfx.SCALE)    # type: ignore[arg-type]
 
 
 @lru_cache(maxsize=2048)
-def _render_cached(s: str, color: Color, size: int, family: str, weight: str) -> pygame.Surface:
+def _render_cached(s: str, color: Color, size: int, family: str, weight: str, scale: float = 1.0) -> pygame.Surface:
+    """At a density above 1 the line is set in a font `scale` times the size and handed over as a Canvas of
+    the logical size, so the letters are drawn with every pixel the screen has."""
+    if scale > 1.0:
+        return gfx.adopt(_render_plain(s, color, max(1, round(size * scale)), family, weight), scale)
+    return _render_plain(s, color, size, family, weight)
+
+
+def _render_plain(s: str, color: Color, size: int, family: str, weight: str) -> pygame.Surface:
     f = font(size, family, weight)
     if family == "display" and not _has_glyphs(f, s):
         f = font(size, "ui", weight)              # a symbol the display face lacks: the whole label in Inter
@@ -176,7 +185,43 @@ def text(surf: pygame.Surface, s: str, pos: tuple[float, float], color: Color = 
     return r
 
 
+def label(surf: pygame.Surface, s: str, pos: tuple[float, float], color: Color = TEXT, size: int = 12,
+          family: str = "ui", weight: str = "medium", anchor: str = "topleft") -> pygame.Rect:
+    """Text on the map: the letters ringed by a soft dark edge, so a name stays legible over stars, grid
+    lines, shield rings and torpedo bursts. Same placement as `text` (the edge hangs a pixel outside)."""
+    img = _haloed(s, tuple(color), size, family, weight)    # type: ignore[arg-type]
+    r = img.get_rect().inflate(-2, -2)
+    setattr(r, anchor, (int(pos[0]), int(pos[1])))
+    surf.blit(img, (r.x - 1, r.y - 1))
+    return r
+
+
+def _haloed(s: str, color: Color, size: int, family: str, weight: str) -> pygame.Surface:
+    return _haloed_at(s, color, size, family, weight, gfx.SCALE)
+
+
+@lru_cache(maxsize=512)
+def _haloed_at(s: str, color: Color, size: int, family: str, weight: str, scale: float) -> pygame.Surface:
+    fg = render(s, color, size, family, weight)
+    edge = render(s, (2, 5, 12), size, family, weight).copy()
+    edge.set_alpha(150)
+    out = gfx.Surface((fg.get_width() + 2, fg.get_height() + 2), pygame.SRCALPHA)
+    for dx, dy in ((0, 1), (2, 1), (1, 0), (1, 2), (0, 0), (2, 2), (0, 2), (2, 0)):
+        out.blit(edge, (dx, dy))
+    out.blit(fg, (1, 1))
+    return out
+
+
 def text_width(s: str, size: int = 14, family: str = "ui", weight: str = "regular") -> int:
+    """How wide `render` will draw the line, in logical pixels (at a high density, measured in the font the
+    line is really set in, so words laid out side by side keep their spacing)."""
+    return _text_width_at(s, size, family, weight, gfx.SCALE)
+
+
+@lru_cache(maxsize=4096)
+def _text_width_at(s: str, size: int, family: str, weight: str, scale: float) -> int:
+    if scale > 1.0:
+        return gfx._ceil(_text_width_at(s, max(1, round(size * scale)), family, weight, 1.0) / scale)
     try:
         f = font(size, family, weight)
         if family == "display" and not _has_glyphs(f, s):
@@ -189,12 +234,12 @@ def text_width(s: str, size: int = 14, family: str = "ui", weight: str = "regula
 
 
 def bar(surf: pygame.Surface, rect: pygame.Rect, frac: float, color: Color, bg: Color = (24, 36, 60)) -> None:
-    pygame.draw.rect(surf, bg, rect, border_radius=2)
+    gfx.draw.rect(surf, bg, rect, border_radius=2)
     frac = max(0.0, min(1.0, frac))
     if frac > 0:
         r = rect.copy()
         r.width = max(1, int(rect.width * frac))
-        pygame.draw.rect(surf, color, r, border_radius=2)
+        gfx.draw.rect(surf, color, r, border_radius=2)
 
 
 _alert = 0.0      # 0..1: how far panel borders are tinted red this frame (red alert)
@@ -210,12 +255,44 @@ def border() -> Color:
     return mix(BORDER, ALERT, _alert) if _alert > 0 else BORDER
 
 
+SHADOW_REACH = 10          # pixels a card's shadow spreads past its edge
+SHADOW_DROP = 4            # pixels it falls below the card
+SHADOW_ALPHA = 150         # how dark it is under the card
+
+
+def shadow(surf: pygame.Surface, rect: pygame.Rect, radius: int = 4) -> None:
+    """A soft shadow under a card, so it sits above the map rather than painted on it (off with the lighting
+    switch on the Display page). Only the rim that shows past the card is drawn: the card covers the rest."""
+    if not gfx.LIGHTING or rect.w <= 0 or rect.h <= 0:
+        return
+    img = _shadow(rect.w, rect.h, radius, gfx.SCALE)
+    pad, top = SHADOW_REACH, SHADOW_REACH - SHADOW_DROP      # where the card sits in the shadow image
+    iw, ih = img.get_size()
+    x0, y0 = rect.x - pad, rect.y - top
+    inset = radius + 2                                       # the card's rounded corners let a little show
+    for area in (pygame.Rect(0, 0, iw, top + inset), pygame.Rect(0, top + rect.h - inset, iw, ih - top - rect.h + inset),
+                 pygame.Rect(0, top + inset, pad + inset, rect.h - 2 * inset),
+                 pygame.Rect(pad + rect.w - inset, top + inset, iw - pad - rect.w + inset, rect.h - 2 * inset)):
+        if area.w > 0 and area.h > 0:
+            surf.blit(img, (x0 + area.x, y0 + area.y), area)
+
+
+@lru_cache(maxsize=128)
+def _shadow(w: int, h: int, radius: int, scale: float) -> pygame.Surface:
+    pad = SHADOW_REACH
+    img = gfx.Surface((w + pad * 2, h + pad * 2), pygame.SRCALPHA)
+    img.fill((0, 0, 0, 0))
+    gfx.draw.rect(img, (0, 0, 0, SHADOW_ALPHA), pygame.Rect(pad, pad, w, h), border_radius=radius + 2)
+    return gfx.transform.gaussian_blur(img, pad // 2)
+
+
 def panel(surf: pygame.Surface, rect: pygame.Rect, title: str | None = None, accent: Color = FRIEND) -> int:
     """Draw a panel frame; returns the y where content should start."""
-    pygame.draw.rect(surf, BG_PANEL, rect, border_radius=4)
-    pygame.draw.rect(surf, border(), rect, 1, border_radius=4)
+    shadow(surf, rect)
+    gfx.draw.rect(surf, BG_PANEL, rect, border_radius=4)
+    gfx.draw.rect(surf, border(), rect, 1, border_radius=4)
     if title:
-        pygame.draw.line(surf, accent, (rect.x + 10, rect.y + 1), (rect.x + 34, rect.y + 1), 2)
+        gfx.draw.line(surf, accent, (rect.x + 10, rect.y + 1), (rect.x + 34, rect.y + 1), 2)
         text(surf, title.upper(), (rect.x + 10, rect.y + 5), TEXT_DIM, 11, "display", weight="medium")
         return rect.y + 26
     return rect.y + 8
@@ -231,26 +308,26 @@ def title_art(s: str, size: int, lean: float = 0.15) -> pygame.Surface:
     m = render(s, (255, 255, 255), size, "title")
     w, h = m.get_size()
     if lean:                                     # sheared a row at a time into a forward lean
-        sheared = pygame.Surface((w + int(h * lean), h), pygame.SRCALPHA)
+        sheared = gfx.Surface((w + int(h * lean), h), pygame.SRCALPHA)
         for y in range(h):
             sheared.blit(m, (int((h - y) * lean), y), pygame.Rect(0, y, w, 1))
         m = sheared
         w = m.get_width()
-    fill = pygame.Surface((w, h), pygame.SRCALPHA)
+    fill = gfx.Surface((w, h), pygame.SRCALPHA)
     stops = GOLD_METAL
     for y in range(h):
         t = y / max(1, h - 1)
         for (t0, c0), (t1, c1) in zip(stops, stops[1:]):
             if t0 <= t <= t1:
-                pygame.draw.line(fill, (*_mix(c0, c1, (t - t0) / (t1 - t0)), 255), (0, y), (w, y))
+                gfx.draw.line(fill, (*_mix(c0, c1, (t - t0) / (t1 - t0)), 255), (0, y), (w, y))
                 break
     fill.blit(m, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)        # the sheen, cut to the letters
     pad = size // 3
-    out = pygame.Surface((w + pad * 2, h + pad * 2), pygame.SRCALPHA)
-    glow = pygame.Surface(out.get_size(), pygame.SRCALPHA)
+    out = gfx.Surface((w + pad * 2, h + pad * 2), pygame.SRCALPHA)
+    glow = gfx.Surface(out.get_size(), pygame.SRCALPHA)
     glow.blit(m, (pad, pad))
     glow.fill((255, 150, 60, 255), special_flags=pygame.BLEND_RGBA_MULT)
-    glow = pygame.transform.gaussian_blur(glow, max(4, h // 10))
+    glow = gfx.transform.gaussian_blur(glow, max(4, h // 10))
     glow.fill((255, 255, 255, 150), special_flags=pygame.BLEND_RGBA_MULT)
     out.blit(glow, (0, 0))
     edge = m.copy()                              # a dark outline a few pixels thick

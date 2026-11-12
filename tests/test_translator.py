@@ -46,23 +46,23 @@ def scene(content):  # type: ignore[no-untyped-def]
             ship.name = "Derango"
     settings: dict[str, object] = {}
     sc = BattleScene(b, surf.get_size(), lambda: None, hidden={}, llm=settings)
-    assert sc.translator is None    # no model configured
+    assert sc.session.translator is None    # no model configured
     yield sc
     sc.close()
 
 
 def _hook(sc, *replies: str | Exception, mode: str = "fallback") -> _Script:  # type: ignore[no-untyped-def]
     fake = _Script(*replies)
-    sc.translator = Translator(LLMService(fake, workers=1), mode)
+    sc.session.translator = Translator(LLMService(fake, workers=1), mode)
     return fake
 
 
 def _settle(sc, timeout: float = 5.0) -> None:  # type: ignore[no-untyped-def]
     end = time.time() + timeout
-    while sc.translator.busy() and time.time() < end:
+    while sc.session.translator.busy() and time.time() < end:
         sc.update(0.0)
         time.sleep(0.01)
-    assert not sc.translator.busy()
+    assert not sc.session.translator.busy()
 
 
 def _log(sc) -> list[str]:  # type: ignore[no-untyped-def]
@@ -99,14 +99,14 @@ def test_unclear_orders_get_a_question_and_the_answer_is_understood(scene) -> No
                  '{"commands": ["target derango"], "say": "", "clarify": ""}')
     sc.run_console("go after him")
     _settle(sc)
-    assert "Computer: Which ship, Captain?" in _log(sc) and sc.translator.awaiting
+    assert "Computer: Which ship, Captain?" in _log(sc) and sc.session.translator.awaiting
     course = sc.player.desired_course
     sc.run_console("2")     # would be "helm 2" to the console; here it answers the question
     _settle(sc)
     assert sc.player.desired_course == course and sc.player.target is not None
     _, messages = fake.seen[1]
     assert [m["role"] for m in messages] == ["user", "assistant", "user"] and messages[-1]["content"].startswith("2")
-    assert not sc.translator.awaiting
+    assert not sc.session.translator.awaiting
 
 
 def test_a_parsed_command_runs_at_once_even_while_the_computer_waits_for_an_answer(scene) -> None:  # type: ignore[no-untyped-def]
@@ -114,9 +114,9 @@ def test_a_parsed_command_runs_at_once_even_while_the_computer_waits_for_an_answ
     fake = _hook(sc, '{"commands": [], "say": "", "clarify": "Which ship, Captain?"}')
     sc.run_console("go after him")
     _settle(sc)
-    assert sc.translator.awaiting
+    assert sc.session.translator.awaiting
     sc.run_console("tor al")                 # short for fire all torpedoes: no model, no waiting
-    assert len(fake.seen) == 1 and not sc.translator.awaiting and not sc.translator.busy()
+    assert len(fake.seen) == 1 and not sc.session.translator.awaiting and not sc.session.translator.busy()
     assert not any(t.endswith("interpreting") for t in _log(sc)[-3:])
 
 
@@ -125,11 +125,11 @@ def test_a_slow_model_is_given_up_on_and_the_captain_told(scene) -> None:  # typ
 
     sc = scene
     _hook(sc, '{"commands": ["raise all"]}')
-    tr = sc.translator
+    tr = sc.session.translator
     tr.llm.submit = lambda *a, **k: 999          # type: ignore[method-assign]   # never answers
     sc.run_console("make us harder to hit")
     assert tr.busy()
-    late = [t for t in tr.poll(sc._would_run, now=time.monotonic() + translator.TIMEOUT + 1)]
+    late = [t for t in tr.poll(sc.session._would_run, now=time.monotonic() + translator.TIMEOUT + 1)]
     assert len(late) == 1 and "took longer than 20 seconds" in (late[0].error or "") and not tr.busy()
 
 
@@ -151,7 +151,7 @@ def test_the_model_never_ends_the_battle_on_its_own_reading(scene) -> None:  # t
     _hook(sc, '{"commands": ["quit"], "say": "Ending the engagement."}')
     sc.run_console("we're done here")
     _settle(sc)
-    assert sc.overlay != "debrief" and not sc.world.outcome.over
+    assert sc.overlay != "debrief" and not sc.session.world.outcome.over
     assert any("not run: type it yourself" in t for t in _log(sc))
 
 
@@ -176,12 +176,12 @@ def test_failures_and_modes(scene) -> None:  # type: ignore[no-untyped-def]
     sc.run_console("bring us about")
     assert fake.seen == [] and "Unknown command 'bring'. Type 'help' for the list." in _log(sc)
     sc.run_console("translate always")
-    assert sc.translator.mode == "always" and sc.llm_settings["console"] == "always"
+    assert sc.session.translator.mode == "always" and sc.session.llm_settings["console"] == "always"
     sc.run_console("raise all")             # even an exact command goes to the model now
     _settle(sc)
     assert len(fake.seen) == 1 and "≈ lower all" in _log(sc)
     sc.run_console("translate off")          # always reachable, even in "always" mode
-    assert sc.translator.mode == "off" and len(fake.seen) == 1
+    assert sc.session.translator.mode == "off" and len(fake.seen) == 1
 
 
 def test_cli_saves_the_console_mode(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]

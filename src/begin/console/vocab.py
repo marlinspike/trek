@@ -104,6 +104,10 @@ VERBS: dict[str, tuple[str, ...]] = {
     "request": ("request", "reinforcements", "summon"),
     "hail": ("hail", "hailing", "channel"),
     "prisoners": ("prisoners", "brig"),
+    "alert": ("alert", "condition"),
+    "record": ("record", "rec"),
+    "style": ("style", "styles", "ribbons"),
+    "voice": ("voice", "mic", "microphone"),
 }
 
 WEAPONS = {
@@ -173,6 +177,12 @@ HELP = [
     "          destroy <ships> · capture <ship> · bait <ship>   (standing objectives and tricks for Seven)",
     "Orders:   execute order <name> | <name>   (a named order from config/orders.toml) · orders (list them) · belay (stop one running)",
     "Display:  hud detail|simple   (simple: hover a panel for its numbers)",
+    "Alert:    alert red|yellow|green   (a set of orders at once; edit them in config/alerts.toml)",
+    "Record:   record <name> ... record stop (save what you ran as a named order) · record last <n> as <name> · record off",
+    "Styles:   style chair|book|silent|green|iron   (a promise before the battle; win keeping it for a ribbon) · style",
+    "Voice:    voice (the voice page: engine, test, models) · hold Right Alt (Option) and speak an order",
+    "Bridge:   hud bridge full|quiet|classic · hud wheel|orders|preview on|off · hud focus slow|pause|off",
+    "          hud proposals often|rarely|off · hud subtitles all|urgent|off · hud readbacks voiced|log|off",
     "Hail:     hail [<ship>|all] [<your words>]   e.g. 'hail gr'oth surrender and your crew will be treated well'",
     "          (demand surrender, tell them to withdraw, threaten, bluff or just talk; 'open a channel to <ship>' too)",
     "          A ship that surrenders drops her shields: board her with six or more and her crew are taken prisoner.",

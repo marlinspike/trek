@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 import pygame
 
 from . import theme
+from . import gfx
 
 BODY = 14
 LINE = 22
@@ -368,9 +369,9 @@ def draw(surf: pygame.Surface, lay: Layout, origin: tuple[int, int], clip: pygam
         if r.bottom < clip.top or r.top > clip.bottom:
             continue
         if op.kind == "rect":
-            pygame.draw.rect(surf, op.color, r, op.width, border_radius=op.radius)
+            gfx.draw.rect(surf, op.color, r, op.width, border_radius=op.radius)
         elif op.kind == "line":
-            pygame.draw.rect(surf, op.color, r)
+            gfx.draw.rect(surf, op.color, r)
         else:
             theme.text(surf, op.text, r.topleft, op.color, op.size, op.family, op.weight)
     surf.set_clip(prev)

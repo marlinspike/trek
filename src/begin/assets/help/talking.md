@@ -2,7 +2,7 @@
 title: Talking to your officers
 category: Crew
 order: 1
-aliases: ask, say, talk, conversation, question, rapport, relationship, traits, response style, response_style, character, personality, voice
+aliases: ask, say, talk, conversation, question, rapport, relationship, traits, response style, response_style, character, personality, officer voice
 summary: Ask an officer for a report or advice, or give an order in plain words.
 see: crew, llm, coach
 ---
@@ -38,14 +38,30 @@ Each officer has a few **traits**, words on how they come across: Spock is "prec
 
 Each officer also has a **response style**: how they answer when the model writes their words, such as length, tone and register. Worf's is "terse, clipped reports; few words and no pleasantries" and Seven's is "factual, crisp, coolly confident".
 
-Make the officers your own in `config/officers.toml` (copy `config/officers.example.toml`):
+Make the officers your own in `config/officers.toml` (copy `config/officers.example.toml`). Anything you write there wins, officer by officer and key by key; anything you leave out stays as the game ships it:
 
 ```toml
 [worf]
 traits = ["honour-bound", "blunt", "quietly proud of his captain"]
 response_style = "short soldier's reports, a growl when it goes badly"
+interests = ["cooking for the crew", "Klingon opera"]
+quirks = ["judges a battle the way he judges a meal"]
+
+[worf.lines]
+idle = ["I have made rokeg blood pie for the crew. You will find it... honourable."]
+victory = ["Victory. Tonight, the crew eats well."]
 ```
 
-Either line can be left out to keep the game's own. You can also give an officer a `rapport_floor` from -1 to 1: the lowest their regard for you can fall, however you treat them. The game passes your traits and response styles to your model as you wrote them.
+Everything you can set:
+
+- `name` and `rank`: who they are on your bridge. A renamed officer answers to the new name in the console.
+- `aliases`: more names to address them by.
+- `traits` and `response_style`, as above.
+- `persona`: a whole new character brief for the model, in place of the game's.
+- `background`, `interests` and `quirks`: added to the brief. Interests show most in **quiet moments**: when no enemy is in sight and the bridge has been silent a while, an officer now and then says something off duty.
+- `[<officer>.lines]`: their own lines for any moment, which work with or without a model. `idle` lines are the quiet-moment ones; the other moments (`greeting`, `target`, `victory`, `hull`, and the rest) are listed in `src/begin/content/data/officers.toml`.
+- `rapport_floor`, from -1 to 1: the lowest their regard for you can fall, however you treat them.
+
+The game passes what you write to your model as you wrote it, and none of it changes how well an officer does the job.
 
 Officer lines are in `src/begin/content/data/officers.toml`. Edit them, change a personality, or swap in a different officer for a station.

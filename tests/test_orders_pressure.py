@@ -58,7 +58,7 @@ def _run(sc, secs: float) -> None:  # type: ignore[no-untyped-def]
 
 
 def _spy(sc) -> dict[str, list[object]]:  # type: ignore[no-untyped-def]
-    w, me = sc.world, sc.player
+    w, me = sc.session.world, sc.player
     seen: dict[str, list[object]] = {"shots": [], "done": []}
     emit = w.emit
 
@@ -282,9 +282,9 @@ def _flush(sc) -> None:  # type: ignore[no-untyped-def]
 def test_an_answer_that_arrives_after_a_stop_sets_nobody_to_work(content, stop: str) -> None:  # type: ignore[no-untyped-def]
     sc, _ = _scene(content, ["delegate tactical"])
     gate = _Gate('{"say": "Engaging.", "commands": ["disable shields", "destroy them"]}')
-    sc.bridge.llm = LLMService(gate)
+    sc.session.bridge.llm = LLMService(gate)
     sc.run_console("worf, go get them, make them regret it")
-    assert sc.bridge.llm.busy("worf")
+    assert sc.session.bridge.llm.busy("worf")
     sc.run_console(stop)
     gate.go.set()
     _flush(sc)
@@ -297,11 +297,11 @@ def test_an_answer_that_arrives_after_a_stop_sets_nobody_to_work(content, stop: 
 def test_a_punctuated_cease_fire_never_waits_on_the_model(content, stop: str) -> None:  # type: ignore[no-untyped-def]
     sc, _ = _scene(content)
     gate = _Gate('{"commands": ["fire all phasers"], "say": ""}')
-    sc.translator = Translator(LLMService(gate, workers=1), "fallback")
+    sc.session.translator = Translator(LLMService(gate, workers=1), "fallback")
     sc.run_console("let them have it with everything we've got")
-    assert sc.translator.busy()
+    assert sc.session.translator.busy()
     sc.run_console(stop)
-    assert sc.player.hold_fire and not sc.translator.busy()     # at once, and the order in flight is dropped
+    assert sc.player.hold_fire and not sc.session.translator.busy()     # at once, and the order in flight is dropped
     gate.go.set()
     _flush(sc)
     assert sc.player.hold_fire
@@ -337,7 +337,7 @@ def test_a_federation_ally_disables_with_us_and_then_spares_them(content) -> Non
     from begin.ai.captain import AICaptain
 
     sc = _hunt(content, seed=7)  # a seed where both raiders live through the shield work (the Enterprise is a Dreadnought)
-    me, w = sc.player, sc.world
+    me, w = sc.player, sc.session.world
     enemies = [s for s in w.ships.values() if s.side != me.side]
     sc.run_console(f"target #{enemies[0].id}")
     sc.run_console("delegate helm")
@@ -367,11 +367,11 @@ def test_other_races_obey_a_disable_by_their_loyalty_and_discipline(content) -> 
     from begin.ai.captain import AICaptain
 
     sc = _hunt(content)
-    ally = next(c for c in sc.world.controllers if isinstance(c, AICaptain) and c.side == sc.player.side
+    ally = next(c for c in sc.session.world.controllers if isinstance(c, AICaptain) and c.side == sc.player.side
                 and c.ship_id != sc.player.id)
     klingon = SimpleNamespace(cls=SimpleNamespace(faction="klingon"))
     ally.personality = replace(ally.personality, loyalty=0.3, discipline=0.3)
-    assert ally.obeys_flagship(sc.world.ships[ally.ship_id])         # Federation: always
+    assert ally.obeys_flagship(sc.session.world.ships[ally.ship_id])         # Federation: always
     assert not ally.obeys_flagship(klingon)                          # type: ignore[arg-type]
     ally.personality = replace(ally.personality, loyalty=0.9, discipline=0.8)
     assert ally.obeys_flagship(klingon)                              # type: ignore[arg-type]

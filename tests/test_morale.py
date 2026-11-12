@@ -110,14 +110,14 @@ def test_spock_remarks_on_spirits_and_the_model_judges_a_speech(scene) -> None: 
     sc.overlay = None
     from begin.sim.systems.morale import adjust
 
-    adjust(sc.world, me, -45, "damage")
+    adjust(sc.session.world, me, -45, "damage")
     for _ in range(4):
         sc.update(0.05)
     said = [ln.text for ln in sc.log]
     assert any(t.startswith("Spock: Captain, the crew is shaken") and "A word from you" in t for t in said), said[-5:]
     sc.draw(surf)
 
-    sc.bridge.llm = LLMService(_Judge(), workers=1)
+    sc.session.bridge.llm = LLMService(_Judge(), workers=1)
     m0 = me.morale
     sc.run_console("address crew We have beaten worse than this. Stations, and steady.")
     end = time.time() + 5

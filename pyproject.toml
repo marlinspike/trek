@@ -10,7 +10,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Code: MIT. See LICENSING.md for content and trademark notes." }
 dependencies = [
-  "pygame-ce>=2.4",
+  "pygame-ce>=2.5",
+  "moderngl>=5.8",          # GPU presenter (sharp on Retina/4K, bloom); the game falls back to software without it
   "tomli>=2.0; python_version < '3.11'",
 ]
 
@@ -25,7 +26,7 @@ begin = "begin.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-begin = ["content/data/*.toml", "assets/icon.png", "assets/fonts/*", "assets/help/*.md", "assets/ships/*.png", "assets/ships/fleet/*.png"]
+begin = ["content/data/*.toml", "voice/*.swift", "assets/icon.png", "assets/fonts/*", "assets/help/*.md", "assets/ships/*.png", "assets/ships/fleet/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -39,8 +40,8 @@ warn_unused_ignores = false
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# mixins typed by the class they are mixed into (`self: BattleScene`, `self: Bridge`)
-module = ["begin.ui.battle.*", "begin.crew.chatter"]
+# mixins typed by the class they are mixed into (`self: BattleScene`, `self: BattleSession`, `self: Bridge`)
+module = ["begin.ui.battle.*", "begin.session.*", "begin.crew.chatter"]
 disable_error_code = ["misc"]
 
 [tool.ruff]

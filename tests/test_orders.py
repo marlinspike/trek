@@ -93,19 +93,19 @@ def test_an_order_runs_its_steps_in_turn_and_waits(scene) -> None:  # type: igno
     assert any("close: 'come about and run'" in t for t in _said(sc))   # no model: flagged at the start
     wraith = next(iter(sc.obs.contacts()))
     sc.run_console(f"target #{wraith}")
-    sc.world.run(6)                                     # tubes loaded
+    sc.session.world.run(6)                                     # tubes loaded
     sc.run_console("beta-1")
     assert me.desired_course == pytest.approx(180) and me.stats.torpedoes_fired > 0
     assert me.conn == ""                                # waiting: Spock doesn't have the bridge yet
-    assert sc.order_run is not None
+    assert sc.session.order_run is not None
     sc.paused = False
     sc.overlay = None
-    end = sc.world.tick + 3 * sc.world.rules.ticks_per_cycle
-    while sc.world.tick < end:
+    end = sc.session.world.tick + 3 * sc.session.world.rules.ticks_per_cycle
+    while sc.session.world.tick < end:
         sc.update(0.05)
     assert me.conn == "spock"
     assert any(o for o in me.objectives), me.objectives  # Seven is after their shields
-    assert sc.order_run is None and any("Order beta-1 complete" in t for t in _said(sc))
+    assert sc.session.order_run is None and any("Order beta-1 complete" in t for t in _said(sc))
     sc.run_console("orders")
     assert sc.printout is not None and any("beta-1" in ln for ln in sc.printout)
     sc.draw(surf)
@@ -114,9 +114,9 @@ def test_an_order_runs_its_steps_in_turn_and_waits(scene) -> None:  # type: igno
 def test_belay_stops_an_order(scene) -> None:  # type: ignore[no-untyped-def]
     sc, _ = scene
     sc.run_console("execute order beta-1")
-    assert sc.order_run is not None
+    assert sc.session.order_run is not None
     sc.run_console("belay")
-    assert sc.order_run is None and any("belayed (2 steps not run)" in t for t in _said(sc))
+    assert sc.session.order_run is None and any("belayed (2 steps not run)" in t for t in _said(sc))
     sc.paused = False
     sc.overlay = None
     for _ in range(80):
@@ -140,9 +140,9 @@ def test_plain_english_steps_are_translated_once_and_remembered(scene) -> None: 
     sc.run_console(f"target #{wraith}")
     book = OrderBook.load(Path(os.environ["BEGIN_HOME"]))
     book.llm = LLMService(_Translate(), workers=1)
-    sc.orders.close()
-    sc.orders = book
-    assert book.prepare(sc._would_run, "", wraith) == []
+    sc.session.orders.close()
+    sc.session.orders = book
+    assert book.prepare(sc.session._would_run, "", wraith) == []
     end = time.time() + 5
     while book.busy() and time.time() < end:
         sc.update(0.0)
@@ -153,4 +153,4 @@ def test_plain_english_steps_are_translated_once_and_remembered(scene) -> None: 
     sc.run_console("close")
     assert f"» elude #{wraith} warp 8" in _said(sc)
     again = OrderBook.load(Path(os.environ["BEGIN_HOME"]))          # the next battle needs no model for it
-    assert again.prepare(sc._would_run, "", wraith) == [] and again.lines["come about and run"].commands
+    assert again.prepare(sc.session._would_run, "", wraith) == [] and again.lines["come about and run"].commands

@@ -46,7 +46,8 @@ from ..crew.helm import incoming, plan_helm, threatened
 from ..sim.allies import DEFAULT_APPROACH_RANGE, DEFAULT_ESCORT_RANGE, DEFEND_RANGE, AllyStanding
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import Ship
-from ..sim.systems.phasers import bank_bears_point, bank_ready
+from ..sim.ship import bank_ready
+from ..sim.systems.phasers import bank_bears_point
 from .computer import torpedo_envelope
 from .personality import Personality
 from .trace import Trace

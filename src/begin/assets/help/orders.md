@@ -2,7 +2,7 @@
 title: Named tactical orders
 category: Game
 order: 2
-aliases: orders, execute, execute order, named orders, belay, plan, plans, beta-1, wait
+aliases: orders, execute, execute order, named orders, belay, plan, plans, beta-1, wait, record, recording, orders tab, phrasebook
 summary: Write a sequence of orders before the battle, give it a name, and run it with one command.
 see: console, plain-english, crew, keys
 ---
@@ -52,3 +52,16 @@ Without a model, write steps in console syntax. Either way, a step that won't wo
 ## Example: a 10° torpedo fan
 
 `fire all torpedoes spread 10` fans a full salvo 10° wide, so an enemy that turns away still meets a torpedo. At ordinary torpedo ranges a spread of only a degree or two adds little, because the 800-unit proximity fuses already cover that much. See `help torpedoes`.
+
+## Recording an order
+
+You don't have to write an order out. `record strike` starts a recording (● REC shows at the top of the map); fight as you would, and `record stop` saves what you did as the order `strike` in `config/orders.toml`. Displays and repeats are left out, and pauses of two cycles or more are kept as `wait N`. `record off` throws the recording away, and `record last 3 as strike` saves the last three orders you gave. With no name, the order gets one: alpha-1, bravo-1 and so on.
+
+## The Orders tab
+
+The Orders tab beside Contacts, Fleet and Crew holds every named order as a card, with the key that runs it if one does. Click a card to run it, right-click to see its steps. Key macros (`key F5 ...`) are listed there too.
+
+## Remembered phrasing
+
+When the language model works out what plain words meant, the game remembers it in `config/phrasebook.json`, and the same words work at once next time, with or without the model. Delete a line from that file to forget it.
+

@@ -10,6 +10,7 @@ import pygame
 from ..content.schema import HullDef
 from . import theme
 from .theme import Color
+from . import gfx
 
 MIN_HULL_PX = 30.0  # tactical exaggeration: ships never shrink below this on screen
 
@@ -103,14 +104,14 @@ def _icon(class_id: str, _hull_id: int, course: float, k: float, color: Color, f
     half = math.ceil(_span(hull) * kk) + 2 * ICON_SS
     size = 2 * half
     c = float(half)
-    big = pygame.Surface((size, size), pygame.SRCALPHA)
-    solid = pygame.Surface((size, size), pygame.SRCALPHA)
+    big = gfx.Surface((size, size), pygame.SRCALPHA)
+    solid = gfx.Surface((size, size), pygame.SRCALPHA)
     nacelles = [s for s in hull.shapes if s.role == "nacelle"]
     for shp in hull.shapes:
         if shp.role in ("hull", "nacelle"):
             pts = _shape_pts(shp, c, c, course, kk)
             if len(pts) >= 3:
-                pygame.draw.polygon(solid, (255, 255, 255, 255), pts)
+                gfx.draw.polygon(solid, (255, 255, 255, 255), pts)
     m = pygame.mask.from_surface(solid)
     t = ICON_SS                       # a one-pixel line once scaled down
     m.to_surface(big, setcolor=(*color, 255), unsetcolor=None)
@@ -119,8 +120,8 @@ def _icon(class_id: str, _hull_id: int, course: float, k: float, color: Color, f
         pts = _shape_pts(shp, c, c, course, kk)
         if len(pts) < 3:
             continue
-        ns = pygame.Surface((size, size), pygame.SRCALPHA)
-        pygame.draw.polygon(ns, (255, 255, 255, 255), pts)
+        ns = gfx.Surface((size, size), pygame.SRCALPHA)
+        gfx.draw.polygon(ns, (255, 255, 255, 255), pts)
         nm = pygame.mask.from_surface(ns)
         nm.to_surface(big, setcolor=(*eng, 255), unsetcolor=None)
         _eroded(nm, t).to_surface(big, setcolor=(*theme.dim(eng, 0.45), 255), unsetcolor=None)
@@ -129,20 +130,23 @@ def _icon(class_id: str, _hull_id: int, course: float, k: float, color: Color, f
             pts = _shape_pts(shp, c, c, course, kk)
             dcol = (*theme.dim(color, 0.6), 255)
             if len(pts) >= 3:
-                pygame.draw.polygon(big, dcol, pts, max(1, t - 1))
+                gfx.draw.polygon(big, dcol, pts, max(1, t - 1))
             elif len(pts) == 2:
-                pygame.draw.line(big, dcol, pts[0], pts[1], max(1, t - 1))
-    small = pygame.transform.smoothscale(big, (size // ICON_SS, size // ICON_SS))
+                gfx.draw.line(big, dcol, pts[0], pts[1], max(1, t - 1))
+    small = gfx.transform.smoothscale(big, (size // ICON_SS, size // ICON_SS))
     return small, half / ICON_SS
 
 
 def draw_hull(surf: pygame.Surface, hull: HullDef, sx: float, sy: float, course: float, k: float,
-              color: Color, fill_alpha: float = 0.28, engine: Color | None = None, outline: int = 1) -> None:
+              color: Color, fill_alpha: float = 0.28, engine: Color | None = None,
+              outline: int = 1) -> tuple[pygame.Surface, pygame.Rect] | None:
+    """Draws the hull; a small one is a cached icon, returned with where it went (None when drawn as lines)."""
     if outline == 1 and _span(hull) * 2 * k <= ICON_MAX_PX:
         turn = round(course / ICON_TURN) * ICON_TURN % 360.0
         img, off = hull_icon(hull, turn, round(k, 3), color, round(fill_alpha, 2), engine)
-        surf.blit(img, (round(sx - off), round(sy - off)))
-        return
+        rect = img.get_rect(topleft=(round(sx - off), round(sy - off)))
+        surf.blit(img, rect)
+        return img, rect
     fill = theme.dim(color, fill_alpha)
     eng = engine or theme.mix(color, (255, 255, 255), 0.25)
     for shp in hull.shapes:
@@ -153,13 +157,14 @@ def draw_hull(surf: pygame.Surface, hull: HullDef, sx: float, sy: float, course:
         if len(pts) < 3:
             continue
         if shp.role == "hull":
-            pygame.draw.polygon(surf, fill, pts)
-            pygame.draw.polygon(surf, color, pts, outline)
+            gfx.draw.polygon(surf, fill, pts)
+            gfx.draw.polygon(surf, color, pts, outline)
         elif shp.role == "nacelle":
-            pygame.draw.polygon(surf, theme.dim(eng, 0.45), pts)
-            pygame.draw.polygon(surf, eng, pts, outline)
+            gfx.draw.polygon(surf, theme.dim(eng, 0.45), pts)
+            gfx.draw.polygon(surf, eng, pts, outline)
         else:
-            pygame.draw.polygon(surf, theme.dim(color, 0.75), pts, 1)
+            gfx.draw.polygon(surf, theme.dim(color, 0.75), pts, 1)
+    return None
 
 
 __all__ = ["MIN_HULL_PX", "draw_hull", "hull_icon", "ellipse_points", "hull_pixel_scale", "transform"]

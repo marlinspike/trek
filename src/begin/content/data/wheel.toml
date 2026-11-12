@@ -1,0 +1,157 @@
+# The command wheel [E]: right-click a ship on the map (or press E for your target) and pick an order.
+#
+# Each slice is a console line, so the wheel can do nothing the console can't, and the log shows the line it ran.
+# In a line, {ship} is the ship the wheel is open on, {me} your own ship, {target} your current target.
+# A line starting with "type:" is put in the console for you to finish (a hail waits for your words).
+# `station` gives the slice its officer's mark and colour (helm, tactical, engineering, science).
+# Slices go clockwise from the top. A slice with a `ring` opens a second ring of choices instead of running a line.
+#
+# To change the wheel, copy this file to config/wheel.toml and edit it there.
+
+# ---------------------------------------------------------------- an enemy ship
+
+[[enemy]]
+label = "Phasers"
+line = "fire all phasers at {ship}"
+station = "tactical"
+
+[[enemy]]
+label = "Torpedoes"
+line = "fire all torpedoes at {ship}"
+station = "tactical"
+
+[[enemy]]
+label = "Disable"
+station = "tactical"
+ring = [
+  { label = "Shields", line = "disable shields {ship}" },
+  { label = "Weapons", line = "disable weapons {ship}" },
+  { label = "Engines", line = "disable engines {ship}" },
+  { label = "Warp core", line = "target {ship} warp core" },
+]
+
+[[enemy]]
+label = "Close to"
+line = "pursue {ship}"
+station = "helm"
+
+[[enemy]]
+label = "Hail"
+line = "type:hail {ship} "
+station = "science"
+
+[[enemy]]
+label = "Board"
+station = "engineering"
+ring = [
+  { label = "Board her", line = "board {ship}" },
+  { label = "Tractor", line = "tractor {ship}" },
+]
+
+[[enemy]]
+label = "Elude"
+line = "elude {ship}"
+station = "helm"
+
+[[enemy]]
+label = "Target"
+station = "science"
+ring = [
+  { label = "Target", line = "target {ship}" },
+  { label = "Scan", line = "scan {ship}" },
+  { label = "Lock all", line = "lock all phasers on {ship}; lock all tubes on {ship}" },
+]
+
+# ---------------------------------------------------------------- one of our own ships
+
+[[ally]]
+label = "Attack"
+line = "tell {ship} attack {target}"
+station = "tactical"
+
+[[ally]]
+label = "Escort us"
+line = "tell {ship} escort {me}"
+station = "helm"
+
+[[ally]]
+label = "Defend us"
+line = "tell {ship} defend {me}"
+station = "tactical"
+
+[[ally]]
+label = "Hold fire"
+ring = [
+  { label = "Hold fire", line = "tell {ship} hold fire" },
+  { label = "Open fire", line = "tell {ship} open fire" },
+]
+station = "tactical"
+
+[[ally]]
+label = "Report"
+line = "tell {ship} report"
+station = "science"
+
+[[ally]]
+label = "Disengage"
+line = "tell {ship} disengage"
+station = "helm"
+
+[[ally]]
+label = "All stop"
+line = "tell {ship} stop"
+station = "helm"
+
+[[ally]]
+label = "Beam over"
+line = "beam {ship}"
+station = "engineering"
+
+# ---------------------------------------------------------------- our own ship (E with no target, or right-click her)
+
+[[own]]
+label = "Shields"
+station = "engineering"
+ring = [
+  { label = "Raise", line = "raise shields all" },
+  { label = "Lower", line = "lower shields all" },
+]
+
+[[own]]
+label = "Evasive"
+line = "evasive"
+station = "helm"
+
+[[own]]
+label = "Alert"
+station = "tactical"
+ring = [
+  { label = "Red", line = "alert red" },
+  { label = "Yellow", line = "alert yellow" },
+  { label = "Green", line = "alert green" },
+]
+
+[[own]]
+label = "All stop"
+line = "stop"
+station = "helm"
+
+[[own]]
+label = "Cease fire"
+line = "cease fire"
+station = "tactical"
+
+[[own]]
+label = "Damage"
+line = "damage"
+station = "engineering"
+
+[[own]]
+label = "Status"
+line = "status"
+station = "science"
+
+[[own]]
+label = "Orders"
+line = "orders"
+station = "science"

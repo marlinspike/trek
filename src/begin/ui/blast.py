@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 
 import pygame
+from . import gfx
 
 CLOAK = (170, 225, 215)           # the shimmer of a cloak dropping
 SHIELD = (120, 200, 255)          # a deflector taking a hit
@@ -35,18 +36,28 @@ def level(col: tuple[int, int, int], k: float) -> tuple[int, int, int]:
     return (int(col[0] * q) // 8 * 8, int(col[1] * q) // 8 * 8, int(col[2] * q) // 8 * 8)
 
 
-@lru_cache(maxsize=512)
 def halo(radius: int, col: tuple[int, int, int]) -> pygame.Surface:
-    """A soft round light (black outside), for adding onto the scene: brightest at the centre."""
-    d = radius * 2 + 1
+    """A soft round light (black outside), for adding onto the scene: brightest at the centre.
+
+    Drawn four times over-size and shrunk smoothly, so even a small halo is round, not a stepped octagon."""
+    return _halo(radius, col, gfx.SCALE)
+
+
+@lru_cache(maxsize=512)
+def _halo(radius: int, col: tuple[int, int, int], s: float) -> pygame.Surface:
+    phys = max(1, round(radius * s))            # the halo's radius in real pixels
+    ss = 4 if phys < 40 else 2 if phys < 120 else 1     # big halos are soft enough already
+    big = phys * ss
+    d = big * 2 + ss
     g = pygame.Surface((d, d))
     g.fill((0, 0, 0))
-    steps = min(radius, 40)                   # nested discs, outermost first
+    steps = min(big, 48)                         # nested discs, outermost first
     for i in range(steps, 0, -1):
-        r = max(1, round(radius * i / steps))
-        k = (1.0 - r / radius) ** 2.2
-        pygame.draw.circle(g, (int(col[0] * k), int(col[1] * k), int(col[2] * k)), (radius, radius), r)
-    return g
+        r = max(1, round(big * i / steps))
+        k = (1.0 - r / big) ** 2.2
+        pygame.draw.circle(g, (int(col[0] * k), int(col[1] * k), int(col[2] * k)), (d // 2, d // 2), r)
+    out = pygame.transform.smoothscale(g, (phys * 2 + 1, phys * 2 + 1))
+    return gfx.adopt(out, s) if s > 1.0 else out
 
 
 def add_light(glow: pygame.Surface, x: float, y: float, radius: float, col: tuple[int, int, int], k: float) -> None:
@@ -65,7 +76,7 @@ def add_light(glow: pygame.Surface, x: float, y: float, radius: float, col: tupl
         q = round(max(0.0, min(1.0, k)) * 16) * 16 - 1
         if q < 254:
             img.fill((q, q, q), special_flags=pygame.BLEND_RGB_MULT)
-    glow.blit(img, img.get_rect(center=(round(x), round(y))), special_flags=pygame.BLEND_RGB_ADD)
+    gfx.mark(glow, glow.blit(img, img.get_rect(center=(round(x), round(y))), special_flags=pygame.BLEND_RGB_ADD))
 
 
 def ring(glow: pygame.Surface, x: float, y: float, rx: float, ry: float, col: tuple[int, int, int], k: float,
@@ -86,11 +97,11 @@ def ring(glow: pygame.Surface, x: float, y: float, rx: float, ry: float, col: tu
         a = j / 72 * math.tau
         ex, ey = math.cos(a) * rx, math.sin(a) * ry
         pts.append((x + ex * ct - ey * st - box.x, y + ex * st + ey * ct - box.y))
-    band = pygame.Surface(box.size)                 # drawn apart and added, so it never darkens what is lit
+    band = gfx.Surface(box.size)                 # drawn apart and added, so it never darkens what is lit
     band.fill((0, 0, 0))
     for w, share in ((width * 6, 0.18), (width * 3, 0.35), (width, 1.0)):
-        pygame.draw.lines(band, level(col, k * share), True, pts, max(1, w))
-    glow.blit(band, box.topleft, special_flags=pygame.BLEND_RGB_ADD)
+        gfx.draw.lines(band, level(col, k * share), True, pts, max(1, w))
+    gfx.mark(glow, glow.blit(band, box.topleft, special_flags=pygame.BLEND_RGB_ADD))
 
 
 # ---------------------------------------------------------------- shields and hits
@@ -217,9 +228,9 @@ class Blast:
                     pw, ph = piece.get_size()
                     jag = [(pw / 2 + math.cos(a) * pw * rng.uniform(0.35, 0.75), ph / 2 + math.sin(a) * ph * rng.uniform(0.35, 0.75))
                            for a in (q / 7 * math.tau + rng.uniform(-0.3, 0.3) for q in range(7))]
-                    mask = pygame.Surface((pw, ph), pygame.SRCALPHA)
+                    mask = gfx.Surface((pw, ph), pygame.SRCALPHA)
                     mask.fill((255, 255, 255, 0))
-                    pygame.draw.polygon(mask, (255, 255, 255, 255), jag)
+                    gfx.draw.polygon(mask, (255, 255, 255, 255), jag)
                     piece.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
                     ox = r.centerx - w / 2
                     oy = r.centery - h / 2
@@ -270,7 +281,7 @@ class Blast:
             return
         alpha = int(255 * (1 - u) ** 1.2)
         for c in self.chunks:
-            img = pygame.transform.rotate(c.img, c.angle) if abs(s - 1) < 0.02 else pygame.transform.rotozoom(c.img, c.angle, s)
+            img = gfx.transform.rotate(c.img, c.angle) if abs(s - 1) < 0.02 else gfx.transform.rotozoom(c.img, c.angle, s)
             img.set_alpha(alpha)
             surf.blit(img, img.get_rect(center=(round(self.x + c.x * s), round(self.y + c.y * s))))
 

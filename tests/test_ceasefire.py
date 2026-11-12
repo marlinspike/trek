@@ -46,7 +46,7 @@ def baiting(content):  # type: ignore[no-untyped-def]
 
 def _shots_after(sc, line: str, secs: float = 20.0) -> list[str]:  # type: ignore[no-untyped-def]
     """Run a console line, then the battle, and list the player's offensive shots."""
-    me, world = sc.player, sc.world
+    me, world = sc.player, sc.session.world
     shots: list[str] = []
     emit = world.emit
 
@@ -122,10 +122,10 @@ class _Slow:
 
 def test_cease_fire_never_waits_on_the_model_and_drops_what_it_was_doing(baiting) -> None:  # type: ignore[no-untyped-def]
     sc = baiting
-    sc.translator = Translator(LLMService(_Slow(), workers=1), "always")
+    sc.session.translator = Translator(LLMService(_Slow(), workers=1), "always")
     sc.run_console("give them everything we have")
-    assert sc.translator.busy()
+    assert sc.session.translator.busy()
     sc.run_console("cease fire")
-    assert not sc.translator.busy() and sc.player.hold_fire       # ran at once, the pending line forgotten
+    assert not sc.session.translator.busy() and sc.player.hold_fire       # ran at once, the pending line forgotten
     time.sleep(0.6)
     assert _shots_after(sc, "status", 5.0) == []

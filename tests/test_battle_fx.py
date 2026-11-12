@@ -23,7 +23,7 @@ def test_a_ship_destroyed_in_view_blows_apart_where_she_was(monkeypatch) -> None
     sc.overlay = None
     sc.paused = False
     me = sc.player
-    enemy = next(s for s in sc.world.ships.values() if s.id != me.id)
+    enemy = next(s for s in sc.session.world.ships.values() if s.id != me.id)
     for _ in range(40):
         sc.update(0.05)
         sc.overlay = None
@@ -33,7 +33,7 @@ def test_a_ship_destroyed_in_view_blows_apart_where_she_was(monkeypatch) -> None
         sc.overlay = None
         sc.draw(surf)
     x, y = enemy.x, enemy.y
-    sc.world.destroy_ship(enemy, "test", me.id)
+    sc.session.world.destroy_ship(enemy, "test", me.id)
     for _ in range(4):
         sc.update(0.05)
         sc.overlay = None

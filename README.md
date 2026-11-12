@@ -11,6 +11,8 @@ You command a starship from a top-down tactical map and a Begin-style command co
 - aimed fire at a ship's systems, and boarding parties that take and keep enemy ships;
 - enemy captains you can hail, who are cowed or enraged by what you do to their allies, and who can be talked into surrendering or leaving;
 - a campaign: tours of duty that link battle after battle, with a squadron that carries its scars;
+- patrols: a random mission each time, from an ambush on two sides to a flagship behind her screen;
+- officers you shape yourself in a config file, from a new name to a Worf who cooks for the crew;
 - crew morale and hull repairs;
 - every ship class drawn as a lit, detailed model;
 - synthesised sound and effects, and a HUD that keeps to the essentials until you ask for more.
@@ -53,6 +55,8 @@ Useful shortcuts:
 |---|---|
 | `begin --preset border-incident` | Jumps straight into a preset battle (ids are in `src/begin/content/data/presets.toml`). |
 | `begin --quick 42` | Starts seeded quick battle number 42: your ship against two enemies. |
+| `begin --patrol 42` | Starts patrol number 42: one of five situations (ambush, wolf pack, second wave, escort, flagship) against a random enemy. |
+| `begin --renderer software` | Draws without the GPU (see "Sharp screens and the GPU" below); `gpu` and `auto` are the others. |
 | `begin --preset fleet-action --cycles 30 --screenshot shot.png` | Simulates 30 cycles headlessly and saves a screenshot. |
 | `begin --tournament 20` | Runs 20 headless AI-versus-AI battles and prints a balance summary. |
 | `begin --balance 8` | Fights every preset 8 times with AI captains on both sides and prints win rates. |
@@ -94,6 +98,20 @@ The panels show what matters at a glance: warp, course, crew, hull, morale and s
 Press **Enter** for a Begin-style console. Every command in the Begin manual works in its documented forms, such as `fire phasers 1 2 3 spread 10`, `lock all tubes on bluefin with a dispersion of 45`, `load launchers 1 prox 500 time 20` and `tell the agena to attack the zantha`. As in Begin, any word can be cut to a unique prefix, so `tor al` fires all torpedoes, and filler words such as "the" and "at" are ignored. The status commands (`report`, `damage`, `banks`, `tubes`, `shields`, `fleet`, `chart` and the rest) print Begin's text displays and keep them live in the corner of the map.
 
 The remake adds `autoload`, `mode`, `pd`, `hud detail|simple`, `role`, `target <ship> <subsystem>`, `repair hull`, `evasive` (Federation ships dodge incoming torpedoes and then resume your course), `address crew <words>` to rally a shaken crew, `cease fire` (also `hold fire`, `stop firing`, or `seven, cease fire`) to stop every weapon and the officers' objectives until you fire again or say `open fire`, and `key F5 <commands>` to bind a key.
+
+### Giving orders from the bridge
+
+Every way of giving an order still works, and the bridge adds to them. The officer at each station reads your order back in a sentence built from the order itself ("Course 090, warp 6.", "Firing all phasers at the Hydra, aiming for her shields."), so a slip is caught at once, and officers' words show as subtitles low on the map, one voice at a time. The log keeps everything, in a **Bridge** column (who said what) and a **Computer** column.
+
+Right-click a ship, or press **E** for your target, for the **command wheel**: eight slices always in the same places (Phasers, Torpedoes, Disable, Close to, Hail, Board, Elude, Target), each a console line the log shows. Right-clicking empty space still steers. While you type, the battle eases to a quarter speed with an amber edge on the map, a faint line under the console says what Enter would do, the map shows a ghost of it, and **Tab** finishes ship, officer and command names. With the mouse on a ship, "fire at her" or "scan that one" means that ship.
+
+Now and then an officer proposes an order ("Torpedoes inbound, Captain. Evasive manoeuvres?"): **Y** makes it so, **N** belays it. `alert red|yellow|green` gives a set of orders at once, `record <name>` ... `record stop` saves what you just did as a named order (the **Orders** tab holds them as cards), `style chair|book|silent|green|iron` promises a way of commanding for a ribbon, and officers' trust in you grows from Green to Veteran across battles and tours.
+
+![The command wheel open on a Klingon dreadnought](docs/screenshots/bridge-wheel.png)
+
+![Worf proposes a target; condition red, recording an order](docs/screenshots/bridge-proposal.png)
+
+Hold **Right Alt** (Option on a Mac) and speak an order: the Mac's own recogniser, whisper.cpp on your computer, a whisper.cpp server, or a cloud service hears it (`voice` opens the voice page). `hud bridge full|quiet|classic` sets how much of this you want; classic is the console as it was. See `help bridge` in the game.
 
 ### Bridge officers
 
@@ -163,6 +181,12 @@ Damage-control crews repair systems and now the hull too, slowly in space (up to
 
 ![The damage assessment after a punishing exchange: hull at 61%, reactors and shields damaged, repairs under way](docs/screenshots/damage.png)
 
+### Sharp screens and the GPU
+
+On a high-density screen (a Mac's Retina display, a 4K monitor, Windows at 150% or 200%) the game draws at the screen's real pixel density, so text, hulls and beams are crisp instead of stretched. It does that through the graphics card with [moderngl](https://github.com/moderngl/moderngl), which also adds a soft glow round phaser beams, disruptor bolts and blasts and darkens the very edge of the map a little, like a viewscreen. Text and panels are never blurred or tinted. Phaser beams are drawn as clean anti-aliased strokes and torpedo glows as smooth round falloffs at any density.
+
+Nothing is required. If OpenGL 3.3 isn't there (an old driver, a remote desktop, a virtual machine drawing on the CPU), the game uses pygame's own drawing as before. **Display** on the main menu (or **D**) shows what is drawing now and why, and lets you choose: *Automatic* (the default), *Graphics card* or *Software*, with a **Restart now** button since a window can't change renderer while it's open, and *Light and glow* on or off, which takes effect at once: weapon fire lighting the hulls near it, soft shadows under the panels, and (with the graphics card) the halo round weapon light. The choices are saved as `"renderer"` and `"bloom"` in `config/settings.json`; `begin --renderer ...` overrides them for one run.
+
 ### Sound
 
 The game synthesises all of its sound when it starts. You only hear what you can see, panned to where it happens on the map. **M** mutes, `sound 40` sets the volume, and `sound phaser a` or `sound torpedo b` picks one of four versions of each (rays and buzzes, pulses and thumps). To use your own, drop `phaser.wav` or `torpedo.wav` into `config/sounds/` and it replaces the game's.
@@ -217,9 +241,12 @@ Everything you set lives in the project's [`config/`](config/README.md) folder, 
 
 | File | What it holds |
 |---|---|
-| `settings.json` | Window, speed, volume, mute, sound versions, chatter, custom battle choices and the language model settings. The game writes it. |
+| `settings.json` | Window, speed, volume, mute, sound versions, chatter, custom battle choices, the language model, the Bridge and voice settings, and your officers' trust and ribbons. The game writes it. |
 | `officers.toml` | Your officers' traits and response styles. |
-| `orders.toml` | Your named tactical orders. |
+| `orders.toml` | Your named tactical orders, including the ones you record in battle. |
+| `wheel.toml`, `alerts.toml` | Your own command wheel and alert conditions (copy them from `src/begin/content/data/`). |
+| `phrasebook.json` | Plain words the language model worked out once, remembered so they work at once next time. |
+| `voice/` | The local Whisper models and the Mac speech helper, when you use them. |
 | `hails.toml` | Your own lines for enemy captains, read over the shipped ones race by race. |
 | `tours/` | Your tours of duty in progress (`<tour>.json`), their captain's logs (`<tour>-log.md`) and tours you write yourself (`*.toml`). |
 | `sounds/` | Your own WAV files, replacing the game's sounds. |
@@ -241,10 +268,13 @@ src/begin/
   help/      the manual library (Markdown topics) and the live coach
   crew/      bridge officers: delegation, officer AI, conversation, rapport, traits, the end-of-battle review
   tour/      tours of duty: the tours, the squadron between battles, reinforcements and the captain's log
+  session/   one battle played for a captain, with no screen: clock, orders, officers, hails, news; the Session contract and orders as JSON
   llm/       optional LLM providers (Anthropic, OpenAI, OpenRouter, Ollama) on a background thread, and their debug logs
   assets/    fonts and the manual's Markdown pages
-  ui/        pygame presentation: tactical map, HUD panels, menus, effects and synthesised sound
+  ui/        pygame presentation of a Session: tactical map, HUD panels, menus, effects, synthesised sound, microphone
+  voice/     speech-to-text engines for spoken orders
   battle.py  builds a World with AI attached from a battle description
+  modes.py   the game modes the main menu offers
 config/      your settings, officers, orders, sounds, key macros and manual pages (gitignored apart from README and examples)
 docs/        REFERENCE (mechanics digest), PLAN, ARCHITECTURE, EXTENDING, DEVIATIONS
 tests/       headless tests

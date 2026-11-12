@@ -353,7 +353,8 @@ class FirePhasers(Command):
         A bank fires at the command's target, else at the ship it is locked
         on, else along its current mark.
         """
-        from .systems.phasers import bank_bears, bank_bears_point, bank_origin, bank_ready
+        from .ship import bank_bears, bank_ready
+        from .systems.phasers import bank_bears_point, bank_origin
 
         if not ship.banks:
             raise Rejected(f"The {ship.cls.name} has no phaser banks.")

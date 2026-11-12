@@ -30,7 +30,8 @@ from ..core.rng import Rng
 from ..sim.commands import Authority, Command, FirePhasers, FireTorpedoes
 from ..sim.observation import Observation, OrdnanceView
 from ..sim.ship import BankRole, FireMode, PDDoctrine, Ship
-from ..sim.systems.phasers import bank_bears, bank_origin, bank_ready
+from ..sim.ship import bank_bears, bank_ready
+from ..sim.systems.phasers import bank_origin
 from .trace import Trace
 
 

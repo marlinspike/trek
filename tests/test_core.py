@@ -10,7 +10,8 @@ from begin.core.angles import bearing, in_arc, norm180, turn_delta
 from begin.sim.factory import SHIELD_FACINGS
 from begin.sim.systems.damage import DamageKind, apply_damage
 from begin.sim.systems.ordnance import intercept_bearing
-from begin.sim.systems.phasers import bank_bears, bank_bears_point, phaser_damage
+from begin.sim.ship import bank_bears
+from begin.sim.systems.phasers import bank_bears_point, phaser_damage
 
 from .conftest import make_world
 

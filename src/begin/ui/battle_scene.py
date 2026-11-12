@@ -1,75 +1,74 @@
-"""The battle screen: fixed-step simulation, tactical map, HUD, console and overlays.
+"""The battle screen: the tactical map, HUD, console and overlays, presenting a `BattleSession`.
 
-The simulation advances in fixed ticks (10 per cycle; one cycle is one
-second at 1×) from an accumulator fed by wall-clock time × the chosen
-speed. Rendering interpolates between the last two ticks. Pausing stops
-the accumulator; orders can still be given while paused.
+The game is the session's (`session/battle.py`): the clock, the orders, the officers, hails, the outcome. This
+screen draws what our side knows, turns keys, clicks and spoken words into orders for the session, and turns
+what the session says (`session/news.py`) into log lines, subtitles, sounds and printouts. Rendering
+interpolates between the session's last two ticks.
 
-This module holds the scene's state and frame loop. Its other parts live in `ui/battle/` and are mixed in:
-input (keys and mouse), console (typed orders), orders (named orders and the translator), comms (officers
-and hails) and render (drawing). `ui/battle/state.py` declares the state they share.
+This module holds the screen's state and frame loop. Its other parts live in `ui/battle/` and are mixed in:
+input (keys and mouse), comms (the hail and officer shortcuts), bridge (focus, pointing, the wheel, proposals),
+voice (push-to-talk) and render (drawing). `ui/battle/state.py` declares the state they share.
 """
 
 from __future__ import annotations
 
-import math
 import time
 from typing import Callable
 
 import pygame
 
 from ..battle import Battle
-from ..console import reports
-from ..console.orders import OrderBook, OrderRun
-from ..console.translator import Translator
-from ..crew.conversation import Bridge
-from ..crew.hails import Comms, load_lines
+from ..console.complete import Completer
 from ..help.coach import HelpContext
-from ..sim.allies import AllyStanding
-from ..sim.commands import AllyOrder, Command, FirePhasers, FireTorpedoes, LaunchProbe, SetBanks
-from ..sim.events import CommandRejected, Event, Message, PhaserFired, ObjectiveEnded, ProjectCompleted, ScanCompleted
-from ..sim.observation import Observation
-from ..sim.scoring import Assessment
-from ..sim.ship import BankRole, Ship
-from ..sim.world import World
+from ..paths import config_dir
+from ..session.battle import BattleSession
+from ..session.common import CHART
+from ..session.interface import Session
+from ..session.news import Commanding, Cue, Line, News, Notice, Printout, Prompt, Request, Show, Ticked, Voice
+from ..session.prefs import BridgePrefs
+from ..sim.commands import Command
+from ..sim.events import PhaserFired
+from ..sim.ship import Ship
 from . import theme
 from .audio import HUM_LEVEL as HUM_DEFAULT, Audio
-from .battle.common import CONTROLS, SPEEDS, TONE_COLOR, LogLine, TourLink
+from .battle.bridge import BridgeMixin
+from .battle.common import CONTROLS, SPEEDS, TONE_COLOR, LogLine
 from .battle.comms import CommsMixin
-from .battle.console import ConsoleMixin
 from .battle.input import InputMixin
-from .battle.orders import OrdersMixin
 from .battle.render import RenderMixin
+from .battle.voice import VoiceMixin
 from .camera import Camera
-from .hit_report import HitReport
 from .hud import ContactsPanel, CrewPanel, FleetPanel, OwnShipPanel, Panel, TabbedPanel, TargetPanel, WeaponsPanel
 from .manual import ManualView
+from .orders_panel import OrdersPanel
+from .subtitles import Subtitles
 from .tactical import Snapshot, TacticalView
 from .tween import Tweens
+from .wheel import load_wheels
 from .widgets import UI
 
 
-class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin):
-    def __init__(self, battle: Battle, size: tuple[int, int], on_exit: Callable[[], None],
+class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
+    def __init__(self, battle: Battle | Session, size: tuple[int, int], on_exit: Callable[[], None],
                  keys: dict[str, str] | None = None, hidden: dict[str, object] | None = None,
                  llm: dict[str, object] | None = None, chatter: bool = True, volume: float = 0.6,
                  muted: bool = False, sounds: dict[str, str] | None = None, hum: float = 0.35,
-                 jolt: bool = True) -> None:
-        self.battle: Battle = battle
-        self.world: World = battle.world
-        self.player_id: int | None = battle.player_ship_id
-        self.side: int = battle.setup.player_side if battle.setup.player_side >= 0 else 0
+                 jolt: bool = True, bridge: dict[str, object] | None = None,
+                 career: dict[str, object] | None = None, voice: dict[str, object] | None = None) -> None:
+        # the Bridge setting (full, quiet, classic and its parts), kept in settings.json's "bridge"
+        self.bridge_store: dict[str, object] = bridge if bridge is not None else {}
+        self.session: Session
+        if isinstance(battle, Battle):
+            self.session = BattleSession(battle, hidden=hidden, llm=llm, chatter=chatter,
+                                         prefs=BridgePrefs.from_dict(self.bridge_store), career=career)
+        else:
+            self.session = battle
         self.on_exit: Callable[[], None] = on_exit
         self.exit_label: str = "Return to menu"
-        self.tour: TourLink | None = None     # on a tour of duty: Starfleet answers `request reinforcements`
         self.ui: UI = UI()
-        self.paused: bool = True
-        self.speed: float = 1.0
-        self.acc: float = 0.0
         self.omniscient: bool = False
         self.cam: Camera = Camera(pygame.Rect(0, 0, 100, 100), zoom=0.035, follow=self.player_id)
         self.view: TacticalView = TacticalView(self.cam)
-        self.obs: Observation = self.world.observe(self.side)
         self.prev: Snapshot | None = None
         self.now: Snapshot = Snapshot.take(self.obs)
         self.log: list[LogLine] = []
@@ -78,12 +77,10 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
         self.history: list[str] = []
         self.hist_i: int = 0
         self.toast: tuple[str, theme.Color, float] | None = None
-        self.hits: HitReport = HitReport(None)   # "Hits on Wraith: ..." lines in the log
         self.overlay: str | None = "help_brief"
-        self.side_tabs: TabbedPanel = TabbedPanel([ContactsPanel(), FleetPanel(), CrewPanel()])
+        self.side_tabs: TabbedPanel = TabbedPanel([ContactsPanel(), FleetPanel(), CrewPanel(), OrdersPanel()])
         self.panels: list[Panel] = [OwnShipPanel(), TargetPanel(), WeaponsPanel(), self.side_tabs]
         self.selected_ally: int | None = None
-        self.assessment: Assessment = Assessment.begin(self.world)
         self.drag: tuple[int, int] | None = None
         self.dragged: bool = False
         # Begin's text displays: the latest one stays on the map, refreshed live, until dismissed
@@ -91,81 +88,32 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
         self.printout_cmd: str | None = None
         self.printout_tick: int = -1
         self.log_scroll: int = 0
-        self.chart_auto: bool = False
         self.hud_detail: bool = False             # every number on the panels; otherwise hover a panel to see them
         self.tweens: Tweens = Tweens()              # panel numbers easing to their new values
-        self.chart_sort: str = "name"
-        self.chart_hidden: set[int] = set()
-        self.chart_all: bool = False
-        self.chart_origin: int | None = None
         self.keys: dict[str, str] = keys if keys is not None else {}
+        self.subs: Subtitles = Subtitles()
+        self._toast_seen: object = None
+        self.focus_k: float = 0.0           # tactical focus, eased 0..1
+        self.focus_idle: float = 0.0        # seconds since the captain's last keystroke in the console
+        self.wheel: object | None = None    # the open command wheel, if any
+        self._wheel_t: float = 0.0
+        self.completer: Completer = Completer()
+        self._preview_key: object = None
+        self._preview = None
+        self._voice_setup(voice)
+        self.wheels = load_wheels(config_dir() / "wheel.toml")
         self.manual: ManualView = ManualView(self._help_context, self._try_command, self._close_manual)
-        self.hidden: dict[str, object] = hidden if hidden is not None else {}
-        self.bridge: Bridge | None = None
-        self.translator: Translator | None = None
-        self.llm_settings: dict[str, object] = llm if llm is not None else {}
-        llm_note: str | None = None
-        provider = None
-        try:
-            from ..llm.providers import config_from_settings, make_provider
-
-            cfg = config_from_settings(self.llm_settings)
-            if cfg is not None:
-                provider = make_provider(cfg)
-                think = "" if cfg.think is None else f", thinking {'on' if cfg.think is True else 'off' if cfg.think is False else cfg.think}"
-                who = "Officers are talking" if battle.crew is not None else "The console understands plain English"
-                llm_note = f"{who} through {cfg.provider} ({cfg.model}{think})."
-        except Exception as e:  # noqa: BLE001 - a bad LLM setup must never stop a battle
-            llm_note = f"LLM not available ({e}); officers will answer offline."
-        if provider is not None:
-            from ..llm.service import LLMService
-
-            # its own worker, so console translations never queue behind an officer's answer
-            self.translator = Translator(LLMService(provider, workers=1), self.llm_settings.get("console"))
-            if self.translator.mode != "off":
-                llm_note = (llm_note or "") + " You can type orders in plain English."
-        if battle.crew is not None:
-            service = None
-            if provider is not None:
-                from ..llm.service import LLMService
-
-                service = LLMService(provider)
-            self.bridge = Bridge(battle.crew, self.hidden, service, seed=battle.setup.seed, chatter=chatter)
-        from ..paths import config_dir
-
-        # [E] hailing enemy captains: its own model worker, so a hail never queues behind an officer
-        hail_llm = None
-        if provider is not None:
-            from ..llm.service import LLMService
-
-            hail_llm = LLMService(provider, workers=1)
-        crew = battle.crew
-        self.comms: Comms = Comms(self.world, self.side, hail_llm, seed=battle.setup.seed,
-                           lines=load_lines(override=config_dir() / "hails.toml"),
-                           officers=(lambda st: crew.officer(st)) if crew is not None else None)
-        self.orders: OrderBook = OrderBook.load(config_dir())
-        self.order_run: OrderRun | None = None
         self.audio: Audio = Audio(volume, muted, sounds, config_dir() / "sounds", hum=hum)
         self.view.jolt = jolt
         self._channels: dict[int, str] = {}     # how each hail channel stood last frame, to hear it open and close
-        for problem in self.audio.problems:
-            self._log(f"Couldn't use your sound {problem}", theme.TEXT_DIM)
         self._was_alert: bool = False
         self._alert_since: float = 0.0
         self.fired_at: dict[int, float] = {}   # our phaser banks: when each last fired
-        self.deeds: list[Event] = []          # objectives and projects finished: the officers' record for the debrief
-        if provider is not None and self.orders.orders:
-            from ..llm.service import LLMService
-
-            self.orders.llm = LLMService(provider, workers=1)
         self.layout(size)
         self._frame_all()
-        self._log("Battle stations. The simulation is paused: press Space to begin.", theme.CAUTION)
-        if battle.setup.description:
-            self._log(battle.setup.description, theme.TEXT_DIM)
-        if llm_note:
-            self._log(llm_note, theme.TEXT_DIM)
-        self._order_problems(self.orders.prepare(self._would_run, self._translation_brief(), self._target_id()))
+        self.session.subscribe(self._hear_session)
+        for problem in self.audio.problems:
+            self._log(f"Couldn't use your sound {problem}", theme.TEXT_DIM)
 
     # ------------------------------------------------------------ layout
 
@@ -202,44 +150,59 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
         if self.player_id is not None:
             self.cam.follow = self.player_id
 
-    # ------------------------------------------------------------ helpers used by panels
+    # ------------------------------------------------------------ the game, for the panels and keys
 
     @property
     def player(self) -> Ship | None:
-        return self.obs.own(self.player_id) if self.player_id is not None else None
+        return self.session.player
 
     def issue(self, cmd: Command) -> str | None:
-        reason = self.world.execute(cmd)
-        if reason:
-            self.toast = (reason, theme.CAUTION, 3.0)
-        self._drain_events()
-        return reason
+        return self.session.submit(cmd)
+
+    def run_console(self, text: str) -> None:
+        self.session.say(text)
 
     def fire_phasers(self, banks: tuple[int, ...] | None) -> None:
-        p = self.player
-        if p is not None:
-            self.issue(FirePhasers(ship_id=p.id, banks=banks))
+        self.session.fire_phasers(banks)
 
     def fire_torpedoes(self, tubes: tuple[int, ...] | None) -> None:
-        p = self.player
-        if p is not None:
-            self.issue(FireTorpedoes(ship_id=p.id, tubes=tubes))
+        self.session.fire_torpedoes(tubes)
 
     def launch_probe(self) -> None:
-        p = self.player
-        if p is None:
-            return
-        if p.target is None:
-            self.toast = ("Select a target for the probe (or use the console: 'fire probes course 90').", theme.CAUTION, 3.0)
-            return
-        self.issue(LaunchProbe(ship_id=p.id, target=p.target))
+        self.session.launch_probe()
 
     def toggle_reserve(self, i: int) -> None:
-        p = self.player
-        if p is None:
-            return
-        role = BankRole.FLEX if p.banks[i].role == BankRole.DEFENSE else BankRole.DEFENSE
-        self.issue(SetBanks(ship_id=p.id, banks=(i,), role=role))
+        self.session.toggle_reserve(i)
+
+    def order_ally(self, ally: int, order: str, target: int | None = None, value: float | None = None) -> None:
+        self.session.order_ally(ally, order, target, value)
+
+    def ally_report(self, sid: int) -> None:
+        self.session.ally_report(sid)
+
+    def take_command(self, sid: int) -> None:
+        self.session.take_command(sid)
+
+    def allies(self) -> list[Ship]:
+        return self.session.allies()
+
+    def nearest_base(self, ally: Ship) -> Ship | None:
+        return self.session.nearest_base(ally)
+
+    def accept_proposal(self) -> bool:
+        return self.session.accept_proposal()
+
+    def belay_proposal(self) -> bool:
+        return self.session.belay_proposal()
+
+    def style_check(self, cmd: Command | None = None, why: str | None = None) -> None:
+        self.session.style_check(cmd, why)
+
+    def ship_name(self, sid: int) -> str:
+        return self.session.ship_name(sid)
+
+    def _help_context(self) -> HelpContext:
+        return self.session.help_context()
 
     def toggle_overlay(self, name: str) -> None:
         self.overlay = None if self.overlay == name else name
@@ -250,176 +213,168 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
             self.cam.follow = None
             self.cam.cx, self.cam.cy = pose[0], pose[1]
 
-    def allies(self) -> list[Ship]:
-        """Our other living ships, nearest first."""
-        p = self.player
-        out = [s for s in self.obs.own_ships() if p is None or s.id != p.id]
-        if p is not None:
-            out.sort(key=lambda s: math.hypot(s.x - p.x, s.y - p.y))
-        return out
-
     def select_ally(self, sid: int) -> None:
         self.selected_ally = sid
         self.side_tabs.show(FleetPanel)
 
-    def order_ally(self, ally: int, order: str, target: int | None = None, value: float | None = None) -> None:
-        p = self.player
-        if p is not None:
-            self.issue(AllyOrder(ship_id=p.id, ally=ally, order=order, target=target, value=value))
-
-    def nearest_base(self, ally: Ship) -> Ship | None:
-        """The nearest of our ships with docking bays, other than the ally itself."""
-        bases = [s for s in self.obs.own_ships() if s.id != ally.id and s.cls.mass_capacity > 0]
-        return min(bases, key=lambda s: math.hypot(s.x - ally.x, s.y - ally.y), default=None)
-
-    def ally_report(self, sid: int) -> None:
-        ally = self.obs.own(sid)
-        if ally is not None:
-            self._show(reports.report_lines(self.obs, ally, self.obs.ally_order(sid) or AllyStanding()), None)
-
-    def take_command(self, sid: int) -> None:
-        self._transfer(sid)
-
-    def _log(self, text: str, color: theme.Color = theme.TEXT, mono: bool = False) -> None:
-        self.log.append(LogLine(self.world.tick, text, color, mono))
+    def _log(self, text: str, color: theme.Color = theme.TEXT, mono: bool = False, channel: str = "computer") -> None:
+        """A line of the screen's own (sound settings, voice problems): the game's come through `_hear_session`."""
+        self.log.append(LogLine(self.obs.tick, text, color, mono, channel))
         self.log_scroll = 0
         if len(self.log) > 400:
             del self.log[:100]
 
-    # ------------------------------------------------------------ simulation
+    def _show(self, lines: list[str], live: str | None = None) -> None:
+        """Put a display of the screen's own on the map (and in the log)."""
+        self._hear_session(Printout(tuple(lines), live))
+        for line in lines:
+            self._log(line, theme.TEXT, mono=True)
 
-    def _drain_events(self) -> None:
-        events = self.world.take_events()
-        self.obs = self.world.observe(self.side)
-        self.view.ingest(events, self.obs)
-        self.deeds.extend(ev for ev in events if isinstance(ev, (ObjectiveEnded, ProjectCompleted)))
+    def _voice(self, speaker: str, text: str, color: theme.Color, station: str | None = None,
+               officer: str | None = None, urgent: bool = False) -> None:
+        """Say a line in a subtitle, as far as the captain's Bridge setting wants them."""
+        mode = self.prefs.subtitles
+        if mode == "off" or (mode == "urgent" and not urgent):
+            return
+        self.subs.say(speaker, text, color, station, officer, urgent)
+
+    # ------------------------------------------------------------ what the session says
+
+    def _hear_session(self, item: News) -> None:
+        if isinstance(item, Line):
+            self.log.append(LogLine(item.tick, item.text, TONE_COLOR.get(item.tone, theme.TEXT), item.mono, item.channel))
+            self.log_scroll = 0
+            if len(self.log) > 400:
+                del self.log[:100]
+        elif isinstance(item, Ticked):
+            self._ticked(item)
+        elif isinstance(item, Voice):
+            self._voice(item.speaker, item.text, TONE_COLOR.get(item.tone, theme.CREW), item.station, item.officer,
+                        item.urgent)
+        elif isinstance(item, Notice):
+            self.toast = (item.text, TONE_COLOR.get(item.tone, theme.CAUTION), item.seconds)
+        elif isinstance(item, Cue):
+            self.audio.play(item.name, time.monotonic(), 0.0, item.level)
+        elif isinstance(item, Printout):
+            if not item.lines:
+                if self.printout_cmd == item.live:
+                    self.printout = None
+                return
+            self.printout = list(item.lines)
+            self.printout_cmd = item.live
+            self.printout_tick = self.obs.tick
+        elif isinstance(item, Prompt):
+            if item.text is not None:
+                self.console = item.text
+            self.console_focus = True
+            pygame.key.start_text_input()
+        elif isinstance(item, Show):
+            self.overlay = item.overlay
+        elif isinstance(item, Commanding):
+            self.cam.follow = item.ship_id
+        elif isinstance(item, Request):
+            self._request(item.name, item.value)
+
+    def _ticked(self, t: Ticked) -> None:
+        obs = self.obs
+        events = list(t.events)
+        self.view.ingest(events, obs)
         if self.audio.available:
-            visible = {s.id for s in self.obs.own_ships()} | {c.id for c in self.obs.contacts().values() if c.visible}
+            visible = {s.id for s in obs.own_ships()} | {c.id for c in obs.contacts().values() if c.visible}
             self.audio.events(events, time.monotonic(), self._heard_at, visible, self._beam_style, self._ship_at,
                               self.view.effects.landing)
-        self._crew_react(events)
         for ev in events:
             if isinstance(ev, PhaserFired) and ev.ship_id == self.player_id:
                 self.fired_at[ev.bank] = time.monotonic()      # its button glows while the beam is out
-        if any(isinstance(ev, CommandRejected) and ev.ship_id == self.player_id and ev.issuer == "captain"
-               for ev in events):
-            self.audio.play("deny", time.monotonic(), 0.0, 0.7)
-        self.hits.attacker = self.player_id
-        self.hits.ingest(events, self.world.tick)
-        names = {c.id: c.label.split(" (")[0] for c in self.obs.contacts().values() if c.identified}
-        for line in self.hits.due(self.world.tick, self.world.rules.ticks_per_cycle, names):
-            self._log(line, theme.GOOD)
-        for ev in events:
-            if isinstance(ev, Message):
-                if ev.visible_to is not None and self.side not in ev.visible_to:
-                    continue
-                if ev.text.startswith("Scanning ") and self.player is not None and "science" in self.player.delegated:
-                    continue  # Seven reports what matters herself
-                who = f"{ev.speaker}: " if ev.speaker and ev.speaker not in ev.text else ""
-                self._log(who + ev.text, TONE_COLOR.get(ev.tone, theme.TEXT))
-            elif (isinstance(ev, ScanCompleted) and ev.ship_id == self.player_id
-                  and not (self.player is not None and "science" in self.player.delegated)):  # Seven's routine scans stay quiet
-                c = self.obs.contact(ev.target_id)
-                if c is not None and c.scan is not None:
-                    self._show(reports.scan_lines(self.obs, c), None)
+        if t.stepped:
+            self.prev = self.now
+            self.now = Snapshot.take(obs)
+
+    def _request(self, name: str, val: object) -> None:
+        """Console orders that are the screen's to carry out."""
+        if name == "range":
+            if val is None:
+                self._log(f"Display range {self.display_range():,.0f} units.", theme.TEXT_DIM)
+            else:
+                r = float(val)  # type: ignore[arg-type]
+                self.set_display_range(r)
+                self._log(f"Display range set to {r:,.0f} units.", theme.TEXT_DIM)
+        elif name == "key":
+            self._key_binding(val)  # type: ignore[arg-type]
+        elif name == "manual":
+            self.open_manual(val)  # type: ignore[arg-type]
+        elif name == "sound":
+            self._sound(val)
+        elif name == "bridge":
+            self.bridge_setting(val)
+        elif name == "voice":
+            self.voice_command(val)
+        elif name == "hud" and isinstance(val, str) and val.startswith("jolt"):
+            self.view.jolt = val.endswith("on")
+            self._log("The map jolts when your ship takes a heavy blow." if self.view.jolt else
+                      "The map stays still when your ship is hit. 'hud jolt on' brings the jolt back.", theme.TEXT_DIM)
+        elif name == "hud":
+            if val is not None:
+                self.hud_detail = val == "detail"
+            self._log("Panels show every number." if self.hud_detail else
+                      "Panels show what matters; hover one for its numbers. 'hud detail' shows them all.", theme.TEXT_DIM)
+
+    # ------------------------------------------------------------ time
 
     def update(self, dt: float) -> None:
         self.tweens.update(dt)
         self.ui.mouse = pygame.mouse.get_pos()
-        if self.bridge is not None and self.bridge.llm is not None:
-            self._speak(self.bridge.poll(self._help_context(), self._officer_run))
-            for cmd in self.bridge.take_addresses():
-                self.issue(cmd)
-        if self.comms.llm is not None:
-            self._speak(self.comms.poll(self.player, self.issue))
-        if self.translator is not None and self.translator.busy():
-            for answer in self.translator.poll(self._would_run):
-                self._translated(answer)
-        if self.bridge is not None:
-            # while the captain waits on an interpretation, officers' remarks don't queue at the model ahead of it
-            self.bridge.hold_voices = self.translator is not None and self.translator.busy()
-        if self.orders.busy():
-            self._order_problems(self.orders.poll(self._would_run, self._target_id()))
-        self._advance_order()
+        s = self.session
+        s.captain_typing = self.console_focus
+        s.busy_elsewhere = self.overlay is not None
         if self.toast:
             msg, col, t = self.toast
+            if self.toast is not self._toast_seen and not self.prefs.classic and self.prefs.subtitles != "off":
+                self.subs.say("", msg, col, urgent=col in (theme.CAUTION, theme.ALERT))   # the computer's voice
             self.toast = (msg, col, t - dt) if t - dt > 0 else None
+            self._toast_seen = self.toast
+        self.subs.update(dt)
+        self._focus_update(dt)
+        self._voice_poll()
         self.view.update(dt)
-        if self.chart_auto and self.printout is None:
-            self._show(self._chart_lines(), None)
-            self.printout_cmd = "\0chart"
+        if self.printout is None:
+            chart = s.live_chart()
+            if chart is not None:
+                self.printout, self.printout_cmd, self.printout_tick = chart, CHART, self.obs.tick
         self._refresh_printout()
-        if self.paused or self.world.outcome.over:
-            self.acc = 0.0
-            self.obs = self.world.observe(self.side)
+        s.update(dt, self.effective_speed())
+
+    def _refresh_printout(self) -> None:
+        if self.printout is None or self.obs.tick - self.printout_tick < 5:
             return
-        tick_len = 1.0 / self.world.rules.ticks_per_cycle
-        self.acc += dt * self.speed
-        steps = 0
-        while self.acc >= tick_len and steps < 12:
-            self.prev = Snapshot.take(self.world.observe(self.side))
-            self.world.step()
-            self.acc -= tick_len
-            steps += 1
-            self._drain_events()
-            self.now = Snapshot.take(self.obs)
-            if self.world.outcome.over:
-                self.overlay = "debrief"
-                self._crew_outcome()
-                break
-        if steps >= 12:
-            self.acc = 0.0
+        self.printout_tick = self.obs.tick
+        if self.printout_cmd:
+            lines = self.session.display(self.printout_cmd)
+            if lines is not None:
+                self.printout = lines
 
-    # ------------------------------------------------------------ input
+    def open_manual(self, query: str | None = None) -> None:
+        msg = self.manual.open(query)
+        if msg:
+            self._log(msg, theme.TEXT_DIM)
+        self.overlay = "manual"
+        self.console_focus = False
+        pygame.key.start_text_input()
 
-    def _reinforcements(self) -> None:
-        if self.tour is None:
-            self._log("Starfleet sends reinforcements only on a tour of duty (main menu, Tour of duty).", theme.CAUTION)
-            return
-        if self.world.outcome.over:
-            self._log("The battle is over.", theme.TEXT_DIM)
-            return
-        arrival, msg = self.tour.reinforcement_arrival(self.battle, self.player)
-        self._log(msg, theme.GOOD if arrival is not None else theme.CAUTION)
+    def _close_manual(self) -> None:
+        if self.overlay == "manual":
+            self.overlay = None
 
-    def _inbound(self) -> list[tuple[str, float]]:
-        """Starfleet's ships on their way, with their ETAs, for the map."""
-        out = []
-        for a in self.world.arrivals:
-            if a.tag == "starfleet" and not a.arrived and a.side == self.side:
-                eta = a.eta(self.world)
-                if eta is not None:
-                    names = ", ".join(f"USS {n}" for n in a.names if n) or "Starfleet"
-                    out.append((names, eta))
-        return out
-
-    # ------------------------------------------------------------ named orders
-
-    def _target_id(self) -> int | None:
-        p = self.player
-        return p.target if p is not None else None
-
-    # ------------------------------------------------------------ plain English
-
-    # ------------------------------------------------------------ bridge officers
+    def _try_command(self, text: str) -> None:
+        self._close_manual()
+        self.console = text
+        self.console_focus = True
+        pygame.key.start_text_input()
 
     def close(self) -> None:
-        """Leaving the battle: remember how the officers feel, stop any LLM requests."""
-        if self.bridge is not None:
-            self.bridge.save(self.hidden)
-            self.bridge.close()
-        if self.translator is not None:
-            self.translator.close()
-        self.comms.close()
-        self.orders.close()
+        """Leaving the battle: the session remembers how the officers feel and stops its LLM requests."""
+        self.session.close()
         self.audio.stop()
-
-    # ------------------------------------------------------------ manual
-
-    def _help_context(self) -> HelpContext:
-        return HelpContext(self.world.content, self.world.observe(self.side), self.player)
-
-    # ------------------------------------------------------------ drawing
 
     # ------------------------------------------------------------ sound
 
@@ -480,8 +435,5 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, RenderMixin
             a.muted = False
         state = "no audio device" if not a.available else "muted" if a.muted else f"volume {a.volume * 100:.0f}"
         self._log(f"Sound: {state}. M mutes; 'sound <0-100>' sets the volume.", theme.TEXT_DIM)
-
-    # ------------------------------------------------------------ overlays
-
 
 __all__ = ["BattleScene", "CONTROLS", "SPEEDS"]

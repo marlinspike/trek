@@ -25,6 +25,7 @@ from ..sim.observation import Observation
 from ..sim.ship import Ship
 from . import theme
 from .camera import Camera
+from . import gfx
 
 PANEL_W = 470
 AIM_FADE = 4.0          # seconds a salvo's ring stays on the map
@@ -42,15 +43,16 @@ def _fit(s: str, size: int, width: int) -> str:
 
 
 def draw_panel(surf: pygame.Surface, top_left: tuple[int, int], acts: list[Activity],
-               name_of: Callable[[str], str], tick: int, tpc: int) -> pygame.Rect | None:
-    """The activity panel; returns the area it covers."""
+               name_of: Callable[[str], str], tick: int, tpc: int, speaking: str | None = None) -> pygame.Rect | None:
+    """The activity panel; returns the area it covers. The block of the officer who is speaking (`speaking`, an
+    officer id) is lit, so the captain sees who is talking without a portrait on the screen."""
     if not acts:
         return None
     x, y = top_left
     rows: list[tuple[str, theme.Color, int, str]] = []
     for a in acts:
         head = f"{name_of(a.officer_id).upper()}  ·  {ROLE_WORDS.get(a.role, a.role)}"
-        rows.append((head, theme.CREW, 12, "semibold"))
+        rows.append((head, theme.TEXT if speaking == a.officer_id else theme.CREW, 12, "semibold"))
         fresh = (tick - a.since) < 2 * tpc
         col = theme.CAUTION if a.kind == "evade" else (theme.TEXT if fresh else theme.TEXT_DIM)
         rows.append((a.doing, col, 13, "regular"))
@@ -58,8 +60,11 @@ def draw_panel(surf: pygame.Surface, top_left: tuple[int, int], acts: list[Activ
             rows.append((a.progress, theme.TEXT_DIM, 12, "regular"))
     h = sum(size + 6 for _, _, size, _ in rows) + 12 + 6 * (len(acts) - 1)
     box = pygame.Rect(x, y, PANEL_W, h)
-    pygame.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
-    pygame.draw.rect(surf, theme.dim(theme.CREW, 0.6), box, 1, border_radius=4)
+    theme.shadow(surf, box)
+    gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
+    gfx.draw.rect(surf, theme.dim(theme.CREW, 0.6), box, 1, border_radius=4)
+    if speaking is not None and any(a.officer_id == speaking for a in acts):
+        gfx.draw.rect(surf, theme.CREW, box, 2, border_radius=4)
     cy = y + 7
     for i, (s, col, size, weight) in enumerate(rows):
         if i and weight == "semibold":
@@ -91,7 +96,7 @@ def draw_intent(surf: pygame.Surface, cam: Camera, obs: Observation, ship: Ship 
                     q0 = cam.to_screen(t.x, t.y)
                     q1 = cam.to_screen(t.x + math.sin(tr) * t.speed * 2.0, t.y + math.cos(tr) * t.speed * 2.0)
                     _dashed(surf, theme.dim(theme.HOSTILE, 0.8), q0, q1, 4, 4)
-                    pygame.draw.circle(surf, theme.HOSTILE, (int(q0[0]), int(q0[1])), 5, 1)
+                    gfx.draw.circle(surf, theme.HOSTILE, (int(q0[0]), int(q0[1])), 5, 1)
             continue
         if a.target is not None:
             c = obs.contact(a.target)
@@ -108,8 +113,8 @@ def draw_intent(surf: pygame.Surface, cam: Camera, obs: Observation, ship: Ship 
                 sx, sy = cam.to_screen(ax, ay)
                 rr = max(6.0, spread * cam.zoom)
                 _dashed_circle(surf, theme.dim(theme.CREW, 0.4 + 0.6 * k), (sx, sy), rr)
-                pygame.draw.line(surf, theme.dim(theme.CREW, k), (sx - 5, sy), (sx + 5, sy))
-                pygame.draw.line(surf, theme.dim(theme.CREW, k), (sx, sy - 5), (sx, sy + 5))
+                gfx.draw.line(surf, theme.dim(theme.CREW, k), (sx - 5, sy), (sx + 5, sy))
+                gfx.draw.line(surf, theme.dim(theme.CREW, k), (sx, sy - 5), (sx, sy + 5))
 
 
 def _brackets(surf: pygame.Surface, col: theme.Color, c: tuple[float, float], r: float) -> None:
@@ -117,14 +122,14 @@ def _brackets(surf: pygame.Surface, col: theme.Color, c: tuple[float, float], r:
     k = r * 0.45
     for sx, sy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
         cx, cy = x + sx * r, y + sy * r
-        pygame.draw.line(surf, col, (cx, cy), (cx - sx * k, cy), 2)
-        pygame.draw.line(surf, col, (cx, cy), (cx, cy - sy * k), 2)
+        gfx.draw.line(surf, col, (cx, cy), (cx - sx * k, cy), 2)
+        gfx.draw.line(surf, col, (cx, cy), (cx, cy - sy * k), 2)
 
 
 def _arrow_head(surf: pygame.Surface, col: theme.Color, a: tuple[float, float], b: tuple[float, float]) -> None:
     ang = math.atan2(b[1] - a[1], b[0] - a[0])
     for d in (2.6, -2.6):
-        pygame.draw.line(surf, col, b, (b[0] + math.cos(ang + d) * 9, b[1] + math.sin(ang + d) * 9), 2)
+        gfx.draw.line(surf, col, b, (b[0] + math.cos(ang + d) * 9, b[1] + math.sin(ang + d) * 9), 2)
 
 
 def _dashed(surf: pygame.Surface, col: theme.Color, a: tuple[float, float], b: tuple[float, float],
@@ -137,7 +142,7 @@ def _dashed(surf: pygame.Surface, col: theme.Color, a: tuple[float, float], b: t
     t = 0.0
     while t < length:
         e = min(length, t + on)
-        pygame.draw.line(surf, col, (a[0] + ux * t, a[1] + uy * t), (a[0] + ux * e, a[1] + uy * e), 2)
+        gfx.draw.line(surf, col, (a[0] + ux * t, a[1] + uy * t), (a[0] + ux * e, a[1] + uy * e), 2)
         t += on + off
 
 
@@ -145,7 +150,7 @@ def _dashed_circle(surf: pygame.Surface, col: theme.Color, c: tuple[float, float
     n = max(16, min(96, int(r / 5)))
     for i in range(0, n, 2):
         a0, a1 = 2 * math.pi * i / n, 2 * math.pi * (i + 1) / n
-        pygame.draw.line(surf, col, (c[0] + math.cos(a0) * r, c[1] + math.sin(a0) * r),
+        gfx.draw.line(surf, col, (c[0] + math.cos(a0) * r, c[1] + math.sin(a0) * r),
                          (c[0] + math.cos(a1) * r, c[1] + math.sin(a1) * r), 1)
 
 

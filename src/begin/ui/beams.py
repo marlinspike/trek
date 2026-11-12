@@ -32,6 +32,7 @@ from . import theme
 from .blast import add_light
 from .camera import Camera
 from .hulls import MIN_HULL_PX
+from . import gfx
 
 CHARGE = 0.12          # seconds the bank's strip glows before the beam leaves
 REACH = 0.07           # seconds the beam's tip takes to reach the end of the shot
@@ -153,10 +154,10 @@ class Beam:
         if self.cone is not None and self.spread > 12 and not self.defensive:
             self._cone(overlay, cam, k)
         for width, alpha in ((body * 9, 0.05), (body * 6, 0.07), (body * 4, 0.12), (body * 2 + 1, 0.22)):   # soft light round it
-            pygame.draw.line(overlay, _dim(self.color, alpha * k * flicker), a, b, width)
-        pygame.draw.line(surf, theme.mix(theme.BG, self.color, 0.4 + 0.6 * k), a, b, body)
+            gfx.draw.aaline(overlay, _dim(self.color, alpha * k * flicker), a, b, width)
+        gfx.draw.aaline(surf, theme.mix(theme.BG, self.color, 0.4 + 0.6 * k), a, b, body)
         core = theme.mix(self.color, WHITE, 0.55 + 0.25 * flicker)
-        pygame.draw.line(surf, theme.mix(theme.BG, core, k), a, b, max(1, body // 2))
+        gfx.draw.aaline(surf, theme.mix(theme.BG, core, k), a, b, max(1, body // 2))
         self._shimmer(overlay, a, b, k, clock)
         if head < 1.0:
             add_light(surf, b[0], b[1], 4 + 4 * w, theme.mix(self.color, WHITE, 0.6), 0.9)   # the tip racing out
@@ -174,7 +175,7 @@ class Beam:
         nx, ny = dy / L, dx / L
         e1 = (p0[0] - nx * half, p0[1] - ny * half)
         e2 = (p0[0] + nx * half, p0[1] + ny * half)
-        pygame.draw.line(overlay, _dim(self.color, 0.25 + 0.5 * u), e1, e2, 2)
+        gfx.draw.aaline(overlay, _dim(self.color, 0.25 + 0.5 * u), e1, e2, 2)
         run = 1.0 - _ease_in(u)
         for e in (e1, e2):
             q = _lerp(p0, e, run)
@@ -190,7 +191,7 @@ class Beam:
         rng = random.Random(self.seed * 7919 + int(clock * 30))
         for _ in range(min(10, int(L / 40) + 2)):
             q = _lerp(a, b, rng.random())
-            pygame.draw.circle(overlay, _dim(WHITE, 0.6 * k * rng.uniform(0.3, 1.0)), (int(q[0]), int(q[1])), 1)
+            gfx.draw.aacircle(overlay, _dim(WHITE, 0.6 * k * rng.uniform(0.3, 1.0)), q, 1)
 
     def _cone(self, overlay: pygame.Surface, cam: Camera, k: float) -> None:
         """A wide shot also catches anything else in its cone: a faint fan shows how wide it went."""
@@ -201,7 +202,7 @@ class Beam:
         for j in range(7):
             ang = math.radians(facing - spread / 2 + spread * j / 6)
             pts.append(cam.to_screen(self.x0 + math.sin(ang) * d, self.y0 + math.cos(ang) * d))
-        pygame.draw.polygon(overlay, _dim(self.color, 0.035 * k), pts)
+        gfx.draw.polygon(overlay, _dim(self.color, 0.035 * k), pts)
 
     def _draw_bolts(self, surf: pygame.Surface, overlay: pygame.Surface, cam: Camera) -> None:
         lead = self.timeline()[0]
@@ -224,9 +225,9 @@ class Beam:
                 d = L * t
                 h = (p0[0] + ux * d, p0[1] + uy * d)
                 tl = (h[0] - ux * min(streak, d), h[1] - uy * min(streak, d))
-                pygame.draw.line(overlay, _dim(self.color, 0.35), tl, h, max(3, round(3 + 3 * w)))
-                pygame.draw.line(surf, self.color, tl, h, max(2, round(1 + 2 * w)))
-                pygame.draw.line(surf, hot, tl, h, 1)
+                gfx.draw.aaline(overlay, _dim(self.color, 0.35), tl, h, max(3, round(3 + 3 * w)))
+                gfx.draw.aaline(surf, self.color, tl, h, max(2, round(1 + 2 * w)))
+                gfx.draw.aaline(surf, hot, tl, h, 1)
                 add_light(surf, h[0], h[1], 4 + 4 * w, hot, 0.9)
             else:
                 u = (t - 1.0) * BOLT_FLIGHT / BOLT_GLOW
@@ -242,8 +243,8 @@ class Beam:
             self._cone(overlay, cam, t * 1.3)
         col = theme.mix(theme.BG, self.color, 0.35 + 0.65 * t)
         for width, alpha in ((13, 0.12), (7, 0.24)):
-            pygame.draw.line(overlay, _dim(self.color, alpha * t), p0, p1, width)
-        pygame.draw.line(surf, col, p0, p1, max(1, int(self.width * (0.6 + t))))
+            gfx.draw.aaline(overlay, _dim(self.color, alpha * t), p0, p1, width)
+        gfx.draw.aaline(surf, col, p0, p1, max(1, int(self.width * (0.6 + t))))
 
     def landing(self) -> bool:
         """True once, the moment the shot lands: time to throw sparks off whatever it hit."""

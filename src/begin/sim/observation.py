@@ -17,12 +17,13 @@ from typing import TYPE_CHECKING
 from ..content.schema import ContentDB, ShipClass
 from .events import ContactChanged, Event, Message
 from .rules import Rules
-from .ship import Ship
+from .ship import Ship, ShipStatus
 from .systems.sensors import Assessment, ScanRecord
 
 if TYPE_CHECKING:
     from .allies import AllyStanding
-    from .world import World
+    from .systems.disposition import Reading
+    from .world import Outcome, PendingScan, World
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +77,7 @@ def _make(w: World, owner: int | None) -> str:
 
 
 class Observation:
-    __slots__ = ("_w", "side", "tick", "time", "rules", "content", "_contacts", "_ordnance", "_events")
+    __slots__ = ("_w", "side", "tick", "time", "rules", "content", "outcome", "_contacts", "_ordnance", "_events")
 
     def __init__(self, world: World, side: int) -> None:
         self._w = world
@@ -85,6 +86,7 @@ class Observation:
         self.time = world.time
         self.rules: Rules = world.rules
         self.content: ContentDB = world.content
+        self.outcome: Outcome = world.outcome     # who won, once it is over: public knowledge
         self._contacts: dict[int, ContactView] | None = None
         self._ordnance: list[OrdnanceView] | None = None
         self._events: list[Event] | None = None
@@ -212,6 +214,64 @@ class Observation:
 
     def threats(self) -> list[OrdnanceView]:
         return [o for o in self.ordnance() if not o.friendly]
+
+    # ------------------------------------------------------------- what a crew can see for itself
+
+    def pending_scan(self, ship_id: int) -> PendingScan | None:
+        """The scan one of our own ships has under way, if any."""
+        own = self.own(ship_id)
+        return self._w.pending_scan(ship_id) if own is not None else None
+
+    def repairs(self, ship_id: int) -> tuple[set[str], bool]:
+        """What the repair crews on one of our ships are working on now, and whether the hull is among it."""
+        from .systems.repair import under_repair
+
+        own = self.own(ship_id)
+        return under_repair(self._w, own) if own is not None else (set(), False)
+
+    def our_boarders(self, ship_id: int) -> int:
+        """How many of our people are fighting aboard another ship (they report in)."""
+        s = self._w.ships.get(ship_id)
+        return s.boarders if s is not None and s.boarders > 0 and s.boarder_side == self.side else 0
+
+    def name_of(self, ship_id: int) -> str:
+        """A ship as this side knows her: her name if she is ours or identified, else her contact number."""
+        own = self._w.ships.get(ship_id)
+        if own is not None and own.side == self.side:
+            return own.name
+        c = self.contact(ship_id)
+        if c is not None and c.identified:
+            return c.label.split(" (")[0]
+        return f"#{ship_id}"
+
+    def fate(self, ship_id: int) -> str:
+        """'alive', 'surrendered' or 'gone' for a ship this side has seen (an outcome everyone can see)."""
+        s = self._w.ships.get(ship_id)
+        if s is None or not s.exists:
+            return "gone"
+        if s.status == ShipStatus.SURRENDERED:
+            return "surrendered"
+        return "alive" if s.alive else "gone"
+
+    def demeanour(self, ship_id: int) -> str:
+        """How an enemy captain's mood shows in how they fight, as our officers read it: '' when nothing shows."""
+        from .systems import disposition
+
+        s = self._w.ships.get(ship_id)
+        if s is None or not s.exists or s.side == self.side or not self._w.is_visible(self.side, ship_id):
+            return ""
+        if s.status == ShipStatus.SURRENDERED:
+            return "surrendered"
+        return "withdrawing" if s.mood.terms else (disposition.shows(s) or "")
+
+    def read_captain(self, ship_id: int, by: int) -> Reading | None:
+        """Our officers' read of an enemy captain (resolve, fear, anger), as one of our ships sees them."""
+        from .systems.disposition import reading
+
+        me, s = self.own(by), self._w.ships.get(ship_id)
+        if me is None or s is None or not s.alive or s.side == self.side:
+            return None
+        return reading(self._w, me, s)
 
     # ------------------------------------------------------------- events
 

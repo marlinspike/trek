@@ -20,6 +20,7 @@ import pygame
 
 from . import theme
 from .blast import add_light
+from . import gfx
 
 WHITE = (255, 255, 255)
 BASE_PX = 4.0             # a Mark 7's core, pixels, at ordinary zoom
@@ -60,8 +61,8 @@ def _photon(surf: pygame.Surface, overlay: pygame.Surface, sx: float, sy: float,
         reach = size * (3.6 if j % 2 == 0 else 2.0) * (0.85 + 0.15 * beat)
         tip = (sx + math.cos(a) * reach, sy + math.sin(a) * reach)
         alpha = int((150 if j % 2 == 0 else 90) * bright * beat)
-        pygame.draw.line(overlay, (*hot, alpha), (sx, sy), tip, 1)
-    pygame.draw.circle(surf, theme.mix(hot, WHITE, 0.5 * bright), (int(sx), int(sy)), max(1, int(size * 0.45)))
+        gfx.draw.aaline(overlay, (*hot, alpha), (sx, sy), tip, 1)
+    gfx.draw.aacircle(surf, theme.mix(hot, WHITE, 0.5 * bright), (sx, sy), max(1.0, size * 0.45))
 
 
 def _disruptor(surf: pygame.Surface, overlay: pygame.Surface, sx: float, sy: float, course: float,
@@ -74,8 +75,8 @@ def _disruptor(surf: pygame.Surface, overlay: pygame.Surface, sx: float, sy: flo
     for along, reach, alpha in ((True, 4.2, 170), (False, 1.8, 110)):
         dx, dy = (ux, uy) if along else (-uy, ux)
         r = size * reach * jag
-        pygame.draw.line(overlay, (*hot, int(alpha * bright)), (sx - dx * r, sy - dy * r), (sx + dx * r, sy + dy * r), 1)
-    pygame.draw.circle(surf, theme.mix(hot, WHITE, 0.4 * bright), (int(sx), int(sy)), max(1, int(size * 0.4)))
+        gfx.draw.aaline(overlay, (*hot, int(alpha * bright)), (sx - dx * r, sy - dy * r), (sx + dx * r, sy + dy * r), 1)
+    gfx.draw.aacircle(surf, theme.mix(hot, WHITE, 0.4 * bright), (sx, sy), max(1.0, size * 0.4))
 
 
 def _plasma(surf: pygame.Surface, sx: float, sy: float, col: theme.Color, hot: theme.Color, size: float,
@@ -95,8 +96,8 @@ def _pulse(surf: pygame.Surface, overlay: pygame.Surface, sx: float, sy: float, 
     a = math.radians(course)
     ux, uy = math.sin(a), -math.cos(a)
     tail = size * 4.5
-    pygame.draw.line(overlay, (*col, int(120 * bright * on)), (sx, sy), (sx - ux * tail, sy - uy * tail), max(2, int(size * 0.8)))
-    pygame.draw.line(surf, hot, (sx, sy), (sx - ux * tail * 0.6, sy - uy * tail * 0.6), 1)
+    gfx.draw.aaline(overlay, (*col, int(120 * bright * on)), (sx, sy), (sx - ux * tail, sy - uy * tail), max(2, int(size * 0.8)))
+    gfx.draw.aaline(surf, hot, (sx, sy), (sx - ux * tail * 0.6, sy - uy * tail * 0.6), 1)
     add_light(surf, sx, sy, size * 2.4, col, 0.6 * bright * on)
     add_light(surf, sx, sy, size * 1.2, hot, 0.9 * bright)
 

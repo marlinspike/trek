@@ -33,6 +33,7 @@ from . import theme
 from ..settings import Settings
 from .tour_art import GLIDE_SECONDS, draw_chart, glass, portrait, ship_art, wrap
 from .widgets import UI
+from . import gfx
 
 if TYPE_CHECKING:
     from ..llm.service import LLMService
@@ -149,16 +150,11 @@ class TourScene:
         if run is None or not (0 <= idx < len(run.state.log)):
             return
         if self.voices is None:
-            try:
-                from ..llm.providers import config_from_settings, make_provider
-                from ..llm.service import LLMService
+            from ..session.models import make_service
 
-                cfg = config_from_settings(self.settings.llm)
-                if cfg is None:
-                    return
-                self.voices = LLMService(make_provider(cfg), workers=2)
-            except Exception:  # noqa: BLE001 - no model, no voices: the drafted entries stand
-                return
+            self.voices = make_service(self.settings.llm, workers=2)
+            if self.voices is None:
+                return          # no model, no voices: the drafted entries stand
         from ..crew.characters import load_officers
 
         try:
@@ -171,7 +167,7 @@ class TourScene:
             if who in entry.voiced or (who == "captain" and entry.edited):
                 continue
             prof = profiles.get(who)
-            persona = (prof.persona + (" Traits: " + ", ".join(prof.traits) + "." if prof.traits else "")) if prof else ""
+            persona = (prof.brief() + (" Traits: " + ", ".join(prof.traits) + "." if prof.traits else "")) if prof else ""
             style = prof.response_style if prof else ""
             system, user = voice_request(entry, who, persona, style)
             rid = self.voices.submit(f"log:{who}", system, [{"role": "user", "content": user}])
@@ -545,9 +541,9 @@ class TourScene:
                 box = pygame.Rect(cr.x + 10, yy - 4, cr.width - 20, 26 + 18 * len(cons))
                 chosen = st.choice == i
                 if chosen:
-                    pygame.draw.rect(surf, theme.mix(theme.BG_PANEL, theme.GOOD, 0.22), box, border_radius=4)
+                    gfx.draw.rect(surf, theme.mix(theme.BG_PANEL, theme.GOOD, 0.22), box, border_radius=4)
                 self.ui.add(box, partial(self._choose, i), "Choose this")
-                pygame.draw.rect(surf, theme.GOOD if chosen else theme.BORDER_HI if box.collidepoint(self.ui.mouse) else theme.BORDER,
+                gfx.draw.rect(surf, theme.GOOD if chosen else theme.BORDER_HI if box.collidepoint(self.ui.mouse) else theme.BORDER,
                                  box, 1, border_radius=4)
                 theme.text(surf, c.label, (box.x + 10, box.y + 5), theme.TEXT, 14, weight="medium")
                 for k, ln in enumerate(cons):
@@ -605,7 +601,7 @@ class TourScene:
             if box.bottom > r.bottom - 50:
                 theme.text(surf, f"and {len(recs) - n} more", (r.x + 14, y), theme.TEXT_DIM, 12)
                 break
-            pygame.draw.rect(surf, theme.mix(theme.BG_PANEL, theme.BG_PANEL_HI, 0.6), box, border_radius=4)
+            gfx.draw.rect(surf, theme.mix(theme.BG_PANEL, theme.BG_PANEL_HI, 0.6), box, border_radius=4)
             art = ship_art(cls, int(row_h * 0.8), (self.t * TURN_RATE + n * 70) % 360, rec.hull, seed=n + 1)
             if rec.lost:
                 art = art.copy()
@@ -684,9 +680,9 @@ class TourScene:
         lines = wrap(text, 15, tw - 20)
         box = pygame.Rect(body.x + 4, y - 4, body.width - 8, 24 * len(lines) + 16)
         hover = box.collidepoint(self.ui.mouse) and body.collidepoint(self.ui.mouse)
-        pygame.draw.rect(surf, theme.BG_INPUT if self.editing else theme.mix(theme.BG_PANEL, theme.BG_PANEL_HI, 0.5), box,
+        gfx.draw.rect(surf, theme.BG_INPUT if self.editing else theme.mix(theme.BG_PANEL, theme.BG_PANEL_HI, 0.5), box,
                          border_radius=4)
-        pygame.draw.rect(surf, theme.CAUTION if self.editing else theme.BORDER_HI if hover else theme.BORDER, box, 1,
+        gfx.draw.rect(surf, theme.CAUTION if self.editing else theme.BORDER_HI if hover else theme.BORDER, box, 1,
                          border_radius=4)
         for k, ln in enumerate(lines):
             theme.text(surf, ln, (box.x + 12, box.y + 8 + 24 * k), theme.TEXT, 15)
@@ -694,7 +690,7 @@ class TourScene:
             last = lines[-1] if lines else ""
             cx = box.x + 12 + theme.text_width(last, 15)
             cy = box.y + 8 + 24 * (len(lines) - 1)
-            pygame.draw.line(surf, theme.CAUTION, (cx + 1, cy + 2), (cx + 1, cy + 19), 2)
+            gfx.draw.line(surf, theme.CAUTION, (cx + 1, cy + 2), (cx + 1, cy + 19), 2)
         if not self.editing and body.collidepoint(self.ui.mouse):
             self.ui.add(box.clip(body), self._start_edit, "Click to rewrite your entry")
         y = box.bottom + 18
@@ -727,7 +723,7 @@ class TourScene:
             frac = body.height / content_h
             bar = pygame.Rect(body.right - 4, body.y + int(body.height * self.log_scroll / content_h), 3,
                               max(20, int(body.height * frac)))
-            pygame.draw.rect(surf, theme.BORDER_HI, bar, border_radius=2)
+            gfx.draw.rect(surf, theme.BORDER_HI, bar, border_radius=2)
         # footer
         fy = r.bottom - 52
         if self.editing:
