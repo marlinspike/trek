@@ -36,9 +36,9 @@ class Forward(Generic[T]):
 if TYPE_CHECKING:
     from ...console.complete import Completer
     from ...crew.proposals import Proposal
-    from ...session.battle import BattleSession
+    from ...session.interface import Session
     from ...session.command import Recording
-    from ...voice.recorder import Recorder
+    from ..microphone import Recorder
     from ...voice.settings import VoiceSettings
     from ...console.parser import ParseResult
     from ...crew.hails import Comms
@@ -57,7 +57,7 @@ if TYPE_CHECKING:
 
 
 class SceneState:
-    session: BattleSession
+    session: Session              # the game: the screen reaches it only through this contract
     # the game, as the screen shows it (see `Forward`)
     player_id: Forward[int | None] = Forward()
     paused: Forward[bool] = Forward()

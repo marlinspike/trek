@@ -45,7 +45,8 @@ from ..sim.objectives import Objective, baitable
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import TARGETABLE_GROUPS, Ship
 from ..sim.systems.ordnance import blast_radius
-from ..sim.systems.phasers import bank_bears_point, bank_ready
+from ..sim.ship import bank_ready
+from ..sim.systems.phasers import bank_bears_point
 
 if TYPE_CHECKING:
     from .officers import OfficerBrain

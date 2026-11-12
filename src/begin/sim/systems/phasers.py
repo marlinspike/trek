@@ -5,10 +5,10 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from ...core.angles import ang_dist, bearing, in_arc, norm360
+from ...core.angles import ang_dist, bearing, norm360
 from ..events import OrdnanceDestroyed, PhaserFired
 from ..ordnance import Torpedo
-from ..ship import CREW_DECKS, PhaserBank, Ship
+from ..ship import CREW_DECKS, PhaserBank, Ship, bank_bears
 from .damage import Aim, DamageKind, apply_damage, exposure, relative_bearing_from, subsystems_for
 
 if TYPE_CHECKING:
@@ -17,15 +17,6 @@ if TYPE_CHECKING:
 
 def bank_origin(ship: Ship, bank: PhaserBank) -> tuple[float, float]:
     return ship.hull_to_world(*bank.mount.pos)
-
-
-def bank_ready(ship: Ship, bank: PhaserBank) -> bool:
-    return bank.intact and bank.charge >= ship.cls.banks_charge - 1e-6
-
-
-def bank_bears(ship: Ship, bank: PhaserBank, world_bearing: float) -> bool:
-    rel = norm360(world_bearing - ship.course)
-    return in_arc(rel, bank.mount.arc_center, bank.mount.arc_width)
 
 
 def bank_bears_point(ship: Ship, bank: PhaserBank, x: float, y: float) -> bool:

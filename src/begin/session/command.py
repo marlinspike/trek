@@ -28,13 +28,13 @@ from ..crew.career import STYLE_WORDS, STYLES
 from ..crew.review import standout
 from ..paths import config_dir
 from ..sim.commands import Command, DelegateStation, SetHelm, TakeConn
+from .news import ALERT_TONE
 from .state import SessionState
 
 if TYPE_CHECKING:
     from .battle import BattleSession
 
 ALERTS_FILE = Path(__file__).resolve().parents[1] / "content" / "data" / "alerts.toml"
-ALERT_TONE = {"red": "alert", "yellow": "caution", "green": "good"}
 NOT_RECORDED = re.compile(r"^\s*(record|rec|status|st|damage|dmg|chart|report|help|\?|orders|plans|crew|style|"
                           r"voice|hud|sound|range|zoom|banks|tubes|launchers|shields|fleet|prisoners|key|pause|"
                           r"resume|time|translate|quit|exit)\b", re.I)

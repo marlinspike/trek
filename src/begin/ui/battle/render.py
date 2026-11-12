@@ -15,6 +15,7 @@ from ...console import reports
 from ...sim.ship import Kind
 from .. import comms_view, officer_view, order_marks, theme
 from ..hud import diagram_legend, hull_diagram
+from ...session.news import ALERT_TONE
 from .common import TONE_COLOR, CONTROLS, RED_ALERT_FLOOR, RED_ALERT_PERIOD, RED_ALERT_PULSE, RED_ALERT_SETTLE, SPEEDS, ratio
 from .state import SceneState
 from .. import gfx
@@ -133,8 +134,6 @@ class RenderMixin(SceneState):
                        weight="semibold")
             x += theme.text_width(tag, 11, weight="semibold") + 16
         if self.condition is not None:
-            from ...session.command import ALERT_TONE
-
             tag = f"CONDITION {self.condition.upper()}"
             theme.text(surf, tag, (x, r.y + 12), TONE_COLOR[ALERT_TONE[self.condition]], 11, weight="semibold")
             x += theme.text_width(tag, 11, weight="semibold") + 16

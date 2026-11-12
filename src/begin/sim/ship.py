@@ -14,6 +14,7 @@ from enum import Enum
 from typing import Iterator, Literal
 
 from ..content.schema import MountDef, ShipClass
+from ..core.angles import in_arc, norm360
 
 
 class Kind(str, Enum):
@@ -519,8 +520,22 @@ class Ship:
         return best
 
 
+SHIELD_FACINGS: tuple[float, ...] = (0.0, 60.0, 300.0, 120.0, 240.0, 180.0)   # shields 1-6, degrees off the bow
+
+
+def bank_ready(ship: Ship, bank: PhaserBank) -> bool:
+    """A phaser bank is intact and fully charged."""
+    return bank.intact and bank.charge >= ship.cls.banks_charge - 1e-6
+
+
+def bank_bears(ship: Ship, bank: PhaserBank, world_bearing: float) -> bool:
+    """A phaser bank's arc covers a world bearing, given the ship's heading."""
+    rel = norm360(world_bearing - ship.course)
+    return in_arc(rel, bank.mount.arc_center, bank.mount.arc_width)
+
+
 __all__ = [
-    "Battery", "BankRole", "FireMode", "PDDoctrine", "BattleStats", "DAMAGE_WEIGHT", "Drive", "HelmMode", "KIND_LABEL", "Kind",
+    "SHIELD_FACINGS", "bank_bears", "bank_ready", "Battery", "BankRole", "FireMode", "PDDoctrine", "BattleStats", "DAMAGE_WEIGHT", "Drive", "HelmMode", "KIND_LABEL", "Kind",
     "HULL", "Launcher", "LoadedProbe", "LoadedTorpedo", "Mood", "PhaserBank", "PowerReport", "REPAIR_CLASS",
     "Reactor", "RepairTarget", "repair_words", "Shield", "Ship", "ShipStatus", "Subsystem", "TARGETABLE_GROUPS", "Tube",
 ]

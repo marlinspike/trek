@@ -1,6 +1,6 @@
 # Architecture
 
-The game has two halves. The simulation (`sim/`) owns every fact about the battle and knows nothing about pygame. Everything else uses one of two paths: it reads a side's picture of the battle, or it submits commands. That covers the screen, the console, the AI captains, the ship computer and the officers. The player, the AI and the officers therefore play by exactly the same rules, and a battle runs the same with or without a window.
+The game has three layers. The simulation (`sim/`) owns every fact about the battle and knows nothing about pygame. The session (`session/`) plays one battle for a captain: it runs the clock, takes orders typed, spoken or clicked, runs the officers, the hails and the language models, and says what happened as plain news. The screen (`ui/`) presents a session and nothing more. Everything outside the simulation uses one of two paths into it: it reads a side's picture of the battle (an `Observation`), or it submits commands. That covers the screen, the console, the AI captains, the ship computer and the officers. The player, the AI and the officers therefore play by exactly the same rules, and a battle runs the same with or without a window.
 
 ```
              content/*.toml ──► ContentDB ──► battle.build_battle(setup) ──► Battle
@@ -18,7 +18,9 @@ The game has two halves. The simulation (`sim/`) owns every fact about the battl
    │     Crew (crew/officers.py)       the player's delegated stations
    │
    └── Front ends (read Observations and Events, submit Commands)
-         ui/battle_scene.py   map, HUD panels, console, manual, officers' chat (parts in ui/battle/)
+         session/battle.py    BattleSession: clock, console, officers, hails, models ─► News
+             ▲ Session protocol (session/interface.py), the only door the screen uses
+         ui/battle_scene.py   map, HUD panels, console line, manual, sound (parts in ui/battle/)
          console/parser.py    Begin's command language ─► Commands
          tools/balance.py     headless runs with AI on every ship
 ```
@@ -71,22 +73,48 @@ A controller has a `side`, a `period` (ticks between decisions) and a `phase` (a
 
 ## Officers and language models
 
-`crew/conversation.py` (`Bridge`) handles talking to the officers. It decides who is addressed, answers offline from the battle state (with help from `help/coach.py`), keeps rapport (`crew/characters.py`), and builds the system prompt when a language model is configured. The patterns that recognise what the captain means (an order, a handover, praise, a question) are in `crew/intents.py`; the officers' running commentary on the battle is `crew/chatter.py`, mixed into `Bridge`; each station's report and the situation summary given to the model are in `crew/station_reports.py`. `llm/reply.py` reads a model's JSON answer, however mangled, for the officers, the hails and the translator alike. Requests go through `llm/service.py`, a small thread pool that `BattleScene.update` polls every frame, so the battle never waits for the network.
+`crew/conversation.py` (`Bridge`) handles talking to the officers. It decides who is addressed, answers offline from the battle state (with help from `help/coach.py`), keeps rapport (`crew/characters.py`), and builds the system prompt when a language model is configured. The patterns that recognise what the captain means (an order, a handover, praise, a question) are in `crew/intents.py`; the officers' running commentary on the battle is `crew/chatter.py`, mixed into `Bridge`; each station's report and the situation summary given to the model are in `crew/station_reports.py`. `llm/reply.py` reads a model's JSON answer, however mangled, for the officers, the hails and the translator alike. Requests go through `llm/service.py`, a small thread pool that `BattleSession.update` polls every frame, so the battle never waits for the network.
 
 The providers (`llm/providers/`) share one `complete(system, messages) -> str` method. Anthropic uses the official SDK. OpenAI and OpenRouter share an OpenAI-compatible client, and Ollama talks to the local server's `/api/chat`. The commands in a reply go through the same console parser as typed ones.
 
-`console/translator.py` (`Translator`) turns plain English typed at the console into commands. `BattleScene._run_one` parses every line first, and only a line the parser rejects (or every line, in `always` mode, or the answer to a clarifying question) goes to the model, on its own `LLMService` worker. The reply's commands are validated with the parser (`BattleScene._would_run`) before any runs; a rejected one is sent back once with the parser's error.
+`console/translator.py` (`Translator`) turns plain English typed at the console into commands. `BattleSession._run_one` (`session/console.py`) parses every line first, and only a line the parser rejects (or every line, in `always` mode, or the answer to a clarifying question) goes to the model, on its own `LLMService` worker. The reply's commands are validated with the parser (`BattleSession._would_run`, `session/orders.py`) before any runs; a rejected one is sent back once with the parser's error.
+
+## Game and screen: the session
+
+The screen never holds the game. `BattleSession` (`session/battle.py`) plays one battle and is complete without a window: `tests/test_architecture.py` plays one headless, typing orders and stepping the clock. It is split by concern into mixins, each type-checked against the state declared in `session/state.py`: `console.py` (typed lines, printouts, the chart, the translator), `orders.py` (named orders and their checks), `comms.py` (talking to officers, hails), `command.py` (alert conditions, recording, command style) and `voices.py` (who speaks, read-backs, an officer's proposals). `debrief.py` reduces the end of a battle to plain records, `prefs.py` holds how much of the bridge the captain wants, `models.py` builds the language-model service from settings, and `hit_report.py` turns a hit into words.
+
+The session owns the clock: `update(dt, rate)` adds battle time and steps the world in fixed ticks, at most 12 per call, and returns how many it stepped. It says what happened by publishing **news** (`session/news.py`): small frozen records such as `Line` (a log line, with a tone), `Voice` (an officer speaking), `Cue` (a sound), `Printout`, `Prompt`, `Show` (open an overlay), `Request` (something only the screen can do, like changing the zoom) and `Ticked` (the tick's events). Tones are words like `"warn"` or `"good"`; the screen maps them to colours (`ui/battle/common.TONE_COLOR`), so the session never names a colour. News published before anyone subscribes is kept and delivered to the first subscriber.
+
+**The contract.** The battle screen is typed against `Session` (`session/interface.py`), a `Protocol` that lists every attribute and method a presenter may use, rather than against `BattleSession`. mypy rejects any call the protocol doesn't list, and `BattleSession` is checked to honour it. What the screen shows comes from the `Observation` (which carries the outcome, pending scans, repairs, boarders, names, and the side's read of each enemy captain), and what it changes goes by order: `submit(cmd)`, `say(text)` and the named helpers.
+
+**Orders that travel.** `session/wire.py` turns every `Command` into a dict of JSON values and back, driven by the dataclass fields and their type hints, so a new command needs no code there; anything malformed is refused with `WireError`, never guessed at. Because the simulation is deterministic, the same orders at the same ticks give the same battle, and a test replays a battle from orders sent through JSON and compares the final state. That is the basis for:
+
+- a **networked session**: each machine holds a mirror of the world and exchanges orders in lockstep, presenting it through the same `Session` protocol;
+- a **replay**: the world's command log, fed back through the same clock;
+- a **new presenter** (a web front end, a GPU renderer, a test harness) that implements nothing but the screen.
+
+**Game modes.** `modes.py` registers the ways to start a battle (`Mode(key, title, blurb, hotkey, make)`). The main menu builds its buttons and hotkeys from `MODES`, so a new mode is one `register(...)` call (see EXTENDING).
+
+**The rules, enforced.** `tests/test_architecture.py` fails the build when the layering is crossed:
+
+1. nothing outside `begin.ui` imports pygame or `begin.ui`, so the game runs without a screen;
+2. `begin.ui` never imports the world, its systems, the AI, the language models or the session's machinery at run time (type-only imports are allowed); only the composition root (`ui/app.py`, `ui/battle_scene.py`) builds a session;
+3. no UI code reads `.world`;
+4. the session speaks in tones, never colours;
+5. every command survives the wire, and a battle replays exactly from orders sent as JSON.
+
+So the AI, the rules, the officers, a game mode or a network link can change without touching the screen, and a new screen can be written without touching the game.
 
 ## The front end
 
-`ui/app.py` opens the window and runs the loop at 60 FPS. It swaps between `MenuScene` (presets, Quick and Custom setup), `TourScene` (tours of duty, between battles) and `BattleScene`.
+`ui/app.py` opens the window and runs the loop at 60 FPS. It swaps between `MenuScene` (game modes, presets and Custom setup), `TourScene` (tours of duty, between battles) and `BattleScene`.
 
-`BattleScene` (`ui/battle_scene.py`) holds the scene's state and frame loop, and mixes in its other parts from `ui/battle/`: `input.py` (keys and mouse, with the single-key controls as tables), `console.py` (typed orders, printouts, the chart and the manual), `orders.py` (named orders and the translator), `comms.py` (officers and hails) and `render.py` (drawing). `ui/battle/state.py` declares the state they share, so each part is type-checked against it.
+`BattleScene` (`ui/battle_scene.py`) presents a session. Given a `Battle` it builds a `BattleSession`; given anything that honours `Session` it presents that. It subscribes to the news and turns it into log lines, subtitles, sound, printouts and overlays, and it mixes in its other parts from `ui/battle/`: `input.py` (keys and mouse, with the single-key controls as tables), `bridge.py` (the console line, completion and the order preview), `voice.py` (push-to-talk), `comms.py` (the hail prompt and buttons) and `render.py` (drawing). `ui/battle/state.py` declares the state they share; scene attributes such as `paused` and `obs` read and write the session's through `Forward` descriptors, so there is one source of truth.
 
-It adds frame time × speed to an accumulator and steps the world in fixed ticks, at most 12 per frame. It keeps the previous tick's snapshot so motion is drawn smoothly between ticks. Each frame it draws:
+Each frame it tells the session whether the captain is typing or a screen is open, calls `session.update(dt, speed)`, and keeps the previous tick's snapshot so motion is drawn smoothly between ticks. Each frame it draws:
 
 - the tactical map (`ui/tactical.py`, with `camera.py`, `hulls.py`, `effects.py`, `beams.py` (phaser and disruptor shots), `torpedo_art.py` (rounds in flight by race) and `starfield.py`), which also keeps torpedo trails, inbound-torpedo markers and the target-lock animation. Zoomed out, a ship smaller than `hulls.ICON_MAX_PX` is drawn as one smoothed silhouette (`hulls.hull_icon`: a single outline round the union of her shapes, supersampled and cached by class, heading and scale) so overlapping shapes don't turn into a knot of lines. Zoomed in, a ship class listed in `tactical.SHOWPIECE` is drawn from its baked sprite instead of its outline;
-- the HUD panels (`ui/hud.py`): Own Ship, Target, Weapons, and a tabbed Contacts/Fleet/Crew column. Shown numbers go through `ui/tween.py`, which eases them and flashes changes; `BattleScene.hud_detail` (or the mouse over a panel) decides whether every number is shown;
+- the HUD panels (`ui/hud.py`): Own Ship, Target, Weapons, and a tabbed Contacts/Fleet/Crew column. Shown numbers go through `ui/tween.py`, which eases them and flashes changes; `hud_detail` (or the mouse over a panel) decides whether every number is shown;
 - the console and its log;
 - any open overlay: Begin's text reports (`console/reports.py`) or the manual (`ui/manual.py`, which renders `ui/markdown.py`).
 

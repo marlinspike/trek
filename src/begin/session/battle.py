@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from ..battle import Battle
 from ..console import reports
@@ -50,6 +50,7 @@ from .common import CHART, EVENT_TONE, TourLink
 from .console import ConsoleMixin
 from .debrief import Debrief, SideTally
 from .hit_report import HitReport
+from .interface import Session
 from .news import Commanding, Cue, Line, News, Notice, Show, Ticked
 from .orders import OrdersMixin
 from .prefs import BridgePrefs
@@ -471,6 +472,11 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
             self.translator.close()
         self.comms.close()
         self.orders.close()
+
+
+if TYPE_CHECKING:
+    def _honours_the_contract(s: BattleSession) -> Session:
+        return s        # mypy checks that a BattleSession is a Session
 
 
 __all__ = ["BattleSession", "CHART", "Commanding", "Listener"]

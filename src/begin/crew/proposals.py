@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from ..core.angles import bearing
 from ..sim.observation import Observation
 from ..sim.ship import Ship
-from ..sim.systems.phasers import bank_bears, bank_ready
+from ..sim.ship import bank_bears, bank_ready
 from .characters import OfficerProfile
 from .helm import incoming
 

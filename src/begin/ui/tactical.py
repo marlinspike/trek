@@ -19,7 +19,7 @@ from ..content.schema import Faction
 from ..core.angles import norm180
 from ..content.schema import HullDef, ShipClass
 from ..sim.events import Detonation, Event, HullHit, ShieldHit, ShipArrived, ShipStatusChanged
-from ..sim.factory import SHIELD_FACINGS
+from ..sim.ship import SHIELD_FACINGS
 from ..sim.observation import ContactView, Observation, OrdnanceView
 from ..sim.ship import Ship
 from . import theme

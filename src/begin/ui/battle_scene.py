@@ -23,6 +23,7 @@ from ..help.coach import HelpContext
 from ..paths import config_dir
 from ..session.battle import BattleSession
 from ..session.common import CHART
+from ..session.interface import Session
 from ..session.news import Commanding, Cue, Line, News, Notice, Printout, Prompt, Request, Show, Ticked, Voice
 from ..session.prefs import BridgePrefs
 from ..sim.commands import Command
@@ -48,7 +49,7 @@ from .widgets import UI
 
 
 class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
-    def __init__(self, battle: Battle | BattleSession, size: tuple[int, int], on_exit: Callable[[], None],
+    def __init__(self, battle: Battle | Session, size: tuple[int, int], on_exit: Callable[[], None],
                  keys: dict[str, str] | None = None, hidden: dict[str, object] | None = None,
                  llm: dict[str, object] | None = None, chatter: bool = True, volume: float = 0.6,
                  muted: bool = False, sounds: dict[str, str] | None = None, hum: float = 0.35,
@@ -56,11 +57,12 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
                  career: dict[str, object] | None = None, voice: dict[str, object] | None = None) -> None:
         # the Bridge setting (full, quiet, classic and its parts), kept in settings.json's "bridge"
         self.bridge_store: dict[str, object] = bridge if bridge is not None else {}
-        if isinstance(battle, BattleSession):
-            self.session = battle
-        else:
+        self.session: Session
+        if isinstance(battle, Battle):
             self.session = BattleSession(battle, hidden=hidden, llm=llm, chatter=chatter,
                                          prefs=BridgePrefs.from_dict(self.bridge_store), career=career)
+        else:
+            self.session = battle
         self.on_exit: Callable[[], None] = on_exit
         self.exit_label: str = "Return to menu"
         self.ui: UI = UI()

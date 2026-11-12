@@ -28,7 +28,7 @@ from begin.session.prefs import BridgePrefs  # noqa: E402
 from begin.ui.subtitles import Subtitles  # noqa: E402
 from begin.ui.wheel import CommandWheel, load_wheels  # noqa: E402
 from begin.voice.engines import WhisperServer, clean, multipart  # noqa: E402
-from begin.voice.recorder import to_wav  # noqa: E402
+from begin.ui.microphone import to_wav  # noqa: E402
 from begin.voice.settings import VoiceSettings  # noqa: E402
 
 

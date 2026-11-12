@@ -150,16 +150,11 @@ class TourScene:
         if run is None or not (0 <= idx < len(run.state.log)):
             return
         if self.voices is None:
-            try:
-                from ..llm.providers import config_from_settings, make_provider
-                from ..llm.service import LLMService
+            from ..session.models import make_service
 
-                cfg = config_from_settings(self.settings.llm)
-                if cfg is None:
-                    return
-                self.voices = LLMService(make_provider(cfg), workers=2)
-            except Exception:  # noqa: BLE001 - no model, no voices: the drafted entries stand
-                return
+            self.voices = make_service(self.settings.llm, workers=2)
+            if self.voices is None:
+                return          # no model, no voices: the drafted entries stand
         from ..crew.characters import load_officers
 
         try:

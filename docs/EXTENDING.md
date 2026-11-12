@@ -100,9 +100,26 @@ There are three levels, from least to most code:
 
 If an officer should be able to use it, map it to a station in `station_of` in `crew/officers.py`.
 
+Commands travel as JSON (`session/wire.py`) with no extra code, as long as every field has a plain type hint (numbers, text, true or false, enums, `Literal`, tuples, optionals). A field typed `object` is treated as a result filled in when the order runs, and is not sent. `tests/test_architecture.py` round-trips every command automatically.
+
+## A game mode
+
+A game mode is a way to start a battle from the main menu. Register it in `modes.py`:
+
+```python
+register(Mode(key="ambush", title="Ambush", blurb="Three raiders drop out of warp around you.",
+              hotkey="a", make=lambda content, seed, faction: ambush_battle(content, seed, faction)))
+```
+
+`make(content, seed, faction)` returns the `BattleSetup` to fight (see `battle.patrol_battle` for a full example); the menu adds the button and hotkey. Keep the Enterprise a Dreadnought, as every mode does. Nothing in the battle screen changes.
+
+## A new front end, a network link or a replay
+
+Present a battle by talking to a `Session` (`session/interface.py`) and nothing else: read `session.obs` for what the side knows, subscribe to its news (`session/news.py`) for what to say and play, and change the game only with `submit`, `say` and the order helpers. To play over a network, keep a mirror world on each machine and exchange the orders (`wire.dumps` / `wire.loads`) for each tick; the simulation is deterministic, so both stay in step. `tests/test_architecture.py` lists the import rules a new presenter must keep.
+
 ## A HUD panel
 
-Subclass `Panel` in `ui/hud.py`. Override `draw(surf, rect, hud)`, or for a tab, `body(surf, rect, y, hud)` and `tab_label(hud)`. `hud` is the `BattleScene`: read `hud.obs` (the side's Observation), `hud.player` (your ship) and so on, and act through its methods, which submit commands. Use the widgets in `ui/widgets.py` and the colours and fonts in `ui/theme.py`. Then add the panel to `BattleScene.panels`, or as a tab to `self.side_tabs`.
+Subclass `Panel` in `ui/hud.py`. Override `draw(surf, rect, hud)`, or for a tab, `body(surf, rect, y, hud)` and `tab_label(hud)`. `hud` is the `BattleScene`: read `hud.obs` (the side's Observation), `hud.player` (your ship) and `hud.session` (the `Session`), and act through its methods, which submit commands. Never read the world: if a panel needs a fact the Observation lacks, add it to `sim/observation.py`. Use the widgets in `ui/widgets.py` and the colours and fonts in `ui/theme.py`. Then add the panel to `BattleScene.panels`, or as a tab to `self.side_tabs`.
 
 ## Manual pages
 

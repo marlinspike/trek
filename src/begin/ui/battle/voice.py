@@ -25,7 +25,7 @@ import pygame
 import dataclasses
 
 from ...voice.engines import VoiceError, download_model, make_engine
-from ...voice.recorder import Recorder
+from ..microphone import Recorder
 from ...voice.settings import ENGINE_WORDS, ENGINES, MODELS, PTT_KEYS, VoiceSettings
 from .. import theme
 from .state import SceneState

@@ -20,9 +20,9 @@ from ..sim.commands import (
     ConfigureAutoload, ControlProbe, DelegateStation, Dock, Scan, SelectTarget, SetFireMode, SetPhaserSpread,
     SetPointDefense, SetShields, Tractor, Transport,
 )
-from ..sim.factory import SHIELD_FACINGS
+from ..sim.ship import SHIELD_FACINGS
 from ..sim.ship import BankRole, FireMode, Kind, PDDoctrine, Ship, repair_words
-from ..sim.systems.phasers import bank_bears, bank_ready
+from ..sim.ship import bank_bears, bank_ready
 from . import theme
 from .hulls import draw_hull, transform
 from . import gfx

@@ -17,6 +17,7 @@ from typing import Literal, Union
 from ..sim.events import Event
 
 Tone = Literal["text", "dim", "good", "caution", "alert", "crew", "friend", "hail", "readback"]
+ALERT_TONE = {"red": "alert", "yellow": "caution", "green": "good"}    # alert conditions, as tones
 TONES: tuple[str, ...] = ("text", "dim", "good", "caution", "alert", "crew", "friend", "hail", "readback")
 
 
@@ -98,5 +99,5 @@ class Commanding:
 
 News = Union[Line, Notice, Voice, Cue, Printout, Prompt, Show, Request, Ticked, Commanding]
 
-__all__ = ["Commanding", "Cue", "Line", "News", "Notice", "Printout", "Prompt", "Request", "Show", "TONES",
+__all__ = ["ALERT_TONE", "Commanding", "Cue", "Line", "News", "Notice", "Printout", "Prompt", "Request", "Show", "TONES",
            "Ticked", "Tone", "Voice"]

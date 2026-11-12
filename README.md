@@ -261,10 +261,13 @@ src/begin/
   help/      the manual library (Markdown topics) and the live coach
   crew/      bridge officers: delegation, officer AI, conversation, rapport, traits, the end-of-battle review
   tour/      tours of duty: the tours, the squadron between battles, reinforcements and the captain's log
+  session/   one battle played for a captain, with no screen: clock, orders, officers, hails, news; the Session contract and orders as JSON
   llm/       optional LLM providers (Anthropic, OpenAI, OpenRouter, Ollama) on a background thread, and their debug logs
   assets/    fonts and the manual's Markdown pages
-  ui/        pygame presentation: tactical map, HUD panels, menus, effects and synthesised sound
+  ui/        pygame presentation of a Session: tactical map, HUD panels, menus, effects, synthesised sound, microphone
+  voice/     speech-to-text engines for spoken orders
   battle.py  builds a World with AI attached from a battle description
+  modes.py   the game modes the main menu offers
 config/      your settings, officers, orders, sounds, key macros and manual pages (gitignored apart from README and examples)
 docs/        REFERENCE (mechanics digest), PLAN, ARCHITECTURE, EXTENDING, DEVIATIONS
 tests/       headless tests
