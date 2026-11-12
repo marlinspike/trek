@@ -8,6 +8,7 @@ from typing import Callable
 import pygame
 
 from . import theme
+from . import gfx
 
 
 @dataclass
@@ -48,8 +49,8 @@ class UI:
         bg = theme.BG_PANEL_HI if hover else theme.BG_INPUT
         if active:
             bg = theme.mix(theme.BG_INPUT, accent, 0.28)
-        pygame.draw.rect(surf, bg, rect, border_radius=3)
-        pygame.draw.rect(surf, accent if (active or hover) and enabled else theme.BORDER, rect, 1, border_radius=3)
+        gfx.draw.rect(surf, bg, rect, border_radius=3)
+        gfx.draw.rect(surf, accent if (active or hover) and enabled else theme.BORDER, rect, 1, border_radius=3)
         col = theme.TEXT if enabled else theme.TEXT_FAINT
         # command labels in the display face; data (long, or a list of facts joined by ·) stays in the text face
         if face is None:
@@ -70,8 +71,8 @@ class UI:
         if y + 24 > surf.get_height():
             y = self.mouse[1] - 28
         r = pygame.Rect(x, y, w, 22)
-        pygame.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=3)
-        pygame.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=3)
+        gfx.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=3)
+        gfx.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=3)
         theme.text(surf, self.tooltip, (r.x + 8, r.y + 4), theme.TEXT, 12)
 
 

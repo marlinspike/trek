@@ -29,6 +29,7 @@ from . import theme
 from .beams import Beam, Stop
 from .blast import add_light
 from .camera import Camera
+from . import gfx
 
 Body = tuple[float, float, float]     # where a ship is seen: x, y and her hull length, world units
 
@@ -399,12 +400,12 @@ class Effects:
             t = g.age / g.life
             sx, sy = cam.to_screen(g.x, g.y)
             rad = int(min(300.0, max(6.0, g.radius * cam.zoom * (0.7 + 0.5 * t))))
-            light = pygame.Surface((rad * 2, rad * 2))
+            light = gfx.Surface((rad * 2, rad * 2))
             fade = (1 - t) ** 2
             for step in range(GLOW_STEPS):   # nested discs, outermost first: a gaussian of light
                 share = 1 - step / GLOW_STEPS
                 k = fade * math.exp(-5.0 * share * share)
-                pygame.draw.circle(light, tuple(min(255, int(c * k)) for c in g.color), (rad, rad), max(1, int(rad * share)))
+                gfx.draw.circle(light, tuple(min(255, int(c * k)) for c in g.color), (rad, rad), max(1, int(rad * share)))
             surf.blit(light, (int(sx) - rad, int(sy) - rad), special_flags=pygame.BLEND_RGB_ADD)
         for rp in self.ripples:
             t = rp.age / rp.life
@@ -420,7 +421,7 @@ class Effects:
                     pts.append((sx + math.cos(a) * rr, sy + math.sin(a) * rr))
                 alpha = int(120 * math.sin(math.pi * t) / (1 + k))
                 if alpha > 3:
-                    pygame.draw.lines(overlay, (*CLOAK, alpha), True, pts, 1)
+                    gfx.draw.lines(overlay, (*CLOAK, alpha), True, pts, 1)
         for st in self.streaks:
             self._streak(surf, cam, overlay, st)
         for shard in self.debris:
@@ -428,22 +429,22 @@ class Effects:
             sx, sy = cam.to_screen(shard.x, shard.y)
             hx, hy = math.cos(shard.angle) * shard.length / 2, math.sin(shard.angle) * shard.length / 2
             hot = theme.mix((255, 220, 170), shard.color, min(1.0, t * 3))
-            pygame.draw.line(surf, theme.mix(hot, theme.BG, t ** 1.3), (sx - hx, sy - hy), (sx + hx, sy + hy), 2 if t < 0.4 else 1)
+            gfx.draw.line(surf, theme.mix(hot, theme.BG, t ** 1.3), (sx - hx, sy - hy), (sx + hx, sy + hy), 2 if t < 0.4 else 1)
         for e in self.embers:
             t = e.age / e.life
             sx, sy = cam.to_screen(e.x, e.y)
             col = theme.mix(theme.mix((255, 210, 120), EMBER, min(1.0, t * 2)), theme.BG, t ** 1.5)
-            pygame.draw.circle(surf, col, (int(sx), int(sy)), 1)
+            gfx.draw.circle(surf, col, (int(sx), int(sy)), 1)
         for v in self.vents:
             if v.delay > 0:
                 continue
             t = v.age / v.life
             sx, sy = cam.to_screen(v.x, v.y)
             col = theme.mix((255, 190, 120), (150, 160, 175), min(1.0, t * 2.5))     # fire, cooling to grey gas
-            pygame.draw.circle(overlay, (*col, int(110 * (1 - t) ** 1.5)), (int(sx), int(sy)), max(1, int(v.size * (1 + 2.5 * t))))
+            gfx.draw.circle(overlay, (*col, int(110 * (1 - t) ** 1.5)), (int(sx), int(sy)), max(1, int(v.size * (1 + 2.5 * t))))
         if self.beams:
             if glow is None:
-                glow = pygame.Surface(surf.get_size())
+                glow = gfx.Surface(surf.get_size())
                 glow.fill((0, 0, 0))
                 for b in self.beams:
                     b.draw(surf, glow, cam, self.clock)
@@ -462,7 +463,7 @@ class Effects:
             sx, sy = cam.to_screen(r.x, r.y)
             rad = max(3, int(r.radius * cam.zoom * (0.35 + 0.65 * math.sqrt(t))))
             col = theme.mix(r.color, theme.BG, t)
-            pygame.draw.circle(surf, col, (int(sx), int(sy)), rad, max(1, int(3 * (1 - t))))
+            gfx.draw.circle(surf, col, (int(sx), int(sy)), rad, max(1, int(3 * (1 - t))))
             if r.core and t < 0.35:          # the fireball: a soft white-hot light, not a hard disc
                 u = t / 0.35
                 add_light(surf, sx, sy, max(4.0, rad * 0.8 * (1 - 0.5 * u)), theme.mix((255, 255, 240), r.color, u),
@@ -474,14 +475,14 @@ class Effects:
             r0, r1 = 3 + 4 * t, 7 + 5 * t
             for k in range(4):
                 a = pp.spin + k * math.pi / 2
-                pygame.draw.line(surf, col, (sx + math.cos(a) * r0, sy + math.sin(a) * r0),
+                gfx.draw.line(surf, col, (sx + math.cos(a) * r0, sy + math.sin(a) * r0),
                                  (sx + math.cos(a) * r1, sy + math.sin(a) * r1), 2)
         for s in self.sparks:
             if s.age < 0:
                 continue
             t = s.age / s.life
             sx, sy = cam.to_screen(s.x, s.y)
-            pygame.draw.circle(surf, theme.mix(s.color, theme.BG, t), (int(sx), int(sy)), 1 if t > 0.5 else 2)
+            gfx.draw.circle(surf, theme.mix(s.color, theme.BG, t), (int(sx), int(sy)), 1 if t > 0.5 else 2)
 
 
     @staticmethod
@@ -495,12 +496,12 @@ class Effects:
         fade = 1.0 if t < STREAK_IN else max(0.0, 1.0 - (t - STREAK_IN) / (1.0 - STREAK_IN))
         if math.hypot(p1[0] - tail[0], p1[1] - tail[1]) > 2:
             for w, a in STREAK_GLOW:
-                pygame.draw.line(overlay, (*st.color, int(a * fade)), tail, p1, w)
-            pygame.draw.line(surf, theme.mix(st.color, (255, 255, 255), 0.7), tail, p1, 2)
+                gfx.draw.line(overlay, (*st.color, int(a * fade)), tail, p1, w)
+            gfx.draw.line(surf, theme.mix(st.color, (255, 255, 255), 0.7), tail, p1, 2)
         flash = max(0.0, 1.0 - abs(t - STREAK_IN) / 0.25)
         if flash > 0:
-            pygame.draw.circle(overlay, (255, 255, 255, int(200 * flash)), (int(p1[0]), int(p1[1])), int(4 + 12 * flash))
-            pygame.draw.circle(overlay, (*st.color, int(90 * flash)), (int(p1[0]), int(p1[1])), int(10 + 30 * flash), 2)
+            gfx.draw.circle(overlay, (255, 255, 255, int(200 * flash)), (int(p1[0]), int(p1[1])), int(4 + 12 * flash))
+            gfx.draw.circle(overlay, (*st.color, int(90 * flash)), (int(p1[0]), int(p1[1])), int(10 + 30 * flash), 2)
 
 
 UNKNOWN_WEAPON = (215, 215, 215)   # a ship we can't identify

@@ -6,6 +6,7 @@ import math
 import random
 
 import pygame
+from . import gfx
 
 STAR_TILE = 512           # pixels: the starfield repeats at this size
 STAR_LAYERS = ((0.004, 110, 0.4), (0.009, 50, 0.6), (0.016, 20, 0.85))   # (parallax px/unit, stars per tile, brightness)
@@ -23,7 +24,7 @@ def _soft_noise(rng: random.Random, cells: int, size: int) -> pygame.Surface:
     pixels per sample, so the cut edges line up exactly with the copies beside them)."""
     grid = [[rng.random() ** 2.2 for _ in range(cells)] for _ in range(cells)]   # mostly dark, the odd bright patch
     n = size // 8
-    small = pygame.Surface((n, n))
+    small = gfx.Surface((n, n))
     for y in range(n):
         fy = y * cells / n
         y0 = int(fy)
@@ -37,14 +38,14 @@ def _soft_noise(rng: random.Random, cells: int, size: int) -> pygame.Surface:
             b = row1[x0 % cells] + (row1[(x0 + 1) % cells] - row1[x0 % cells]) * tx
             v = int(255 * (a + (b - a) * ty))
             small.set_at((x, y), (v, v, v))
-    ring = pygame.Surface((n * 3, n * 3))
+    ring = gfx.Surface((n * 3, n * 3))
     for gy in range(3):
         for gx in range(3):
             ring.blit(small, (gx * n, gy * n))
     blur = getattr(pygame.transform, "gaussian_blur", None)    # pygame-ce 2.2+: rounds off the grid's corners
     if blur is not None:
         ring = blur(ring, max(2, n // cells // 2))
-    big = pygame.transform.smoothscale(ring, (size * 3, size * 3))
+    big = gfx.transform.smoothscale(ring, (size * 3, size * 3))
     return big.subsurface((size, size, size, size)).copy()
 
 
@@ -59,7 +60,7 @@ class Starfield:
         tile = _NEBULAE.get(base)
         if tile is None:
             rng = random.Random(NEBULA_SEED)
-            tile = pygame.Surface((NEBULA_TILE, NEBULA_TILE))
+            tile = gfx.Surface((NEBULA_TILE, NEBULA_TILE))
             tile.fill(base)
             for cells, tint in NEBULA_LAYERS:
                 cloud = _soft_noise(rng, cells, NEBULA_TILE)
@@ -84,7 +85,7 @@ class Starfield:
     def _make(self) -> None:
         rng = random.Random(self.seed)
         for _, count, bright in STAR_LAYERS:
-            tile = pygame.Surface((STAR_TILE, STAR_TILE))
+            tile = gfx.Surface((STAR_TILE, STAR_TILE))
             for _ in range(count):
                 level = bright * rng.uniform(0.35, 1.0)
                 tint = rng.choice(((200, 215, 255), (255, 240, 220), (230, 235, 255)))

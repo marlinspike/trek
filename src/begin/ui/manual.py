@@ -21,6 +21,7 @@ from ..help.coach import HelpContext, expand
 from ..help.docs import HelpLibrary, Topic, library
 from . import markdown, theme
 from .widgets import UI
+from . import gfx
 
 SIDEBAR_W = 270
 HEADER_H = 54
@@ -171,11 +172,11 @@ class ManualView:
 
     def draw(self, surf: pygame.Surface, rect: pygame.Rect, ui: UI) -> None:
         self.lib.refresh()
-        shade = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        shade = gfx.Surface(surf.get_size(), pygame.SRCALPHA)
         shade.fill((2, 5, 12, 200))
         surf.blit(shade, (0, 0))
-        pygame.draw.rect(surf, theme.BG, rect, border_radius=8)
-        pygame.draw.rect(surf, theme.BORDER_HI, rect, 1, border_radius=8)
+        gfx.draw.rect(surf, theme.BG, rect, border_radius=8)
+        gfx.draw.rect(surf, theme.BORDER_HI, rect, 1, border_radius=8)
         ui.add(rect, lambda: None)  # swallow clicks inside the window
         t = self.topic
         self._header(surf, rect, ui, t)
@@ -195,9 +196,9 @@ class ManualView:
 
     def _header(self, surf: pygame.Surface, rect: pygame.Rect, ui: UI, t: Topic | None) -> None:
         h = pygame.Rect(rect.x, rect.y, rect.width, HEADER_H)
-        pygame.draw.rect(surf, theme.BG_PANEL, h, border_top_left_radius=8, border_top_right_radius=8)
-        pygame.draw.line(surf, theme.BORDER, (h.x, h.bottom), (h.right, h.bottom))
-        pygame.draw.line(surf, theme.FRIEND, (h.x + 18, h.y + 1), (h.x + 60, h.y + 1), 2)
+        gfx.draw.rect(surf, theme.BG_PANEL, h, border_top_left_radius=8, border_top_right_radius=8)
+        gfx.draw.line(surf, theme.BORDER, (h.x, h.bottom), (h.right, h.bottom))
+        gfx.draw.line(surf, theme.FRIEND, (h.x + 18, h.y + 1), (h.x + 60, h.y + 1), 2)
         theme.text(surf, "BEGIN MANUAL", (h.x + 18, h.y + 15), theme.TEXT, 16, "display", weight="semibold")
         if t is not None:
             crumb = f"{t.category}  ›  {t.title}"
@@ -214,18 +215,18 @@ class ManualView:
             bx -= 8
 
     def _sidebar(self, surf: pygame.Surface, r: pygame.Rect, ui: UI) -> None:
-        pygame.draw.rect(surf, theme.BG_PANEL, r, border_bottom_left_radius=8)
-        pygame.draw.line(surf, theme.BORDER, (r.right, r.y), (r.right, r.bottom))
+        gfx.draw.rect(surf, theme.BG_PANEL, r, border_bottom_left_radius=8)
+        gfx.draw.line(surf, theme.BORDER, (r.right, r.y), (r.right, r.bottom))
         sb = pygame.Rect(r.x + 14, r.y + 14, r.width - 28, 32)
-        pygame.draw.rect(surf, theme.BG_INPUT, sb, border_radius=4)
-        pygame.draw.rect(surf, theme.FRIEND if self.search else theme.BORDER, sb, 1, border_radius=4)
+        gfx.draw.rect(surf, theme.BG_INPUT, sb, border_radius=4)
+        gfx.draw.rect(surf, theme.FRIEND if self.search else theme.BORDER, sb, 1, border_radius=4)
         caret = "▏" if (pygame.time.get_ticks() // 500) % 2 == 0 else ""
         if self.search:
             theme.text(surf, self.search + caret, (sb.x + 30, sb.y + 8), theme.TEXT, 13)
         else:
             theme.text(surf, "Search the manual…", (sb.x + 30, sb.y + 8), theme.TEXT_FAINT, 13)
-        pygame.draw.circle(surf, theme.TEXT_DIM, (sb.x + 15, sb.y + 15), 5, 1)
-        pygame.draw.line(surf, theme.TEXT_DIM, (sb.x + 19, sb.y + 19), (sb.x + 22, sb.y + 22), 2)
+        gfx.draw.circle(surf, theme.TEXT_DIM, (sb.x + 15, sb.y + 15), 5, 1)
+        gfx.draw.line(surf, theme.TEXT_DIM, (sb.x + 19, sb.y + 19), (sb.x + 22, sb.y + 22), 2)
 
         lst = pygame.Rect(r.x, sb.bottom + 10, r.width, r.bottom - sb.bottom - 14)
         prev = surf.get_clip()
@@ -257,9 +258,9 @@ class ManualView:
             current = t.id == self.topic_id
             hover = row.collidepoint(ui.mouse) and clip.collidepoint(ui.mouse)
             if current or hover:
-                pygame.draw.rect(surf, theme.mix(theme.BG_PANEL, theme.FRIEND, 0.18 if current else 0.08), row, border_radius=4)
+                gfx.draw.rect(surf, theme.mix(theme.BG_PANEL, theme.FRIEND, 0.18 if current else 0.08), row, border_radius=4)
             if current:
-                pygame.draw.rect(surf, theme.FRIEND, pygame.Rect(row.x, row.y + 5, 3, row.height - 10))
+                gfx.draw.rect(surf, theme.FRIEND, pygame.Rect(row.x, row.y + 5, 3, row.height - 10))
             theme.text(surf, t.title, (row.x + 14, row.y + 5), theme.TEXT if current else theme.TEXT_DIM, 13,
                        weight="medium" if current else "regular")
             if show_summary and t.summary:
@@ -295,15 +296,15 @@ class ManualView:
                 ui.add(hr, partial(self.go, hot.value))
             else:
                 if hr.collidepoint(ui.mouse):
-                    pygame.draw.rect(surf, theme.FRIEND, hr, 1, border_radius=3)
+                    gfx.draw.rect(surf, theme.FRIEND, hr, 1, border_radius=3)
                     theme.text(surf, "put in console ›", (hr.right - 10, hr.y + 4), theme.FRIEND, 11, anchor="topright")
                 ui.add(hr, partial(self.on_try, hot.value), "Put this command in the console")
         if total > r.height:  # scrollbar
             track = pygame.Rect(r.right - 8, r.y + 6, 4, r.height - 12)
-            pygame.draw.rect(surf, theme.BG_PANEL_HI, track, border_radius=2)
+            gfx.draw.rect(surf, theme.BG_PANEL_HI, track, border_radius=2)
             th = max(30, int(track.height * r.height / total))
             ty = track.y + int((track.height - th) * (self.scroll / max(1, total - r.height)))
-            pygame.draw.rect(surf, theme.BORDER_HI, pygame.Rect(track.x, ty, 4, th), border_radius=2)
+            gfx.draw.rect(surf, theme.BORDER_HI, pygame.Rect(track.x, ty, 4, th), border_radius=2)
 
 
 __all__ = ["ManualView"]

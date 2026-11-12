@@ -13,6 +13,7 @@ from functools import lru_cache
 import pygame
 
 from .showpiece import SHIP_DIR
+from . import gfx
 
 FLEET_DIR = SHIP_DIR / "fleet"
 BAKED = 12                          # sprites per class, one per 30° of heading
@@ -51,4 +52,4 @@ def fleet_image(cls_id: str, heading: float, scale: float) -> pygame.Surface | N
     img = _baked(cls_id, round(heading / (360.0 / BAKED)) % BAKED)
     if img is None:
         return None
-    return pygame.transform.rotozoom(img, -heading, scale)
+    return gfx.transform.rotozoom(img, -heading, scale)

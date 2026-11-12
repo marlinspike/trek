@@ -19,6 +19,7 @@ import pygame
 
 from . import theme
 from .blast import SHIELD, Blast, CLOAK, HullHit, ShieldFlare, add_light, halo, level as blast_level, ring
+from . import gfx
 
 SPRITE_PX = 7.0           # sprite pixels per hull unit at scale 1 (tools/render_ship.py PX)
 SPRITE_CENTRE_Y = -1.0    # hull-unit y at the sprite's centre
@@ -70,7 +71,7 @@ def ship_image(heading: float, scale: float) -> pygame.Surface | None:
     img = sprite(i)
     if img is None:
         return None
-    return pygame.transform.rotozoom(img, -heading, scale)
+    return gfx.transform.rotozoom(img, -heading, scale)
 
 
 def hull_to_screen(cx: float, cy: float, heading: float, scale: float, hx: float, hy: float) -> tuple[float, float]:
@@ -169,7 +170,7 @@ def klingon_sprite() -> pygame.Surface | None:
 @lru_cache(maxsize=16)
 def klingon_image(heading: float, scale: float) -> pygame.Surface | None:
     img = klingon_sprite()
-    return None if img is None else pygame.transform.rotozoom(img, -heading, scale)
+    return None if img is None else gfx.transform.rotozoom(img, -heading, scale)
 
 
 def _bearing(x0: float, y0: float, x1: float, y1: float) -> float:
@@ -440,16 +441,16 @@ class Encounter:
         p1 = (p0[0] + dx / d * stop * head, p0[1] + dy / d * stop * head)
         core = theme.mix(DISRUPTOR_COL, (255, 255, 255), 0.5)
         for width, lvl in ((13, 0.12), (7, 0.28), (3, 0.6)):
-            pygame.draw.line(glow, blast_level(DISRUPTOR_COL, lvl * k), p0, p1, max(1, round(width * g)))
-        pygame.draw.line(glow, blast_level(core, 0.9 * k), p0, p1, 1)
+            gfx.draw.line(glow, blast_level(DISRUPTOR_COL, lvl * k), p0, p1, max(1, round(width * g)))
+        gfx.draw.line(glow, blast_level(core, 0.9 * k), p0, p1, 1)
         add_light(glow, p0[0], p0[1], max(4, 22 * self.scale), DISRUPTOR_COL, k)
 
     def _bolt(self, glow: pygame.Surface, b: _Bolt, scale: float) -> None:
         g = 0.4 + 0.6 * scale
         for (x0, y0, t0), (x1, y1, _) in zip(b.trail, b.trail[1:]):
             k = 1.0 - (self.t - t0) / TRAIL
-            pygame.draw.line(glow, blast_level(KTORP_COL, 0.3 * k * k), (x0, y0), (x1, y1), max(1, int(12 * k * g)))
-            pygame.draw.line(glow, blast_level(KTORP_COL, 0.9 * k * k), (x0, y0), (x1, y1), max(1, int(4 * k * g)))
+            gfx.draw.line(glow, blast_level(KTORP_COL, 0.3 * k * k), (x0, y0), (x1, y1), max(1, int(12 * k * g)))
+            gfx.draw.line(glow, blast_level(KTORP_COL, 0.9 * k * k), (x0, y0), (x1, y1), max(1, int(4 * k * g)))
         pulse = 0.8 + 0.2 * math.sin(self.t * 30.0)
         add_light(glow, b.pos[0], b.pos[1], max(10, 40 * g), KTORP_COL, pulse)
         add_light(glow, b.pos[0], b.pos[1], max(4, 13 * g), theme.mix(KTORP_COL, (255, 255, 255), 0.8), 1.0)
@@ -492,8 +493,8 @@ class Encounter:
         g = 0.4 + 0.6 * scale
         core = theme.mix(PHASER_COL, (255, 255, 255), 0.55)
         for width, lvl in ((17, 0.10), (9, 0.22), (5, 0.45)):
-            pygame.draw.line(glow, blast_level(PHASER_COL, lvl * k), p0, p1, max(1, round(width * g)))
-        pygame.draw.line(glow, blast_level(core, 0.95 * k), p0, p1, 2)
+            gfx.draw.line(glow, blast_level(PHASER_COL, lvl * k), p0, p1, max(1, round(width * g)))
+        gfx.draw.line(glow, blast_level(core, 0.95 * k), p0, p1, 2)
         add_light(glow, p0[0], p0[1], max(4, 26 * scale), core, k)
         add_light(glow, p1[0], p1[1], max(6, 30 * scale), (230, 245, 255), k)
 
@@ -501,8 +502,8 @@ class Encounter:
         g = 0.4 + 0.6 * scale
         for (x0, y0, t0), (x1, y1, _) in zip(r.trail, r.trail[1:]):
             k = 1.0 - (self.t - t0) / TRAIL
-            pygame.draw.line(glow, blast_level(TORPEDO_COL, 0.3 * k * k), (x0, y0), (x1, y1), max(1, int(12 * k * g)))
-            pygame.draw.line(glow, blast_level(TORPEDO_COL, 0.9 * k * k), (x0, y0), (x1, y1), max(1, int(4 * k * g)))
+            gfx.draw.line(glow, blast_level(TORPEDO_COL, 0.3 * k * k), (x0, y0), (x1, y1), max(1, int(12 * k * g)))
+            gfx.draw.line(glow, blast_level(TORPEDO_COL, 0.9 * k * k), (x0, y0), (x1, y1), max(1, int(4 * k * g)))
         assert r.pos is not None
         pulse = 0.8 + 0.2 * math.sin(self.t * 30.0)
         add_light(glow, r.pos[0], r.pos[1], max(10, 40 * g), TORPEDO_COL, pulse)
@@ -672,7 +673,7 @@ class Flybys:
     def draw(self, surf: pygame.Surface) -> None:
         p = self.current
         w, h = surf.get_size()
-        glow = pygame.Surface((w, h))            # light, added onto the scene
+        glow = gfx.Surface((w, h))            # light, added onto the scene
         glow.fill((0, 0, 0))
         ship_at = p.at(min(1.0, p.t / p.duration)) if p is not None else None
         ship_scale = p.scale if p is not None else 1.0
@@ -708,8 +709,8 @@ class Flybys:
         core = theme.mix(PHASER_COL, (255, 255, 255), 0.55)
         g = 0.4 + 0.6 * scale                  # a distant ship's beams are finer
         for width, level in ((17, 0.10), (9, 0.22), (5, 0.45)):
-            pygame.draw.line(glow, self._light(PHASER_COL, level * k), p0, p1, max(1, round(width * g)))
-        pygame.draw.line(glow, self._light(core, 0.95 * k), p0, p1, 2)
+            gfx.draw.line(glow, self._light(PHASER_COL, level * k), p0, p1, max(1, round(width * g)))
+        gfx.draw.line(glow, self._light(core, 0.95 * k), p0, p1, 2)
         flash = halo(max(4, int(26 * scale)), self._light(core, k))
         glow.blit(flash, flash.get_rect(center=(int(p0[0]), int(p0[1]))), special_flags=pygame.BLEND_RGB_ADD)
 
@@ -719,9 +720,9 @@ class Flybys:
         for (x0, y0, t0), (x1, y1, _) in zip(s.trail, s.trail[1:]):
             k = 1.0 - (s.t - t0) / TRAIL
             g = 0.4 + 0.6 * s.scale
-            pygame.draw.line(glow, self._light(TORPEDO_COL, 0.3 * k * k), (x0, y0), (x1, y1),
+            gfx.draw.line(glow, self._light(TORPEDO_COL, 0.3 * k * k), (x0, y0), (x1, y1),
                              max(1, int(12 * k * g)))                       # soft glow around the trail
-            pygame.draw.line(glow, self._light(TORPEDO_COL, 0.9 * k * k), (x0, y0), (x1, y1),
+            gfx.draw.line(glow, self._light(TORPEDO_COL, 0.9 * k * k), (x0, y0), (x1, y1),
                              max(1, int(4 * k * g)))
         pulse = 0.8 + 0.2 * math.sin(s.t * 30.0)
         px, py = int(s.pos[0]), int(s.pos[1])

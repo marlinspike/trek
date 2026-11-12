@@ -25,6 +25,7 @@ import pygame
 
 from . import theme
 from .subtitles import STATION_COLOR, station_mark
+from . import gfx
 
 WHEEL_FILE = Path(__file__).resolve().parent.parent / "content" / "data" / "wheel.toml"
 INNER, OUTER, RING = 36, 118, 176      # radii: the hub, the slices, the second ring
@@ -173,7 +174,7 @@ class CommandWheel:
         ease = 1 - (1 - k) ** 3
         cx, cy = self.center
         size = OUTER + (RING - OUTER if self.sub is not None else 0) + 20
-        layer = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
+        layer = gfx.Surface((size * 2, size * 2), pygame.SRCALPHA)
         o = (size, size)
         n = len(self.slices)
         r_out = INNER + (OUTER - INNER) * ease
@@ -195,8 +196,8 @@ class CommandWheel:
                 _sector(layer, o, OUTER + 4, RING, a0 + 1.0, a1 - 1.0, fillc)
                 _arc(layer, o, RING - 1, a0 + 1.0, a1 - 1.0, (*theme.mix(theme.BORDER, col, 0.9 if hot else 0.4), 255),
                      2 if hot else 1)
-        pygame.draw.circle(layer, (*theme.BG_PANEL_HI, int(240 * ease)), o, INNER - 3)
-        pygame.draw.circle(layer, (*theme.BORDER_HI, int(255 * ease)), o, INNER - 3, 1)
+        gfx.draw.circle(layer, (*theme.BG_PANEL_HI, int(240 * ease)), o, INNER - 3)
+        gfx.draw.circle(layer, (*theme.BORDER_HI, int(255 * ease)), o, INNER - 3, 1)
         surf.blit(layer, (cx - size, cy - size))
         if k < 1.0:
             return
@@ -229,8 +230,8 @@ class CommandWheel:
             w = theme.text_width(msg, 12, "mono") + 20
             box = pygame.Rect(0, 0, w, 24)
             box.midtop = (cx, cy + size - 14)
-            pygame.draw.rect(surf, theme.BG_INPUT, box, border_radius=4)
-            pygame.draw.rect(surf, theme.BORDER_HI, box, 1, border_radius=4)
+            gfx.draw.rect(surf, theme.BG_INPUT, box, border_radius=4)
+            gfx.draw.rect(surf, theme.BORDER_HI, box, 1, border_radius=4)
             theme.text(surf, msg, (box.x + 10, box.y + 4), theme.FRIEND, 12, "mono")
 
 
@@ -248,7 +249,7 @@ def _sector(surf: pygame.Surface, o: tuple[int, int], r0: float, r1: float, a0: 
     for k in range(steps, -1, -1):
         a = math.radians(a0 + (a1 - a0) * k / steps)
         pts.append((o[0] + math.sin(a) * r0, o[1] - math.cos(a) * r0))
-    pygame.draw.polygon(surf, col, pts)
+    gfx.draw.polygon(surf, col, pts)
 
 
 def _arc(surf: pygame.Surface, o: tuple[int, int], r: float, a0: float, a1: float, col: tuple[int, int, int, int],
@@ -256,7 +257,7 @@ def _arc(surf: pygame.Surface, o: tuple[int, int], r: float, a0: float, a1: floa
     steps = max(3, int((a1 - a0) / 4))
     pts = [(o[0] + math.sin(math.radians(a0 + (a1 - a0) * k / steps)) * r,
             o[1] - math.cos(math.radians(a0 + (a1 - a0) * k / steps)) * r) for k in range(steps + 1)]
-    pygame.draw.lines(surf, col, False, pts, width)
+    gfx.draw.lines(surf, col, False, pts, width)
 
 
 __all__ = ["CommandWheel", "Slice", "WHEEL_FILE", "fill", "load_wheels"]

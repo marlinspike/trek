@@ -26,6 +26,7 @@ from ..sim.systems.repair import under_repair
 from ..sim.systems.phasers import bank_bears, bank_ready
 from . import theme
 from .hulls import draw_hull, transform
+from . import gfx
 
 if TYPE_CHECKING:
     from .battle_scene import BattleScene
@@ -90,11 +91,11 @@ def hull_diagram(surf: pygame.Surface, ship: Ship, box: pygame.Rect, show_shield
         col = theme.health_color(sub.health, sub.destroyed)
         r = 3 if sub.kind not in (Kind.REACTOR, Kind.DRIVE) else 4
         if highlight and sub.kind in highlight:
-            pygame.draw.circle(surf, theme.CAUTION, (int(px), int(py)), r + 3, 1)
+            gfx.draw.circle(surf, theme.CAUTION, (int(px), int(py)), r + 3, 1)
         fixing = bool(repairing and sub.sid in repairing)
         if fixing:
             prio = sub.kind == ship.repair_priority
-            pygame.draw.circle(surf, theme.dim(theme.REPAIR, pulse), (int(px), int(py)), r + (4 if prio else 3),
+            gfx.draw.circle(surf, theme.dim(theme.REPAIR, pulse), (int(px), int(py)), r + (4 if prio else 3),
                                2 if prio else 1)
         if ui is not None and sub.kind != Kind.SHIELD:
             state = "destroyed" if sub.destroyed else "intact" if sub.intact else f"{100 - sub.damage}%"
@@ -102,7 +103,7 @@ def hull_diagram(surf: pygame.Surface, ship: Ship, box: pygame.Rect, show_shield
             ui.add(pygame.Rect(int(px) - r - 3, int(py) - r - 3, 2 * r + 6, 2 * r + 6), on_click or (lambda: None), tip)
         if sub.kind == Kind.SHIELD:
             continue
-        pygame.draw.circle(surf, col, (int(px), int(py)), r)
+        gfx.draw.circle(surf, col, (int(px), int(py)), r)
     if show_shields:
         rad = 58 * k
         for i, sh in enumerate(ship.shields):
@@ -117,12 +118,12 @@ def hull_diagram(surf: pygame.Surface, ship: Ship, box: pygame.Rect, show_shield
                 col = theme.dim(theme.ALERT, 0.6)
             else:
                 col = theme.mix(theme.ALERT, theme.SHIELD, sh.effective / 100.0)
-            pygame.draw.arc(surf, col, rect, a0, a1, 4 if sh.reinforced else 3)
+            gfx.draw.arc(surf, col, rect, a0, a1, 4 if sh.reinforced else 3)
             if sh.flash > 0:              # just hit: the facing flares, red if it has gone down
                 hot = theme.ALERT if (sh.destroyed or not sh.up) else (255, 255, 255)
                 k = min(1.0, sh.flash / 0.5)
-                pygame.draw.arc(surf, theme.mix(col, hot, k), rect, a0, a1, 4)
-                pygame.draw.arc(surf, theme.mix(theme.BG_PANEL, hot, 0.7 * k), rect.inflate(8, 8), a0, a1, 2)
+                gfx.draw.arc(surf, theme.mix(col, hot, k), rect, a0, a1, 4)
+                gfx.draw.arc(surf, theme.mix(theme.BG_PANEL, hot, 0.7 * k), rect.inflate(8, 8), a0, a1, 2)
             mid = math.radians(facing)
             lx, ly = cx + math.sin(mid) * (rad + 11), cy - math.cos(mid) * (rad + 11)
             key = f"shield{ship.id}.{i}"
@@ -167,11 +168,11 @@ def diagram_legend(surf: pygame.Surface, x: int, y: int) -> None:
     xx = x
     for kind, col, label in items:
         if kind == "dot":
-            pygame.draw.circle(surf, col, (xx + 5, y + 7), 4)
+            gfx.draw.circle(surf, col, (xx + 5, y + 7), 4)
         elif kind == "ring":
-            pygame.draw.circle(surf, col, (xx + 5, y + 7), 6, 2)
+            gfx.draw.circle(surf, col, (xx + 5, y + 7), 6, 2)
         else:
-            pygame.draw.arc(surf, col, pygame.Rect(xx - 2, y, 14, 14), 0.4, 2.7, 3)
+            gfx.draw.arc(surf, col, pygame.Rect(xx - 2, y, 14, 14), 0.4, 2.7, 3)
         theme.text(surf, label, (xx + 15, y), theme.TEXT_DIM, 11)
         xx += 15 + theme.text_width(label, 11) + 16
         if xx > x + 360:
@@ -366,7 +367,7 @@ class TargetPanel(Panel):
                 v = seen.shields[i]
             r = pygame.Rect(x + i * 30, yy + 2, 26, 8)
             if v is None:
-                pygame.draw.rect(surf, theme.TEXT_FAINT, r, 1)
+                gfx.draw.rect(surf, theme.TEXT_FAINT, r, 1)
             else:
                 theme.bar(surf, r, max(0.0, v) / 100.0, theme.mix(theme.ALERT, theme.SHIELD, max(0.0, v) / 100.0)
                           if v > 0 else theme.ALERT)
@@ -503,12 +504,12 @@ class WeaponsPanel(Panel):
             frac = b.charge / ship.cls.banks_charge
             bears = brg is not None and bank_bears(ship, b, brg)
             edge = theme.GOOD if bears else theme.BORDER
-            pygame.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
-            pygame.draw.rect(surf, edge, r, 1, border_radius=3)
+            gfx.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
+            gfx.draw.rect(surf, edge, r, 1, border_radius=3)
             lit = 1.0 - (time.monotonic() - hud.fired_at.get(i, -99.0)) / BANK_GLOW
             if lit > 0:                    # just fired: the button glows in the phaser's colour, fading as the beam does
-                pygame.draw.rect(surf, theme.mix(theme.BG_INPUT, theme.PHASER, 0.35 * lit), r.inflate(-2, -2), border_radius=3)
-                pygame.draw.rect(surf, theme.mix(edge, theme.PHASER, lit), r, 2, border_radius=3)
+                gfx.draw.rect(surf, theme.mix(theme.BG_INPUT, theme.PHASER, 0.35 * lit), r.inflate(-2, -2), border_radius=3)
+                gfx.draw.rect(surf, theme.mix(edge, theme.PHASER, lit), r, 2, border_radius=3)
             col = theme.health_color(b.health, b.destroyed) if not b.intact else (
                 theme.GOOD if frac >= 0.999 else theme.CAUTION)
             theme.bar(surf, pygame.Rect(r.x + 4, r.bottom - 8, r.width - 8, 4), frac if b.intact else 0, col)
@@ -546,8 +547,8 @@ class WeaponsPanel(Panel):
                 rel = norm360(brg - ship.course)
                 from ..core.angles import in_arc
                 bears = not hud.world.rules.tube_arcs or in_arc(rel, t.mount.arc_center, t.mount.arc_width)
-            pygame.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
-            pygame.draw.rect(surf, theme.GOOD if bears and t.loaded else theme.BORDER, r, 1, border_radius=3)
+            gfx.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
+            gfx.draw.rect(surf, theme.GOOD if bears and t.loaded else theme.BORDER, r, 1, border_radius=3)
             if t.loaded:
                 # loaded but the target is outside this tube's arc: dimmed, so it's clear why it won't fire
                 lab, col = t.loaded.ordnance.upper()[:4], theme.GOOD if bears or tgt is None else theme.TEXT_DIM
@@ -562,7 +563,7 @@ class WeaponsPanel(Panel):
                 fill = r.inflate(-4, -4)       # the tube filling as it loads
                 fill.width = max(0, int(fill.width * max(0.0, min(1.0, t.charge / 100.0))))
                 if fill.width > 0:
-                    pygame.draw.rect(surf, theme.mix(theme.BG_INPUT, theme.CAUTION, 0.18), fill, border_radius=2)
+                    gfx.draw.rect(surf, theme.mix(theme.BG_INPUT, theme.CAUTION, 0.18), fill, border_radius=2)
             theme.text(surf, f"{i + 1}", (r.x + 5, r.y + 3), theme.TEXT, 11, "mono")
             theme.text(surf, lab, (r.centerx + 4, r.bottom - 12), col, 10, "mono", anchor="center")
             prox = t.loaded.prox if t.loaded else t.load_prox
@@ -595,8 +596,8 @@ class WeaponsPanel(Panel):
             lab = lch.loaded.code if lch.loaded else ("DMG" if not lch.intact else "…")
             col = theme.GOOD if lch.loaded else theme.TEXT_FAINT
             r = pygame.Rect(lx + i * 48, yy, 44, 22)
-            pygame.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
-            pygame.draw.rect(surf, theme.BORDER, r, 1, border_radius=3)
+            gfx.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
+            gfx.draw.rect(surf, theme.BORDER, r, 1, border_radius=3)
             theme.text(surf, lab, r.center, col, 11, "mono", anchor="center")
         px = lx + max(1, len(ship.launchers)) * 48 + 6
         hud.ui.button(surf, pygame.Rect(px, yy, 86, 22), "Launch (P)", hud.launch_probe,
@@ -709,9 +710,9 @@ class ContactsPanel(Panel):
                 break
             r = pygame.Rect(rect.x + 4, ry - 2, rect.width - 8, rh)
             if sid == ship.target or sid == hud.selected_ally:
-                pygame.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=3)
+                gfx.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=3)
             elif r.collidepoint(hud.ui.mouse):
-                pygame.draw.rect(surf, (16, 27, 49), r, border_radius=3)
+                gfx.draw.rect(surf, (16, 27, 49), r, border_radius=3)
             theme.text(surf, name, (rect.x + 12, ry), col, 12)
             theme.text(surf, note, (rect.x + rect.width * 0.48, ry), theme.TEXT_DIM, 11)
             theme.text(surf, f"{d:>7,.0f}", (rect.right - 12, ry), theme.TEXT, 12, "mono", anchor="topright")
@@ -858,9 +859,9 @@ class TabbedPanel(Panel):
             r = pygame.Rect(x, rect.y + 2, w, 22)
             on = i == self.active
             if on:
-                pygame.draw.line(surf, theme.FRIEND, (r.x + 4, rect.y + 1), (r.x + 28, rect.y + 1), 2)
+                gfx.draw.line(surf, theme.FRIEND, (r.x + 4, rect.y + 1), (r.x + 28, rect.y + 1), 2)
             elif r.collidepoint(hud.ui.mouse):
-                pygame.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=3)
+                gfx.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=3)
             theme.text(surf, label, (r.x + 4, rect.y + 7), theme.TEXT if on else theme.TEXT_FAINT, 11, "display", weight="medium")
             hud.ui.add(r, partial(setattr, self, "active", i), t.title)
             x += w + 2

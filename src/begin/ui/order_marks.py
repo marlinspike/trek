@@ -36,6 +36,7 @@ from ..sim.ship import HelmMode, Ship
 from . import theme
 from .camera import Camera
 from .officer_view import _arrow_head, _brackets, _dashed
+from . import gfx
 
 HELM = theme.ALLY
 ENGINEERING = theme.GOOD
@@ -62,7 +63,7 @@ def _chevrons(surf: pygame.Surface, col: theme.Color, a: tuple[float, float], b:
         t = k / (n + 1)
         x, y = a[0] + dx * t, a[1] + dy * t
         for d in (2.5, -2.5):
-            pygame.draw.line(surf, col, (x, y), (x + math.cos(ang + d) * 8, y + math.sin(ang + d) * 8), 2)
+            gfx.draw.line(surf, col, (x, y), (x + math.cos(ang + d) * 8, y + math.sin(ang + d) * 8), 2)
 
 
 def draw_orders(surf: pygame.Surface, cam: Camera, obs: Observation, ship: Ship | None) -> None:
@@ -103,7 +104,7 @@ def draw_orders(surf: pygame.Surface, cam: Camera, obs: Observation, ship: Ship 
         ang = math.atan2(them[1] - me[1], them[0] - me[0])
         nx, ny = -math.sin(ang) * 3, math.cos(ang) * 3
         for s in (1, -1):
-            pygame.draw.line(surf, theme.dim(ENGINEERING, 0.8), (me[0] + nx * s, me[1] + ny * s),
+            gfx.draw.line(surf, theme.dim(ENGINEERING, 0.8), (me[0] + nx * s, me[1] + ny * s),
                              (them[0] + nx * s, them[1] + ny * s), 1)
     if ship.hold_fire:
         theme.text(surf, "HOLD FIRE", (me[0], me[1] + 26), theme.CAUTION, 10, weight="semibold", anchor="midtop")

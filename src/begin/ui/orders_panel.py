@@ -16,6 +16,7 @@ import pygame
 
 from . import theme
 from .hud import Panel
+from . import gfx
 
 if TYPE_CHECKING:
     from .battle_scene import BattleScene
@@ -84,8 +85,8 @@ class OrdersPanel(Panel):
             r = pygame.Rect(x0, y, w, CARD_H - 4)
             hover = r.collidepoint(hud.ui.mouse)
             live = running == name
-            pygame.draw.rect(surf, theme.BG_PANEL_HI if hover or live else theme.BG_INPUT, r, border_radius=4)
-            pygame.draw.rect(surf, theme.FRIEND if live else (theme.BORDER_HI if hover else theme.BORDER), r, 1,
+            gfx.draw.rect(surf, theme.BG_PANEL_HI if hover or live else theme.BG_INPUT, r, border_radius=4)
+            gfx.draw.rect(surf, theme.FRIEND if live else (theme.BORDER_HI if hover else theme.BORDER), r, 1,
                              border_radius=4)
             theme.text(surf, name, (r.x + 10, r.y + 7), theme.FRIEND, 13, "mono", weight="medium")
             nx = r.x + 10 + max(90, theme.text_width(name, 13, "mono") + 14)
@@ -93,8 +94,8 @@ class OrdersPanel(Panel):
             if key:
                 kw = theme.text_width(key, 11, "mono") + 12
                 kr = pygame.Rect(r.right - kw - 8, r.y + 6, kw, 18)
-                pygame.draw.rect(surf, theme.BG_INPUT, kr, border_radius=3)
-                pygame.draw.rect(surf, theme.BORDER_HI, kr, 1, border_radius=3)
+                gfx.draw.rect(surf, theme.BG_INPUT, kr, border_radius=3)
+                gfx.draw.rect(surf, theme.BORDER_HI, kr, 1, border_radius=3)
                 theme.text(surf, key, kr.center, theme.TEXT_DIM, 11, "mono", anchor="center")
                 tail = kw + 14
             theme.text(surf, _fit(what, 12, r.right - nx - tail - 8), (nx, r.y + 8), theme.TEXT_DIM, 12)

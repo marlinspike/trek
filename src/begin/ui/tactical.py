@@ -31,6 +31,7 @@ from .fleet_art import art_px, fleet_image, has_art
 from .showpiece import SPRITE_CENTRE_Y, SPRITE_PX, ship_image, ship_lights
 from .hulls import MIN_HULL_PX, draw_hull, hull_pixel_scale
 from .starfield import Starfield
+from . import gfx
 
 SHIELD_FLASH = 0.7        # seconds a shield hit shimmers
 TRAIL_POINT = 0.25        # cycles between the points of an engine trail
@@ -140,6 +141,8 @@ class TacticalView:
     show_arcs: bool = False
     hover_world: tuple[float, float] | None = None
     _overlay: pygame.Surface | None = None
+    _overlay_used: pygame.Rect | None = None       # what was drawn on the overlay last frame, to clear
+    _glow_used: pygame.Rect | None = None
     _glow: pygame.Surface | None = None
     _label_rects: list[pygame.Rect] = field(default_factory=list)   # labels drawn this frame
     _label_more: dict[int, int] = field(default_factory=dict)      # a group's named ship: how many more fly with her
@@ -258,7 +261,7 @@ class TacticalView:
             image = _art(hull.class_id if hull is not None else cls_id, length, course, k0)
         if image is None and hull is not None:      # her outline, filled in, to be torn apart
             size = int(110 * k0) + 4
-            image = pygame.Surface((size, size), pygame.SRCALPHA)
+            image = gfx.Surface((size, size), pygame.SRCALPHA)
             draw_hull(image, hull, size / 2, size / 2, course, k0, theme.FRIEND if ours else theme.HOSTILE, fill_alpha=0.6)
         blast = Blast(0.0, 0.0, max(BLAST_MIN_PX, 30.0 * k0), seed=self._rng.randrange(1 << 30))
         blast.start(image)
@@ -319,9 +322,14 @@ class TacticalView:
         cam = self.cam
         r = cam.rect
         if self._overlay is None or self._overlay.get_size() != surf.get_size():
-            self._overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+            self._overlay = gfx.Surface(surf.get_size(), pygame.SRCALPHA)
+            gfx.track(self._overlay)
+            self._overlay_used = pygame.Rect(r)
         overlay = self._overlay
-        overlay.fill((0, 0, 0, 0), r)        # only the map is ever drawn through it, so only the map is cleared
+        # the overlay is mostly empty: only what was drawn on it last frame is cleared, only what is drawn now is added
+        if self._overlay_used is not None:
+            overlay.fill((0, 0, 0, 0), self._overlay_used.clip(r))
+        gfx.take_dirty(overlay)
         self._label_rects = []
         self._burning = []
         clip = surf.get_clip()
@@ -400,16 +408,24 @@ class TacticalView:
         glow = None
         if self.effects.beams:            # soft light of the shots in flight, added on in one go
             if self._glow is None or self._glow.get_size() != surf.get_size():
-                self._glow = pygame.Surface(surf.get_size())
+                self._glow = gfx.Surface(surf.get_size())
+                gfx.track(self._glow)
+                self._glow_used = pygame.Rect(r)
             glow = self._glow
-            glow.fill((0, 0, 0), r)
+            if self._glow_used is not None:
+                glow.fill((0, 0, 0), self._glow_used.clip(r))
+            gfx.take_dirty(glow)
         self.effects.draw(surf, cam, overlay, glow)
         if glow is not None:
-            surf.blit(glow, r.topleft, area=r, special_flags=pygame.BLEND_RGB_ADD)
+            self._glow_used = lit = gfx.take_dirty(glow)
+            if lit is not None and (lit := lit.clip(r)).w > 0:
+                surf.blit(glow, lit.topleft, area=lit, special_flags=pygame.BLEND_RGB_ADD)
         self._fire(surf, pose)
-        surf.blit(overlay, r.topleft, area=r)
+        self._overlay_used = used = gfx.take_dirty(overlay)
+        if used is not None and (used := used.clip(r)).w > 0:
+            surf.blit(overlay, used.topleft, area=used)
         self._scale_bar(surf)
-        pygame.draw.rect(surf, theme.border(), r, 1)
+        gfx.draw.rect(surf, theme.border(), r, 1)
         surf.set_clip(clip)
 
     def _fire(self, surf: pygame.Surface, pose: Callable[[int], Pose | None]) -> None:
@@ -474,7 +490,7 @@ class TacticalView:
                 lo, hi = n * band // TRAIL_BANDS, n * (band + 1) // TRAIL_BANDS
                 alpha = int(95 * strength * ((band + 1) / TRAIL_BANDS) ** 1.5)
                 if hi > lo and alpha > 3:
-                    pygame.draw.lines(overlay, (*wake, alpha), False, path[lo:hi + 1], 2 if band == TRAIL_BANDS - 1 else 1)
+                    gfx.draw.lines(overlay, (*wake, alpha), False, path[lo:hi + 1], 2 if band == TRAIL_BANDS - 1 else 1)
 
     def _torp_trail(self, overlay: pygame.Surface, oid: int, p: Pose, now: float, f: Faction | None) -> None:
         """The exhaust a torpedo leaves: a short streak that fades out behind it."""
@@ -493,7 +509,7 @@ class TacticalView:
         n = len(path) - 1
         for i in range(n):                    # a faint thread, fainter the older it is
             k = (i + 1) / n
-            pygame.draw.line(overlay, (*col, int(70 * k * k)), path[i], path[i + 1], 1)
+            gfx.draw.line(overlay, (*col, int(70 * k * k)), path[i], path[i + 1], 1)
         warm = theme.mix(col, (255, 255, 255), 0.35)
         for i, (x, y, born) in enumerate(pts):   # and a stream of sparks that drift apart and fade
             age = now - born
@@ -505,7 +521,7 @@ class TacticalView:
             h = (oid * 92821 + i * 68917) & 0xFFFF
             dx = ((h & 0xFF) / 255.0 - 0.5) * jit
             dy = ((h >> 8) / 255.0 - 0.5) * jit
-            pygame.draw.circle(overlay, (*warm, int(190 * k * k)), (int(q[0] + dx), int(q[1] + dy)), 1 if k < 0.6 else 2)
+            gfx.draw.circle(overlay, (*warm, int(190 * k * k)), (int(q[0] + dx), int(q[1] + dy)), 1 if k < 0.6 else 2)
 
     @staticmethod
     def _inbound(obs: Observation, p: Pose) -> float | None:
@@ -545,7 +561,7 @@ class TacticalView:
         left = (ex + math.cos(ang + 2.5) * 8, ey + math.sin(ang + 2.5) * 8)
         right = (ex + math.cos(ang - 2.5) * 8, ey + math.sin(ang - 2.5) * 8)
         notch = (ex - math.cos(ang) * 2, ey - math.sin(ang) * 2)
-        pygame.draw.polygon(surf, theme.mix(theme.BG, theme.HOSTILE, 0.5 + 0.5 * beat), (tip, left, notch, right))
+        gfx.draw.polygon(surf, theme.mix(theme.BG, theme.HOSTILE, 0.5 + 0.5 * beat), (tip, left, notch, right))
 
     def _ripples(self, obs: Observation, pose: Callable[[int], Pose | None]) -> None:
         """A ship that cloaks or decloaks in sight bends the light around it for a moment."""
@@ -601,9 +617,9 @@ class TacticalView:
             if px >= 70:
                 break
         x, y = r.left + 16, r.bottom - 18
-        pygame.draw.line(surf, theme.TEXT_DIM, (x, y), (x + px, y))
-        pygame.draw.line(surf, theme.TEXT_DIM, (x, y - 4), (x, y + 2))
-        pygame.draw.line(surf, theme.TEXT_DIM, (x + px, y - 4), (x + px, y + 2))
+        gfx.draw.line(surf, theme.TEXT_DIM, (x, y), (x + px, y))
+        gfx.draw.line(surf, theme.TEXT_DIM, (x, y - 4), (x, y + 2))
+        gfx.draw.line(surf, theme.TEXT_DIM, (x + px, y - 4), (x + px, y + 2))
         theme.text(surf, f"{units:,}", (x + px + 6, y - 7), theme.TEXT_DIM, 11, "mono")
 
     def _ranges(self, surf: pygame.Surface, overlay: pygame.Surface, me: Ship, p: Pose) -> None:
@@ -615,7 +631,7 @@ class TacticalView:
             theme.text(surf, "phaser", (sx + rr * 0.707 + 4, sy - rr * 0.707 - 6), theme.dim(theme.FRIEND, 0.6), 10)
         sr = me.sensor_range() * cam.zoom
         if 12 < sr < 6000:
-            pygame.draw.circle(surf, theme.dim(theme.FRIEND, 0.22), (int(sx), int(sy)), int(sr), 1)
+            gfx.draw.circle(surf, theme.dim(theme.FRIEND, 0.22), (int(sx), int(sy)), int(sr), 1)
         if self.show_arcs:
             for b in me.banks:
                 c = b.mount.arc_center + p[2]
@@ -627,8 +643,8 @@ class TacticalView:
                     a = math.radians(c - w / 2 + w * k / 12)
                     pts.append((sx + math.sin(a) * rr, sy - math.cos(a) * rr))
                 col = theme.GOOD if b.charge >= me.cls.banks_charge - 1e-6 else theme.CAUTION
-                pygame.draw.polygon(overlay, (*col, 18), pts)
-                pygame.draw.polygon(overlay, (*col, 60), pts, 1)
+                gfx.draw.polygon(overlay, (*col, 18), pts)
+                gfx.draw.polygon(overlay, (*col, 60), pts, 1)
 
     def _shield_ring(self, surf: pygame.Surface, ship_id: int, sx: float, sy: float, course: float, rad: float,
                      strengths: list[tuple[float, bool]] | None, overlay: pygame.Surface | None = None) -> None:
@@ -659,7 +675,7 @@ class TacticalView:
             a1 = math.radians(90 - (course + facing - 26))
             rect = pygame.Rect(0, 0, rad * 2, rad * 2)
             rect.center = (int(sx), int(sy))
-            pygame.draw.arc(surf, col, rect, a0, a1, 2 if fl is None else 3)
+            gfx.draw.arc(surf, col, rect, a0, a1, 2 if fl is None else 3)
 
     @staticmethod
     def _shimmer(overlay: pygame.Surface, ship_id: int, sector: int, sx: float, sy: float, facing: float,
@@ -681,16 +697,16 @@ class TacticalView:
                     for j in range(4):
                         b0 = a0 + (a1 - a0) * j / 4
                         if (j + int(age * 30)) % 2 == 0:
-                            pygame.draw.arc(overlay, (*col, alpha), rect, b0, b0 + (a1 - a0) / 4, 2)
+                            gfx.draw.arc(overlay, (*col, alpha), rect, b0, b0 + (a1 - a0) / 4, 2)
                 else:
-                    pygame.draw.arc(overlay, (*col, alpha), rect, a0, a1, 2 if k == 0 else 1)
+                    gfx.draw.arc(overlay, (*col, alpha), rect, a0, a1, 2 if k == 0 else 1)
         rng = random.Random(ship_id * 31 + sector * 7 + int(age * 24))
         for _ in range(int(3 + 5 * power)):
             b = math.radians(facing + rng.uniform(-20, 20))
             r = rad + rng.uniform(-1.5, 4.0 + 6 * t)
             alpha = int(220 * fade * rng.uniform(0.4, 1.0))
             if alpha > 4:
-                pygame.draw.circle(overlay, (255, 255, 255, alpha), (int(sx + math.sin(b) * r), int(sy - math.cos(b) * r)), 1)
+                gfx.draw.circle(overlay, (255, 255, 255, alpha), (int(sx + math.sin(b) * r), int(sy - math.cos(b) * r)), 1)
 
     def _links(self, surf: pygame.Surface, overlay: pygame.Surface, obs: Observation,
                pose: Callable[[int], Pose | None], player_id: int | None, selected_ally: int | None) -> None:
@@ -749,8 +765,8 @@ class TacticalView:
         for w, alpha in ((7.0, 40), (4.0, 70)):
             pts = [(a[0] + nx * w * 0.4, a[1] + ny * w * 0.4), (b[0] + nx * w, b[1] + ny * w),
                    (b[0] - nx * w, b[1] - ny * w), (a[0] - nx * w * 0.4, a[1] - ny * w * 0.4)]
-            pygame.draw.polygon(overlay, (*col, alpha), pts)
-        pygame.draw.line(overlay, (*col, 200), a, b, 1)
+            gfx.draw.polygon(overlay, (*col, alpha), pts)
+        gfx.draw.line(overlay, (*col, 200), a, b, 1)
 
     def _own_ship(self, surf: pygame.Surface, overlay: pygame.Surface, s: Ship, p: Pose, is_player: bool,
                   obs: Observation, selected: bool = False, names: dict[int, str] | None = None) -> None:
@@ -771,12 +787,12 @@ class TacticalView:
             a = math.radians(p[2])
             L = 18 + s.warp * 6
             b = 56 * k                           # from just past her bow, so the line never draws over her
-            pygame.draw.line(surf, theme.dim(color, 0.5), (sx + math.sin(a) * b, sy - math.cos(a) * b),
+            gfx.draw.line(surf, theme.dim(color, 0.5), (sx + math.sin(a) * b, sy - math.cos(a) * b),
                              (sx + math.sin(a) * (b + L * 1.5), sy - math.cos(a) * (b + L * 1.5)))
         if is_player and abs(norm180(s.desired_course - s.course)) > 1:
             a = math.radians(s.desired_course)
             L = 50 * k
-            pygame.draw.line(surf, theme.dim(theme.CAUTION, 0.7), (sx, sy), (sx + math.sin(a) * L, sy - math.cos(a) * L), 1)
+            gfx.draw.line(surf, theme.dim(theme.CAUTION, 0.7), (sx, sy), (sx + math.sin(a) * L, sy - math.cos(a) * L), 1)
         art = s.alive and not s.cloaked and k >= SPRITE_MIN_K and self._sprite(surf, s.cls, sx, sy, p[2], k)
         if not art:
             draw_hull(surf, s.cls.hull, sx, sy, p[2], k, color)
@@ -816,8 +832,8 @@ class TacticalView:
             b = 62 * k + 8
             for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
                 cx, cy = sx + dx * b, sy + dy * b
-                pygame.draw.line(surf, theme.ALLY, (cx, cy), (cx - dx * 7, cy), 1)
-                pygame.draw.line(surf, theme.ALLY, (cx, cy), (cx, cy - dy * 7), 1)
+                gfx.draw.line(surf, theme.ALLY, (cx, cy), (cx - dx * 7, cy), 1)
+                gfx.draw.line(surf, theme.ALLY, (cx, cy), (cx, cy - dy * 7), 1)
 
     def _group_labels(self, ships: list[tuple[int, Pose]], keep: set[int | None]) -> None:
         """Ships flying in close formation share one name on the map ("Bismark (BC)  +2") instead of a pile of
@@ -858,7 +874,7 @@ class TacticalView:
                 a = math.radians(p[2])
                 L = 18 + c.warp * 6
                 b = 56 * k                       # from just past her bow, so the line never draws over her
-                pygame.draw.line(surf, theme.dim(color, 0.45), (sx + math.sin(a) * b, sy - math.cos(a) * b),
+                gfx.draw.line(surf, theme.dim(color, 0.45), (sx + math.sin(a) * b, sy - math.cos(a) * b),
                                  (sx + math.sin(a) * (b + L * 1.5), sy - math.cos(a) * (b + L * 1.5)))
             art = c.visible and c.identified and k >= SPRITE_MIN_K and self._sprite(surf, c.cls, sx, sy, p[2], k)
             if not art:
@@ -873,7 +889,7 @@ class TacticalView:
             art = False
             rad = 10
             pts = [(sx, sy - rad), (sx + rad, sy), (sx, sy + rad), (sx - rad, sy)]
-            pygame.draw.polygon(surf, color, pts, 1)
+            gfx.draw.polygon(surf, color, pts, 1)
             theme.text(surf, "?", (sx, sy), color, 12, anchor="center")
         if not c.visible:
             self._dashed_circle(surf, theme.dim(color, 0.8), (sx, sy), rad + 6, seg=8)
@@ -918,10 +934,10 @@ class TacticalView:
                 ax, ay = -dx * 8, -dy * 8                     # the two arms of the bracket, turned with it
                 a1 = (cx + ax * math.cos(spin), cy + ax * math.sin(spin))
                 a2 = (cx - ay * math.sin(spin), cy + ay * math.cos(spin))
-                pygame.draw.line(surf, col, (cx, cy), a1, 2)
-                pygame.draw.line(surf, col, (cx, cy), a2, 2)
+                gfx.draw.line(surf, col, (cx, cy), a1, 2)
+                gfx.draw.line(surf, col, (cx, cy), a2, 2)
             if t < 1.0 and overlay is not None:
-                pygame.draw.circle(overlay, (*theme.CAUTION, int(60 * (1 - t))), (int(sx), int(sy)), int(b), 1)
+                gfx.draw.circle(overlay, (*theme.CAUTION, int(60 * (1 - t))), (int(sx), int(sy)), int(b), 1)
             if sub:
                 theme.text(surf, f"⌖ {sub}", (sx, sy + b + 6), col, 11, anchor="midtop")
 
@@ -941,8 +957,8 @@ class TacticalView:
                 theme.text(surf, f"×{o.count}", (sx + size * 2 + 4, sy - 6), theme.dim(col, 0.9), 10, "mono")
         else:
             col = f.torpedo_color if f is not None else theme.PROBE
-            pygame.draw.circle(surf, col, (int(sx), int(sy)), 4, 1)
-            pygame.draw.circle(surf, col, (int(sx), int(sy)), 1)
+            gfx.draw.circle(surf, col, (int(sx), int(sy)), 4, 1)
+            gfx.draw.circle(surf, col, (int(sx), int(sy)), 1)
             if o.code:
                 theme.text(surf, o.code, (sx + 7, sy - 6), theme.dim(col, 0.9), 10, "mono")
 
@@ -952,7 +968,7 @@ class TacticalView:
         a = math.atan2(top + 7 - sy, lx - sx)
         start = (sx + math.cos(a) * (ring + 2), sy + math.sin(a) * (ring + 2))
         end = (lx - 3, top + 7) if lx > sx else (lx + 3, top + 7)
-        pygame.draw.line(surf, theme.dim(col, 0.5), start, end, 1)
+        gfx.draw.line(surf, theme.dim(col, 0.5), start, end, 1)
 
     @staticmethod
     def _dashed(surf: pygame.Surface, col: theme.Color, a: tuple[float, float], b: tuple[float, float], on: float, off: float) -> None:
@@ -964,7 +980,7 @@ class TacticalView:
         d = 0.0
         while d < L:
             e = min(L, d + on)
-            pygame.draw.line(surf, col, (a[0] + ux * d, a[1] + uy * d), (a[0] + ux * e, a[1] + uy * e))
+            gfx.draw.line(surf, col, (a[0] + ux * d, a[1] + uy * d), (a[0] + ux * e, a[1] + uy * e))
             d = e + off
 
     def _free_label_y(self, x: float, y: float, w: int, h: int) -> float:
@@ -992,7 +1008,7 @@ class TacticalView:
         for i in range(0, n, 2):
             a0 = 2 * math.pi * i / n
             a1 = 2 * math.pi * (i + 1) / n
-            pygame.draw.line(surf, col, (c[0] + math.cos(a0) * r, c[1] + math.sin(a0) * r),
+            gfx.draw.line(surf, col, (c[0] + math.cos(a0) * r, c[1] + math.sin(a0) * r),
                              (c[0] + math.cos(a1) * r, c[1] + math.sin(a1) * r))
 
     # ----------------------------------------------------------------- picking

@@ -23,6 +23,7 @@ from dataclasses import dataclass
 import pygame
 
 from . import theme
+from . import gfx
 
 STATION_COLOR: dict[str, theme.Color] = {
     "helm": theme.ALLY, "tactical": theme.PHASER, "engineering": theme.GOOD, "science": theme.CREW,
@@ -114,11 +115,11 @@ class Subtitles:
         box.midbottom = (area.centerx, area.bottom - 18)
         if any(box.inflate(24, 24).collidepoint(p) for p in keep_clear):
             box.midtop = (area.centerx, area.y + 84)
-        glass = pygame.Surface(box.size, pygame.SRCALPHA)
+        glass = gfx.Surface(box.size, pygame.SRCALPHA)
         glass.fill((*theme.BG_PANEL, int(214 * alpha)))
         surf.blit(glass, box)
         edge = theme.mix(theme.dim(s.color, 0.45), s.color, bright)
-        pygame.draw.rect(surf, theme.mix(theme.BG, edge, alpha), box, 1, border_radius=6)
+        gfx.draw.rect(surf, theme.mix(theme.BG, edge, alpha), box, 1, border_radius=6)
         x = box.x + 14
         cy = box.y + 9 + 10
         if s.station:
@@ -161,14 +162,14 @@ def station_mark(surf: pygame.Surface, station: str, c: tuple[float, float], r: 
     x, y = c
     if station == "helm":
         pts = [(x - r, y + r * 0.6), (x, y - r * 0.7), (x + r, y + r * 0.6)]
-        pygame.draw.lines(surf, col, False, pts, 2)
+        gfx.draw.lines(surf, col, False, pts, 2)
     elif station == "tactical":
-        pygame.draw.polygon(surf, col, [(x, y - r), (x + r, y), (x, y + r), (x - r, y)], 2)
+        gfx.draw.polygon(surf, col, [(x, y - r), (x + r, y), (x, y + r), (x - r, y)], 2)
     elif station == "engineering":
         pts = [(x + r * math.cos(math.radians(60 * k + 30)), y + r * math.sin(math.radians(60 * k + 30))) for k in range(6)]
-        pygame.draw.polygon(surf, col, pts, 2)
+        gfx.draw.polygon(surf, col, pts, 2)
     else:
-        pygame.draw.circle(surf, col, (int(x), int(y)), int(r), 2)
+        gfx.draw.circle(surf, col, (int(x), int(y)), int(r), 2)
 
 
 __all__ = ["STATION_COLOR", "Subtitle", "Subtitles", "read_time", "station_mark", "wrap"]

@@ -30,6 +30,7 @@ from ...voice.recorder import Recorder
 from ...voice.settings import ENGINE_WORDS, ENGINES, MODELS, PTT_KEYS, VoiceSettings
 from .. import theme
 from .state import SceneState
+from .. import gfx
 
 if TYPE_CHECKING:
     from ..battle_scene import BattleScene
@@ -214,17 +215,17 @@ class VoiceMixin(SceneState):
             return
         r = pygame.Rect(0, 0, 210, 26)
         r.bottomright = (self.console_rect.right - 4, self.console_rect.y - 4)
-        pygame.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=13)
-        pygame.draw.rect(surf, theme.ALERT if st == "listening" else theme.FRIEND, r, 1, border_radius=13)
+        gfx.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=13)
+        gfx.draw.rect(surf, theme.ALERT if st == "listening" else theme.FRIEND, r, 1, border_radius=13)
         cx, cy = r.x + 16, r.centery
         if st == "listening":
             lv = self.recorder.level if self.recorder is not None else 0.0
-            pygame.draw.circle(surf, theme.ALERT, (cx, cy), 5)
-            pygame.draw.circle(surf, theme.dim(theme.ALERT, 0.6), (cx, cy), int(7 + 6 * lv), 1)
+            gfx.draw.circle(surf, theme.ALERT, (cx, cy), 5)
+            gfx.draw.circle(surf, theme.dim(theme.ALERT, 0.6), (cx, cy), int(7 + 6 * lv), 1)
             theme.text(surf, f"Listening · let go of {self.vset.key.title()}", (r.x + 30, r.y + 5), theme.TEXT, 12)
         else:
             beat = 0.5 + 0.5 * __import__("math").sin(time.monotonic() * 6)
-            pygame.draw.circle(surf, theme.mix(theme.BG, theme.FRIEND, beat), (cx, cy), 5)
+            gfx.draw.circle(surf, theme.mix(theme.BG, theme.FRIEND, beat), (cx, cy), 5)
             theme.text(surf, "Hearing…", (r.x + 30, r.y + 5), theme.TEXT_DIM, 12)
 
     def _voice_page(self: BattleScene, surf: pygame.Surface) -> None:

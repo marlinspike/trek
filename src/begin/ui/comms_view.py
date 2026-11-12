@@ -28,6 +28,7 @@ from ..sim.systems import disposition
 from . import theme
 from .camera import Camera
 from .tour_art import wrap
+from . import gfx
 
 if TYPE_CHECKING:
     from ..sim.world import World
@@ -69,25 +70,25 @@ def mood_mark(surf: pygame.Surface, mood: str, x: float, y: float, s: float = 7.
         flick = 1.0 + 0.12 * math.sin(t * 9.0)
         pts = [(x, y - s * 1.3 * flick), (x + s * 0.8, y + s * 0.2), (x + s * 0.45, y + s), (x - s * 0.45, y + s),
                (x - s * 0.8, y + s * 0.2)]
-        pygame.draw.polygon(surf, col, pts)
-        pygame.draw.polygon(surf, (255, 214, 140), [(x, y - s * 0.3), (x + s * 0.35, y + s * 0.6), (x - s * 0.35, y + s * 0.6)])
+        gfx.draw.polygon(surf, col, pts)
+        gfx.draw.polygon(surf, (255, 214, 140), [(x, y - s * 0.3), (x + s * 0.35, y + s * 0.6), (x - s * 0.35, y + s * 0.6)])
     elif mood in ("shaken", "broken"):   # a falling chevron
         for k in (0.0, 0.7) if mood == "broken" else (0.0,):
             oy = y + k * s
-            pygame.draw.lines(surf, col, False, [(x - s, oy - s * 0.5), (x, oy + s * 0.4), (x + s, oy - s * 0.5)], 3)
+            gfx.draw.lines(surf, col, False, [(x - s, oy - s * 0.5), (x, oy + s * 0.4), (x + s, oy - s * 0.5)], 3)
     elif mood == "wavering":          # a wave
         pts = [(x - s + i * s / 4, y + math.sin(i * 1.3 + t * 3.0) * s * 0.45) for i in range(9)]
-        pygame.draw.lines(surf, col, False, pts, 2)
+        gfx.draw.lines(surf, col, False, pts, 2)
     elif mood == "surrendered":      # a white flag
-        pygame.draw.line(surf, (200, 206, 216), (x - s * 0.7, y - s * 1.2), (x - s * 0.7, y + s * 1.1), 2)
+        gfx.draw.line(surf, (200, 206, 216), (x - s * 0.7, y - s * 1.2), (x - s * 0.7, y + s * 1.1), 2)
         wave = math.sin(t * 4.0) * s * 0.15
-        pygame.draw.polygon(surf, col, [(x - s * 0.6, y - s * 1.2), (x + s, y - s * 0.95 + wave), (x + s * 0.9, y - s * 0.2 + wave),
+        gfx.draw.polygon(surf, col, [(x - s * 0.6, y - s * 1.2), (x + s, y - s * 0.95 + wave), (x + s * 0.9, y - s * 0.2 + wave),
                                         (x - s * 0.6, y - s * 0.35)])
     elif mood == "withdrawing":      # an arrow away
-        pygame.draw.line(surf, col, (x - s, y), (x + s * 0.6, y), 2)
-        pygame.draw.polygon(surf, col, [(x + s, y), (x + s * 0.3, y - s * 0.6), (x + s * 0.3, y + s * 0.6)])
+        gfx.draw.line(surf, col, (x - s, y), (x + s * 0.6, y), 2)
+        gfx.draw.polygon(surf, col, [(x + s, y), (x + s * 0.3, y - s * 0.6), (x + s * 0.3, y + s * 0.6)])
     else:                             # composed: a steady ring
-        pygame.draw.circle(surf, col, (int(x), int(y)), int(s * 0.7), 2)
+        gfx.draw.circle(surf, col, (int(x), int(y)), int(s * 0.7), 2)
 
 
 def draw_map(surf: pygame.Surface, cam: Camera, world: World, side: int, player_id: int | None, comms: Comms,
@@ -113,9 +114,9 @@ def draw_map(surf: pygame.Surface, cam: Camera, world: World, side: int, player_
             continue
         r = 18 + max(0.0, 40 * cam.zoom * 2.0)
         mx, my = sx - r - 12, sy - r - 6
-        halo = pygame.Surface((30, 30), pygame.SRCALPHA)
-        pygame.draw.circle(halo, (*theme.BG, 170), (15, 15), 13)
-        pygame.draw.circle(halo, (*mood_color(mood), 110), (15, 15), 13, 1)
+        halo = gfx.Surface((30, 30), pygame.SRCALPHA)
+        gfx.draw.circle(halo, (*theme.BG, 170), (15, 15), 13)
+        gfx.draw.circle(halo, (*mood_color(mood), 110), (15, 15), 13, 1)
         surf.blit(halo, (mx - 15, my - 15))
         mood_mark(surf, mood, mx, my, 6.0, now)
     # the channel being opened: rings run from our ship to theirs, and pulse around them while they answer
@@ -128,7 +129,7 @@ def draw_map(surf: pygame.Surface, cam: Camera, world: World, side: int, player_
         if pos is not None and (focus.status == "hailing" or age < WAVE_SECONDS):
             ax, ay = cam.to_screen(me.x, me.y)
             bx, by = cam.to_screen(*pos)
-            overlay = pygame.Surface(clip.size, pygame.SRCALPHA)
+            overlay = gfx.Surface(clip.size, pygame.SRCALPHA)
             ox, oy = clip.x, clip.y
             col = theme.HAIL
             d = math.hypot(bx - ax, by - ay)
@@ -137,15 +138,15 @@ def draw_map(surf: pygame.Surface, cam: Camera, world: World, side: int, player_
                     f = ((now * 0.7 + i / 4) % 1.0)
                     px, py = ax + (bx - ax) * f, ay + (by - ay) * f
                     alpha = int(170 * math.sin(math.pi * f))
-                    pygame.draw.circle(overlay, (*col, alpha), (int(px - ox), int(py - oy)), int(5 + 6 * f), 2)
+                    gfx.draw.circle(overlay, (*col, alpha), (int(px - ox), int(py - oy)), int(5 + 6 * f), 2)
                 n = int(d // 14)
                 for k in range(0, n, 2):
                     p0 = (ax + (bx - ax) * k / n - ox, ay + (by - ay) * k / n - oy)
                     p1 = (ax + (bx - ax) * (k + 1) / n - ox, ay + (by - ay) * (k + 1) / n - oy)
-                    pygame.draw.line(overlay, (*col, 60), p0, p1, 1)
+                    gfx.draw.line(overlay, (*col, 60), p0, p1, 1)
             for i in range(3):
                 f = (now * 0.8 + i / 3) % 1.0
-                pygame.draw.circle(overlay, (*col, int(150 * (1 - f))), (int(bx - ox), int(by - oy)), int(14 + 34 * f), 2)
+                gfx.draw.circle(overlay, (*col, int(150 * (1 - f))), (int(bx - ox), int(by - oy)), int(14 + 34 * f), 2)
             surf.blit(overlay, clip.topleft)
     surf.set_clip(old)
 
@@ -155,8 +156,8 @@ def draw_map(surf: pygame.Surface, cam: Camera, world: World, side: int, player_
 def emblem(surf: pygame.Surface, faction: str, cx: int, cy: int, r: int) -> None:
     """A plain geometric badge for the race (not any studio's insignia)."""
     acc = FACTION_ACCENT.get(faction, (160, 170, 190))
-    pygame.draw.circle(surf, theme.mix(theme.BG, acc, 0.22), (cx, cy), r)
-    pygame.draw.circle(surf, acc, (cx, cy), r, 2)
+    gfx.draw.circle(surf, theme.mix(theme.BG, acc, 0.22), (cx, cy), r)
+    gfx.draw.circle(surf, acc, (cx, cy), r, 2)
     k = r * 0.62
     if faction == "klingon":           # three blades
         for i in range(3):
@@ -164,16 +165,16 @@ def emblem(surf: pygame.Surface, faction: str, cx: int, cy: int, r: int) -> None
             tip = (cx + math.cos(a) * k, cy - math.sin(a) * k)
             l = (cx + math.cos(a + 2.6) * k * 0.35, cy - math.sin(a + 2.6) * k * 0.35)
             rr = (cx + math.cos(a - 2.6) * k * 0.35, cy - math.sin(a - 2.6) * k * 0.35)
-            pygame.draw.polygon(surf, acc, [tip, l, (cx, cy), rr])
+            gfx.draw.polygon(surf, acc, [tip, l, (cx, cy), rr])
     elif faction == "romulan":         # spread wings
-        pygame.draw.polygon(surf, acc, [(cx, cy - k * 0.2), (cx - k, cy - k * 0.6), (cx - k * 0.6, cy + k * 0.2),
+        gfx.draw.polygon(surf, acc, [(cx, cy - k * 0.2), (cx - k, cy - k * 0.6), (cx - k * 0.6, cy + k * 0.2),
                                         (cx, cy + k * 0.6), (cx + k * 0.6, cy + k * 0.2), (cx + k, cy - k * 0.6)])
     elif faction == "orion":           # a four-point star
-        pygame.draw.polygon(surf, acc, [(cx, cy - k), (cx + k * 0.25, cy - k * 0.25), (cx + k, cy),
+        gfx.draw.polygon(surf, acc, [(cx, cy - k), (cx + k * 0.25, cy - k * 0.25), (cx + k, cy),
                                         (cx + k * 0.25, cy + k * 0.25), (cx, cy + k), (cx - k * 0.25, cy + k * 0.25),
                                         (cx - k, cy), (cx - k * 0.25, cy - k * 0.25)])
     else:                              # an arrowhead
-        pygame.draw.polygon(surf, acc, [(cx, cy - k), (cx + k * 0.7, cy + k * 0.8), (cx, cy + k * 0.35),
+        gfx.draw.polygon(surf, acc, [(cx, cy - k), (cx + k * 0.7, cy + k * 0.8), (cx, cy + k * 0.35),
                                         (cx - k * 0.7, cy + k * 0.8)])
 
 
@@ -217,16 +218,16 @@ def draw_card(surf: pygame.Surface, top_right: tuple[int, int], world: World, si
     h = 26 + 54 + 8 + (3 * 16 + 6 if s.alive else 0) + len(talk) * 16 + 8 + (30 if buttons else 0) + 6
     box = pygame.Rect(x0, y0, CARD_W, h)
     pulse = 0.5 + 0.5 * math.sin(now * math.tau / 1.6)
-    pygame.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=6)
+    gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=6)
     edge = theme.mix(theme.dim(acc, 0.7), theme.HAIL, 0.5 * pulse) if ch.status == "hailing" else theme.dim(acc, 0.7)
-    pygame.draw.rect(surf, edge, box, 1, border_radius=6)
-    pygame.draw.line(surf, acc, (box.x + 10, box.y + 1), (box.x + 46, box.y + 1), 2)
+    gfx.draw.rect(surf, edge, box, 1, border_radius=6)
+    gfx.draw.line(surf, acc, (box.x + 10, box.y + 1), (box.x + 46, box.y + 1), 2)
     # header: channel state, with a live dot
     state = {"hailing": "HAILING…", "open": "CHANNEL OPEN", "closed": "CHANNEL CLOSED"}.get(ch.status, ch.status.upper())
     dot = theme.HAIL if ch.status != "closed" else theme.TEXT_FAINT
     if ch.status == "hailing":
         dot = theme.mix(theme.BG, theme.HAIL, 0.4 + 0.6 * pulse)
-    pygame.draw.circle(surf, dot, (box.x + pad + 4, box.y + 13), 4)
+    gfx.draw.circle(surf, dot, (box.x + pad + 4, box.y + 13), 4)
     theme.text(surf, state, (box.x + pad + 14, box.y + 6), theme.TEXT_DIM, 11, "display", weight="medium")
     others = [c for c in comms.visible() if c.ship_id != ch.ship_id][:3]
     cx = box.right - 30
@@ -239,9 +240,9 @@ def draw_card(surf: pygame.Surface, top_right: tuple[int, int], world: World, si
         cx -= w + 4
         if chip.x < box.x + 120:
             break
-        pygame.draw.rect(surf, theme.BG_INPUT, chip, border_radius=8)
-        pygame.draw.rect(surf, theme.dim(mood_color(o.mood), 0.8), chip, 1, border_radius=8)
-        pygame.draw.circle(surf, mood_color(o.mood), (chip.x + 8, chip.centery), 3)
+        gfx.draw.rect(surf, theme.BG_INPUT, chip, border_radius=8)
+        gfx.draw.rect(surf, theme.dim(mood_color(o.mood), 0.8), chip, 1, border_radius=8)
+        gfx.draw.circle(surf, mood_color(o.mood), (chip.x + 8, chip.centery), 3)
         theme.text(surf, o.ship, (chip.x + 14, chip.y + 2), theme.TEXT_DIM, 10)
         ui.add(chip, partial(comms.show, o.ship_id), f"{o.title} {o.captain} ({o.ship}): {mood_label(o.mood)}")
     y = box.y + 26
@@ -255,8 +256,8 @@ def draw_card(surf: pygame.Surface, top_right: tuple[int, int], world: World, si
     mcol = mood_color(mood)
     cw = theme.text_width(label, 10, weight="semibold") + 30
     chip = pygame.Rect(box.right - pad - cw, y + 2, cw, 20)
-    pygame.draw.rect(surf, theme.mix(theme.BG, mcol, 0.2), chip, border_radius=10)
-    pygame.draw.rect(surf, mcol, chip, 1, border_radius=10)
+    gfx.draw.rect(surf, theme.mix(theme.BG, mcol, 0.2), chip, border_radius=10)
+    gfx.draw.rect(surf, mcol, chip, 1, border_radius=10)
     mood_mark(surf, mood, chip.x + 11, chip.centery, 5.0, now)
     theme.text(surf, label, (chip.x + 21, chip.y + 4), mcol, 10, weight="semibold")
     y += 54 + 8

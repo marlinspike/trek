@@ -19,6 +19,7 @@ from .. import comms_view, officer_view, order_marks, theme
 from ..hud import diagram_legend, hull_diagram
 from .common import CONTROLS, RED_ALERT_FLOOR, RED_ALERT_PERIOD, RED_ALERT_PULSE, RED_ALERT_SETTLE, SPEEDS, ratio
 from .state import SceneState
+from .. import gfx
 
 if TYPE_CHECKING:
     from ..battle_scene import BattleScene
@@ -69,8 +70,8 @@ class RenderMixin(SceneState):
             w = theme.text_width(msg, 13) + 24
             r = pygame.Rect(0, 0, w, 30)
             r.midbottom = (self.map_rect.centerx, self.map_rect.bottom - 14)
-            pygame.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=4)
-            pygame.draw.rect(surf, col, r, 1, border_radius=4)
+            gfx.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=4)
+            gfx.draw.rect(surf, col, r, 1, border_radius=4)
             theme.text(surf, msg, r.center, col, 13, anchor="center")
         self.ui.draw_tooltip(surf)
         theme.set_alert(0.0)
@@ -161,8 +162,8 @@ class RenderMixin(SceneState):
             msg = "PAUSED  ·  press Space to run"
             b = pygame.Rect(0, 0, theme.text_width(msg, 14, weight="semibold") + 32, 30)
             b.midtop = (r.centerx, r.y + 10)
-            pygame.draw.rect(surf, theme.BG_PANEL_HI, b, border_radius=4)
-            pygame.draw.rect(surf, theme.CAUTION, b, 1, border_radius=4)
+            gfx.draw.rect(surf, theme.BG_PANEL_HI, b, border_radius=4)
+            gfx.draw.rect(surf, theme.CAUTION, b, 1, border_radius=4)
             theme.text(surf, msg, b.center, theme.CAUTION, 14, weight="semibold", anchor="center")
         self._draw_conn_banner(surf, r.y + (46 if self.paused and not self.world.outcome.over else 10))
         theme.text(surf, self.battle.setup.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
@@ -190,8 +191,8 @@ class RenderMixin(SceneState):
         msg = f"{o.name.upper()} HAS THE CONN  ·  say \"I have the bridge\" to take it back"
         box = pygame.Rect(0, 0, theme.text_width(msg, 13, weight="semibold") + 32, 28)
         box.midtop = (self.map_rect.centerx, top)
-        pygame.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
-        pygame.draw.rect(surf, theme.CREW, box, 2, border_radius=4)
+        gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
+        gfx.draw.rect(surf, theme.CREW, box, 2, border_radius=4)
         theme.text(surf, msg, box.center, theme.CREW, 13, weight="semibold", anchor="center")
         self.ui.add(box, lambda: self.run_console("I have the bridge"), "Take the bridge back")
 
@@ -203,8 +204,8 @@ class RenderMixin(SceneState):
         col = theme.CAUTION if dodging else theme.FRIEND
         box = pygame.Rect(0, 0, theme.text_width(msg, 13, weight="semibold") + 32, 28)
         box.midtop = (self.map_rect.centerx, top)
-        pygame.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
-        pygame.draw.rect(surf, col, box, 2, border_radius=4)
+        gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
+        gfx.draw.rect(surf, col, box, 2, border_radius=4)
         theme.text(surf, msg, box.center, col, 13, weight="semibold", anchor="center")
         self.ui.add(box, lambda: self.run_console("evasive off"), "End evasive manoeuvres (or give any helm order)")
 
@@ -218,10 +219,10 @@ class RenderMixin(SceneState):
         w = min(self.map_rect.width - 24, max(theme.text_width(t, size, "mono") for t in lines) + 24)
         h = lh * len(lines) + 30
         r = pygame.Rect(self.map_rect.x + 12, self.map_rect.bottom - h - 12, w, h)
-        panel = pygame.Surface(r.size, pygame.SRCALPHA)
+        panel = gfx.Surface(r.size, pygame.SRCALPHA)
         panel.fill((*theme.BG_PANEL, 228))
         surf.blit(panel, r)
-        pygame.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=4)
+        gfx.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=4)
         y = r.y + 8
         for t in lines:
             theme.text(surf, t, (r.x + 12, y), theme.TEXT, size, "mono")
@@ -231,8 +232,8 @@ class RenderMixin(SceneState):
 
     def _bottom(self: BattleScene, surf: pygame.Surface) -> None:
         r = self.bottom_rect
-        pygame.draw.rect(surf, theme.BG_PANEL, r, border_radius=4)
-        pygame.draw.rect(surf, theme.border(), r, 1, border_radius=4)
+        gfx.draw.rect(surf, theme.BG_PANEL, r, border_radius=4)
+        gfx.draw.rect(surf, theme.border(), r, 1, border_radius=4)
         # time controls
         x = r.x + 10
         y = r.y + 8
@@ -252,7 +253,7 @@ class RenderMixin(SceneState):
         else:
             left = pygame.Rect(lines_area.x, lines_area.y, int(lines_area.width * 0.56) - 10, lines_area.height)
             right = pygame.Rect(left.right + 20, lines_area.y, lines_area.right - left.right - 20, lines_area.height)
-            pygame.draw.line(surf, theme.BORDER, (left.right + 10, left.y + 2), (left.right + 10, left.bottom - 4))
+            gfx.draw.line(surf, theme.BORDER, (left.right + 10, left.y + 2), (left.right + 10, left.bottom - 4))
             theme.text(surf, "BRIDGE", (left.right + 4, r.y + 14), theme.TEXT_FAINT, 10, weight="semibold",
                        anchor="topright")
             theme.text(surf, "COMPUTER", (right.x, r.y + 14), theme.TEXT_FAINT, 10, weight="semibold")
@@ -263,8 +264,8 @@ class RenderMixin(SceneState):
                        theme.TEXT_FAINT, 11, anchor="topright")
         # console
         self.console_rect = pygame.Rect(r.x + 8, r.bottom - 32, r.width - 16, 26)
-        pygame.draw.rect(surf, theme.BG_INPUT, self.console_rect, border_radius=3)
-        pygame.draw.rect(surf, theme.FRIEND if self.console_focus else theme.BORDER, self.console_rect, 1, border_radius=3)
+        gfx.draw.rect(surf, theme.BG_INPUT, self.console_rect, border_radius=3)
+        gfx.draw.rect(surf, theme.FRIEND if self.console_focus else theme.BORDER, self.console_rect, 1, border_radius=3)
         prompt = "› " + self.console
         if self.console_focus and (pygame.time.get_ticks() // 500) % 2 == 0:
             prompt += "▏"
@@ -309,7 +310,7 @@ class RenderMixin(SceneState):
             y += h + gap
 
     def _modal(self: BattleScene, surf: pygame.Surface, w: int, h: int, title: str, accent: theme.Color = theme.FRIEND) -> pygame.Rect:
-        shade = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        shade = gfx.Surface(surf.get_size(), pygame.SRCALPHA)
         shade.fill((2, 5, 12, 170))
         surf.blit(shade, (0, 0))
         r = pygame.Rect(0, 0, w, h)
@@ -322,8 +323,8 @@ class RenderMixin(SceneState):
         if o == "help_brief":
             r = pygame.Rect(0, 0, 520, 132)
             r.center = self.map_rect.center
-            pygame.draw.rect(surf, theme.BG_PANEL, r, border_radius=6)
-            pygame.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=6)
+            gfx.draw.rect(surf, theme.BG_PANEL, r, border_radius=6)
+            gfx.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=6)
             theme.text(surf, "Space to begin.  Left-click a contact to target it,", (r.centerx, r.y + 22), theme.TEXT, 15, anchor="center")
             theme.text(surf, "right-click the map to steer, F / T / P to fire.", (r.centerx, r.y + 46), theme.TEXT, 15, anchor="center")
             theme.text(surf, "Enter opens the console. H opens the manual, F1 the controls.", (r.centerx, r.y + 78),
@@ -386,7 +387,7 @@ class RenderMixin(SceneState):
                 theme.bar(surf, rr, s.health, col)
                 if s.sid in fixing:
                     prio = s.kind == p.repair_priority
-                    pygame.draw.rect(surf, theme.REPAIR, rr.inflate(4, 4), 2 if prio else 1, border_radius=2)
+                    gfx.draw.rect(surf, theme.REPAIR, rr.inflate(4, 4), 2 if prio else 1, border_radius=2)
                 if s.damage:
                     theme.text(surf, f"{s.damage}", (rr.centerx, rr.bottom + 1), col, 10, "mono", anchor="midtop")
                 xx += 40
@@ -443,7 +444,7 @@ class RenderMixin(SceneState):
         if me is not None:
             st = me.stats
             card = pygame.Rect(r.x + 16, y, r.width - 32, 72)
-            pygame.draw.rect(surf, theme.BG_PANEL_HI, card, border_radius=4)
+            gfx.draw.rect(surf, theme.BG_PANEL_HI, card, border_radius=4)
             theme.text(surf, f"{me.name} · {me.status.value}", (card.x + 12, card.y + 8), theme.FRIEND, 14, weight="medium")
             hull = max(0.0, me.structure / me.structure_max)
             stats = [("hull", f"{hull:.0%}", theme.health_color(hull)),

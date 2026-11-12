@@ -29,6 +29,7 @@ from ..subtitles import STATION_COLOR, station_mark
 from ..bridge_prefs import FOCUS, MODES, PROPOSALS, READBACKS, SUBTITLES
 from ..wheel import RING, CommandWheel, Slice, fill
 from .state import SceneState
+from .. import gfx
 
 if TYPE_CHECKING:
     from ..battle_scene import BattleScene
@@ -117,10 +118,10 @@ class BridgeMixin(SceneState):
         if k <= 0.01:
             return
         r = self.map_rect
-        edge = pygame.Surface(r.size, pygame.SRCALPHA)
+        edge = gfx.Surface(r.size, pygame.SRCALPHA)
         col = theme.CAUTION
         for i, a in enumerate((90, 46, 22)):
-            pygame.draw.rect(edge, (*col, int(a * k)), edge.get_rect().inflate(-2 * i * 3, -2 * i * 3), 3, border_radius=6)
+            gfx.draw.rect(edge, (*col, int(a * k)), edge.get_rect().inflate(-2 * i * 3, -2 * i * 3), 3, border_radius=6)
         surf.blit(edge, r)
 
     # ------------------------------------------------------------ pointing
@@ -176,15 +177,15 @@ class BridgeMixin(SceneState):
             return
         x = self.console_rect.x + 8
         y = self.console_rect.y - 24
-        pygame.draw.rect(surf, theme.BG_PANEL, pygame.Rect(self.console_rect.x, y - 3, self.console_rect.width, 25))
+        gfx.draw.rect(surf, theme.BG_PANEL, pygame.Rect(self.console_rect.x, y - 3, self.console_rect.width, 25))
         theme.text(surf, "Tab:", (x, y + 4), theme.TEXT_FAINT, 11)
         x += 34
         for i, o in enumerate(opts):
             w = theme.text_width(o, 12, "mono") + 14
             r = pygame.Rect(x, y, w, 20)
             hot = i == self.completer.index
-            pygame.draw.rect(surf, theme.BG_PANEL_HI if hot else theme.BG_INPUT, r, border_radius=3)
-            pygame.draw.rect(surf, theme.FRIEND if hot else theme.BORDER, r, 1, border_radius=3)
+            gfx.draw.rect(surf, theme.BG_PANEL_HI if hot else theme.BG_INPUT, r, border_radius=3)
+            gfx.draw.rect(surf, theme.FRIEND if hot else theme.BORDER, r, 1, border_radius=3)
             theme.text(surf, o, (r.x + 7, r.y + 3), theme.TEXT if hot else theme.TEXT_DIM, 12, "mono")
             x += w + 6
 
@@ -359,8 +360,8 @@ class BridgeMixin(SceneState):
             keys = "Ctrl+Y make it so"
             w = min(self.console_rect.width - 20, theme.text_width(msg, 12) + theme.text_width(keys, 11) + 60)
             r = pygame.Rect(self.console_rect.right - w - 4, self.console_rect.y - 52, w, 24)
-            pygame.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=4)
-            pygame.draw.rect(surf, theme.CAUTION if p.urgent else col, r, 1, border_radius=4)
+            gfx.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=4)
+            gfx.draw.rect(surf, theme.CAUTION if p.urgent else col, r, 1, border_radius=4)
             station_mark(surf, p.station, (r.x + 12, r.centery), 5, col)
             theme.text(surf, msg, (r.x + 24, r.y + 4), theme.TEXT, 12)
             theme.text(surf, keys, (r.right - 10, r.y + 5), theme.CAUTION, 11, weight="semibold", anchor="topright")
@@ -370,10 +371,10 @@ class BridgeMixin(SceneState):
         w = max(420, min(int(r.width * 0.86), text_w + 76))
         box = pygame.Rect(0, 0, w, 56)
         box.midbottom = (r.centerx, r.bottom - 18)
-        glass = pygame.Surface(box.size, pygame.SRCALPHA)
+        glass = gfx.Surface(box.size, pygame.SRCALPHA)
         glass.fill((*theme.BG_PANEL_HI, 232))
         surf.blit(glass, box)
-        pygame.draw.rect(surf, theme.CAUTION if p.urgent else col, box, 1, border_radius=6)
+        gfx.draw.rect(surf, theme.CAUTION if p.urgent else col, box, 1, border_radius=6)
         station_mark(surf, p.station, (box.x + 18, box.y + 18), 6, col)
         theme.text(surf, p.name.upper(), (box.x + 32, box.y + 11), col, 11, weight="semibold")
         theme.text(surf, p.text, (box.x + 32 + theme.text_width(p.name.upper(), 11, weight="semibold") + 12, box.y + 8),
@@ -382,8 +383,8 @@ class BridgeMixin(SceneState):
         x = box.x + 32
         for k, label in choices:
             kr = pygame.Rect(x, box.y + 31, 20, 18)
-            pygame.draw.rect(surf, theme.BG_INPUT, kr, border_radius=3)
-            pygame.draw.rect(surf, theme.BORDER_HI, kr, 1, border_radius=3)
+            gfx.draw.rect(surf, theme.BG_INPUT, kr, border_radius=3)
+            gfx.draw.rect(surf, theme.BORDER_HI, kr, 1, border_radius=3)
             theme.text(surf, k, kr.center, theme.TEXT, 11, "mono", anchor="center")
             theme.text(surf, label, (kr.right + 6, kr.y + 2), theme.TEXT_DIM, 12)
             self.ui.add(pygame.Rect(kr.x, kr.y, 28 + theme.text_width(label, 12), 18),
@@ -391,7 +392,7 @@ class BridgeMixin(SceneState):
             x = kr.right + 16 + theme.text_width(label, 12)
         theme.text(surf, f"→ {p.line}", (box.right - 14, box.y + 33), theme.TEXT_FAINT, 11, "mono", anchor="topright")
         bar = pygame.Rect(box.x + 6, box.bottom - 3, int((box.width - 12) * left), 2)
-        pygame.draw.rect(surf, theme.dim(col, 0.8), bar)
+        gfx.draw.rect(surf, theme.dim(col, 0.8), bar)
 
     # ------------------------------------------------------------ the Bridge setting
 
