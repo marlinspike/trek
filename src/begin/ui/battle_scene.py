@@ -25,6 +25,7 @@ from ..crew.career import Career
 from ..crew.proposals import Proposer
 from .battle.command import Recording
 from ..console.orders import OrderBook, OrderRun
+from ..console.parser import ParseResult
 from ..console.translator import Translator
 from ..crew.conversation import Bridge
 from ..crew.hails import Comms, load_lines
@@ -123,7 +124,7 @@ class BattleScene(InputMixin, ConsoleMixin, OrdersMixin, CommsMixin, BridgeMixin
         self._wheel_t: float = 0.0
         self.completer: Completer = Completer()
         self._preview_key: object = None
-        self._preview: object | None = None
+        self._preview: ParseResult | None = None
         self.proposer: Proposer = Proposer()
         self._propose_t: float = 0.0
         self.career: Career = Career(career)

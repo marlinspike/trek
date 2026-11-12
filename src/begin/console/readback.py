@@ -128,7 +128,7 @@ def readback(cmd: Command, name_of: NameOf) -> str:
     if isinstance(cmd, ReinforceShield):
         return "Shield reinforcement off." if cmd.sector is None else f"Reinforcing shield {cmd.sector + 1}."
     if isinstance(cmd, SetRepairPriority):
-        kind = getattr(cmd.kind, "value", cmd.kind)
+        kind = str(getattr(cmd.kind, "value", cmd.kind))
         return "Repair crews spread across the ship." if cmd.kind is None else f"Repair crews to the {kind} first."
     if isinstance(cmd, ManageRepairs):
         return "Repairs are mine, Captain." if cmd.officer else "Repair crews answer to you, Captain."
@@ -137,10 +137,10 @@ def readback(cmd: Command, name_of: NameOf) -> str:
     if isinstance(cmd, Scan):
         return f"Scanning the {name_of(cmd.target)}."
     if isinstance(cmd, SetObjective):
-        n = len(cmd.targets)
-        ships = f"the {name_of(cmd.targets[0])}" if n == 1 else f"{n} ships"
+        many = len(cmd.targets)
+        ships = f"the {name_of(cmd.targets[0])}" if many == 1 else f"{many} ships"
         if cmd.goal == "disable":
-            return f"Knocking out the {cmd.group} on {ships}, then sparing her." if n == 1 else \
+            return f"Knocking out the {cmd.group} on {ships}, then sparing her." if many == 1 else \
                 f"Knocking out the {cmd.group} on {ships}."
         return f"Standing order: {cmd.goal} {ships}."
     if isinstance(cmd, EndObjective):

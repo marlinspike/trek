@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING
 
 import pygame
 
+import dataclasses
+
 from ...console.parser import ParseContext, parse
 from ...voice.engines import VoiceError, download_model, make_engine
 from ...voice.recorder import Recorder
@@ -233,7 +235,7 @@ class VoiceMixin(SceneState):
                    (x, y), theme.TEXT_DIM, 12)
         y += 30
         for eng in ENGINES:
-            why = make_engine(VoiceSettings(**{**v.to_dict(), "engine": eng})).ready()
+            why = make_engine(dataclasses.replace(v, engine=eng)).ready()
             on = v.engine == eng
             self.ui.button(surf, pygame.Rect(x, y, 26, 22), "●" if on else "", lambda e=eng: self.voice_command(f"engine {e}"),
                            f"Use {ENGINE_TITLES[eng]}", active=on, size=11)

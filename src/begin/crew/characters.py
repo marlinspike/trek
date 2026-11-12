@@ -20,6 +20,19 @@ player's own, in `config/officers.toml`, replace them officer by officer:
 A **response style** says how the officer answers when a model writes their
 words: length, tone, register. The game passes the player's traits and
 response styles to their model as written.
+
+The player's file can reshape an officer completely, any part of them [E]: a
+new `name` and `rank`, extra `aliases`, a whole new `persona`, or a
+`background`, `interests` and `quirks` added to the shipped one, and their
+own offline `lines` for any event (these work without a language model):
+
+    [worf]
+    interests = ["cooking for the crew", "Klingon opera"]
+    quirks = ["judges every battle as if it were a meal"]
+    [worf.lines]
+    idle = ["The galley has gagh tonight. It is... adequate. I will improve it."]
+
+`idle` lines are said in quiet moments, when no enemy is in sight.
 """
 
 from __future__ import annotations
@@ -50,6 +63,21 @@ class OfficerProfile:
     traits: tuple[str, ...] = ()
     response_style: str = ""       # how they answer, for the language model ("terse, clipped reports")
     rapport_floor: float = -1.0    # the lowest their rapport can fall (-1: no floor); set in config/officers.toml
+    background: str = ""           # who they are beyond the station, for the language model [E]
+    interests: tuple[str, ...] = ()   # what they care about off duty; shows in quiet moments [E]
+    quirks: tuple[str, ...] = ()      # habits of speech or manner [E]
+
+    def brief(self) -> str:
+        """Who they are, for a language model: the persona and whatever the player added to it."""
+        out = self.persona
+        if self.background:
+            out += " Your background: " + self.background + ("" if self.background[-1] in ".!?" else ".")
+        if self.interests:
+            out += (f" Off duty you care about: {', '.join(self.interests)}. It shows in how you talk, most of all "
+                    "in quiet moments.")
+        if self.quirks:
+            out += f" Your quirks: {'; '.join(self.quirks)}."
+        return out
 
     @property
     def title(self) -> str:
@@ -101,27 +129,76 @@ def read_rapport_floors(path: Path) -> dict[str, float]:
             for oid, v in raw.items() if isinstance(v, dict) and isinstance(v.get("rapport_floor"), (int, float))}
 
 
+def _words(v: object) -> tuple[str, ...]:
+    """A list of short phrases, or one comma-separated string of them."""
+    if isinstance(v, list):
+        return tuple(str(t).strip() for t in v if str(t).strip())
+    if isinstance(v, str):
+        return tuple(t.strip() for t in v.split(",") if t.strip())
+    return ()
+
+
+def _text(v: object) -> str:
+    return " ".join(str(v).split()) if isinstance(v, str) else ""
+
+
+def read_characters(path: Path) -> dict[str, dict[str, Any]]:
+    """Everything the player's file says about each officer (`[<officer id>] ...`), checked and tidied;
+    empty when there is no file. Unknown keys and values of the wrong kind are ignored, never fatal."""
+    try:
+        raw = tomllib.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for oid, v in raw.items():
+        if not isinstance(v, dict):
+            continue
+        c: dict[str, Any] = {}
+        for key in ("name", "rank", "persona", "background", "response_style"):
+            if isinstance(v.get(key), str) and (key == "rank" or _text(v[key])):
+                c[key] = _text(v[key])
+        for key in ("traits", "interests", "quirks", "aliases"):
+            if key in v and isinstance(v[key], (list, str)):
+                c[key] = _words(v[key])
+        if isinstance(v.get("rapport_floor"), (int, float)):
+            c["rapport_floor"] = max(-1.0, min(1.0, float(v["rapport_floor"])))
+        if isinstance(v.get("lines"), dict):
+            c["lines"] = {str(ev): tuple(str(x) for x in (ls if isinstance(ls, list) else [ls]) if str(x).strip())
+                          for ev, ls in v["lines"].items() if isinstance(ls, (list, str))}
+        out[str(oid).lower()] = c
+    return out
+
+
 def load_officers(data_dir: Path = DATA_DIR, traits_file: Path | None = None) -> dict[str, OfficerProfile]:
-    """The bridge officers; `traits_file` (config/officers.toml) replaces their traits and response styles, officer by officer."""
+    """The bridge officers; `traits_file` (config/officers.toml) reshapes them officer by officer: anything it
+    gives (name, rank, persona, background, traits, interests, quirks, response style, lines) wins."""
     raw: list[dict[str, Any]] = _read("officers.toml", data_dir).get("officer", [])
-    mine = read_traits(traits_file) if traits_file is not None else {}
-    styles = read_response_styles(traits_file) if traits_file is not None else {}
-    floors = read_rapport_floors(traits_file) if traits_file is not None else {}
+    mine = read_characters(traits_file) if traits_file is not None else {}
     out: dict[str, OfficerProfile] = {}
     for o in raw:
         station = o["station"]
         if station not in STATIONS:
             raise ValueError(f"Officer {o['id']}: unknown station '{station}'.")
+        m = mine.get(o["id"], {})
+        name = m.get("name") or o["name"]
+        aliases = [a.lower() for a in o.get("aliases", [o["id"]])] + [a.lower() for a in m.get("aliases", ())]
+        if name != o["name"]:                      # a renamed officer answers to her new name too
+            aliases += [name.lower(), name.split()[0].lower()]
+        lines = {k: tuple(v) for k, v in o.get("lines", {}).items()}
+        lines.update({k: v for k, v in m.get("lines", {}).items() if v})
         out[o["id"]] = OfficerProfile(
-            id=o["id"], name=o["name"], rank=o.get("rank", ""), station=station,
+            id=o["id"], name=name, rank=m.get("rank", o.get("rank", "")), station=station,
             advises=tuple(o.get("advises", [station])),
-            aliases=tuple(a.lower() for a in o.get("aliases", [o["id"]])),
+            aliases=tuple(dict.fromkeys(aliases)),
             personality={k: float(v) for k, v in o.get("personality", {}).items()},
-            persona=" ".join(o.get("persona", "").split()),
-            lines={k: tuple(v) for k, v in o.get("lines", {}).items()},
-            traits=mine.get(o["id"], tuple(str(t) for t in o.get("traits", []))),
-            response_style=styles.get(o["id"], " ".join(str(o.get("response_style", "")).split())),
-            rapport_floor=floors.get(o["id"], float(o.get("rapport_floor", -1.0))),
+            persona=m.get("persona") or " ".join(o.get("persona", "").split()),
+            lines=lines,
+            traits=m.get("traits", tuple(str(t) for t in o.get("traits", []))),
+            response_style=m.get("response_style", " ".join(str(o.get("response_style", "")).split())),
+            rapport_floor=m.get("rapport_floor", float(o.get("rapport_floor", -1.0))),
+            background=m.get("background", _text(o.get("background", ""))),
+            interests=m.get("interests", _words(o.get("interests", []))),
+            quirks=m.get("quirks", _words(o.get("quirks", []))),
         )
     return out
 
@@ -177,5 +254,6 @@ class Relationships:
 
 
 __all__ = [
-    "OfficerProfile", "Relationship", "Relationships", "STATIONS", "load_officers", "read_response_styles", "read_traits",
+    "OfficerProfile", "Relationship", "Relationships", "STATIONS", "load_officers", "read_characters", "read_response_styles",
+    "read_traits",
 ]

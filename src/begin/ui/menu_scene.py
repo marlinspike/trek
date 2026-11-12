@@ -9,7 +9,7 @@ from typing import Any, Callable, cast
 
 import pygame
 
-from ..battle import BattleSetup, FleetSpec, ShipSpec, quick_battle
+from ..battle import BattleSetup, FleetSpec, ShipSpec, patrol_battle, quick_battle
 from ..content.schema import ContentDB
 from ..help.coach import HelpContext
 from ..presets import Preset, load_presets
@@ -115,6 +115,8 @@ class MenuScene:
                 self.start(self.presets[self.preset_i].setup())
             elif self.page == "main" and ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self._quick()
+            elif self.page == "main" and ev.key == pygame.K_p:
+                self._patrol()
             elif self.page == "main" and ev.key == pygame.K_t:
                 self._tours()
             elif self.page == "main" and ev.key == pygame.K_k:
@@ -127,6 +129,10 @@ class MenuScene:
     def _quick(self) -> None:
         seed = random.randrange(1, 100000)
         self.start(quick_battle(self.content, seed, self.custom["player_faction"]))
+
+    def _patrol(self) -> None:
+        seed = random.randrange(1, 100000)
+        self.start(patrol_battle(self.content, seed, self.custom["player_faction"]))
 
     def _tours(self) -> None:
         if self.tours is not None:
@@ -168,7 +174,8 @@ class MenuScene:
             self.manual.draw(surf, pygame.Rect(24, 24, w - 48, h - 48), self.ui)
             self.ui.draw_tooltip(surf)
             return
-        # stars drifting past, nearer layers faster
+        # stars drifting past, nearer layers faster, the gas far behind them hardly moving
+        self.stars.backdrop(surf, surf.get_rect(), self.t * STAR_DRIFT, self.t * STAR_DRIFT * 0.18, theme.BG)
         self.stars.draw(surf, surf.get_rect(), self.t * STAR_DRIFT, self.t * STAR_DRIFT * 0.18)
         if self.page == "main":
             self.flybys.draw(surf)
@@ -189,6 +196,7 @@ class MenuScene:
         x, y = 84, 220
         items = [
             ("Quick battle", self._quick, "A seeded random engagement (Enter)"),
+            ("Patrol", self._patrol, "A random mission: an ambush, a wolf pack, a second wave, an escort or a flagship (P)"),
             ("Tour of duty", self._tours, "Linked battles with a squadron that carries its damage, and a captain's log (T)"),
             ("Preset battles", lambda: setattr(self, "page", "presets"), "Curated scenarios"),
             ("Custom battle", lambda: setattr(self, "page", "custom"), "Choose fleets"),
@@ -199,11 +207,11 @@ class MenuScene:
             ("Quit", self.quit, "Esc"),
         ]
         for label, act, tip in items:
-            self.ui.button(surf, pygame.Rect(x, y, 300, 44), label.upper(), act, tip, size=16)
-            y += 52
+            self.ui.button(surf, pygame.Rect(x, y, 300, 42), label.upper(), act, tip, size=16)
+            y += 49
         pf = self.custom["player_faction"]
         self.ui.button(surf, pygame.Rect(x, y + 12, 300, 30), f"QUICK BATTLE SIDE: {self.content.factions[pf].name.upper()}",
-                       lambda: self._cycle("player_faction", FACTIONS), "Which faction you command in a quick battle",
+                       lambda: self._cycle("player_faction", FACTIONS), "Which faction you command in a quick battle or a patrol",
                        size=12, face="display")
         if self.config_warning:
             theme.text(surf, self.config_warning, (x, surf.get_height() - 40), theme.CAUTION, 14)

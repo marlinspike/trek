@@ -370,7 +370,7 @@ class TargetPanel(Panel):
             else:
                 theme.bar(surf, r, max(0.0, v) / 100.0, theme.mix(theme.ALERT, theme.SHIELD, max(0.0, v) / 100.0)
                           if v > 0 else theme.ALERT)
-            theme.text(surf, str(i + 1), (r.centerx, r.bottom + 2), theme.TEXT_FAINT, 9, anchor="midtop")
+            theme.text(surf, str(i + 1), (r.centerx, r.bottom + 2), theme.TEXT_FAINT, 10, anchor="midtop")
         hull = seen.hull if fresh and seen is not None and seen.hull is not None else sc.structure_frac if sc else None
         if seen is not None and seen.power_out:
             theme.text(surf, "Power out: her life support is failing, the crew has moments left",

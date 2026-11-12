@@ -171,7 +171,7 @@ class TourScene:
             if who in entry.voiced or (who == "captain" and entry.edited):
                 continue
             prof = profiles.get(who)
-            persona = (prof.persona + (" Traits: " + ", ".join(prof.traits) + "." if prof.traits else "")) if prof else ""
+            persona = (prof.brief() + (" Traits: " + ", ".join(prof.traits) + "." if prof.traits else "")) if prof else ""
             style = prof.response_style if prof else ""
             system, user = voice_request(entry, who, persona, style)
             rid = self.voices.submit(f"log:{who}", system, [{"role": "user", "content": user}])

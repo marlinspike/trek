@@ -24,7 +24,7 @@ BORDER_HI = (66, 98, 146)
 
 TEXT = (206, 219, 236)
 TEXT_DIM = (124, 142, 170)
-TEXT_FAINT = (76, 92, 120)
+TEXT_FAINT = (104, 122, 154)   # still quiet, but readable on the panels (about 4.5:1)
 
 FRIEND = (79, 209, 232)       # Federation / own side cyan
 FRIEND_DIM = (44, 120, 140)
@@ -176,6 +176,30 @@ def text(surf: pygame.Surface, s: str, pos: tuple[float, float], color: Color = 
     return r
 
 
+def label(surf: pygame.Surface, s: str, pos: tuple[float, float], color: Color = TEXT, size: int = 12,
+          family: str = "ui", weight: str = "medium", anchor: str = "topleft") -> pygame.Rect:
+    """Text on the map: the letters ringed by a soft dark edge, so a name stays legible over stars, grid
+    lines, shield rings and torpedo bursts. Same placement as `text` (the edge hangs a pixel outside)."""
+    img = _haloed(s, tuple(color), size, family, weight)    # type: ignore[arg-type]
+    r = img.get_rect().inflate(-2, -2)
+    setattr(r, anchor, (int(pos[0]), int(pos[1])))
+    surf.blit(img, (r.x - 1, r.y - 1))
+    return r
+
+
+@lru_cache(maxsize=512)
+def _haloed(s: str, color: Color, size: int, family: str, weight: str) -> pygame.Surface:
+    fg = render(s, color, size, family, weight)
+    edge = render(s, (2, 5, 12), size, family, weight).copy()
+    edge.set_alpha(150)
+    out = pygame.Surface((fg.get_width() + 2, fg.get_height() + 2), pygame.SRCALPHA)
+    for dx, dy in ((0, 1), (2, 1), (1, 0), (1, 2), (0, 0), (2, 2), (0, 2), (2, 0)):
+        out.blit(edge, (dx, dy))
+    out.blit(fg, (1, 1))
+    return out
+
+
+@lru_cache(maxsize=4096)
 def text_width(s: str, size: int = 14, family: str = "ui", weight: str = "regular") -> int:
     try:
         f = font(size, family, weight)

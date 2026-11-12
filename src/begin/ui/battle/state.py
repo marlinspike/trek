@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from ...voice.recorder import Recorder
     from ...voice.settings import VoiceSettings
     from ...console.orders import OrderBook, OrderRun
+    from ...console.parser import ParseResult
     from ...console.translator import Translator
     from ...crew.conversation import Bridge
     from ...crew.hails import Comms
@@ -105,7 +106,7 @@ class SceneState:
     _wheel_t: float
     completer: Completer
     _preview_key: object
-    _preview: object | None
+    _preview: ParseResult | None
     proposer: Proposer
     _propose_t: float
     career: Career

@@ -11,7 +11,8 @@
 # response_style  how the officer answers when a language model writes their words: length, tone,
 #              register. Also overridable in config/officers.toml.
 # rapport_floor  optional, -1 to 1: the lowest their regard for the captain can fall. Overridable too.
-# lines        offline lines by event; one is picked at random. {target}, {ship},
+# background, interests, quirks  optional: who they are off duty, for the language model [E]
+# lines        offline lines by event; one is picked at random. `idle` lines come in quiet moments. {target}, {ship},
 #              {captain} and {n} are filled in. Edit freely.
 #
 # Every line here is original writing for this fan project.
@@ -35,6 +36,7 @@ You run the helm when the captain delegates it and you advise on every station.
 """
 
 [officer.lines]
+idle = ["A quiet sector. I find the absence of incident... restful.", "I have been composing a chess problem in my head, Captain. White mates in four.", "Our sensors show nothing. I would not mistake that for safety."]
 ack = ["Acknowledged, Captain.", "Done.", "As you wish."]
 greeting = ["First officer standing by, Captain.", "Ready, Captain. The odds are not yet calculable."]
 delegated = ["I have the helm.", "Helm is mine, Captain. I will keep us at an advantageous range.", "Understood. Assuming control of the helm."]
@@ -72,6 +74,7 @@ targeting when the captain delegates the tactical station.
 """
 
 [officer.lines]
+idle = ["Quiet. Too quiet, Captain.", "The calm before battle is when a warrior sharpens his blade. I am checking the phaser couplings.", "I do not care for waiting. The enemy is out there."]
 ack = ["Aye, Captain.", "Done.", "At once."]
 greeting = ["Tactical ready.", "Weapons standing by, Captain."]
 delegated = ["Tactical is mine. They will regret this.", "Weapons under my control.", "Acknowledged. I will choose our targets."]
@@ -111,6 +114,7 @@ repairs when the captain delegates engineering.
 """
 
 [officer.lines]
+idle = ["While it's quiet, I'm rebalancing the warp coils. She'll give us a little more when we need it.", "You know, I could listen to this engine hum all day.", "Nothing on the board, Captain. I'll take it."]
 ack = ["You got it, Captain.", "On it.", "Done. Easy."]
 greeting = ["Engineering here, Captain. Everything's in the green.", "La Forge here. Engines are ready when you are."]
 delegated = ["I've got engineering. I'll keep the shields up and the repairs moving.", "Engineering's covered, Captain. I'll balance the power.", "Leave it with me. I'll keep her running."]
@@ -148,6 +152,7 @@ scans when the captain delegates the science station, and you advise on tactics.
 """
 
 [officer.lines]
+idle = ["Sensors are clear. I have used the time to refine our scan routines by four percent.", "Idle time is inefficient. I am cataloguing the local stellar phenomena.", "No contacts. That will not last."]
 ack = ["Complying.", "Done. Efficiently.", "Acknowledged."]
 greeting = ["Sensors are operational, Captain.", "Astrometrics ready. Try to be efficient."]
 delegated = ["Science station acknowledged. I will scan every contact.", "I will manage the sensors. You are welcome."]

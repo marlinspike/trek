@@ -33,6 +33,8 @@ CALLOUT_REPEAT = {"bait": 20.0, "salvo": 20.0, "between": 20.0, "phasers": 30.0,
 MORALE_GAP = 20.0           # seconds between remarks on the crew's spirits
 REPAIR_REPORT_DAMAGE = 25   # % damage before a system is worth reporting
 REPAIR_GAP = 12.0           # seconds between repair reports
+QUIET_AFTER = 45.0          # seconds of calm (no enemy in sight, nothing said) before an officer talks off duty
+QUIET_CHANCE = 0.08         # then, the chance each second that one does
 
 MORALE_CAUSES = {
     ("damage", False): " after that damage", ("loss", False): " after losing a ship", ("shield", False): "",
@@ -65,7 +67,32 @@ class Chatter:
         for ev in events:
             self._event_remark(ev, s, obs, commander, out)
         self._warnings(s, obs, out)
+        self._quiet_moment(s, obs, out)
         return out
+
+    def _quiet_moment(self: Bridge, s: Ship, obs: Observation, out: list[Utterance]) -> None:
+        """No enemy in sight and nothing said for a while: now and then an officer says something off duty,
+        which is where their interests show [E]. Lines come from each officer's `idle` lines; with a language
+        model, an officer with interests but no such lines talks about one of them in their own words."""
+        tpc = obs.rules.ticks_per_cycle
+        if obs.tick - self._last_any < QUIET_AFTER * tpc or s.target is not None or obs.threats():
+            return
+        if any(c.visible for c in obs.hostile_contacts()):
+            return
+        if self.rng.random() > QUIET_CHANCE / tpc:     # about once in QUIET_AFTER / QUIET_CHANCE seconds of calm
+            return
+        crew = [o for o in self.crew.officers.values() if "idle" in o.lines or (o.interests and self.llm is not None)]
+        if not crew:
+            return
+        o = self.rng.choice(crew)
+        self._last_line[o.id] = self._last_any = obs.tick
+        if "idle" not in o.lines or (o.interests and self.llm is not None and self.rng.random() < 0.5):
+            self._voice(o, f"(A quiet moment on the bridge, no enemy in sight. A remark about "
+                           f"{self.rng.choice(o.interests)}.)", obs)
+            return
+        u = self._line(o, "idle")
+        if u is not None and not self._voice(o, u.text, obs):
+            out.append(u)
 
     def _event_remark(self: Bridge, ev: Event, s: Ship, obs: Observation, commander: OfficerProfile | None,
                       out: list[Utterance]) -> None:
@@ -113,7 +140,7 @@ class Chatter:
     def _warnings(self: Bridge, s: Ship, obs: Observation, out: list[Utterance]) -> None:
         """Incoming fire (when the captain is flying) and hot engines."""
         threats = len([o for o in obs.threats() if math.hypot(o.x - s.x, o.y - s.y) < 8000])
-        if threats > self._threats and "helm" not in s.delegated and not s.evasive:
+        if threats > self._threats and "helm" not in s.delegated and not s.evasive and not self.proposals_on:
             self._maybe(out, obs, "helm", "incoming", 0.5, gap=20.0)   # advice (not nagging); an officer at the helm just dodges
         self._threats = threats
         temp = max((d.temp for d in s.drives if not d.destroyed), default=0.0)

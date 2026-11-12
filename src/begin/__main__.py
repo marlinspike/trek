@@ -22,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="begin", description="Begin: a tactical starship simulation (remake)")
     ap.add_argument("--preset")
     ap.add_argument("--quick", type=int)
+    ap.add_argument("--patrol", type=int, help="start a patrol with this seed")
     ap.add_argument("--size", default=None, help="window size, e.g. 1600x900")
     ap.add_argument("--screenshot")
     ap.add_argument("--cycles", type=float, default=0.0)
@@ -92,6 +93,10 @@ def main(argv: list[str] | None = None) -> int:
         from .battle import quick_battle
 
         scene = app.start_battle(quick_battle(app.content, args.quick))
+    elif args.patrol is not None:
+        from .battle import patrol_battle
+
+        scene = app.start_battle(patrol_battle(app.content, args.patrol))
 
     if args.screenshot:
         import pygame

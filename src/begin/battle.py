@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from .ai.captain import AICaptain
 from .ai.computer import ShipComputer
 from .ai.personality import Personality
-from .content.schema import ContentDB
+from .content.schema import ContentDB, ShipClass
 from .core.rng import Rng
 from .crew.characters import load_officers
 from .crew.officers import Crew, default_crew
@@ -262,4 +262,80 @@ def quick_battle(content: ContentDB, seed: int, player_faction: str = "federatio
     )
 
 
-__all__ = ["Battle", "BattleSetup", "FleetSpec", "MAX_OBJECTS", "PLAYER_FLAGSHIP_CLASSES", "PLAYER_FLAGSHIP_NAMES", "ShipSpec", "build_battle", "quick_battle"]
+def _fill(rng: Rng, classes: list[ShipClass], budget: float, count: int, lean: float = 1.0) -> list[str]:
+    """`count` ships of these classes adding up to about `budget` mass; `lean` below 1 favours the lighter."""
+    out: list[str] = []
+    spent = 0.0
+    for slot in range(count):
+        share = max(1.0, (budget - spent) / (count - slot)) * lean
+        options = [c for c in classes if 0.65 * share <= c.mass <= 1.35 * share] or \
+            [min(classes, key=lambda c: abs(c.mass - share))]
+        c = rng.choice(options)
+        out.append(c.id)
+        spent += c.mass
+    return out
+
+
+# A patrol's situations [E]: (id, title, briefing). The briefing is what the captain reads at battle stations.
+PATROL_SITUATIONS = (
+    ("ambush", "Ambush", "Two {enemy} groups were waiting either side of the patrol lane. Turn to face one and the other "
+                         "is on your stern."),
+    ("wolfpack", "Wolf pack", "A pack of light {enemy} ships, fast and many. Thin them out before they swarm you."),
+    ("waves", "Second wave", "A {enemy} patrol, and long-range sensors show more coming. Finish the first group "
+                             "quickly; the second will not wait."),
+    ("escort", "Escort", "You have wingmen this time, and the {enemy} have brought more to match. Use them: 'tell "
+                         "<ship> attack <target>'."),
+    ("flagship", "Flagship", "A {enemy} heavy and her escorts. The heavy is the prize; the escorts will make you pay for "
+                             "going straight at her."),
+)
+
+
+def patrol_battle(content: ContentDB, seed: int, player_faction: str = "federation",
+                  situation: str | None = None) -> BattleSetup:
+    """A seeded random patrol [E]: one of several situations (an ambush from two sides, a wolf pack, a second
+    wave, an escort mission, a flagship and her screen), against a random enemy, so that no two patrols play
+    alike. The player's flagship is the usual one (the Enterprise as a Dreadnought for the Federation)."""
+    rng = Rng(seed).derive("patrol")
+    sid, title, brief = next((x for x in PATROL_SITUATIONS if x[0] == situation), None) or rng.choice(PATROL_SITUATIONS)
+    enemy = rng.choice([f for f in content.factions if f != player_faction])
+    mine = [c for c in content.classes_of(player_faction, include_bases=False) if c.banks > 0]
+    theirs = [c for c in content.classes_of(enemy, include_bases=False) if c.banks > 0]
+    default = PLAYER_FLAGSHIP_CLASSES.get(player_faction)
+    flagship = content.classes[default] if default in content.classes else max(mine, key=lambda c: c.mass)
+    player = FleetSpec(0, [ShipSpec(flagship.id)], player=True, center=(0.0, -11000.0))
+    mass = flagship.mass * rng.uniform(0.95, 1.15)
+    fleets = [player]
+    arrivals: list[Arrival] = []
+    if sid == "ambush":
+        group = _fill(rng, theirs, mass * 1.3, rng.choice((4, 4, 5)))
+        half = len(group) // 2
+        player.center = (0.0, -2000.0)
+        fleets += [FleetSpec(1, [ShipSpec(c) for c in group[:half]], center=(-10500.0, 3500.0)),
+                   FleetSpec(1, [ShipSpec(c) for c in group[half:]], center=(10500.0, 3500.0))]
+    elif sid == "wolfpack":
+        fleets.append(FleetSpec(1, [ShipSpec(c) for c in _fill(rng, theirs, mass * 1.35, rng.choice((6, 7, 8)), 0.8)],
+                                center=(0.0, 12000.0)))
+    elif sid == "waves":
+        fleets.append(FleetSpec(1, [ShipSpec(c) for c in _fill(rng, theirs, mass * 0.8, 3)], center=(0.0, 11000.0)))
+        x = rng.choice((-1.0, 1.0)) * 12000.0
+        arrivals.append(Arrival(side=1, ships=tuple(_fill(rng, theirs, mass * 0.75, 3)), at=160.0, after_clear=10.0,
+                                at_x=x, at_y=4000.0, heading=math.degrees(math.atan2(-x, -4000.0)) % 360.0,
+                                message=f"Captain, a second {content.factions[enemy].name} group is dropping out of warp!"))
+    elif sid == "escort":
+        light = sorted(mine, key=lambda c: c.mass)[: max(1, len(mine) // 2)]
+        wings = [rng.choice(light).id for _ in range(rng.choice((1, 2)))]
+        player.ships += [ShipSpec(c) for c in wings]
+        extra = sum(content.classes[c].mass for c in wings)
+        fleets.append(FleetSpec(1, [ShipSpec(c) for c in _fill(rng, theirs, (mass + extra) * 1.25, 3 + len(wings))],
+                                center=(0.0, 12000.0)))
+    else:  # flagship
+        heavy = max(theirs, key=lambda c: c.mass)
+        screen = _fill(rng, theirs, max(heavy.mass * 0.8, mass * 1.9 - heavy.mass), rng.choice((3, 4)), 0.7)
+        fleets.append(FleetSpec(1, [ShipSpec(heavy.id)] + [ShipSpec(c) for c in screen], center=(0.0, 12500.0)))
+    return BattleSetup(fleets=fleets, seed=seed, arrivals=arrivals,
+                       title=f"Patrol #{seed}: {title}",
+                       description=brief.format(enemy=content.factions[enemy].name))
+
+
+__all__ = ["Battle", "BattleSetup", "FleetSpec", "MAX_OBJECTS", "PATROL_SITUATIONS", "PLAYER_FLAGSHIP_CLASSES",
+           "PLAYER_FLAGSHIP_NAMES", "ShipSpec", "build_battle", "patrol_battle", "quick_battle"]

@@ -12,6 +12,7 @@ import io
 import math
 import threading
 import wave
+from typing import Any
 
 RATE = 16000
 MAX_SECONDS = 15.0          # a held key never records more than this
@@ -42,7 +43,7 @@ class Recorder:
     """Opens the capture device on `start()`, keeps what it hears until `stop()` returns it as a WAV."""
 
     def __init__(self) -> None:
-        self._dev = None
+        self._dev: Any = None
         self._chunks: list[bytes] = []
         self._lock = threading.Lock()
         self.level = 0.0

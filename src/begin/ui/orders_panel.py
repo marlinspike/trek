@@ -10,7 +10,7 @@ just bound to a key.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import pygame
 
@@ -29,6 +29,14 @@ def _fit(s: str, size: int, width: int, family: str = "ui") -> str:
     while s and theme.text_width(s + "…", size, family) > width:
         s = s[:-1]
     return s + "…"
+
+
+def _runner(hud: BattleScene, line: str) -> Callable[[], object]:
+    return lambda: hud.run_console(line)
+
+
+def _shower(hud: BattleScene, name: str, steps: list[str]) -> Callable[[], object]:
+    return lambda: hud._show([f"ORDER {name.upper()}"] + [f"  {i + 1}. {s}" for i, s in enumerate(steps)], None)
 
 
 class OrdersPanel(Panel):
@@ -90,9 +98,7 @@ class OrdersPanel(Panel):
                 theme.text(surf, key, kr.center, theme.TEXT_DIM, 11, "mono", anchor="center")
                 tail = kw + 14
             theme.text(surf, _fit(what, 12, r.right - nx - tail - 8), (nx, r.y + 8), theme.TEXT_DIM, 12)
-            hud.ui.add(r, lambda ln=line: hud.run_console(ln), f"Run {name}",
-                       right=lambda n=name, st=steps: hud._show([f"ORDER {n.upper()}"] + [f"  {i + 1}. {s}" for i, s in
-                                                                                          enumerate(st)], None))
+            hud.ui.add(r, _runner(hud, line), f"Run {name}", right=_shower(hud, name, steps))
             y += CARD_H
 
 

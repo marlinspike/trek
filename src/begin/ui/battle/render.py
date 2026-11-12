@@ -27,7 +27,10 @@ if TYPE_CHECKING:
 class RenderMixin(SceneState):
     def draw(self: BattleScene, surf: pygame.Surface) -> None:
         self.ui.begin_frame()
-        surf.fill((5, 9, 18))
+        m, W, H = self.map_rect, surf.get_width(), surf.get_height()
+        for strip in ((0, 0, W, m.top), (0, m.bottom, W, H - m.bottom), (0, m.top, m.left, m.height),
+                      (m.right, m.top, W - m.right, m.height)):
+            surf.fill((5, 9, 18), strip)    # the map paints its own field: only the frame round it is cleared
         alert = self._red_alert()
         theme.set_alert(alert)
         if alert > 0 and not self._was_alert:
@@ -385,7 +388,7 @@ class RenderMixin(SceneState):
                     prio = s.kind == p.repair_priority
                     pygame.draw.rect(surf, theme.REPAIR, rr.inflate(4, 4), 2 if prio else 1, border_radius=2)
                 if s.damage:
-                    theme.text(surf, f"{s.damage}", (rr.centerx, rr.bottom + 1), col, 9, "mono", anchor="midtop")
+                    theme.text(surf, f"{s.damage}", (rr.centerx, rr.bottom + 1), col, 10, "mono", anchor="midtop")
                 xx += 40
                 if xx > r.right - 40:
                     xx = x + 120

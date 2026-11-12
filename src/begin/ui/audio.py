@@ -616,7 +616,8 @@ class Audio:
                 pygame.mixer.set_reserved(1)                  # channel 0 keeps the hum
             except pygame.error:
                 pass
-            self._stereo = stereo = pygame.mixer.get_init()[2] == 2
+            init = pygame.mixer.get_init()
+            self._stereo = stereo = init is not None and init[2] == 2
             for name in SOUNDS:
                 self.sounds[name] = pygame.mixer.Sound(buffer=_samples(name, stereo, self.choice.get(name, "")))
             for name in FAR:

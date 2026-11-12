@@ -195,7 +195,7 @@ class BridgeMixin(SceneState):
 
     # ------------------------------------------------------------ the command wheel
 
-    def open_wheel(self: BattleScene, sid: int, pos: tuple[int, int] | None = None) -> bool:
+    def open_wheel(self: BattleScene, sid: int, pos: tuple[float, float] | None = None) -> bool:
         """Open the wheel on a ship: an enemy's, an ally's or our own. False if there is none for her."""
         p = self.player
         if p is None or not self.prefs.wheel:
@@ -305,6 +305,8 @@ class BridgeMixin(SceneState):
                     self.run_console(p.line)
             return
         crew, ship = self.battle.crew, self.player
+        if self.bridge is not None:          # one voice for incoming torpedoes: the proposal, not advice as well
+            self.bridge.proposals_on = self.prefs.proposals != "off" and self.style != "green"
         if (crew is None or ship is None or not ship.alive or self.paused or self.world.outcome.over
                 or crew.ship_id != ship.id or self.prefs.proposals == "off" or self.overlay is not None):
             return
@@ -376,9 +378,9 @@ class BridgeMixin(SceneState):
         theme.text(surf, p.name.upper(), (box.x + 32, box.y + 11), col, 11, weight="semibold")
         theme.text(surf, p.text, (box.x + 32 + theme.text_width(p.name.upper(), 11, weight="semibold") + 12, box.y + 8),
                    theme.TEXT, 15)
-        keys = [("Y", "make it so"), ("N", "belay")]
+        choices = [("Y", "make it so"), ("N", "belay")]
         x = box.x + 32
-        for k, label in keys:
+        for k, label in choices:
             kr = pygame.Rect(x, box.y + 31, 20, 18)
             pygame.draw.rect(surf, theme.BG_INPUT, kr, border_radius=3)
             pygame.draw.rect(surf, theme.BORDER_HI, kr, 1, border_radius=3)

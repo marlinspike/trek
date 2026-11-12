@@ -40,6 +40,7 @@ SPRITE_MIN_K = 0.9         # pixels per hull unit at which a ship is drawn with 
 SHOWPIECE = frozenset({"federation.hc"})     # the hand-built art (showpiece.py); the rest is fleet_art.py
 TORP_TRAIL = 1.4          # cycles of exhaust a torpedo leaves behind it
 TORP_TRAIL_POINT = 0.05   # cycles between the points of a torpedo trail
+LABEL_GROUP_PX = 40       # ships closer than this on screen share one name on the map
 LOCK_TIME = 0.35          # seconds the target brackets take to close in
 BLAST_MIN_PX = 12.0       # the fireball of the smallest ship on screen, pixels
 COLLAPSE = (255, 120, 90)  # a shield giving way flares red
@@ -141,6 +142,9 @@ class TacticalView:
     _overlay: pygame.Surface | None = None
     _glow: pygame.Surface | None = None
     _label_rects: list[pygame.Rect] = field(default_factory=list)   # labels drawn this frame
+    _label_more: dict[int, int] = field(default_factory=dict)      # a group's named ship: how many more fly with her
+    _label_quiet: set[int] = field(default_factory=set)            # ships named by their group's label this frame
+    _label_reach: dict[int, float] = field(default_factory=dict)   # a group's named ship: screen x of its right-most ship
     torp_trails: dict[int, list[tuple[float, float, float]]] = field(default_factory=dict)   # round -> [(x, y, time)]
     clock: float = 0.0                       # wall-clock seconds, for animation
     _lock: tuple[int | None, float] = (None, 0.0)   # the target the brackets are on, and when they started closing
@@ -317,12 +321,11 @@ class TacticalView:
         if self._overlay is None or self._overlay.get_size() != surf.get_size():
             self._overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
         overlay = self._overlay
-        overlay.fill((0, 0, 0, 0))
+        overlay.fill((0, 0, 0, 0), r)        # only the map is ever drawn through it, so only the map is cleared
         self._label_rects = []
         self._burning = []
         clip = surf.get_clip()
         surf.set_clip(r)
-        pygame.draw.rect(surf, theme.BG, r)
 
         def pose(sid: int) -> Pose | None:
             b = now.ships.get(sid)
@@ -336,6 +339,7 @@ class TacticalView:
             if p:
                 cam.cx, cam.cy = p[0] + jolt[0], p[1] + jolt[1]
 
+        self.stars.backdrop(surf, r, cam.cx, cam.cy, theme.BG)
         self._starfield(surf)
         self._grid(surf)
         self._trails(overlay, obs, pose)
@@ -372,16 +376,19 @@ class TacticalView:
         self._links(surf, overlay, obs, pose, player_id, selected_ally)
 
         # ships
+        self._label_more, self._label_quiet, self._label_reach = {}, set(), {}
+        allies = [(s.id, pose(s.id)) for s in obs.own_ships(alive_only=False) if s.exists and s.alive and not s.cloaked]
+        self._group_labels([(sid, p) for sid, p in allies if p], {player_id, selected_ally})
         for s in obs.own_ships(alive_only=False):
             if not s.exists:
                 continue
             p = pose(s.id)
             if p:
                 self._own_ship(surf, overlay, s, p, s.id == player_id, obs, s.id == selected_ally, names)
-        for c in obs.contacts().values():
-            p = pose(c.id)
-            if p:
-                self._contact(surf, c, p, c.id == target_id, selected_sub, overlay)
+        contacts = [(c, p) for c in obs.contacts().values() if (p := pose(c.id))]
+        self._group_labels([(c.id, p) for c, p in contacts if c.visible], {target_id})
+        for c, p in contacts:
+            self._contact(surf, c, p, c.id == target_id, selected_sub, overlay)
 
         # target link
         if me is not None and target_id is not None:
@@ -400,7 +407,7 @@ class TacticalView:
         if glow is not None:
             surf.blit(glow, r.topleft, area=r, special_flags=pygame.BLEND_RGB_ADD)
         self._fire(surf, pose)
-        surf.blit(overlay, (0, 0))
+        surf.blit(overlay, r.topleft, area=r)
         self._scale_bar(surf)
         pygame.draw.rect(surf, theme.border(), r, 1)
         surf.set_clip(clip)
@@ -577,13 +584,13 @@ class TacticalView:
         while gx <= x1:
             sx, _ = cam.to_screen(gx, 0)
             major = abs(gx / spacing) % 5 < 1e-6
-            pygame.draw.line(surf, theme.GRID_MAJOR if major else theme.GRID, (sx, r.top), (sx, r.bottom))
+            surf.fill(theme.GRID_MAJOR if major else theme.GRID, (int(sx), r.top, 1, r.height))
             gx += spacing
         gy = math.floor(y0 / spacing) * spacing
         while gy <= y1:
             _, sy = cam.to_screen(0, gy)
             major = abs(gy / spacing) % 5 < 1e-6
-            pygame.draw.line(surf, theme.GRID_MAJOR if major else theme.GRID, (r.left, sy), (r.right, sy))
+            surf.fill(theme.GRID_MAJOR if major else theme.GRID, (r.left, int(sy), r.width, 1))
             gy += spacing
 
     def _scale_bar(self, surf: pygame.Surface) -> None:
@@ -781,14 +788,18 @@ class TacticalView:
         label = s.name if s.alive else f"{s.name} — {s.status.value}"
         if s.alive and s.docked_to is not None:
             label += " · docked"
-        lx = sx + (62 * k + 12 if art else 34 * k + 6)     # close in, the name sits clear of her art
+        if s.id in self._label_more:
+            label += f"  +{self._label_more[s.id]}"
+        if s.id in self._label_quiet:
+            return                     # named by her group's label (never the selected ship: she keeps her own)
+        lx = max(sx, self._label_reach.get(s.id, sx)) + (62 * k + 12 if art else 34 * k + 6)   # clear of her art (and her group's)
         lw = theme.text_width(label, 12, weight="medium")
         if lx + lw > cam.rect.right - 6:                    # no room on the right: her name goes on the left
             lx = sx - (62 * k + 12 if art else 34 * k + 6) - lw
         top = self._free_label_y(lx, sy - 8, lw, 14)
         if art:
             self._leader(surf, sx, sy, 62 * k, lx if lx > sx else lx + lw, top, color)
-        theme.text(surf, label, (lx, top), color, 12, weight="medium")
+        theme.label(surf, label, (lx, top), color, 12)
         ly = top + 14
         if is_player:
             theme.text(surf, f"w{s.warp:.1f}", (lx, ly), theme.TEXT_DIM, 10, "mono")
@@ -807,6 +818,25 @@ class TacticalView:
                 cx, cy = sx + dx * b, sy + dy * b
                 pygame.draw.line(surf, theme.ALLY, (cx, cy), (cx - dx * 7, cy), 1)
                 pygame.draw.line(surf, theme.ALLY, (cx, cy), (cx, cy - dy * 7), 1)
+
+    def _group_labels(self, ships: list[tuple[int, Pose]], keep: set[int | None]) -> None:
+        """Ships flying in close formation share one name on the map ("Bismark (BC)  +2") instead of a pile of
+        names over each other. The ships in `keep` (the target, our own ship) always have their own name, and
+        zooming in pulls a group apart."""
+        cam = self.cam
+        pts = sorted((sid not in keep, sid, cam.to_screen(p[0], p[1])) for sid, p in ships if cam.visible(p[0], p[1], 0))
+        placed: list[tuple[int, float, float]] = []      # (her group's named ship, x, y) for every ship so far
+        for free, sid, (x, y) in pts:
+            if free:     # a ship near any of a group joins it, so a line of ships becomes one group, not several
+                near = next((lid for lid, px, py in placed
+                             if lid not in keep and (x - px) ** 2 + (y - py) ** 2 < LABEL_GROUP_PX ** 2), None)
+                if near is not None:
+                    self._label_quiet.add(sid)
+                    self._label_more[near] = self._label_more.get(near, 0) + 1
+                    self._label_reach[near] = max(self._label_reach.get(near, x), x)
+                    placed.append((near, x, y))
+                    continue
+            placed.append((sid, x, y))
 
     def _contact(self, surf: pygame.Surface, c: ContactView, p: Pose, targeted: bool, sub: str | None,
                  overlay: pygame.Surface | None = None) -> None:
@@ -854,15 +884,19 @@ class TacticalView:
         label = c.label if c.identified else f"#{c.id}"
         if c.visible and c.haze > 0:
             label = "~" + label
+        if c.id in self._label_more:
+            label += f"  +{self._label_more[c.id]}"
         lost = not c.visible
         lw = theme.text_width(label, 12, weight="medium")
-        lx = sx + rad + 8
+        lx = max(sx, self._label_reach.get(c.id, sx)) + rad + 8
         if lx + lw > cam.rect.right - 6:                    # no room on the right: the name goes on the left
             lx = sx - rad - 8 - lw
-        top = self._free_label_y(lx, sy - 8, lw, 26 if lost else 14)
-        if art:
+        quiet = c.id in self._label_quiet
+        top = sy - 8 if quiet else self._free_label_y(lx, sy - 8, lw, 26 if lost else 14)
+        if art and not quiet:
             self._leader(surf, sx, sy, rad - 4, lx if lx > sx else lx + lw, top, color)
-        theme.text(surf, label, (lx, top), color, 12, weight="medium")
+        if not quiet:
+            theme.label(surf, label, (lx, top), color, 12)
         if lost:
             theme.text(surf, f"lost {c.age:.0f}s", (lx, top + 14), theme.TEXT_FAINT, 10)
         if targeted:
@@ -953,7 +987,7 @@ class TacticalView:
         return r.top
 
     @staticmethod
-    def _dashed_circle(surf: pygame.Surface, col: theme.Color, c: tuple[float, float], r: float, seg: int | None = None) -> None:
+    def _dashed_circle(surf: pygame.Surface, col: theme.Color | tuple[int, int, int, int], c: tuple[float, float], r: float, seg: int | None = None) -> None:
         n = seg or max(16, min(120, int(r / 6)))
         for i in range(0, n, 2):
             a0 = 2 * math.pi * i / n

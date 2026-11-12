@@ -41,9 +41,10 @@ class Slice:
 
 def _slice(d: dict[str, object], station: str | None = None) -> Slice:
     st = d.get("station", station)
-    ring = d.get("ring") or []
+    raw = d.get("ring")
+    ring = raw if isinstance(raw, list) else []
     return Slice(str(d.get("label", "?")), str(d.get("line", "")), str(st) if st else None,
-                 [_slice(r, str(st) if st else None) for r in ring if isinstance(r, dict)])  # type: ignore[union-attr]
+                 [_slice(r, str(st) if st else None) for r in ring if isinstance(r, dict)])
 
 
 def load_wheels(override: Path | None = None) -> dict[str, list[Slice]]:
@@ -212,7 +213,7 @@ class CommandWheel:
             theme.text(surf, label, (px, py + 1), theme.TEXT if hot else theme.TEXT_DIM, 12,
                        weight="semibold" if hot else "medium", anchor="midtop")
             theme.text(surf, str(i + 1), (cx + math.sin(mid) * (OUTER - 10), cy - math.cos(mid) * (OUTER - 10)),
-                       theme.TEXT_FAINT, 9, "mono", anchor="center")
+                       theme.TEXT_FAINT, 10, "mono", anchor="center")
         if self.sub is not None:
             for j, s in enumerate(self.slices[self.sub].ring):
                 a0, a1 = self._sub_angles(j)

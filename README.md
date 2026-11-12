@@ -11,6 +11,8 @@ You command a starship from a top-down tactical map and a Begin-style command co
 - aimed fire at a ship's systems, and boarding parties that take and keep enemy ships;
 - enemy captains you can hail, who are cowed or enraged by what you do to their allies, and who can be talked into surrendering or leaving;
 - a campaign: tours of duty that link battle after battle, with a squadron that carries its scars;
+- patrols: a random mission each time, from an ambush on two sides to a flagship behind her screen;
+- officers you shape yourself in a config file, from a new name to a Worf who cooks for the crew;
 - crew morale and hull repairs;
 - every ship class drawn as a lit, detailed model;
 - synthesised sound and effects, and a HUD that keeps to the essentials until you ask for more.
@@ -53,6 +55,7 @@ Useful shortcuts:
 |---|---|
 | `begin --preset border-incident` | Jumps straight into a preset battle (ids are in `src/begin/content/data/presets.toml`). |
 | `begin --quick 42` | Starts seeded quick battle number 42: your ship against two enemies. |
+| `begin --patrol 42` | Starts patrol number 42: one of five situations (ambush, wolf pack, second wave, escort, flagship) against a random enemy. |
 | `begin --preset fleet-action --cycles 30 --screenshot shot.png` | Simulates 30 cycles headlessly and saves a screenshot. |
 | `begin --tournament 20` | Runs 20 headless AI-versus-AI battles and prints a balance summary. |
 | `begin --balance 8` | Fights every preset 8 times with AI captains on both sides and prints win rates. |
