@@ -12,7 +12,7 @@ from ..content import default_content
 from ..tour.run import TourRun
 from .battle_scene import BattleScene
 from .menu_scene import MenuScene
-from .present import Presenter, open_presenter, prepare
+from .present import Presenter, open_presenter, prepare, relaunch_command
 from ..settings import Settings
 from .tour_scene import TourScene
 
@@ -38,6 +38,8 @@ class App:
             os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
         self.settings = Settings.load()
         chosen = "software" if headless else (renderer or self.settings.renderer)
+        self._started_with = chosen
+        self.restarting = False
         prepare(chosen)
         pygame.init()
         pygame.key.set_repeat(350, 40)
@@ -49,7 +51,8 @@ class App:
         self.clock = pygame.time.Clock()
         self.content = default_content()
         self.running = True
-        self.menu = MenuScene(self.content, self.settings, self.start_battle, self.stop, tours=self.open_tours)
+        self.menu = MenuScene(self.content, self.settings, self.start_battle, self.stop, tours=self.open_tours,
+                              display=self)
         self.menu.layout(self.size)
         self.tours: TourScene | None = None       # made the first time a tour is opened
         self.tour_run: TourRun | None = None      # the tour whose battle is being fought
@@ -63,6 +66,33 @@ class App:
 
     def stop(self) -> None:
         self.running = False
+
+    # ------------------------------------------------------------ the Display page (DisplayControl)
+
+    @property
+    def started_with(self) -> str:
+        return self._started_with
+
+    def set_bloom(self, on: bool) -> None:
+        self.settings.bloom = self.presenter.bloom = on
+        self.settings.save()
+
+    def restart(self) -> None:
+        """Close cleanly and start again, so a renderer just chosen takes over."""
+        self.settings.save()
+        self.restarting = True
+        self.running = False
+
+    def _relaunch(self) -> None:
+        import subprocess
+        import sys
+
+        cmd = relaunch_command(sys.argv, sys.orig_argv, sys.executable,
+                               bool(getattr(sys, "frozen", False)))
+        try:
+            subprocess.Popen(cmd, close_fds=True)
+        except OSError as e:
+            print(f"Begin: couldn't restart ({e}); start the game again to use the new renderer")
 
     def start_battle(self, setup: BattleSetup) -> BattleScene:
         battle = build_battle(self.content, setup)
@@ -147,6 +177,8 @@ class App:
         self.settings.save()
         self.presenter.close()
         pygame.quit()
+        if self.restarting:
+            self._relaunch()
 
 
 __all__ = ["App"]

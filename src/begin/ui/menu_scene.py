@@ -1,4 +1,4 @@
-"""Main menu, preset list and custom battle setup."""
+"""Main menu, preset list, custom battle setup and the Display page."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from . import theme
 from .showpiece import Flybys
 from .starfield import Starfield
 from .manual import ManualView
+from .present import RENDERER_INFO, RENDERERS, DisplayControl
 from ..settings import Settings
 from .widgets import UI
 
@@ -34,8 +35,9 @@ def _key_label(name: str) -> str:
 class MenuScene:
     def __init__(self, content: ContentDB, settings: Settings, start: Callable[[BattleSetup], object],
                  quit_: Callable[[], None], show_help: Callable[[], None] | None = None,
-                 tours: Callable[[], None] | None = None) -> None:
+                 tours: Callable[[], None] | None = None, display: DisplayControl | None = None) -> None:
         self.content = content
+        self.display = display
         self.tours = tours
         self.settings = settings
         self.start = start
@@ -122,6 +124,8 @@ class MenuScene:
                 self.play(self._mode_key(ev.key))  # type: ignore[arg-type]
             elif self.page == "main" and ev.key == pygame.K_t:
                 self._tours()
+            elif self.page == "main" and ev.key == pygame.K_d and self.display is not None:
+                self.page = "display"
             elif self.page == "main" and ev.key == pygame.K_k:
                 self.flybys.summon()               # a Klingon on demand, for anyone who wants to see one
             elif self.page == "main" and ev.key in (pygame.K_c, pygame.K_h, pygame.K_F1):
@@ -200,6 +204,8 @@ class MenuScene:
             self._custom(surf)
         elif self.page == "about":
             self._about(surf)
+        elif self.page == "display" and self.display is not None:
+            self._display(surf)
         self.ui.draw_tooltip(surf)
 
     def _main(self, surf: pygame.Surface) -> None:
@@ -213,13 +219,19 @@ class MenuScene:
             ("Custom battle", lambda: setattr(self, "page", "custom"), "Choose fleets"),
             ("Coach & training", self.open_manual, "How to fight your first battle, before you start (C)"),
             ("Manual", lambda: self.open_manual("index"), "Every page of the manual (H)"),
+        ]
+        if self.display is not None:
+            items += [("Display", lambda: setattr(self, "page", "display"),
+                       "How the game is drawn: sharpness on Retina and 4K screens, the glow round weapon light (D)")]
+        items += [
             ("About & licensing", lambda: setattr(self, "page", "about"), ""),
             ("Open config folder", self._open_config, "Your settings, officers, orders and sounds: plain text files you can edit"),
             ("Quit", self.quit, "Esc"),
         ]
+        step = max(40, min(49, (surf.get_height() - y - 90) // len(items)))    # a short window: closer together
         for label, act, tip in items:
-            self.ui.button(surf, pygame.Rect(x, y, 300, 42), label.upper(), act, tip, size=16)
-            y += 49
+            self.ui.button(surf, pygame.Rect(x, y, 300, step - 7), label.upper(), act, tip, size=16)
+            y += step
         pf = self.custom["player_faction"]
         self.ui.button(surf, pygame.Rect(x, y + 12, 300, 30), f"QUICK BATTLE SIDE: {self.content.factions[pf].name.upper()}",
                        lambda: self._cycle("player_faction", FACTIONS), "Which faction you command in a quick battle or a patrol",
@@ -303,6 +315,76 @@ class MenuScene:
                        lambda: self.start(self._custom_setup()), size=15, accent=theme.GOOD)
         self.ui.button(surf, pygame.Rect(x, y + 16, 140, 40), "Back", lambda: setattr(self, "page", "main"), size=13)
         theme.text(surf, "Begin's limit is 60 ships in one battle.", (x, y + 76), theme.TEXT_FAINT, 12)
+
+    def _display(self, surf: pygame.Surface) -> None:
+        """How frames reach the screen, in words a player can choose from; saved to config/settings.json."""
+        d = self.display
+        assert d is not None
+        st, pr = self.settings, d.presenter
+        x, y = 84, 210
+        choice = st.renderer if st.renderer in RENDERERS else "auto"
+
+        def pick(step: int = 1) -> None:
+            st.renderer = RENDERERS[(RENDERERS.index(choice) + step) % len(RENDERERS)]
+            st.save()
+
+        theme.text(surf, "Renderer", (x, y + 9), theme.TEXT_DIM, 14)
+        self.ui.button(surf, pygame.Rect(x + 160, y, 300, 36), RENDERER_INFO[choice][0], pick,
+                       "Click for next, right-click for previous", size=14, right=partial(pick, -1))
+        y += 46
+        y = self._para(surf, RENDERER_INFO[choice][1], (x + 160, y), 460, theme.TEXT_DIM, 13) + 14
+
+        gpu = pr.name == "gpu"
+        theme.text(surf, "Weapon glow", (x, y + 9), theme.TEXT_DIM, 14)
+        self.ui.button(surf, pygame.Rect(x + 160, y, 300, 36), "On" if st.bloom else "Off",
+                       lambda: d.set_bloom(not st.bloom),
+                       "A soft halo round phaser beams, disruptor bolts and blasts, and a slightly darker edge to "
+                       "the map. Never on text or panels.", active=st.bloom, accent=theme.GOOD, size=14)
+        y += 46
+        y = self._para(surf, "Takes effect at once." if gpu else "Shown when the graphics card draws the game.",
+                       (x + 160, y), 460, theme.TEXT_DIM, 13) + 26
+
+        # what is drawing now, and why
+        r = pygame.Rect(x, y, 600, 120)
+        yy = theme.panel(surf, r, "Now")
+        now = (f"Graphics card at {pr.density:g}x" if gpu else "Software drawing")
+        theme.text(surf, now, (r.x + 16, yy), theme.GOOD if gpu else theme.TEXT, 15, weight="medium")
+        if gpu:
+            detail = pr.note.split("(", 1)[-1].rstrip(")")        # the graphics card's name
+        elif pr.why:
+            detail = f"The graphics card isn't drawing: {pr.why}."
+        else:
+            detail = "As chosen in the settings."
+        self._para(surf, detail, (r.x + 16, yy + 26), r.width - 32,
+                   theme.CAUTION if pr.why else theme.TEXT_DIM, 13)
+        y = r.bottom + 18
+
+        if choice != d.started_with:
+            theme.text(surf, f"{RENDERER_INFO[choice][0]} takes over when the game starts again.", (x, y + 10),
+                       theme.CAUTION, 14)
+            self.ui.button(surf, pygame.Rect(x + 420, y, 180, 36), "Restart now", d.restart,
+                           "Close and reopen the game with the new renderer", size=14, accent=theme.GOOD)
+            y += 50
+        self.ui.button(surf, pygame.Rect(x, y + 6, 140, 36), "Back", lambda: setattr(self, "page", "main"), size=13)
+        theme.text(surf, "Saved in config/settings.json (renderer, bloom).", (x + 160, y + 16), theme.TEXT_FAINT, 12)
+
+    @staticmethod
+    def _para(surf: pygame.Surface, text: str, at: tuple[int, int], width: int, color: theme.Color,
+              size: int) -> int:
+        """Wrapped text; returns the y below it."""
+        x, y = at
+        line = ""
+        for wd in text.split():
+            if line and theme.text_width(line + " " + wd, size) > width:
+                theme.text(surf, line, (x, y), color, size)
+                y += size + 7
+                line = wd
+            else:
+                line = (line + " " + wd).strip()
+        if line:
+            theme.text(surf, line, (x, y), color, size)
+            y += size + 7
+        return y
 
     def _about(self, surf: pygame.Surface) -> None:
         lines = [

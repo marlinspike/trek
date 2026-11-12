@@ -31,7 +31,8 @@ RENDERERS = ("auto", "gpu", "software")
 class Presenter(Protocol):
     name: str                  # "gpu" or "software"
     density: float             # physical pixels per logical pixel
-    note: str                  # why this presenter was chosen, for the log and `--renderer` help
+    note: str                  # what is drawing, for the terminal
+    why: str                   # why the graphics card isn't drawing, when it was tried and failed ("" otherwise)
     bloom: bool                # glow round weapon light and the vignette (GPU only)
 
     @property
@@ -49,13 +50,14 @@ class SoftwarePresenter:
     density = 1.0
     bloom = False
 
-    def __init__(self, size: tuple[int, int], icon: pygame.Surface | None, note: str = "") -> None:
+    def __init__(self, size: tuple[int, int], icon: pygame.Surface | None, why: str = "") -> None:
         gfx.set_scale(1.0)
         if icon is not None:
             pygame.display.set_icon(icon)
         self._screen = pygame.display.set_mode(size, pygame.RESIZABLE)
         pygame.display.set_caption(CAPTION)
-        self.note = note or "software rendering"
+        self.why = why
+        self.note = f"software rendering: the graphics card isn't drawing ({why})" if why else "software rendering"
 
     @property
     def screen(self) -> pygame.Surface:
@@ -73,6 +75,47 @@ class SoftwarePresenter:
 
     def close(self) -> None:
         pass
+
+
+class DisplayControl(Protocol):
+    """What the Display page may do: read how frames are shown, turn the glow on or off at once, and restart
+    the game so a new renderer takes over (a window can't change renderer while it is open)."""
+
+    @property
+    def presenter(self) -> Presenter: ...
+    @property
+    def started_with(self) -> str: ...
+    def set_bloom(self, on: bool) -> None: ...
+    def restart(self) -> None: ...
+
+
+RENDERER_INFO: dict[str, tuple[str, str]] = {
+    "auto": ("Automatic", "The graphics card when it can, at the screen's full sharpness; pygame's own drawing "
+                          "when it can't (no OpenGL 3.3, or OpenGL drawn on the processor)."),
+    "gpu": ("Graphics card", "Always OpenGL, even where it is drawn on the processor (slower there). Sharp on "
+                             "Retina and 4K screens, with the glow round weapon light."),
+    "software": ("Software", "pygame's own drawing, one pixel per point, as the game always drew. Softer on "
+                             "high-density screens; works everywhere."),
+}
+
+
+def relaunch_command(argv: list[str], orig_argv: list[str], executable: str, frozen: bool) -> list[str]:
+    """The command that starts this game again the way it was started (minus a one-off `--renderer`, so the
+    setting just chosen applies)."""
+    args = argv[1:] if frozen else orig_argv[1:]
+    out: list[str] = []
+    skip = False
+    for a in args:
+        if skip:
+            skip = False
+            continue
+        if a == "--renderer":
+            skip = True
+            continue
+        if a.startswith("--renderer="):
+            continue
+        out.append(a)
+    return [executable, *out]
 
 
 def prepare(renderer: str) -> None:
@@ -93,8 +136,9 @@ def open_presenter(renderer: str, size: tuple[int, int], icon: pygame.Surface | 
 
         return GLPresenter(size, icon, bloom=bloom, allow_software_gl=renderer == "gpu")
     except Exception as e:  # noqa: BLE001 - any failure to get a GPU window means software, never a crash
-        reason = f"GPU rendering unavailable ({type(e).__name__}: {e}); using software rendering"
-        return SoftwarePresenter(size, icon, note=reason)
+        why = str(e) if isinstance(e, RuntimeError) and str(e) else f"{type(e).__name__}: {e}"
+        return SoftwarePresenter(size, icon, why=why)
 
 
-__all__ = ["CAPTION", "Presenter", "RENDERERS", "SoftwarePresenter", "open_presenter", "prepare"]
+__all__ = ["CAPTION", "DisplayControl", "Presenter", "RENDERERS", "RENDERER_INFO", "SoftwarePresenter",
+           "open_presenter", "prepare", "relaunch_command"]

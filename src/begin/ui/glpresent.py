@@ -244,6 +244,7 @@ class GLPresenter:
     """A high-density OpenGL window showing frames through a `Compositor`."""
 
     name = "gpu"
+    why = ""
 
     def __init__(self, size: tuple[int, int], icon: pygame.Surface | None, bloom: bool = True,
                  allow_software_gl: bool = False) -> None:
