@@ -2,8 +2,8 @@
 title: Display and sharpness
 category: Game
 order: 7
-aliases: display, graphics, renderer, gpu, opengl, retina, 4k, sharp, blurry, glow, bloom, vignette, software rendering
-summary: How the game is drawn: sharp on Retina and 4K screens through the graphics card, with a soft glow round weapon light.
+aliases: display, graphics, renderer, gpu, opengl, retina, 4k, sharp, blurry, glow, bloom, vignette, lighting, shadows, software rendering
+summary: How the game is drawn: sharp on Retina and 4K screens through the graphics card, with weapon light that falls on nearby hulls and a soft glow round it.
 see: weapon-colors, sound
 ---
 Open **Display** from the main menu (or press **D** there) to see how the game is being drawn and to change it.
@@ -16,7 +16,7 @@ Open **Display** from the main menu (or press **D** there) to see how the game i
 
 A window can't change renderer while it is open, so after you pick a different one the page offers **Restart now**. Or the change simply applies the next time you start the game.
 
-**Weapon glow** adds a soft halo round phaser beams, disruptor bolts and blasts, and makes the very edge of the map slightly darker, like a viewscreen. Text and panels are never touched. It takes effect at once, and only shows when the graphics card is drawing.
+**Light and glow** makes weapon fire feel physical. A phaser hit, a launch or a torpedo blast briefly lights the hulls next to it in its own colour, and panels and cards cast a soft shadow so they sit above the map. With the graphics card drawing, phaser beams, disruptor bolts and blasts also get a soft halo, and the very edge of the map is slightly darker, like a viewscreen. Text is never touched. It takes effect at once; turn it off for the flattest, quickest picture.
 
 The **Now** box says what is drawing at the moment: the graphics card and the screen's density, or software drawing and why the graphics card isn't being used.
 

@@ -11,6 +11,7 @@ from ..battle import BattleSetup, build_battle
 from ..content import default_content
 from ..tour.run import TourRun
 from .battle_scene import BattleScene
+from . import gfx
 from .menu_scene import MenuScene
 from .present import Presenter, open_presenter, prepare, relaunch_command
 from ..settings import Settings
@@ -45,6 +46,7 @@ class App:
         pygame.key.set_repeat(350, 40)
         w, h = self.settings.window
         self.size: tuple[int, int] = size or (w, h)
+        gfx.set_lighting(self.settings.bloom)
         self.presenter: Presenter = open_presenter(chosen, self.size, _window_icon(), bloom=self.settings.bloom)
         if not headless:
             print(f"Begin: {self.presenter.note}")
@@ -75,6 +77,7 @@ class App:
 
     def set_bloom(self, on: bool) -> None:
         self.settings.bloom = self.presenter.bloom = on
+        gfx.set_lighting(on)
         self.settings.save()
 
     def restart(self) -> None:

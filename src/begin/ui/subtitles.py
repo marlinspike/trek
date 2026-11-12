@@ -115,6 +115,8 @@ class Subtitles:
         box.midbottom = (area.centerx, area.bottom - 18)
         if any(box.inflate(24, 24).collidepoint(p) for p in keep_clear):
             box.midtop = (area.centerx, area.y + 84)
+        if alpha > 0.6:
+            theme.shadow(surf, box, 6)
         glass = gfx.Surface(box.size, pygame.SRCALPHA)
         glass.fill((*theme.BG_PANEL, int(214 * alpha)))
         surf.blit(glass, box)

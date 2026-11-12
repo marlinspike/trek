@@ -34,6 +34,16 @@ from . import gfx
 Body = tuple[float, float, float]     # where a ship is seen: x, y and her hull length, world units
 
 
+@dataclass(frozen=True)
+class Light:
+    """Weapon light falling on whatever is near it this frame, in screen pixels: lights the hulls round it."""
+    x: float
+    y: float
+    reach: float           # pixels: nothing beyond this is lit
+    color: theme.Color
+    k: float               # 0..1 at its centre
+
+
 @dataclass
 class Ring:
     x: float
@@ -392,6 +402,33 @@ class Effects:
         self.beams = [b for b in self.beams if b.age < b.life]
         self.rings = [r for r in self.rings if r.age < r.life]
         self.sparks = [s for s in self.sparks if s.age < s.life]
+
+    def lights(self, cam: Camera) -> list[Light]:
+        """The light of shots landing, banks firing, warheads and ships going up, and launches, right now."""
+        out: list[Light] = []
+        for b in self.beams:
+            if b.style == "sweep":
+                continue
+            charge, arrive, tail, gone = b.timeline()
+            if b.age < charge:
+                continue
+            p0, p1 = b.endpoints(cam)
+            w = b.weight
+            fade = 1.0 if b.age < tail else max(0.0, 1.0 - (b.age - tail) / max(gone - tail, 1e-6))
+            col = theme.mix(b.color, (255, 255, 255), 0.3)
+            out.append(Light(p0[0], p0[1], 40 + 30 * w, col, 0.45 * w * fade))          # the bank that fired
+            if b.age >= arrive:
+                out.append(Light(p1[0], p1[1], 60 + 50 * w, col, min(1.0, 0.9 * w) * fade))   # where it lands
+        for r in self.rings:
+            t = r.age / r.life
+            out.append(Light(*cam.to_screen(r.x, r.y), 30 + r.radius * cam.zoom * 2.5, r.color, (1.0 - t) ** 2))
+        for g in self.glows:
+            t = g.age / g.life
+            out.append(Light(*cam.to_screen(g.x, g.y), 20 + g.radius * cam.zoom * 3.0, g.color, 0.8 * (1.0 - t) ** 1.5))
+        for fl in self.flashes:
+            if fl.delay <= 0:
+                out.append(Light(*cam.to_screen(fl.x, fl.y), fl.radius * 5.0, fl.color, 0.7 * (1.0 - fl.age / fl.life)))
+        return [lt for lt in out if lt.k > 0.02]
 
     def draw(self, surf: pygame.Surface, cam: Camera, overlay: pygame.Surface,
              glow: pygame.Surface | None = None) -> None:

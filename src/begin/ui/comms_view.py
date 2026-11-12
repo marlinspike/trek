@@ -214,6 +214,7 @@ def draw_card(surf: pygame.Surface, top_right: tuple[int, int], obs: Observation
     h = 26 + 54 + 8 + (3 * 16 + 6 if alive else 0) + len(talk) * 16 + 8 + (30 if buttons else 0) + 6
     box = pygame.Rect(x0, y0, CARD_W, h)
     pulse = 0.5 + 0.5 * math.sin(now * math.tau / 1.6)
+    theme.shadow(surf, box, 6)
     gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=6)
     edge = theme.mix(theme.dim(acc, 0.7), theme.HAIL, 0.5 * pulse) if ch.status == "hailing" else theme.dim(acc, 0.7)
     gfx.draw.rect(surf, edge, box, 1, border_radius=6)

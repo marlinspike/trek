@@ -60,6 +60,7 @@ def draw_panel(surf: pygame.Surface, top_left: tuple[int, int], acts: list[Activ
             rows.append((a.progress, theme.TEXT_DIM, 12, "regular"))
     h = sum(size + 6 for _, _, size, _ in rows) + 12 + 6 * (len(acts) - 1)
     box = pygame.Rect(x, y, PANEL_W, h)
+    theme.shadow(surf, box)
     gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
     gfx.draw.rect(surf, theme.dim(theme.CREW, 0.6), box, 1, border_radius=4)
     if speaking is not None and any(a.officer_id == speaking for a in acts):
