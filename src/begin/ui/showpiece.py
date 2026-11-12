@@ -106,7 +106,7 @@ def ship_lights(surf: pygame.Surface, cx: float, cy: float, heading: float, scal
             return
         img = halo(max(3, round(units * k)), c)
         x, y = hull_to_screen(cx, cy, heading, scale, hx, hy)
-        surf.blit(img, img.get_rect(center=(round(x), round(y))), special_flags=pygame.BLEND_RGB_ADD)
+        gfx.mark(surf, surf.blit(img, img.get_rect(center=(round(x), round(y))), special_flags=pygame.BLEND_RGB_ADD))
 
     for hx, hy in NACELLE_SPANS:
         light(hx, hy, 6.0, (70, 130, 255), 0.30 * pulse)
@@ -441,16 +441,16 @@ class Encounter:
         p1 = (p0[0] + dx / d * stop * head, p0[1] + dy / d * stop * head)
         core = theme.mix(DISRUPTOR_COL, (255, 255, 255), 0.5)
         for width, lvl in ((13, 0.12), (7, 0.28), (3, 0.6)):
-            gfx.draw.line(glow, blast_level(DISRUPTOR_COL, lvl * k), p0, p1, max(1, round(width * g)))
-        gfx.draw.line(glow, blast_level(core, 0.9 * k), p0, p1, 1)
+            gfx.draw.aaline(glow, blast_level(DISRUPTOR_COL, lvl * k), p0, p1, max(1.0, width * g))
+        gfx.draw.aaline(glow, blast_level(core, 0.9 * k), p0, p1, 1)
         add_light(glow, p0[0], p0[1], max(4, 22 * self.scale), DISRUPTOR_COL, k)
 
     def _bolt(self, glow: pygame.Surface, b: _Bolt, scale: float) -> None:
         g = 0.4 + 0.6 * scale
         for (x0, y0, t0), (x1, y1, _) in zip(b.trail, b.trail[1:]):
             k = 1.0 - (self.t - t0) / TRAIL
-            gfx.draw.line(glow, blast_level(KTORP_COL, 0.3 * k * k), (x0, y0), (x1, y1), max(1, int(12 * k * g)))
-            gfx.draw.line(glow, blast_level(KTORP_COL, 0.9 * k * k), (x0, y0), (x1, y1), max(1, int(4 * k * g)))
+            gfx.draw.aaline(glow, blast_level(KTORP_COL, 0.3 * k * k), (x0, y0), (x1, y1), max(1.0, 12 * k * g))
+            gfx.draw.aaline(glow, blast_level(KTORP_COL, 0.9 * k * k), (x0, y0), (x1, y1), max(1.0, 4 * k * g))
         pulse = 0.8 + 0.2 * math.sin(self.t * 30.0)
         add_light(glow, b.pos[0], b.pos[1], max(10, 40 * g), KTORP_COL, pulse)
         add_light(glow, b.pos[0], b.pos[1], max(4, 13 * g), theme.mix(KTORP_COL, (255, 255, 255), 0.8), 1.0)
@@ -493,8 +493,8 @@ class Encounter:
         g = 0.4 + 0.6 * scale
         core = theme.mix(PHASER_COL, (255, 255, 255), 0.55)
         for width, lvl in ((17, 0.10), (9, 0.22), (5, 0.45)):
-            gfx.draw.line(glow, blast_level(PHASER_COL, lvl * k), p0, p1, max(1, round(width * g)))
-        gfx.draw.line(glow, blast_level(core, 0.95 * k), p0, p1, 2)
+            gfx.draw.aaline(glow, blast_level(PHASER_COL, lvl * k), p0, p1, max(1.0, width * g))
+        gfx.draw.aaline(glow, blast_level(core, 0.95 * k), p0, p1, 2)
         add_light(glow, p0[0], p0[1], max(4, 26 * scale), core, k)
         add_light(glow, p1[0], p1[1], max(6, 30 * scale), (230, 245, 255), k)
 
@@ -502,8 +502,8 @@ class Encounter:
         g = 0.4 + 0.6 * scale
         for (x0, y0, t0), (x1, y1, _) in zip(r.trail, r.trail[1:]):
             k = 1.0 - (self.t - t0) / TRAIL
-            gfx.draw.line(glow, blast_level(TORPEDO_COL, 0.3 * k * k), (x0, y0), (x1, y1), max(1, int(12 * k * g)))
-            gfx.draw.line(glow, blast_level(TORPEDO_COL, 0.9 * k * k), (x0, y0), (x1, y1), max(1, int(4 * k * g)))
+            gfx.draw.aaline(glow, blast_level(TORPEDO_COL, 0.3 * k * k), (x0, y0), (x1, y1), max(1.0, 12 * k * g))
+            gfx.draw.aaline(glow, blast_level(TORPEDO_COL, 0.9 * k * k), (x0, y0), (x1, y1), max(1.0, 4 * k * g))
         assert r.pos is not None
         pulse = 0.8 + 0.2 * math.sin(self.t * 30.0)
         add_light(glow, r.pos[0], r.pos[1], max(10, 40 * g), TORPEDO_COL, pulse)
@@ -516,6 +516,8 @@ class Flybys:
     def __init__(self, seed: int = 1701, sound: Callable[[str, float, float], None] | None = None) -> None:
         self.rng = random.Random(seed)
         self.sound = sound
+        self._glow: pygame.Surface | None = None     # the light layer, kept between frames
+        self._glow_used: pygame.Rect | None = None    # and what was lit on it last frame
         self.current: Pass | None = None
         self.wait = 1.2                       # a moment of empty stars before the first pass
         self.shots: list[Shot] = []
@@ -673,8 +675,7 @@ class Flybys:
     def draw(self, surf: pygame.Surface) -> None:
         p = self.current
         w, h = surf.get_size()
-        glow = gfx.Surface((w, h))            # light, added onto the scene
-        glow.fill((0, 0, 0))
+        glow = self._light_layer(surf)        # light, added onto the scene
         ship_at = p.at(min(1.0, p.t / p.duration)) if p is not None else None
         ship_scale = p.scale if p is not None else 1.0
         if self.encounter is not None:
@@ -692,7 +693,22 @@ class Flybys:
             if img is not None:
                 surf.blit(img, img.get_rect(center=(round(x), round(y))))
                 ship_lights(glow, x, y, hdg, ship_scale, self.clock)
-        surf.blit(glow, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+        self._glow_used = lit = gfx.take_dirty(glow)
+        if lit is not None and (lit := lit.clip(surf.get_rect())).w > 0:
+            surf.blit(glow, lit.topleft, area=lit, special_flags=pygame.BLEND_RGB_ADD)
+            gfx.offer_light(glow, lit)        # on the graphics card it blooms, as in battle
+
+    def _light_layer(self, surf: pygame.Surface) -> pygame.Surface:
+        """The black layer the light is drawn on, cleared only where it was lit last frame."""
+        if self._glow is None or self._glow.get_size() != surf.get_size():
+            self._glow = gfx.Surface(surf.get_size())
+            self._glow.fill((0, 0, 0))
+            gfx.track(self._glow)
+            self._glow_used = None
+        elif self._glow_used is not None:
+            self._glow.fill((0, 0, 0), self._glow_used.clip(self._glow.get_rect()))
+        gfx.take_dirty(self._glow)
+        return self._glow
 
     @staticmethod
     def _light(col: tuple[int, int, int], k: float) -> tuple[int, int, int]:
@@ -709,10 +725,10 @@ class Flybys:
         core = theme.mix(PHASER_COL, (255, 255, 255), 0.55)
         g = 0.4 + 0.6 * scale                  # a distant ship's beams are finer
         for width, level in ((17, 0.10), (9, 0.22), (5, 0.45)):
-            gfx.draw.line(glow, self._light(PHASER_COL, level * k), p0, p1, max(1, round(width * g)))
-        gfx.draw.line(glow, self._light(core, 0.95 * k), p0, p1, 2)
+            gfx.draw.aaline(glow, self._light(PHASER_COL, level * k), p0, p1, max(1.0, width * g))
+        gfx.draw.aaline(glow, self._light(core, 0.95 * k), p0, p1, 2)
         flash = halo(max(4, int(26 * scale)), self._light(core, k))
-        glow.blit(flash, flash.get_rect(center=(int(p0[0]), int(p0[1]))), special_flags=pygame.BLEND_RGB_ADD)
+        gfx.mark(glow, glow.blit(flash, flash.get_rect(center=(int(p0[0]), int(p0[1]))), special_flags=pygame.BLEND_RGB_ADD))
 
     def _torpedo(self, glow: pygame.Surface, s: Shot) -> None:
         if not s.trail:
@@ -720,16 +736,16 @@ class Flybys:
         for (x0, y0, t0), (x1, y1, _) in zip(s.trail, s.trail[1:]):
             k = 1.0 - (s.t - t0) / TRAIL
             g = 0.4 + 0.6 * s.scale
-            gfx.draw.line(glow, self._light(TORPEDO_COL, 0.3 * k * k), (x0, y0), (x1, y1),
-                             max(1, int(12 * k * g)))                       # soft glow around the trail
-            gfx.draw.line(glow, self._light(TORPEDO_COL, 0.9 * k * k), (x0, y0), (x1, y1),
-                             max(1, int(4 * k * g)))
+            gfx.draw.aaline(glow, self._light(TORPEDO_COL, 0.3 * k * k), (x0, y0), (x1, y1),
+                             max(1.0, 12 * k * g))                       # soft glow around the trail
+            gfx.draw.aaline(glow, self._light(TORPEDO_COL, 0.9 * k * k), (x0, y0), (x1, y1),
+                             max(1.0, 4 * k * g))
         pulse = 0.8 + 0.2 * math.sin(s.t * 30.0)
         px, py = int(s.pos[0]), int(s.pos[1])
         g = 0.4 + 0.6 * s.scale
         big = halo(max(10, round(40 * g)), self._light(TORPEDO_COL, pulse))
-        glow.blit(big, big.get_rect(center=(px, py)), special_flags=pygame.BLEND_RGB_ADD)
+        gfx.mark(glow, glow.blit(big, big.get_rect(center=(px, py)), special_flags=pygame.BLEND_RGB_ADD))
         hot = halo(max(4, round(13 * g)), theme.mix(TORPEDO_COL, (255, 255, 255), 0.8))
-        glow.blit(hot, hot.get_rect(center=(px, py)), special_flags=pygame.BLEND_RGB_ADD)
+        gfx.mark(glow, glow.blit(hot, hot.get_rect(center=(px, py)), special_flags=pygame.BLEND_RGB_ADD))
 
 __all__ = ["Encounter", "Flybys", "Pass", "hull_to_screen", "ship_image", "ship_lights", "sprite"]
