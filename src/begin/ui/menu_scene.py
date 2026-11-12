@@ -26,6 +26,7 @@ from .widgets import UI
 FACTIONS = ["federation", "klingon", "romulan", "orion"]
 STAR_DRIFT = 900.0        # world units per second the menu's view drifts through the stars
 TITLE_SIZE = 84           # pixels: the gold title lettering
+TITLE = "BEGIN : TREK"     # the remake's name: Begin was the original game
 MENU_SOUND = 0.4          # × the player's volume: the menu's flybys are heard, quietly
 
 
@@ -210,7 +211,7 @@ class MenuScene:
         self.stars.draw(surf, surf.get_rect(), self.t * STAR_DRIFT, self.t * STAR_DRIFT * 0.18)
         if self.page == "main":
             self.flybys.draw(surf)
-        title = theme.title_art("BEGIN", TITLE_SIZE)
+        title = theme.title_art(TITLE, TITLE_SIZE)
         surf.blit(title, (80 - TITLE_SIZE // 3, 40 - TITLE_SIZE // 3))
         theme.text(surf, "A TACTICAL STARSHIP SIMULATION  ·  A REMAKE OF BEGIN 2", (84, 150), theme.TEXT_DIM, 14, "display")
         if self.page == "main":

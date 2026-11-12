@@ -24,7 +24,7 @@ import pygame
 
 from . import gfx
 
-CAPTION = "Begin — tactical starship simulation"
+CAPTION = "Begin : Trek — tactical starship simulation"
 RENDERERS = ("auto", "gpu", "software")
 
 

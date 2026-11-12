@@ -1,4 +1,4 @@
-# Begin (remake)
+# Begin : Trek
 
 ![The title screen: a Klingon battle cruiser decloaks and the Enterprise's torpedo bursts on its shields](docs/screenshots/title-klingon.png)
 
