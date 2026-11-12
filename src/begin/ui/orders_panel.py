@@ -46,7 +46,7 @@ class OrdersPanel(Panel):
     weight = 1.0
 
     def tab_label(self, hud: BattleScene) -> str:
-        n = len(hud.orders.orders)
+        n = len(hud.session.named_orders())
         rec = hud.recording is not None
         return "Orders · rec" if rec else (f"Orders · {n}" if n else "Orders")
 
@@ -67,17 +67,17 @@ class OrdersPanel(Panel):
         y += 26
         keyed = {v.strip().lower().removeprefix("execute order ").strip(): k for k, v in hud.keys.items()}
         cards: list[tuple[str, str, str | None, str, list[str]]] = []
-        for o in hud.orders.orders.values():
+        for o in hud.session.named_orders().values():
             cards.append((o.name, o.note or o.summary(), keyed.get(o.name), o.name, [s.text for s in o.steps]))
         for k, v in sorted(hud.keys.items()):
-            if v.strip().lower().removeprefix("execute order ").strip() in hud.orders.orders:
+            if v.strip().lower().removeprefix("execute order ").strip() in hud.session.named_orders():
                 continue
             cards.append((k, v, None, v, [v]))
         if not cards:
             theme.text(surf, "No orders yet. Give a few orders after 'record <name>' and they're kept here.",
                        (x0 + 2, y + 4), theme.TEXT_DIM, 12)
             return
-        running = hud.order_run.order.name if hud.order_run is not None and not hud.order_run.done else None
+        running = hud.session.running_order()
         for name, what, key, line, steps in cards:
             if y + CARD_H > rect.bottom - 4:
                 theme.text(surf, "… more: type 'orders'", (x0 + 2, y + 2), theme.TEXT_FAINT, 11)

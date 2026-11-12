@@ -36,7 +36,7 @@ def _scene(content, lines: list[str]):  # type: ignore[no-untyped-def]
 
 def _run_until_done(sc, secs: float) -> int | None:  # type: ignore[no-untyped-def]
     """Run the battle; the tick the objective was met, if it was."""
-    w = sc.world
+    w = sc.session.world
     done: list[int] = []
     emit = w.emit
 
@@ -57,7 +57,7 @@ def _run_until_done(sc, secs: float) -> int | None:  # type: ignore[no-untyped-d
 
 def _officer_shots(sc, start: int, at: int) -> list[object]:  # type: ignore[no-untyped-def]
     me = sc.player
-    return [lc.command for lc in sc.world.command_log[start:] if lc.accepted and lc.command.ship_id == me.id
+    return [lc.command for lc in sc.session.world.command_log[start:] if lc.accepted and lc.command.ship_id == me.id
             and lc.command.issuer < Authority.CAPTAIN and offensive_fire(lc.command)]
 
 
@@ -71,10 +71,10 @@ def test_disabling_stops_at_the_system_and_spares_the_ship(content, system: str,
     assert enemy.exists and enemy.structure > 0
     assert me.target_subsystem is None                  # by default we are back to aiming at the hull
     assert enemy.id in me.spared
-    start = len(sc.world.command_log)
+    start = len(sc.session.world.command_log)
     # a salvo already in flight when the system fell still lands: let it, then she must take no more
     for _ in range(15 * 20):
-        if not any(t.owner == me.id for t in sc.world.torpedoes):
+        if not any(t.owner == me.id for t in sc.session.world.torpedoes):
             break
         sc.update(0.05)
         sc.overlay = None
@@ -98,10 +98,10 @@ def test_disabling_torpedoes_never_destroys_her(content) -> None:  # type: ignor
 
 def test_no_attack_probes_while_seven_is_disabling(content) -> None:  # type: ignore[no-untyped-def]
     sc, enemy = _scene(content, ["delegate tactical"])
-    start = len(sc.world.command_log)
+    start = len(sc.session.world.command_log)
     sc.run_console("seven, disable their shields")
     _run_until_done(sc, 60.0)
-    probes = [lc for lc in sc.world.command_log[start:] if lc.accepted and isinstance(lc.command, LaunchProbe)]
+    probes = [lc for lc in sc.session.world.command_log[start:] if lc.accepted and isinstance(lc.command, LaunchProbe)]
     assert probes == [] and enemy.exists
     sc.close()
 
@@ -122,7 +122,7 @@ def test_targeting_the_hull_or_firing_finishes_her(content, line: str) -> None: 
     assert enemy.id in sc.player.spared
     sc.run_console(line)
     assert enemy.id not in sc.player.spared
-    start = len(sc.world.command_log)
+    start = len(sc.session.world.command_log)
     for _ in range(20 * 20):
         sc.update(0.05)
         sc.overlay = None

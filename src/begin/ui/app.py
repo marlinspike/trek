@@ -91,11 +91,9 @@ class App:
         """The Ready Room's launch: travel to the stop, build its battle with the squadron as it is now."""
         fight = run.launch()
         scene = self.start_battle(fight.setup)
-        run.prepare(scene.battle)
-        scene.tour = run
+        scene.session.join_tour(run)
         scene.exit_label = "Return to the Ready Room"
         scene.on_exit = self.end_tour_battle
-        scene.obs = scene.world.observe(scene.side)        # the ships as their records left them
         self.tour_run = run
         return scene
 
@@ -103,15 +101,7 @@ class App:
         """The battle is over (or left): take the squadron back to the Ready Room and write up the log."""
         scene, run = self.scene, self.tour_run
         assert isinstance(scene, BattleScene) and run is not None and self.tours is not None
-        battle = scene.battle
-        battle.deeds = list(scene.deeds)         # the officers' record, for the log
-        best = ""
-        if battle.crew is not None and battle.player_ship_id is not None:
-            from ..crew.review import standout
-
-            s = standout(battle.crew.officers.values(), battle.player_ship_id, battle.world.command_log, scene.deeds)
-            best = s.line() if s is not None else ""
-        run.finish(battle, best)
+        scene.session.finish_tour(run)
         self._leave_battle()
         self.tour_run = None
         self.tours.after_battle(run)

@@ -312,12 +312,12 @@ def test_talking_to_officers_offline(scene) -> None:  # type: ignore[no-untyped-
     assert any("not my station" in t for t in _said(sc, "Worf"))
     sc.run_console("geordi, raise all")
     assert all(sh.up for sh in sc.player.shields)
-    before = sc.bridge.relationships.get("worf").rapport
+    before = sc.session.bridge.relationships.get("worf").rapport
     sc.run_console("worf, you are useless")
-    assert sc.bridge.relationships.get("worf").rapport < before
-    before = sc.bridge.relationships.get("seven").rapport
+    assert sc.session.bridge.relationships.get("worf").rapport < before
+    before = sc.session.bridge.relationships.get("seven").rapport
     sc.run_console("seven, you are useless")
-    assert sc.bridge.relationships.get("seven").rapport < before        # like anyone else, unless configured
+    assert sc.session.bridge.relationships.get("seven").rapport < before        # like anyone else, unless configured
     sc.run_console("ask seven of nine status")
     assert any("contacts" in t for t in _said(sc, "Seven of Nine"))
     sc.run_console("crew")
@@ -328,11 +328,11 @@ def test_talking_to_officers_offline(scene) -> None:  # type: ignore[no-untyped-
 def test_llm_answers_carry_out_orders_for_the_right_station(scene) -> None:  # type: ignore[no-untyped-def]
     sc, surf = scene
     fake = _Fake('{"say": "Shields up, and I will try the helm.", "commands": ["raise all", "helm 90 warp 2"]}')
-    sc.bridge.llm = LLMService(fake)
+    sc.session.bridge.llm = LLMService(fake)
     sc.run_console("geordi, shields up and turn us around")
-    assert sc.bridge.llm.busy("geordi")
+    assert sc.session.bridge.llm.busy("geordi")
     end = time.time() + 5
-    while sc.bridge.llm.busy("geordi") and time.time() < end:
+    while sc.session.bridge.llm.busy("geordi") and time.time() < end:
         sc.update(0.0)
         time.sleep(0.01)
     sc.update(0.0)
@@ -348,11 +348,11 @@ def test_llm_answers_carry_out_orders_for_the_right_station(scene) -> None:  # t
 def test_llm_answer_to_a_question_only_suggests(scene) -> None:  # type: ignore[no-untyped-def]
     sc, _ = scene
     fake = _Fake('{"say": "Close and fire.", "commands": ["target derango[weapons]", "fire all phasers [spread 45]"]}')
-    sc.bridge.llm = LLMService(fake)
+    sc.session.bridge.llm = LLMService(fake)
     fired = sc.player.stats.phaser_shots
     sc.run_console("spock, what do you recommend?")
     end = time.time() + 5
-    while sc.bridge.llm.busy("spock") and time.time() < end:
+    while sc.session.bridge.llm.busy("spock") and time.time() < end:
         sc.update(0.0)
         time.sleep(0.01)
     sc.update(0.0)
@@ -360,7 +360,7 @@ def test_llm_answer_to_a_question_only_suggests(scene) -> None:  # type: ignore[
     assert any("› target derango weapons" in t for t in texts)
     assert sc.player.stats.phaser_shots == fired and sc.player.target is None
     sc.run_console("target derango weapons")
-    assert sc.bridge.relationships.get("spock").advice_taken == 1
+    assert sc.session.bridge.relationships.get("spock").advice_taken == 1
     sc.close()
 
 
@@ -504,7 +504,7 @@ def test_spock_and_seven_design_a_tachyon_detector(scene) -> None:  # type: igno
     from begin.sim.commands import FireSpecialRound
 
     sc, surf = scene
-    for s in sc.world.ships.values():
+    for s in sc.session.world.ships.values():
         if s.side != sc.player.side:
             s.y += 30000   # out of the fight while they work
     sc.run_console("spock, I think there's a cloaked ship out there")
@@ -512,12 +512,12 @@ def test_spock_and_seven_design_a_tachyon_detector(scene) -> None:  # type: igno
     assert _said(sc, "Spock") and any("Twenty seconds" in t for t in _said(sc, "Seven of Nine"))
     sc.run_console("seven, find the cloaked ship")   # already under way: she says so instead of starting again
     assert any("already being designed" in t for t in _said(sc, "Seven of Nine"))
-    for _ in range(25 * sc.world.rules.ticks_per_cycle):
-        sc.world.step()
-        sc._drain_events()
+    for _ in range(25 * sc.session.world.rules.ticks_per_cycle):
+        sc.session.world.step()
+        sc.session._drain_events()
     tube = next(t for t in sc.player.tubes if t.loaded and t.loaded.ordnance == "tachyon")
     assert any(f"ready in tube {tube.index + 1}" in t for t in _said(sc, "Seven of Nine"))
-    cmd = parse("tachyon 90 8000", ParseContext(sc.player_id, sc.world.observe(sc.side))).commands[0]
+    cmd = parse("tachyon 90 8000", ParseContext(sc.player_id, sc.session.world.observe(sc.session.side))).commands[0]
     assert isinstance(cmd, FireSpecialRound) and math.isclose(cmd.x, sc.player.x + 8000, abs_tol=1)
     sc.run_console("worf, tachyon 90 8000")
     assert tube.loaded is None or tube.loaded.ordnance != "tachyon"
@@ -531,14 +531,14 @@ def test_an_officer_takes_the_bridge_and_hands_it_back(scene) -> None:  # type: 
     assert sc.player.conn == "seven" and sc.player.delegated == set(STATION_COMMANDS)
     assert any("bridge" in t.lower() or "command" in t.lower() for t in _said(sc, "Seven of Nine"))
     sc.player.target = None
-    for _ in range(10 * sc.world.rules.ticks_per_cycle):
-        sc.world.step()
-        sc._drain_events()
+    for _ in range(10 * sc.session.world.rules.ticks_per_cycle):
+        sc.session.world.step()
+        sc.session._drain_events()
     assert sc.player.target is not None          # she picked one herself
     sc.draw(surf)                                 # with the conn banner
     sc.run_console("helm 45 warp 2")              # the captain steps in; she leaves it alone for a while
-    for _ in range(2 * sc.world.rules.ticks_per_cycle):
-        sc.world.step()
+    for _ in range(2 * sc.session.world.rules.ticks_per_cycle):
+        sc.session.world.step()
     assert sc.player.desired_course == 45
     sc.run_console("I have the bridge")
     assert sc.player.conn == "" and sc.player.delegated == {"engineering"}   # back to how it was
@@ -579,7 +579,7 @@ def test_spock_in_command_hunts_cloaked_ships(content) -> None:  # type: ignore[
 
 def test_officers_can_be_addressed_without_a_comma(scene) -> None:  # type: ignore[no-untyped-def]
     sc, surf = scene
-    b = sc.bridge
+    b = sc.session.bridge
     for text, who, rest in [("seven take the bridge", "seven", "take the bridge"), ("Sev status", "seven", "status"),
                             ("SPOCK you have the conn", "spock", "you have the conn"),
                             ("seven of nine report", "seven", "report"), ("worf, fire", "worf", "fire"),
@@ -598,9 +598,9 @@ def test_seven_sets_up_and_fires_the_deflector_pulse(scene) -> None:  # type: ig
     sc, surf = scene
     sc.run_console("seven use the deflector to find them")
     assert "deflector" in sc.player.projects and _said(sc, "Spock")
-    for _ in range(15 * sc.world.rules.ticks_per_cycle):
-        sc.world.step()
-        sc._drain_events()
+    for _ in range(15 * sc.session.world.rules.ticks_per_cycle):
+        sc.session.world.step()
+        sc.session._drain_events()
     assert sc.player.deflector_ready
     assert any("deflector is ready" in t for t in _said(sc, "Seven of Nine"))
     sc.run_console("seven, pulse")
@@ -628,7 +628,7 @@ def test_seven_in_command_pulses_at_a_cloaked_ship_ahead(content) -> None:  # ty
 
 def test_seven_takes_on_a_disable_objective_and_reports_success(scene) -> None:  # type: ignore[no-untyped-def]
     sc, surf = scene
-    foe = next(s for s in sc.world.ships.values() if s.side != sc.player.side)
+    foe = next(s for s in sc.session.world.ships.values() if s.side != sc.player.side)
     sc.run_console("seven, disable the klingons' shields")
     assert sc.player.objectives and sc.player.objectives[0].officer == "seven"
     assert sc.player.objectives[0].group == "shields" and foe.id in sc.player.objectives[0].targets
@@ -636,9 +636,9 @@ def test_seven_takes_on_a_disable_objective_and_reports_success(scene) -> None: 
     for sh in foe.shields:                     # as if her plan had already worked
         sh.damage = 40
     foe.x, foe.y = sc.player.x, sc.player.y + 3000
-    for _ in range(12 * sc.world.rules.ticks_per_cycle):
-        sc.world.step()
-        sc._drain_events()
+    for _ in range(12 * sc.session.world.rules.ticks_per_cycle):
+        sc.session.world.step()
+        sc.session._drain_events()
         if not sc.player.objectives:
             break
     assert not sc.player.objectives
@@ -654,12 +654,12 @@ def test_seven_takes_out_a_ship_and_baits_klingons(scene) -> None:  # type: igno
     from begin.sim.objectives import baitable
 
     sc, surf = scene
-    foe = next(s for s in sc.world.ships.values() if s.side != sc.player.side)
+    foe = next(s for s in sc.session.world.ships.values() if s.side != sc.player.side)
     sc.run_console("seven, take out derango")
     o = sc.player.objectives[0]
     assert o.goal == "destroy" and o.targets == (foe.id,)
-    c = sc.world.observe(sc.side).contact(foe.id)
-    assert c is not None and baitable(sc.world.observe(sc.side), c) == (foe.faction in ("klingon", "orion"))
+    c = sc.session.world.observe(sc.session.side).contact(foe.id)
+    assert c is not None and baitable(sc.session.world.observe(sc.session.side), c) == (foe.faction in ("klingon", "orion"))
     sc.run_console("seven, take out derango's shields")    # naming systems means disable
     assert any(x.goal == "disable" and x.group == "shields" for x in sc.player.objectives)
     sc.draw(surf)
@@ -729,9 +729,9 @@ def _settle(sc, tag: str) -> None:  # type: ignore[no-untyped-def]
     end = time.time() + 5
     while time.time() < end:
         sc.update(0.0)
-        if not sc.bridge.llm.busy(tag):
+        if not sc.session.bridge.llm.busy(tag):
             sc.update(0.0)
-            if not sc.bridge.llm.busy(tag):
+            if not sc.session.bridge.llm.busy(tag):
                 return
         time.sleep(0.01)
 
@@ -739,7 +739,7 @@ def _settle(sc, tag: str) -> None:  # type: ignore[no-untyped-def]
 def test_small_talk_always_gets_an_answer(scene) -> None:  # type: ignore[no-untyped-def]
     sc, _ = scene
     fake = _Replies('{"say": "", "commands": []}', '{"say": "Your taste in music is irrelevant, Captain.", "commands": []}')
-    sc.bridge.llm = LLMService(fake)
+    sc.session.bridge.llm = LLMService(fake)
     sc.run_console("seven, what do you think of my taste in music")
     _settle(sc, "seven")
     said = _said(sc, "Seven of Nine")
@@ -747,7 +747,7 @@ def test_small_talk_always_gets_an_answer(scene) -> None:  # type: ignore[no-unt
     assert "Always say something in reply" in fake.seen[0]
     assert "nothing to say aloud" in fake.seen[1]
 
-    sc.bridge.llm = LLMService(_Replies())                                # a model that never says anything
+    sc.session.bridge.llm = LLMService(_Replies())                                # a model that never says anything
     sc.run_console("seven, tell me about Borg cuisine")
     _settle(sc, "seven")
     last = _said(sc, "Seven of Nine")[-1]

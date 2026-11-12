@@ -2,22 +2,17 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from typing import Protocol
 
 import pygame
 
-from ...battle import Battle
-from ...console.vocab import VERBS
-from ...sim.events import Tone
-from ...sim.ship import Ship
 from .. import theme
 
 SPEEDS = (0.25, 0.5, 1.0, 2.0, 4.0)
-TONE_COLOR = {
-    Tone.INFO: theme.TEXT, Tone.GOOD: theme.GOOD, Tone.CAUTION: theme.CAUTION, Tone.ALERT: theme.ALERT,
-    Tone.CREW: theme.CREW,
+# the session's tones (see session/news.py) in this screen's colours
+TONE_COLOR: dict[str, theme.Color] = {
+    "text": theme.TEXT, "dim": theme.TEXT_DIM, "good": theme.GOOD, "caution": theme.CAUTION, "alert": theme.ALERT,
+    "crew": theme.CREW, "friend": theme.FRIEND, "hail": theme.HAIL, "readback": theme.mix(theme.TEXT_DIM, theme.CREW, 0.45),
 }
 
 CONTROLS = [
@@ -63,25 +58,7 @@ FKEYS = {getattr(pygame, f"K_F{n}"): f"F{n}" for n in (2, 3, 4, 5, 6, 7, 8, 10, 
 
 RED_ALERT_FLOOR, RED_ALERT_PULSE, RED_ALERT_PERIOD = 0.22, 0.38, 1.8   # border tint and its pulse (seconds)
 RED_ALERT_SETTLE = 6.0     # seconds the red alert pulses before it settles to a steady edge
-ORDER_TRANSLATE_WAIT = 8.0     # seconds a named order waits for a step's translation before skipping it
-
-
-class TourLink(Protocol):
-    """What a battle on a tour of duty can ask of the tour (a `TourRun`)."""
-
-    def reinforcement_arrival(self, battle: Battle, player_ship: Ship | None) -> tuple[object | None, str]: ...
-
-
-# "hail the X", "open a channel to X", "open hailing frequencies", "get me the X", "put me through to X" [E]
-HAIL_ORDER = re.compile(r"^\s*(hail(ing)?( frequencies)?|open (a |hailing )?(channel|frequencies|comms?)( to| with)?|"
-                         r"get me|put me through to|signal|raise them|raise the)\b\s*", re.I)
 
 
 def ratio(hits: int, shots: int) -> str:
     return f"{hits}/{shots}"
-
-
-def exact_verb(text: str) -> bool:
-    """The line starts with a console verb spelled in full (not a number, prefix or ordinary word)."""
-    first = text.strip().lower().split(None, 1)[:1]
-    return bool(first) and any(first[0] in spellings for spellings in VERBS.values())

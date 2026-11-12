@@ -23,15 +23,13 @@ from typing import TYPE_CHECKING, Callable
 import pygame
 
 from ..crew.hails import Channel, Comms, mood_label
-from ..sim.ship import ShipStatus
-from ..sim.systems import disposition
 from . import theme
 from .camera import Camera
 from .tour_art import wrap
 from . import gfx
 
 if TYPE_CHECKING:
-    from ..sim.world import World
+    from ..sim.observation import Observation
     from .widgets import UI
 
 CARD_W = 360
@@ -91,25 +89,21 @@ def mood_mark(surf: pygame.Surface, mood: str, x: float, y: float, s: float = 7.
         gfx.draw.circle(surf, col, (int(x), int(y)), int(s * 0.7), 2)
 
 
-def draw_map(surf: pygame.Surface, cam: Camera, world: World, side: int, player_id: int | None, comms: Comms,
+def draw_map(surf: pygame.Surface, cam: Camera, obs: Observation, player_id: int | None, comms: Comms,
              now: float, clip: pygame.Rect) -> None:
     """Mood marks by the enemy ships we have heard from, and the rings of a channel being opened."""
     old = surf.get_clip()
     surf.set_clip(clip)
-    for s in world.ships.values():
-        if not s.exists or s.side == side or not world.is_visible(side, s.id):
+    for c in obs.contacts().values():
+        if not c.visible or c.side == obs.side:
             continue
-        ch = comms.channels.get(s.id)
+        ch = comms.channels.get(c.id)
         # a captain's mood shows in how they fight, so our officers can tell when it is strong; once we have
         # spoken with them we know them better
-        mood = ("surrendered" if s.status == ShipStatus.SURRENDERED else
-                "withdrawing" if s.mood.terms else disposition.shows(s) or (ch.mood if ch is not None else ""))
+        mood = obs.demeanour(c.id) or (ch.mood if ch is not None else "")
         if not mood or mood in ("captured", "destroyed", "gone", "adrift", "unknown"):
             continue
-        pos = world.apparent_position(side, s.id)
-        if pos is None:
-            continue
-        sx, sy = cam.to_screen(*pos)
+        sx, sy = cam.to_screen(c.x, c.y)
         if not clip.collidepoint(sx, sy):
             continue
         r = 18 + max(0.0, 40 * cam.zoom * 2.0)
@@ -120,11 +114,11 @@ def draw_map(surf: pygame.Surface, cam: Camera, world: World, side: int, player_
         surf.blit(halo, (mx - 15, my - 15))
         mood_mark(surf, mood, mx, my, 6.0, now)
     # the channel being opened: rings run from our ship to theirs, and pulse around them while they answer
-    me = world.ships.get(player_id) if player_id is not None else None
+    me = obs.own(player_id) if player_id is not None else None
     focus = comms.channels.get(comms.focus) if comms.focus is not None else None
     if me is not None and focus is not None:
-        t = world.ships.get(focus.ship_id)
-        pos = world.apparent_position(side, focus.ship_id) if t is not None else None
+        t = obs.contact(focus.ship_id)
+        pos = (t.x, t.y) if t is not None and t.visible else None
         age = now - comms.opened_at
         if pos is not None and (focus.status == "hailing" or age < WAVE_SECONDS):
             ax, ay = cam.to_screen(me.x, me.y)
@@ -178,27 +172,29 @@ def emblem(surf: pygame.Surface, faction: str, cx: int, cy: int, r: int) -> None
                                         (cx - k * 0.7, cy + k * 0.8)])
 
 
-def showing(comms: Comms, world: World) -> Channel | None:
+def showing(comms: Comms, obs: Observation) -> Channel | None:
     ch = comms.channels.get(comms.focus) if comms.focus is not None else None
     if ch is None:
         return None
-    quiet = (world.tick - ch.tick) / world.rules.ticks_per_cycle
+    quiet = (obs.tick - ch.tick) / obs.rules.ticks_per_cycle
     if ch.status == "hailing" or quiet < SHOW_CYCLES or comms.pinned:
         return ch
     return None
 
 
-def draw_card(surf: pygame.Surface, top_right: tuple[int, int], world: World, side: int, player_id: int | None,
+def draw_card(surf: pygame.Surface, top_right: tuple[int, int], obs: Observation, player_id: int | None,
               comms: Comms, ui: UI, now: float, run: Callable[[str], None]) -> pygame.Rect | None:
     """The comms card; returns the area it covers."""
-    ch = showing(comms, world)
+    ch = showing(comms, obs)
     if ch is None:
         return None
-    s = world.ships.get(ch.ship_id)
-    me = world.ships.get(player_id) if player_id is not None else None
-    if s is None:
-        return None
-    mood = "surrendered" if s.status == ShipStatus.SURRENDERED else ch.mood
+    fate = obs.fate(ch.ship_id)
+    ship_name = obs.name_of(ch.ship_id)
+    if ship_name.startswith("#"):
+        ship_name = ch.ship
+    alive = fate == "alive"
+    me = obs.own(player_id) if player_id is not None else None
+    mood = "surrendered" if fate == "surrendered" else ch.mood
     acc = FACTION_ACCENT.get(ch.faction, theme.HAIL)
     x0, y0 = top_right[0] - CARD_W, top_right[1]
     pad = 12
@@ -213,9 +209,9 @@ def draw_card(surf: pygame.Surface, top_right: tuple[int, int], world: World, si
         else:
             talk.extend((ln, theme.TEXT_DIM, "regular") for ln in wrap(text, 12, inner))
     talk = talk[-7:]
-    live = s.alive or s.status == ShipStatus.SURRENDERED
+    live = fate in ("alive", "surrendered")
     buttons = live and me is not None and me.alive
-    h = 26 + 54 + 8 + (3 * 16 + 6 if s.alive else 0) + len(talk) * 16 + 8 + (30 if buttons else 0) + 6
+    h = 26 + 54 + 8 + (3 * 16 + 6 if alive else 0) + len(talk) * 16 + 8 + (30 if buttons else 0) + 6
     box = pygame.Rect(x0, y0, CARD_W, h)
     pulse = 0.5 + 0.5 * math.sin(now * math.tau / 1.6)
     gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=6)
@@ -262,8 +258,8 @@ def draw_card(surf: pygame.Surface, top_right: tuple[int, int], world: World, si
     theme.text(surf, label, (chip.x + 21, chip.y + 4), mcol, 10, weight="semibold")
     y += 54 + 8
     # our read of them: resolve, fear, anger
-    if s.alive and me is not None:
-        r = disposition.reading(world, me, s)
+    r = obs.read_captain(ch.ship_id, me.id) if alive and me is not None else None
+    if r is not None:
         for what, v, col, tip in (
                 ("Resolve", r.resolve, (150, 170, 220), "How hard they are to talk round. Every loss they watch wears it down."),
                 ("Fear", r.fear, MOOD_COLOR["shaken"], "Their losses, damage, crew morale and the odds. Fear makes them yield."),
@@ -281,17 +277,17 @@ def draw_card(surf: pygame.Surface, top_right: tuple[int, int], world: World, si
     if buttons:
         say_w = 62
         bw = (inner - say_w - 12) // 2
-        if s.status == ShipStatus.SURRENDERED:
-            ui.button(surf, pygame.Rect(box.x + pad, y, inner, 24), f"Board and take the {s.name}",
-                      lambda: run(f"capture {s.name}"),
+        if fate == "surrendered":
+            ui.button(surf, pygame.Rect(box.x + pad, y, inner, 24), f"Board and take the {ship_name}",
+                      lambda: run(f"capture {ship_name}"),
                       "Your officer closes, lowers our facing shield and beams a party across. Her crew don't "
                       "resist: they become prisoners of war.", accent=theme.CREW)
         else:
             for i, (label_, words) in enumerate(DEMANDS):
                 ui.button(surf, pygame.Rect(box.x + pad + i * (bw + 6), y, bw, 24), label_,
-                          partial(run, f"hail #{s.id} {words}"), f'Say: "{words}"', accent=theme.HAIL, size=11)
+                          partial(run, f"hail #{ch.ship_id} {words}"), f'Say: "{words}"', accent=theme.HAIL, size=11)
             ui.button(surf, pygame.Rect(box.right - pad - say_w, y, say_w, 24), "Say…",
-                      lambda: run(f"\0type:hail {s.name} "), "Type your own words to this captain", accent=theme.HAIL,
+                      lambda: run(f"\0type:hail {ship_name} "), "Type your own words to this captain", accent=theme.HAIL,
                       size=11)
     return box
 

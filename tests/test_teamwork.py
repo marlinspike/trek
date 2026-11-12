@@ -102,9 +102,9 @@ def test_callouts_panel_and_summary(scene) -> None:  # type: ignore[no-untyped-d
     sc.run_console("seven, take out the wraith's shields")
     sc.paused = False
     sc.overlay = None
-    while sc.world.time < 120 and not sc.world.outcome.over:
+    while sc.session.world.time < 120 and not sc.session.world.outcome.over:
         sc.update(0.05)
-        if int(sc.world.time * 20) % 200 == 0:
+        if int(sc.session.world.time * 20) % 200 == 0:
             sc.draw(surf)          # the panel and the map overlays draw without trouble
     said = [ln.text for ln in sc.log]
     assert any(t.startswith("Spock: Evading") or t.startswith("Spock: Closing on") for t in said)

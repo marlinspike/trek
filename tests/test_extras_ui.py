@@ -129,10 +129,10 @@ def test_take_command_from_the_fleet_tab(starbase) -> None:  # type: ignore[no-u
 def test_tractor_and_board_buttons(starbase) -> None:  # type: ignore[no-untyped-def]
     sc, surf = starbase
     p = sc.player
-    w = sc.world
+    w = sc.session.world
     enemy = min((s for s in w.ships.values() if s.side != p.side), key=lambda s: s.cls.mass)
     enemy.x, enemy.y = p.x, p.y + 800
-    sc.obs = w.observe(sc.side)
+    sc.obs = w.observe(sc.session.side)
     sc.run_console(f"target #{enemy.id}")
     _click(sc, surf, "Tractor beam:")
     assert p.tractor_target == enemy.id
@@ -172,8 +172,8 @@ def test_target_panel_lists_every_contact_on_sensors(starbase) -> None:  # type:
     sc, surf = starbase
     p = sc.player
     assert p is not None
-    sc.world.run(1)
-    sc.obs = sc.world.observe(sc.side)
+    sc.session.world.run(1)
+    sc.obs = sc.session.world.observe(sc.session.side)
     seen = [c for c in sc.obs.contacts().values() if c.visible]
     assert len(seen) >= 2 and p.target is None
     sc.draw(surf)
@@ -182,7 +182,7 @@ def test_target_panel_lists_every_contact_on_sensors(starbase) -> None:  # type:
     names = {c.label for c in seen}
     assert all(h.tooltip.removeprefix("Target ") in names for h in rows)
     rows[0].action()
-    sc.obs = sc.world.observe(sc.side)
+    sc.obs = sc.session.world.observe(sc.session.side)
     assert p.target is not None
     sc.draw(surf)
     switch = [h for h in sc.ui.hotspots if h.tooltip.startswith("Switch target to")]

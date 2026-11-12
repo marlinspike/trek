@@ -1,6 +1,6 @@
 """The captain's command: alert conditions, recording named orders, command styles, trust and learned phrasing [E].
 
-Part of `BattleScene` (see `ui/battle_scene.py`), which mixes these methods in; they share its state.
+Part of `BattleSession` (see `session/battle.py`), which mixes these methods in; they share its state.
 
 - `alert red|yellow|green` runs that condition's lines (content/data/alerts.toml, or config/alerts.toml) and shows
   the condition on the map.
@@ -23,19 +23,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ...console.orders import OrderBook
-from ...crew.career import STYLE_WORDS, STYLES
-from ...crew.review import standout
-from ...paths import config_dir
-from ...sim.commands import Command, DelegateStation, SetHelm, TakeConn
-from .. import theme
-from .state import SceneState
+from ..console.orders import OrderBook
+from ..crew.career import STYLE_WORDS, STYLES
+from ..crew.review import standout
+from ..paths import config_dir
+from ..sim.commands import Command, DelegateStation, SetHelm, TakeConn
+from .state import SessionState
 
 if TYPE_CHECKING:
-    from ..battle_scene import BattleScene
+    from .battle import BattleSession
 
-ALERTS_FILE = Path(__file__).resolve().parents[2] / "content" / "data" / "alerts.toml"
-ALERT_COLOR = {"red": theme.ALERT, "yellow": theme.CAUTION, "green": theme.GOOD}
+ALERTS_FILE = Path(__file__).resolve().parents[1] / "content" / "data" / "alerts.toml"
+ALERT_TONE = {"red": "alert", "yellow": "caution", "green": "good"}
 NOT_RECORDED = re.compile(r"^\s*(record|rec|status|st|damage|dmg|chart|report|help|\?|orders|plans|crew|style|"
                           r"voice|hud|sound|range|zoom|banks|tubes|launchers|shields|fleet|prisoners|key|pause|"
                           r"resume|time|translate|quit|exit)\b", re.I)
@@ -99,51 +98,49 @@ def toml_order(name: str, steps: list[str], note: str = "") -> str:
     return head + f"steps = [\n{body},\n]\n"
 
 
-class CommandMixin(SceneState):
+class CommandMixin(SessionState):
     # ------------------------------------------------------------ alert conditions
 
-    def alert(self: BattleScene, which: str | None) -> None:
+    def alert(self: BattleSession, which: str | None) -> None:
         if which is None:
             here = self.condition or "none set"
             self._log(f"Condition: {here}. " + " · ".join(f"alert {k}: {v[0]}" for k, v in self.alerts.items()),
-                      theme.TEXT_DIM)
+                      "dim")
             return
         bundle = self.alerts.get(which)
         if bundle is None:
-            self._log(f"No alert {which} in alerts.toml.", theme.CAUTION)
+            self._log(f"No alert {which} in alerts.toml.", "caution")
             return
         self.condition = which
         note, steps = bundle
-        self._log(f"Condition {which}" + (f": {note}" if note else "."), ALERT_COLOR[which], channel="bridge")
+        self._log(f"Condition {which}" + (f": {note}" if note else "."), ALERT_TONE[which], channel="bridge")
         name, oid = self._station_officer("tactical")
-        self._voice(name or "", f"Condition {which}, Captain.", ALERT_COLOR[which], "tactical" if name else None, oid,
+        self._voice(name or "", f"Condition {which}, Captain.", ALERT_TONE[which], "tactical" if name else None, oid,
                     urgent=which == "red")
         for line in steps:
             self._run_one(line, translate=False, echo="  » ")
         if which == "red":
-            import time as _t
-
-            self.audio.play("alert", _t.monotonic(), 0.0, 0.5)
+            self._cue("alert", 0.5)
 
     # ------------------------------------------------------------ recording named orders
 
-    def record(self: BattleScene, val: tuple[str, str]) -> None:
+    def record(self: BattleSession, val: tuple[str, str]) -> None:
         what, arg = val
         if what == "start":
             name = order_name(arg, set(self.orders.orders)) if arg else order_name("", set(self.orders.orders))
             self.recording = Recording(name)
             self._log(f"Recording order {name}: every order you give from now is kept. 'record stop' saves it, "
-                      "'record off' throws it away.", theme.FRIEND)
+                      "'record off' throws it away.", "friend")
         elif what == "discard":
             if self.recording is None:
-                self._log("Not recording.", theme.TEXT_DIM)
+                self._log("Not recording.", "dim")
                 return
-            self._log(f"Recording of {self.recording.name} thrown away.", theme.TEXT_DIM)
+            self._log(f"Recording of {self.recording.name} thrown away.", "dim")
             self.recording = None
         elif what == "stop":
             rec = self.recording
             if rec is None:
-                self._log("Not recording. 'record <name>' starts.", theme.TEXT_DIM)
+                self._log("Not recording. 'record <name>' starts.", "dim")
                 return
             self.recording = None
             self._save_order(rec.name, tidy(rec.steps))
@@ -153,7 +150,7 @@ class CommandMixin(SceneState):
             ran = [line for line in self.ran[-n:]]
             self._save_order(order_name(name, set(self.orders.orders)), tidy([(0.0, x) for x in ran]))
 
-    def note_ran(self: BattleScene, line: str) -> None:
+    def note_ran(self: BattleSession, line: str) -> None:
         """A line the captain gave that ran: kept for `record last`, and for the recording, if one is on."""
         if NOT_RECORDED.match(line):
             return
@@ -162,9 +159,9 @@ class CommandMixin(SceneState):
         if self.recording is not None:
             self.recording.steps.append((self.world.time, line))
 
-    def _save_order(self: BattleScene, name: str, steps: list[str]) -> None:
+    def _save_order(self: BattleSession, name: str, steps: list[str]) -> None:
         if not steps:
-            self._log(f"Nothing to save in {name}: no orders were given.", theme.CAUTION)
+            self._log(f"Nothing to save in {name}: no orders were given.", "caution")
             return
         folder = config_dir()
         path = folder / "orders.toml"
@@ -176,23 +173,23 @@ class CommandMixin(SceneState):
                 path.write_text(start, encoding="utf-8")
             text = path.read_text(encoding="utf-8")
             if re.search(rf"^\[{re.escape(name)}\]", text, re.M):
-                self._log(f"There is already an order called {name}. Pick another name.", theme.CAUTION)
+                self._log(f"There is already an order called {name}. Pick another name.", "caution")
                 return
             path.write_text(text.rstrip() + "\n" + toml_order(name, steps, f"Recorded in {self.battle.setup.title}"),
                             encoding="utf-8")
         except OSError as e:
-            self._log(f"Couldn't save the order: {e}", theme.CAUTION)
+            self._log(f"Couldn't save the order: {e}", "caution")
             return
         llm = self.orders.llm
         self.orders = OrderBook.load(folder)
         self.orders.llm = llm
         self._order_problems(self.orders.prepare(self._would_run, self._translation_brief(), self._target_id()))
-        self._log(f"Order {name} saved ({len(steps)} steps): " + " · ".join(steps), theme.GOOD)
-        self._log(f"Say '{name}' to run it. It's in the Orders tab, and in config/orders.toml to edit.", theme.TEXT_DIM)
+        self._log(f"Order {name} saved ({len(steps)} steps): " + " · ".join(steps), "good")
+        self._log(f"Say '{name}' to run it. It's in the Orders tab, and in config/orders.toml to edit.", "dim")
 
     # ------------------------------------------------------------ command styles
 
-    def choose_style(self: BattleScene, words: str | None) -> None:
+    def choose_style(self: BattleSession, words: str | None) -> None:
         if words is None:
             lines = ["COMMAND STYLES: promise one before the battle starts; win keeping it for its ribbon."]
             for s in STYLES.values():
@@ -203,20 +200,20 @@ class CommandMixin(SceneState):
             return
         key = STYLE_WORDS.get(words)
         if key is None:
-            self._log(f"No style '{words}'. Type 'style' for the list.", theme.CAUTION)
+            self._log(f"No style '{words}'. Type 'style' for the list.", "caution")
             return
         if self.world.time > 1.0 and self.style != key:
-            self._log("A style is promised before the battle starts.", theme.CAUTION)
+            self._log("A style is promised before the battle starts.", "caution")
             return
         if key == "green" and self.player is not None and (self.player.delegated or self.player.conn):
-            self._log("A green crew can't already hold a station. 'stand down' first.", theme.CAUTION)
+            self._log("A green crew can't already hold a station. 'stand down' first.", "caution")
             return
         self.style = key
         self.style_broken = None
         s = STYLES[key]
-        self._log(f"{s.name}: {s.promise}", theme.CAUTION, channel="bridge")
+        self._log(f"{s.name}: {s.promise}", "caution", channel="bridge")
 
-    def style_check(self: BattleScene, cmd: Command | None = None, why: str | None = None) -> None:
+    def style_check(self: BattleSession, cmd: Command | None = None, why: str | None = None) -> None:
         """Called as orders go out: does this one break the promise?"""
         if self.style is None or self.style_broken is not None:
             return
@@ -229,9 +226,9 @@ class CommandMixin(SceneState):
                 reason = f"warp {cmd.warp:g}"
         if reason is not None:
             self.style_broken = reason
-            self._log(f"{STYLES[self.style].name} broken: {reason}.", theme.TEXT_DIM)
+            self._log(f"{STYLES[self.style].name} broken: {reason}.", "dim")
 
-    def _style_tick(self: BattleScene) -> None:
+    def _style_tick(self: BattleSession) -> None:
         p = self.player
         if self.style is None or self.style_broken is not None or p is None:
             return
@@ -242,7 +239,7 @@ class CommandMixin(SceneState):
 
     # ------------------------------------------------------------ the end of the battle
 
-    def career_outcome(self: BattleScene) -> None:
+    def career_outcome(self: BattleSession) -> None:
         """Trust and ribbons when the battle ends (once)."""
         if self._career_done:
             return
@@ -263,22 +260,22 @@ class CommandMixin(SceneState):
             if won and self.style_broken is None:
                 self.career.ribbon(self.style)
                 self.ribbon_won = s.ribbon
-                self._log(f"{s.ribbon} earned: {s.name}. You have {self.career.ribbons[self.style]}.", theme.GOOD)
+                self._log(f"{s.ribbon} earned: {s.name}. You have {self.career.ribbons[self.style]}.", "good")
             elif self.style_broken is not None:
-                self._log(f"{s.name} not kept ({self.style_broken}).", theme.TEXT_DIM)
+                self._log(f"{s.name} not kept ({self.style_broken}).", "dim")
         self._announce_trust()
 
-    def _announce_trust(self: BattleScene) -> None:
+    def _announce_trust(self: BattleSession) -> None:
         b = self.bridge
         for oid, lvl in self.career.take_risen():
             o = b.find(oid) if b is not None else None
             name = o.name if o is not None else oid
-            self._log(f"{name} now trusts you as a {lvl} officer.", theme.GOOD, channel="bridge")
+            self._log(f"{name} now trusts you as a {lvl} officer.", "good", channel="bridge")
             self.trust_news.append(f"{name}: {lvl}")
 
     # ------------------------------------------------------------ learned phrasing
 
-    def remember_phrase(self: BattleScene, words: str, commands: list[str]) -> None:
+    def remember_phrase(self: BattleSession, words: str, commands: list[str]) -> None:
         key = " ".join(words.lower().split())
         if not key or not commands or key in self.phrasebook:
             return
@@ -290,7 +287,7 @@ class CommandMixin(SceneState):
         except OSError:
             pass
 
-    def recalled(self: BattleScene, words: str) -> list[str] | None:
+    def recalled(self: BattleSession, words: str) -> list[str] | None:
         return self.phrasebook.get(" ".join(words.lower().split()))
 
 

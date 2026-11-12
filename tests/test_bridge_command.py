@@ -22,9 +22,9 @@ from begin.crew.career import Career, level  # noqa: E402
 from begin.crew.proposals import Proposal, Proposer, candidates  # noqa: E402
 from begin.presets import load_presets  # noqa: E402
 from begin.sim.commands import FirePhasers, FireTorpedoes, Pursue, SelectTarget, SetHelm, SetShields  # noqa: E402
-from begin.ui.battle.command import order_name, tidy  # noqa: E402
+from begin.session.command import order_name, tidy  # noqa: E402
 from begin.ui.battle_scene import BattleScene  # noqa: E402
-from begin.ui.bridge_prefs import BridgePrefs  # noqa: E402
+from begin.session.prefs import BridgePrefs  # noqa: E402
 from begin.ui.subtitles import Subtitles  # noqa: E402
 from begin.ui.wheel import CommandWheel, load_wheels  # noqa: E402
 from begin.voice.engines import WhisperServer, clean, multipart  # noqa: E402
@@ -216,29 +216,29 @@ def test_right_click_steers_in_empty_space_and_opens_the_wheel_on_a_ship(duel) -
 
 def test_an_officer_proposes_a_target_and_y_makes_it_so(duel) -> None:  # type: ignore[no-untyped-def]
     sc, _ = duel
-    sc.world.run(3.0)
-    sc.obs = sc.world.observe(sc.side)
+    sc.session.world.run(3.0)
+    sc.obs = sc.session.world.observe(sc.session.side)
     p = sc.player
     assert p is not None and p.target is None
-    props = candidates(sc.obs, p, sc.battle.crew.officers)
+    props = candidates(sc.obs, p, sc.session.battle.crew.officers)
     tgt = [x for x in props if x.station == "tactical"]
     assert tgt and tgt[0].line.startswith("target ")
     sc.paused = False
-    sc._propose_t = 0.0
-    sc._proposals_tick(0.1)
+    sc.session._propose_t = 0.0
+    sc.session._proposals_tick(0.1)
     assert isinstance(sc.proposal, Proposal)
     line = sc.proposal.line
     sc.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_y, mod=0, unicode="y"))
     assert sc.proposal is None and f"> {line}" in _texts(sc)
-    assert sc.career.points(tgt[0].officer) == 2
+    assert sc.session.career.points(tgt[0].officer) == 2
 
 
 def test_proposals_are_rare_and_a_belayed_one_stays_quiet(duel) -> None:  # type: ignore[no-untyped-def]
     sc, _ = duel
-    sc.world.run(3.0)
-    obs = sc.world.observe(sc.side)
+    sc.session.world.run(3.0)
+    obs = sc.session.world.observe(sc.session.side)
     p = sc.player
-    officers = sc.battle.crew.officers
+    officers = sc.session.battle.crew.officers
     pr = Proposer()
     first = pr.next(obs, p, officers, 10.0, "rarely", False)
     assert first is not None
@@ -270,11 +270,11 @@ def test_recording_saves_a_named_order(duel) -> None:  # type: ignore[no-untyped
     sc.run_console("status")
     sc.run_console("raise shields all")
     sc.run_console("record stop")
-    order = sc.orders.find("strike-one")
+    order = sc.session.orders.find("strike-one")
     assert order is not None and [s.text for s in order.steps] == ["helm 90 warp 4", "raise shields all"]
     sc.run_console("helm 10")
     sc.run_console("record last 1 as again")
-    assert sc.orders.find("again") is not None
+    assert sc.session.orders.find("again") is not None
     sc.side_tabs.active = len(sc.side_tabs.tabs) - 1
     sc.draw(surf)
 
@@ -292,7 +292,7 @@ def test_a_style_is_promised_before_the_battle_and_broken_by_delegating(duel) ->
     assert sc.style == "chair" and sc.style_broken is None
     sc.run_console("delegate helm")
     assert sc.style_broken is not None
-    sc.world.run(5.0)
+    sc.session.world.run(5.0)
     sc.run_console("style iron")
     assert sc.style == "chair"                  # too late to change
 
@@ -314,10 +314,10 @@ def test_trust_levels_and_perks() -> None:
 def test_winning_keeping_a_style_earns_its_ribbon(duel) -> None:  # type: ignore[no-untyped-def]
     sc, _ = duel
     sc.run_console("style chair")
-    sc.world.outcome.over = True
-    sc.world.outcome.winner = sc.side
-    sc._crew_outcome()
-    assert sc.career.ribbons.get("chair") == 1 and sc.ribbon_won
+    sc.session.world.outcome.over = True
+    sc.session.world.outcome.winner = sc.session.side
+    sc.session._crew_outcome()
+    assert sc.session.career.ribbons.get("chair") == 1 and sc.session.ribbon_won
 
 
 # ------------------------------------------------------------ learned phrasing
@@ -325,7 +325,7 @@ def test_winning_keeping_a_style_earns_its_ribbon(duel) -> None:  # type: ignore
 
 def test_remembered_phrasing_runs_without_the_model(duel) -> None:  # type: ignore[no-untyped-def]
     sc, _ = duel
-    sc.remember_phrase("Make a hard turn to port", ["helm 270"])
+    sc.session.remember_phrase("Make a hard turn to port", ["helm 270"])
     sc.run_console("make a hard turn to port")
     p = sc.player
     assert p is not None and round(p.desired_course) == 270

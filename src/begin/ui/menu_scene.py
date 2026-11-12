@@ -9,7 +9,8 @@ from typing import Any, Callable, cast
 
 import pygame
 
-from ..battle import BattleSetup, FleetSpec, ShipSpec, patrol_battle, quick_battle
+from ..battle import BattleSetup, FleetSpec, ShipSpec
+from ..modes import MODES, Mode
 from ..content.schema import ContentDB
 from ..help.coach import HelpContext
 from ..presets import Preset, load_presets
@@ -24,6 +25,10 @@ FACTIONS = ["federation", "klingon", "romulan", "orion"]
 STAR_DRIFT = 900.0        # world units per second the menu's view drifts through the stars
 TITLE_SIZE = 84           # pixels: the gold title lettering
 MENU_SOUND = 0.4          # × the player's volume: the menu's flybys are heard, quietly
+
+
+def _key_label(name: str) -> str:
+    return "Enter" if name == "return" else name.upper() if len(name) == 1 else name.title()
 
 
 class MenuScene:
@@ -113,10 +118,8 @@ class MenuScene:
                 self.preset_i = (self.preset_i + d) % len(self.presets)
             elif self.page == "presets" and ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self.start(self.presets[self.preset_i].setup())
-            elif self.page == "main" and ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                self._quick()
-            elif self.page == "main" and ev.key == pygame.K_p:
-                self._patrol()
+            elif self.page == "main" and self._mode_key(ev.key) is not None:
+                self.play(self._mode_key(ev.key))  # type: ignore[arg-type]
             elif self.page == "main" and ev.key == pygame.K_t:
                 self._tours()
             elif self.page == "main" and ev.key == pygame.K_k:
@@ -126,13 +129,20 @@ class MenuScene:
 
     # ------------------------------------------------------------ actions
 
-    def _quick(self) -> None:
+    def play(self, mode: Mode) -> None:
+        """Start a battle of a registered mode, with a fresh seed, on the side the captain chose."""
         seed = random.randrange(1, 100000)
-        self.start(quick_battle(self.content, seed, self.custom["player_faction"]))
+        self.start(mode.make(self.content, seed, self.custom["player_faction"]))
 
-    def _patrol(self) -> None:
-        seed = random.randrange(1, 100000)
-        self.start(patrol_battle(self.content, seed, self.custom["player_faction"]))
+    @staticmethod
+    def _mode_key(key: int) -> Mode | None:
+        for m in MODES:
+            if m.hotkey is None:
+                continue
+            codes = {pygame.key.key_code(m.hotkey)} | ({pygame.K_KP_ENTER} if m.hotkey == "return" else set())
+            if key in codes:
+                return m
+        return None
 
     def _tours(self) -> None:
         if self.tours is not None:
@@ -194,9 +204,10 @@ class MenuScene:
 
     def _main(self, surf: pygame.Surface) -> None:
         x, y = 84, 220
-        items = [
-            ("Quick battle", self._quick, "A seeded random engagement (Enter)"),
-            ("Patrol", self._patrol, "A random mission: an ambush, a wolf pack, a second wave, an escort or a flagship (P)"),
+        items: list[tuple[str, Callable[[], object], str]] = [
+            (m.title, partial(self.play, m), m.blurb + (f" ({_key_label(m.hotkey)})" if m.hotkey else ""))
+            for m in MODES]
+        items += [
             ("Tour of duty", self._tours, "Linked battles with a squadron that carries its damage, and a captain's log (T)"),
             ("Preset battles", lambda: setattr(self, "page", "presets"), "Curated scenarios"),
             ("Custom battle", lambda: setattr(self, "page", "custom"), "Choose fleets"),

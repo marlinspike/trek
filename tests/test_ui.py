@@ -45,7 +45,7 @@ def test_console_orders_reach_the_ship(scene) -> None:  # type: ignore[no-untype
     for _ in range(30):
         sc.update(1 / 60)
     sc.draw(surf)
-    assert sc.world.tick > 0
+    assert sc.session.world.tick > 0
 
 
 def test_text_never_raises_on_unrenderable_strings(scene):
@@ -80,12 +80,12 @@ def test_console_displays_chart_keys_and_quit(scene):  # type: ignore[no-untyped
     assert sc.printout is not None and sc.printout[0] == "TUBE STATUS:"
     sc.draw(surf)  # the printout renders
     sc.run_console("quit")
-    assert sc.world.outcome.over and sc.overlay == "debrief"
+    assert sc.session.world.outcome.over and sc.overlay == "debrief"
 
 
 def test_hit_report_sums_up_a_volley() -> None:
     from begin.sim.events import HullHit, ShieldHit, SubsystemDamaged
-    from begin.ui.hit_report import HitReport
+    from begin.session.hit_report import HitReport
 
     r = HitReport(1)
     r.ingest([ShieldHit(10, 7, 0, 50.0, 0.0, False, 1, 87.0), ShieldHit(10, 7, 0, 50.0, 0.0, False, 1, 76.0),
@@ -145,15 +145,15 @@ def test_single_key_controls(scene) -> None:  # type: ignore[no-untyped-def]
     course = p.desired_course
     press(pygame.K_d)
     press(pygame.K_a, pygame.KMOD_SHIFT)
-    scene.world.step()
+    scene.session.world.step()
     assert round((p.desired_course - course) % 360) == 10
     warp = p.desired_warp
     press(pygame.K_w)
-    scene.world.step()
+    scene.session.world.step()
     assert p.desired_warp == min(p.cls.max_warp, int(warp) + 1)
     doctrine = p.pd_doctrine
     press(pygame.K_v)
-    scene.world.step()
+    scene.session.world.step()
     assert p.pd_doctrine == PD_CYCLE[(PD_CYCLE.index(doctrine) + 1) % len(PD_CYCLE)] and isinstance(p.pd_doctrine, PDDoctrine)
     press(pygame.K_ESCAPE)
     assert scene.overlay == "menu"

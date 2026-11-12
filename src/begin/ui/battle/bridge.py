@@ -1,9 +1,8 @@
-"""The bridge's voice: readbacks, subtitles, tactical focus and pointing [E].
+"""The bridge on screen: subtitles, tactical focus, pointing, the command wheel and officers' proposals [E].
 
 Part of `BattleScene` (see `ui/battle_scene.py`), which mixes these methods in; they share its state.
 
-- Readbacks: every order the captain gives through the console (and the wheel, a proposal or by voice, which
-  all go through it) is read back by the officer at that station, in a sentence built from the order itself.
+- Readbacks and proposals are the session's (`session/voices.py`); this draws them and takes the Y and N.
 - Subtitles: officers' words show low on the map, one voice at a time (`ui/subtitles.py`); the log keeps them all.
 - Tactical focus: while the captain types an order the battle eases to a quarter speed (or pauses), the map
   gets an amber edge and the sound steps back; it lapses after a few idle seconds, and nothing is ever slower
@@ -18,15 +17,13 @@ from typing import TYPE_CHECKING
 
 import pygame
 
-from ...console.parser import ParseContext, ParseResult, parse
+from ...console.parser import ParseResult
+from ...console.readback import readback
 from ...console.pointing import points, resolve_pointing
-from ...console.readback import STATION_TITLES, readback
-from ...crew.officers import station_of
 from ...crew.proposals import Proposal
-from ...sim.commands import Command
 from .. import order_marks, theme
 from ..subtitles import STATION_COLOR, station_mark
-from ..bridge_prefs import FOCUS, MODES, PROPOSALS, READBACKS, SUBTITLES
+from ...session.prefs import FOCUS, MODES, PROPOSALS, READBACKS, SUBTITLES
 from ..wheel import RING, CommandWheel, Slice, fill
 from .state import SceneState
 from .. import gfx
@@ -37,59 +34,13 @@ if TYPE_CHECKING:
 FOCUS_SPEED = 0.25      # tactical focus eases the battle to this speed (or to a stop, with `hud focus pause`)
 FOCUS_EASE = 0.35       # seconds to ease in or out
 FOCUS_LAPSE = 8.0       # seconds without a keystroke before focus lets the battle run again
-VETERAN_LINES = ("evasive", "raise shields all")    # what a Veteran does unasked when an urgent proposal lapses
 
 
 class BridgeMixin(SceneState):
-    # ------------------------------------------------------------ names
-
-    def ship_name(self: BattleScene, sid: int) -> str:
-        """A ship as the captain knows her: her name if identified, else her contact number."""
-        own = self.obs.own(sid)
-        if own is not None:
-            return own.name
-        c = self.obs.contact(sid)
-        if c is not None and c.identified:
-            return c.label.split(" (")[0]
-        return f"#{sid}"
-
-    def _station_officer(self: BattleScene, station: str | None) -> tuple[str, str | None]:
-        """(name, officer id) of whoever answers for a station: its officer, or the station itself."""
-        if station is None:
-            return "", None
-        b = self.bridge
-        o = b.crew.officers.get(station) if b is not None else None
-        if o is not None:
-            return o.name, o.id
-        return STATION_TITLES.get(station, station.title()), None
-
-    # ------------------------------------------------------------ voices
-
-    def _voice(self: BattleScene, speaker: str, text: str, color: theme.Color, station: str | None = None,
-               officer: str | None = None, urgent: bool = False) -> None:
-        """Say a line in a subtitle, as far as the captain's Bridge setting wants them."""
-        mode = self.prefs.subtitles
-        if mode == "off" or (mode == "urgent" and not urgent):
-            return
-        self.subs.say(speaker, text, color, station, officer, urgent)
-
-    def _readback(self: BattleScene, cmd: Command) -> None:
-        """The officer at the order's station says back exactly what they will do."""
-        mode = self.prefs.readbacks
-        if mode == "off":
-            self._log(f"  {cmd.describe()}: acknowledged", theme.TEXT_DIM)
-            return
-        station = station_of(cmd)
-        name, oid = self._station_officer(station)
-        line = readback(cmd, self.ship_name)
-        self._log(f"  {name + ': ' if name else ''}{line}", theme.mix(theme.TEXT_DIM, theme.CREW, 0.45), channel="bridge")
-        if mode == "voiced":
-            self._voice(name, line, theme.CREW if name else theme.TEXT_DIM, station, oid)
-
     # ------------------------------------------------------------ tactical focus
 
     def _focus_target(self: BattleScene) -> float:
-        if (self.prefs.focus == "off" or not self.console_focus or self.paused or self.world.outcome.over
+        if (self.prefs.focus == "off" or not self.console_focus or self.paused or self.obs.outcome.over
                 or self.overlay is not None or self.focus_idle >= FOCUS_LAPSE):
             return 0.0
         return 1.0
@@ -147,11 +98,11 @@ class BridgeMixin(SceneState):
         if not (self.prefs.preview and self.console_focus and text) or self.player_id is None:
             return None
         sid = self.pointed_ship()
-        key = (text, self.world.tick // 5, sid)
+        key = (text, self.obs.tick // 5, sid)
         if self._preview_key != key:
             self._preview_key = key
-            res = parse(self._with_pointing(text, sid), ParseContext(self.player_id, self.world.observe(self.side)))
-            self._preview = res if res.error is None and res.commands else None
+            res = self.session.preview(self._with_pointing(text, sid))
+            self._preview = res if res is not None and res.error is None and res.commands else None
         return self._preview
 
     def preview_text(self: BattleScene) -> str | None:
@@ -168,8 +119,8 @@ class BridgeMixin(SceneState):
         for c in self.obs.contacts().values():
             if c.identified:
                 names.append(c.label.split(" (")[0])
-        officers = [o.name.split()[0] for o in self.bridge.crew.officers.values()] if self.bridge is not None else []
-        self.console = self.completer.complete(self.console, names, officers, list(self.orders.orders))
+        officers = [o.name.split()[0] for o in self.session.officers().values()]
+        self.console = self.completer.complete(self.console, names, officers, list(self.session.named_orders()))
 
     def _draw_completions(self: BattleScene, surf: pygame.Surface) -> None:
         opts = self.completer.options
@@ -292,59 +243,6 @@ class BridgeMixin(SceneState):
 
     # ------------------------------------------------------------ officers' proposals
 
-    def _proposals_tick(self: BattleScene, dt: float) -> None:
-        p = self.proposal
-        if isinstance(p, Proposal):
-            if not self.paused:
-                p.age += dt
-            if p.age >= p.life:
-                self.proposal = None            # it lapses quietly: the captain was busy
-                if p.urgent and self.career.acts_alone(p.officer) and p.line in VETERAN_LINES:
-                    # a Veteran officer doesn't wait to be told twice when the ship is in danger
-                    self._log(f"{p.name}: Making it so, Captain.", theme.CREW, channel="bridge")
-                    self._voice(p.name, "Making it so, Captain.", theme.CREW, p.station, p.officer, urgent=True)
-                    self.run_console(p.line)
-            return
-        crew, ship = self.battle.crew, self.player
-        if self.bridge is not None:          # one voice for incoming torpedoes: the proposal, not advice as well
-            self.bridge.proposals_on = self.prefs.proposals != "off" and self.style != "green"
-        if (crew is None or ship is None or not ship.alive or self.paused or self.world.outcome.over
-                or crew.ship_id != ship.id or self.prefs.proposals == "off" or self.overlay is not None):
-            return
-        self._propose_t -= dt
-        if self._propose_t > 0:
-            return
-        self._propose_t = 0.5
-        if self.style == "green":
-            return                              # a green crew only follows orders
-        new = self.proposer.next(self.obs, ship, crew.officers, self.world.time, self.prefs.proposals, self.console_focus,
-                                 self.career.offers_while_typing)
-        if new is not None:
-            new.bonus = self.career.proposal_bonus(new.officer)
-            self.proposal = new
-            keys = "Ctrl+Y makes it so" if self.console_focus else "Y makes it so, N belays"
-            self._log(f"{new.name}: {new.text}  ({keys})", theme.CREW, channel="bridge")
-            self.audio.play("lock", time.monotonic(), 0.0, 0.3)
-
-    def accept_proposal(self: BattleScene) -> bool:
-        p = self.proposal
-        if not isinstance(p, Proposal):
-            return False
-        self.proposal = None
-        self.career.proposal(p.officer, accepted=True)
-        self.run_console(p.line)
-        return True
-
-    def belay_proposal(self: BattleScene) -> bool:
-        p = self.proposal
-        if not isinstance(p, Proposal):
-            return False
-        self.proposal = None
-        self.proposer.belay(p, self.world.time)
-        self.career.proposal(p.officer, accepted=False)
-        self._log(f"  {p.name}: Aye, Captain.", theme.TEXT_DIM, channel="bridge")
-        return True
-
     def _proposal_height(self: BattleScene) -> int:
         return 66 if isinstance(self.proposal, Proposal) and not self.console_focus else 0
 
@@ -397,7 +295,7 @@ class BridgeMixin(SceneState):
     # ------------------------------------------------------------ the Bridge setting
 
     def bridge_setting(self: BattleScene, val: object) -> None:
-        """`hud bridge full|quiet|classic`, `hud wheel on|off`, `hud focus slow|pause|off`... (see `bridge_prefs`)."""
+        """`hud bridge full|quiet|classic`, `hud wheel on|off`, `hud focus slow|pause|off`... (see `session/prefs.py`)."""
         p = self.prefs
         if isinstance(val, tuple):
             key, v = val

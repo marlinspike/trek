@@ -40,7 +40,7 @@ from .vocab import (
     system_word,
 )
 
-# `hud <switch> <value>`: the Bridge setting and its parts (see ui/bridge_prefs.py) [E]
+# `hud <switch> <value>`: the Bridge setting and its parts (see session/prefs.py) [E]
 BRIDGE_SWITCHES: dict[str, tuple[str, tuple[str, ...]]] = {
     "bridge": ("bridge", ("full", "quiet", "classic")),
     "wheel": ("wheel", ("on", "off")),

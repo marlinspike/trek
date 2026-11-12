@@ -24,7 +24,6 @@ import pygame
 
 import dataclasses
 
-from ...console.parser import ParseContext, parse
 from ...voice.engines import VoiceError, download_model, make_engine
 from ...voice.recorder import Recorder
 from ...voice.settings import ENGINE_WORDS, ENGINES, MODELS, PTT_KEYS, VoiceSettings
@@ -62,8 +61,7 @@ class VoiceMixin(SceneState):
     def _voice_hints(self: BattleScene) -> list[str]:
         names = [s.name for s in self.obs.own_ships()]
         names += [c.label.split(" (")[0] for c in self.obs.contacts().values() if c.identified]
-        if self.bridge is not None:
-            names += [o.name for o in self.bridge.crew.officers.values()]
+        names += [o.name for o in self.session.officers().values()]
         return list(dict.fromkeys(names))
 
     # ------------------------------------------------------------ push to talk
@@ -130,17 +128,13 @@ class VoiceMixin(SceneState):
     def spoken(self: BattleScene, text: str) -> None:
         """Words heard from the captain: run them as typed, unless nothing could make sense of them."""
         line = self._with_pointing(text, self.pointed_ship())
-        if self.player_id is not None and self.translator is None and self.bridge_addressed(line) is None:
-            res = parse(line, ParseContext(self.player_id, self.world.observe(self.side)))
-            if res.error is not None and self.orders.find(line) is None and not self.recalled(line):
-                self.type_line(line)        # never guessed at: it waits to be fixed
-                self.toast = (f'Heard "{text}": {res.error} Fix it and press Enter.', theme.CAUTION, 5.0)
-                return
+        err = self.session.understood(line)
+        if err is not None:
+            self.type_line(line)        # never guessed at: it waits to be fixed
+            self.toast = (f'Heard "{text}": {err} Fix it and press Enter.', theme.CAUTION, 5.0)
+            return
         self._log(f'  heard: "{text}"', theme.TEXT_DIM, channel="bridge")
         self.run_console(line)
-
-    def bridge_addressed(self: BattleScene, line: str) -> object | None:
-        return self.bridge.addressed(line) if self.bridge is not None else None
 
     # ------------------------------------------------------------ `voice ...`
 

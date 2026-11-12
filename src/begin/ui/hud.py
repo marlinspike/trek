@@ -22,7 +22,6 @@ from ..sim.commands import (
 )
 from ..sim.factory import SHIELD_FACINGS
 from ..sim.ship import BankRole, FireMode, Kind, PDDoctrine, Ship, repair_words
-from ..sim.systems.repair import under_repair
 from ..sim.systems.phasers import bank_bears, bank_ready
 from . import theme
 from .hulls import draw_hull, transform
@@ -145,7 +144,7 @@ def _morale_tag(surf: pygame.Surface, hud: BattleScene, ship: Ship, at: tuple[in
     col = hud.tweens.colour(f"morale{ship.id}", theme.health_color(m / 100.0))
     theme.text(surf, f"{morale_words(m)} {shown:.0f}", at, col, 11)
     f = ship.morale_factor
-    r = hud.world.rules
+    r = hud.obs.rules
     effect = ("no effect on the crew's work" if abs(f) < 0.05 else
               f"repairs {r.morale_repair * f:+.0%}, torpedo loading {r.morale_reload * f:+.0%}, "
               f"point defense and aim {r.morale_accuracy * f:+.0%}")
@@ -195,12 +194,12 @@ class OwnShipPanel(Panel):
             return
         status_col = theme.GOOD if ship.alive else theme.ALERT
         theme.text(surf, ship.name, (rect.x + 12, y - 6), theme.FRIEND, 17, "display", weight="semibold")
-        sub = f"{ship.cls.name} · {hud.world.content.factions[ship.faction].name}"
+        sub = f"{ship.cls.name} · {hud.obs.content.factions[ship.faction].name}"
         if not ship.alive:
             sub += f" · {ship.status.value.upper()}"
         theme.text(surf, sub, (rect.x + 12, y + 20), status_col if not ship.alive else theme.TEXT_DIM, 12)
         box = pygame.Rect(rect.x + 8, y + 40, 168, rect.bottom - y - 48)
-        fixing, hull_fixing = under_repair(hud.world, ship)
+        fixing, hull_fixing = hud.obs.repairs(ship.id)
         hud.ui.add(box, lambda: hud.toggle_overlay("damage"),
                    "Damage assessment (I). Dots are systems, coloured by health; rings mark repairs.")
         detail = hud.hud_detail or rect.collidepoint(hud.ui.mouse)    # the rest of the numbers, on hover
@@ -263,8 +262,7 @@ class OwnShipPanel(Panel):
             theme.text(surf, "hover for detail · 'hud detail'", (x, yy + 1), theme.TEXT_FAINT, 11)
         yy += 18
         rp = repair_words(ship.repair_priority)
-        crew = hud.battle.crew
-        who = crew.repair_officer(ship) if crew is not None and crew.ship_id == ship.id else None
+        who = hud.session.repair_officer(ship)
         n = len(fixing) + (1 if hull_fixing else 0)
         if n == 0:
             rp = "nothing to repair"
@@ -346,7 +344,7 @@ class TargetPanel(Panel):
             x += w + 3
         # scan
         yy += 30
-        pend = hud.world.pending_scan(ship.id)
+        pend = hud.obs.pending_scan(ship.id)
         label = "Scanning…" if pend else "Scan (X)"
         hud.ui.button(surf, pygame.Rect(rect.x + 12, yy, 92, 22), label,
                       lambda: hud.issue(Scan(ship_id=ship.id, target=c.id)), "Detailed sensor scan", enabled=pend is None)
@@ -445,7 +443,7 @@ class TargetPanel(Panel):
     def _close_actions(surf: pygame.Surface, rect: pygame.Rect, yy: int, hud: BattleScene, ship: Ship, tid: int,
                        d: float) -> None:
         """Tractor and boarding (Begin 2.0): buttons plus how close we are to each range."""
-        rules = hud.world.rules
+        rules = hud.obs.rules
         x = rect.x + 12
         has_tractor = ship.cls.has_tractor and ship.tractor is not None
         holding = ship.tractor_target == tid
@@ -474,9 +472,9 @@ class TargetPanel(Panel):
             note, col = f"in transporter range · tractor at {rules.tractor_range:,.0f}", theme.GOOD
         else:
             note, col = f"close to {rules.beam_range:,.0f} to board", theme.TEXT_FAINT
-        tgt = hud.world.ships.get(tid)
-        if tgt is not None and tgt.boarders > 0 and tgt.boarder_side == ship.side:
-            note, col = f"our boarders aboard: {tgt.boarders}", theme.CREW
+        aboard = hud.obs.our_boarders(tid)
+        if aboard:
+            note, col = f"our boarders aboard: {aboard}", theme.CREW
         theme.text(surf, note, (rect.x + 12, yy), col, 11)
 
 
@@ -546,7 +544,7 @@ class WeaponsPanel(Panel):
             if tgt is not None and brg is not None:
                 rel = norm360(brg - ship.course)
                 from ..core.angles import in_arc
-                bears = not hud.world.rules.tube_arcs or in_arc(rel, t.mount.arc_center, t.mount.arc_width)
+                bears = not hud.obs.rules.tube_arcs or in_arc(rel, t.mount.arc_center, t.mount.arc_width)
             gfx.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
             gfx.draw.rect(surf, theme.GOOD if bears and t.loaded else theme.BORDER, r, 1, border_radius=3)
             if t.loaded:
@@ -570,7 +568,7 @@ class WeaponsPanel(Panel):
             hud.ui.add(r, partial(hud.fire_torpedoes, (i,)),
                        f"Tube {i + 1}: {('loaded ' + t.loaded.ordnance.upper() + f' prox {prox:.0f}') if t.loaded else lab} · "
                        f"autoload {'on' if t.autoload else 'off'} {t.load_ordnance.upper()}"
-                       + (f" · arc {t.mount.arc_width:.0f}°" if hud.world.rules.tube_arcs else "")
+                       + (f" · arc {t.mount.arc_width:.0f}°" if hud.obs.rules.tube_arcs else "")
                        + (" · target outside its arc" if tgt is not None and not bears else ""))
             n_bear += bool(t.loaded and bears)
         if tgt is not None and ship.tubes:
@@ -581,7 +579,7 @@ class WeaponsPanel(Panel):
         if ship.tubes:
             t0 = ship.tubes[0]
             on = t0.autoload
-            spec = hud.world.content.torpedoes.get(t0.load_ordnance)
+            spec = hud.obs.content.torpedoes.get(t0.load_ordnance)
             pr = t0.load_prox or (spec.max_prox if spec else 0)
             hud.ui.button(surf, pygame.Rect(x0 + 116, yy, 206, 22),
                           f"Autoload {'on' if on else 'off'} · {t0.load_ordnance.upper()} · prox {pr:.0f}",
@@ -619,7 +617,7 @@ class CrewPanel(Panel):
 
     def tab_label(self, hud: BattleScene) -> str:
         ship = hud.player
-        holder = hud.bridge.find(ship.conn) if ship is not None and ship.conn and hud.bridge is not None else None
+        holder = hud.session.in_command()
         if holder is not None:
             return f"Crew · {holder.name.split()[0]} in command"
         n = len(ship.delegated) if ship is not None else 0
@@ -627,12 +625,12 @@ class CrewPanel(Panel):
 
     def body(self, surf: pygame.Surface, rect: pygame.Rect, y: int, hud: BattleScene) -> None:
         ship = hud.player
-        bridge = hud.bridge
-        if ship is None or bridge is None:
+        officers = hud.session.officers()
+        if ship is None or not officers:
             theme.text(surf, "No officers aboard.", (rect.x + 12, y), theme.TEXT_FAINT, 12)
             return
         rh = 22
-        holder = bridge.find(ship.conn) if ship.conn else None
+        holder = hud.session.in_command()
         theme.text(surf, "Command", (rect.x + 12, y + 3), theme.TEXT_DIM, 12)
         theme.text(surf, holder.title if holder else "Captain", (rect.x + 100, y + 3),
                    theme.CREW if holder else theme.TEXT, 12, weight="medium")
@@ -643,14 +641,14 @@ class CrewPanel(Panel):
         y += rh
         theme.text(surf, "Morale", (rect.x + 12, y + 3), theme.TEXT_DIM, 12)
         _morale_tag(surf, hud, ship, (rect.x + 100, y + 4), pygame.Rect(rect.x + 100, y, rect.width - 214, rh - 2))
-        since = (hud.world.tick - ship.last_address) / hud.world.rules.ticks_per_cycle
-        ready = since >= hud.world.rules.morale_address_cycles
+        since = (hud.obs.tick - ship.last_address) / hud.obs.rules.ticks_per_cycle
+        ready = since >= hud.obs.rules.morale_address_cycles
         hud.ui.button(surf, pygame.Rect(rect.right - 106, y, 94, rh - 3), "Address crew",
                       lambda: hud.address_crew(), "Speak to the crew: type what you say after 'address crew'"
                       if ready else f"The crew heard you {since:.0f} cycles ago", enabled=ready, accent=theme.CREW,
                       size=11)
         y += rh
-        for k, (station, o) in enumerate(bridge.crew.officers.items()):
+        for k, (station, o) in enumerate(officers.items()):
             ry = y + k * rh
             if ry + rh > rect.bottom - 2:
                 break
@@ -660,9 +658,8 @@ class CrewPanel(Panel):
             hover = name_r.collidepoint(hud.ui.mouse)
             shown = holder if holder is not None and on else o   # the commander runs every station they hold
             theme.text(surf, shown.title, (name_r.x, ry + 3), theme.CREW if on or hover else theme.TEXT, 12)
-            career = getattr(hud, "career", None)
-            if career is not None:      # how far this officer trusts the captain (crew/career.py)
-                theme.text(surf, career.level(o.id), (rect.right - 114, ry + 4), theme.TEXT_FAINT, 10, anchor="topright")
+            # how far this officer trusts the captain (crew/career.py)
+            theme.text(surf, hud.session.trust(o.id), (rect.right - 114, ry + 4), theme.TEXT_FAINT, 10, anchor="topright")
             hud.ui.add(name_r, partial(hud.address, o.aliases[0] if o.aliases else o.id),
                        f"Talk to {o.name} (type after the comma)")
             btn = pygame.Rect(rect.right - 106, ry, 94, rh - 3)
@@ -772,7 +769,7 @@ class FleetPanel(Panel):
         hud.ui.button(surf, pygame.Rect(rect.right - 34, y, 22, 22), "›", lambda: hud.select_ally(ids[(k + 1) % len(ids)]),
                       "Next ally", enabled=len(ids) > 1, size=14)
         st = hud.obs.ally_order(a.id)
-        names = {s.id: s.name for s in hud.world.ships.values()}
+        names = {i: hud.obs.name_of(i) for i in [*hud.obs.contacts(), *(s.id for s in hud.obs.own_ships(False))]}
         mission = st.summary(names) if st is not None else ""
         theme.text(surf, "Mission", (x0, y + 28), theme.TEXT_DIM, 11)
         theme.text(surf, mission or "own initiative", (x0 + 56, y + 28), theme.TEXT if mission else theme.TEXT_FAINT, 11)
@@ -823,12 +820,12 @@ class FleetPanel(Panel):
         docked = ship.docked_to == a.id
         hud.ui.button(surf, pygame.Rect(x, yy, 74, 22), "Undock" if docked else "Dock",
                       partial(hud.issue, Dock(ship_id=ship.id, host=None if docked else a.id)),
-                      f"Dock with {a.name} to repair and resupply (range {hud.world.rules.dock_range:,.0f})" if bays
+                      f"Dock with {a.name} to repair and resupply (range {hud.obs.rules.dock_range:,.0f})" if bays
                       else f"The {a.cls.name} has no docking bays.", active=docked, enabled=bays or docked, accent=theme.GOOD,
                       size=11)
         hud.ui.button(surf, pygame.Rect(x + 78, yy, 74, 22), "Beam 20",
                       partial(hud.issue, Transport(ship_id=ship.id, target=a.id, count=20)),
-                      f"Beam 20 crew to {a.name} (range {hud.world.rules.beam_range:,.0f}, facing shields down). "
+                      f"Beam 20 crew to {a.name} (range {hud.obs.rules.beam_range:,.0f}, facing shields down). "
                       f"Console: 'beam {a.name} <crew>'", accent=theme.CREW, size=11)
         hud.ui.button(surf, pygame.Rect(x + 156, yy, rect.right - 12 - (x + 156), 22), "Take command",
                       partial(hud.take_command, a.id), f"Beam aboard {a.name} and command her. Console: 'beam {a.name}'",

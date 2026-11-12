@@ -1,50 +1,50 @@
 """Named orders from config/orders.toml, and the translator that turns plain words into console commands.
 
-Part of `BattleScene` (see `ui/battle_scene.py`), which mixes these methods in; they share its state."""
+Part of `BattleSession` (see `session/battle.py`), which mixes these methods in; they share its state."""
 
 from __future__ import annotations
 
 import time
 from typing import TYPE_CHECKING
 
-from ...console.orders import OrderRun, aim
-from ...console.parser import ParseContext, parse
-from ...console.translator import Translation
-from ...crew.station_reports import situation
-from .. import theme
+from ..console.orders import OrderRun, aim
+from ..console.parser import ParseContext, parse
+from ..console.translator import Translation
+from ..crew.station_reports import situation
 from .common import ORDER_TRANSLATE_WAIT
-from .state import SceneState
+from .news import Prompt
+from .state import SessionState
 
 if TYPE_CHECKING:
-    from ..battle_scene import BattleScene
+    from .battle import BattleSession
 
 
-class OrdersMixin(SceneState):
-    def _order_problems(self: BattleScene, problems: list[str]) -> None:
+class OrdersMixin(SessionState):
+    def _order_problems(self: BattleSession, problems: list[str]) -> None:
         for p in problems:
-            self._log(f"Named order {p}", theme.CAUTION)
+            self._log(f"Named order {p}", "caution")
 
-    def _execute_order(self: BattleScene, name: str) -> None:
+    def _execute_order(self: BattleSession, name: str) -> None:
         order = self.orders.find(name)
         if order is None:
             known = ", ".join(self.orders.orders) or "none yet"
-            self._log(f"No named order '{name}' (yours: {known}). See 'help orders'.", theme.CAUTION)
+            self._log(f"No named order '{name}' (yours: {known}). See 'help orders'.", "caution")
             return
         if self.order_run is not None and not self.order_run.done:
-            self._log(f"Order {self.order_run.order.name} belayed.", theme.TEXT_DIM)
-        self._log(f"Executing order {order.name}" + (f": {order.note}" if order.note else "."), theme.FRIEND)
+            self._log(f"Order {self.order_run.order.name} belayed.", "dim")
+        self._log(f"Executing order {order.name}" + (f": {order.note}" if order.note else "."), "friend")
         self.order_run = OrderRun(order)
         self._advance_order()
 
-    def _belay(self: BattleScene) -> None:
+    def _belay(self: BattleSession) -> None:
         run = self.order_run
         if run is None or run.done:
             return          # nothing to belay but the cease fire that came with it
         left = len(run.order.steps) - run.index
-        self._log(f"Order {run.order.name} belayed ({left} step{'s' if left != 1 else ''} not run).", theme.CAUTION)
+        self._log(f"Order {run.order.name} belayed ({left} step{'s' if left != 1 else ''} not run).", "caution")
         self.order_run = None
 
-    def _advance_order(self: BattleScene) -> None:
+    def _advance_order(self: BattleSession) -> None:
         """Run the running order's steps until one says wait (or waits on its translation)."""
         run = self.order_run
         while run is not None and not run.done and self.order_run is run:
@@ -61,9 +61,9 @@ class OrdersMixin(SceneState):
                     run.held_since = time.monotonic()
                 if time.monotonic() - run.held_since < ORDER_TRANSLATE_WAIT:
                     return      # still being translated: the order waits for it
-                self._log(f"» {step.text}   (skipped: no translation yet)", theme.CAUTION)
+                self._log(f"» {step.text}   (skipped: no translation yet)", "caution")
             elif line is not None and line.error and not line.commands:
-                self._log(f"» {step.text}   (skipped: {line.error})", theme.CAUTION)
+                self._log(f"» {step.text}   (skipped: {line.error})", "caution")
             else:
                 target = self._target_id()
                 for c in (line.commands if line is not None and line.commands else [step.text]):
@@ -72,9 +72,9 @@ class OrdersMixin(SceneState):
             run.index += 1
         if run is not None and run.done and self.order_run is run:
             self.order_run = None
-            self._log(f"Order {run.order.name} complete.", theme.TEXT_DIM)
+            self._log(f"Order {run.order.name} complete.", "dim")
 
-    def _translation_brief(self: BattleScene) -> str:
+    def _translation_brief(self: BattleSession) -> str:
         """What the translating model may know: the situation, the officers, and the names the console accepts."""
         ctx = self._help_context()
         lines = [situation(ctx)]
@@ -86,7 +86,7 @@ class OrdersMixin(SceneState):
             lines.append("Our other ships: " + ", ".join(allies) + ".")
         return "\n".join(lines)
 
-    def _would_run(self: BattleScene, line: str) -> str | None:
+    def _would_run(self: BattleSession, line: str) -> str | None:
         """Why a translated line would be rejected, or None: checked before anything runs."""
         if self.player_id is None:
             return "No ship under command."
@@ -94,28 +94,28 @@ class OrdersMixin(SceneState):
             return None
         return parse(line, ParseContext(self.player_id, self.world.observe(self.side))).error
 
-    def _translated(self: BattleScene, t: Translation) -> None:
+    def _translated(self: BattleSession, t: Translation) -> None:
         if t.say:
-            self._log(f"Computer: {t.say}", theme.TEXT)
+            self._log(f"Computer: {t.say}", "text")
         if t.error:
-            self._log(f"'{t.text}' not interpreted: {t.error}. Type 'help' for the commands.", theme.CAUTION)
-            self.toast = (f"Couldn't work out '{t.text}'", theme.CAUTION, 3.0)
+            self._log(f"'{t.text}' not interpreted: {t.error}. Type 'help' for the commands.", "caution")
+            self._notice(f"Couldn't work out '{t.text}'", "caution", 3.0)
             return
         if t.clarify:
-            self._log(f"Computer: {t.clarify}", theme.CAUTION)
-            self.toast = (t.clarify, theme.CAUTION, 5.0)
-            self.console_focus = True
+            self._log(f"Computer: {t.clarify}", "caution")
+            self._notice(t.clarify, "caution", 5.0)
+            self._emit(Prompt(None))
         for c in t.held:
-            self._log(f"≈ {c}   (not run: type it yourself if you mean it)", theme.CAUTION)
+            self._log(f"≈ {c}   (not run: type it yourself if you mean it)", "caution")
         for c in t.commands:
             self._run_one(c, translate=False, echo="≈ ")
         if t.commands and not t.held and not t.clarify:
             self.remember_phrase(t.text, t.commands)     # the same words work at once next time
 
-    def _translate_mode(self: BattleScene, mode: object) -> None:
+    def _translate_mode(self: BattleSession, mode: object) -> None:
         tr = self.translator
         if tr is None:
-            self._log("No language model is set up, so commands must be typed exactly. See 'help llm'.", theme.CAUTION)
+            self._log("No language model is set up, so commands must be typed exactly. See 'help llm'.", "caution")
             return
         if mode is not None:
             tr.mode = str(mode)
@@ -124,7 +124,7 @@ class OrdersMixin(SceneState):
         self._log({"off": "Plain English is off: commands must be typed exactly.",
                    "fallback": "Plain English is on: anything the console doesn't recognise goes to the model.",
                    "always": "Plain English for everything: every line goes to the model first."}[tr.mode],
-                  theme.TEXT_DIM)
+                  "dim")
 
 
 __all__ = ["OrdersMixin"]

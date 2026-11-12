@@ -1,58 +1,84 @@
-"""The battle screen's state, declared in one place for the parts that share it (`BattleScene.__init__` sets it)."""
+"""The battle screen's state, declared in one place for the parts that share it (`BattleScene.__init__` sets it).
+
+The game itself lives in a `BattleSession` (`session/battle.py`). What the screen shows of it is read through
+`Forward` attributes, which read from (and set on) the session, so the screen holds no game state of its own.
+"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar, overload
 
 import pygame
 
+T = TypeVar("T")
+
+
+class Forward(Generic[T]):
+    """An attribute of the session, shown by the screen: `scene.paused` is `scene.session.paused`."""
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self.name = name
+
+    @overload
+    def __get__(self, obj: None, owner: type | None = None) -> Forward[T]: ...
+    @overload
+    def __get__(self, obj: object, owner: type | None = None) -> T: ...
+
+    def __get__(self, obj: Any, owner: type | None = None) -> Any:
+        if obj is None:
+            return self
+        return getattr(obj.session, self.name)
+
+    def __set__(self, obj: Any, value: T) -> None:
+        setattr(obj.session, self.name, value)
+
+
 if TYPE_CHECKING:
-    from ...battle import Battle
     from ...console.complete import Completer
-    from ...crew.career import Career
-    from ...crew.proposals import Proposer
-    from .command import Recording
+    from ...crew.proposals import Proposal
+    from ...session.battle import BattleSession
+    from ...session.command import Recording
     from ...voice.recorder import Recorder
     from ...voice.settings import VoiceSettings
-    from ...console.orders import OrderBook, OrderRun
     from ...console.parser import ParseResult
-    from ...console.translator import Translator
-    from ...crew.conversation import Bridge
     from ...crew.hails import Comms
-    from ...sim.events import Event
     from ...sim.observation import Observation
-    from ...sim.scoring import Assessment
-    from ...sim.world import World
     from .. import theme
     from ..audio import Audio
-    from ..bridge_prefs import BridgePrefs
+    from ...session.prefs import BridgePrefs
     from ..subtitles import Subtitles
     from ..camera import Camera
-    from ..hit_report import HitReport
     from ..hud import Panel, TabbedPanel
     from ..manual import ManualView
     from ..tactical import Snapshot, TacticalView
     from ..tween import Tweens
     from ..widgets import UI
-    from .common import LogLine, TourLink
+    from .common import LogLine
 
 
 class SceneState:
-    battle: Battle
-    world: World
-    player_id: int | None
-    side: int
+    session: BattleSession
+    # the game, as the screen shows it (see `Forward`)
+    player_id: Forward[int | None] = Forward()
+    paused: Forward[bool] = Forward()
+    speed: Forward[float] = Forward()
+    acc: Forward[float] = Forward()
+    obs: Forward[Observation] = Forward()
+    comms: Forward[Comms] = Forward()
+    prefs: Forward[BridgePrefs] = Forward()
+    proposal: Forward[Proposal | None] = Forward()
+    condition: Forward[str | None] = Forward()
+    recording: Forward[Recording | None] = Forward()
+    style: Forward[str | None] = Forward()
+    style_broken: Forward[str | None] = Forward()
+    chart_auto: Forward[bool] = Forward()
+    # the screen's own state
     on_exit: Callable[[], None]
     exit_label: str
-    tour: TourLink | None
     ui: UI
-    paused: bool
-    speed: float
-    acc: float
     omniscient: bool
     cam: Camera
     view: TacticalView
-    obs: Observation
     prev: Snapshot | None
     now: Snapshot
     log: list[LogLine]
@@ -61,66 +87,35 @@ class SceneState:
     history: list[str]
     hist_i: int
     toast: tuple[str, theme.Color, float] | None
-    hits: HitReport
     overlay: str | None
     side_tabs: TabbedPanel
     panels: list[Panel]
     selected_ally: int | None
-    assessment: Assessment
     drag: tuple[int, int] | None
     dragged: bool
     printout: list[str] | None
     printout_cmd: str | None
     printout_tick: int
     log_scroll: int
-    chart_auto: bool
     hud_detail: bool
     tweens: Tweens
-    chart_sort: str
-    chart_hidden: set[int]
-    chart_all: bool
-    chart_origin: int | None
     keys: dict[str, str]
     manual: ManualView
-    hidden: dict[str, object]
-    bridge: Bridge | None
-    translator: Translator | None
-    llm_settings: dict[str, object]
-    comms: Comms
-    orders: OrderBook
-    order_run: OrderRun | None
     audio: Audio
     _was_alert: bool
     _alert_since: float
     fired_at: dict[int, float]
     _channels: dict[int, str]
-    deeds: list[Event]
     bridge_store: dict[str, object]
-    prefs: BridgePrefs
     subs: Subtitles
     _toast_seen: object
     focus_k: float
     focus_idle: float
     wheel: object | None
-    proposal: object | None
     _wheel_t: float
     completer: Completer
     _preview_key: object
     _preview: ParseResult | None
-    proposer: Proposer
-    _propose_t: float
-    career: Career
-    alerts: dict[str, tuple[str, list[str]]]
-    condition: str | None
-    recording: Recording | None
-    ran: list[str]
-    style: str | None
-    style_broken: str | None
-    ribbon_won: str | None
-    _career_done: bool
-    ever_delegated: set[str]
-    trust_news: list[str]
-    phrasebook: dict[str, list[str]]
     voice_store: dict[str, object]
     vset: VoiceSettings
     recorder: Recorder | None
@@ -134,4 +129,4 @@ class SceneState:
     console_rect: pygame.Rect
 
 
-__all__ = ["SceneState"]
+__all__ = ["Forward", "SceneState"]

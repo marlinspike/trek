@@ -55,7 +55,7 @@ def _run(sc, secs: float) -> None:  # type: ignore[no-untyped-def]
 
 def _after(sc, *lines: str, secs: float = 20.0) -> tuple[int, int]:  # type: ignore[no-untyped-def]
     """Say the lines, run the battle; (offensive shots, helm orders from officers) in that time."""
-    me, w = sc.player, sc.world
+    me, w = sc.player, sc.session.world
     start = len(w.command_log)
     shots: list[object] = []
     emit = w.emit
