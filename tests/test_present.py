@@ -47,10 +47,10 @@ def test_the_display_page_switches_renderer_and_glow(monkeypatch: pytest.MonkeyP
     from begin.ui.app import App
 
     app = App(size=(1280, 800), headless=True)
-    app.menu.page = "display"
+    app.menu.open_settings("display")
     app.frame(0.016)
     assert app.settings.renderer == "auto"
-    button = next(h for h in app.menu.ui.hotspots if "next" in h.tooltip)      # the renderer: click for next
+    button = next(h for h in app.menu.ui.hotspots if h.tooltip.startswith("Always OpenGL"))   # the graphics card
     button.action()
     assert app.settings.renderer == "gpu" and Settings.load().renderer == "gpu"
     app.frame(0.016)                                   # not what started: offers a restart

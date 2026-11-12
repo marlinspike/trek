@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Callable
 
 import pygame
@@ -62,6 +63,55 @@ class UI:
         elif tooltip and rect.collidepoint(self.mouse):
             self.tooltip = tooltip
 
+    def toggle(self, surf: pygame.Surface, at: tuple[int, int], on: bool, action: Callable[[], object],
+               tooltip: str = "", enabled: bool = True, words: tuple[str, str] = ("On", "Off")) -> pygame.Rect:
+        """A switch: a pill whose knob slides right and lights when on, with its state in words beside it."""
+        track = pygame.Rect(at[0], at[1] + 5, 46, 24)
+        hover = track.inflate(60, 8).collidepoint(self.mouse) and enabled
+        lit = theme.GOOD if enabled else theme.dim(theme.GOOD, 0.5)
+        bg = theme.mix(theme.BG_INPUT, lit, 0.45) if on else theme.BG_INPUT
+        gfx.draw.rect(surf, bg, track, border_radius=12)
+        gfx.draw.rect(surf, lit if on else (theme.BORDER_HI if hover else theme.BORDER), track, 1, border_radius=12)
+        knob = (track.right - 12, track.centery) if on else (track.x + 12, track.centery)
+        gfx.draw.aacircle(surf, theme.TEXT if enabled else theme.TEXT_FAINT, knob, 8)
+        label = words[0] if on else words[1]
+        theme.text(surf, label, (track.right + 12, track.y + 3), (theme.TEXT if on else theme.TEXT_DIM) if enabled
+                   else theme.TEXT_FAINT, 14)
+        area = pygame.Rect(track.x, at[1], 58 + theme.text_width(label, 14) + 10, 34)
+        if enabled:
+            self.add(area, action, tooltip)
+        elif tooltip and area.collidepoint(self.mouse):
+            self.tooltip = tooltip
+        return area
+
+    def choice(self, surf: pygame.Surface, at: tuple[int, int], options: list[tuple[str, str, str]], current: str,
+               pick: Callable[[str], object], enabled: bool = True, size: int = 13, height: int = 34,
+               min_width: int = 64) -> int:
+        """A row of joined buttons, one lit: (value, label, tooltip) each. Returns the x after the row."""
+        x, y = at
+        for value, label, tip in options:
+            w = max(min_width, theme.text_width(label, size, "display") + 28)
+            self.button(surf, pygame.Rect(x, y, w, height), label, partial(pick, value), tip,
+                        active=value == current, enabled=enabled, size=size, face="display")
+            x += w + 4
+        return x
+
+    def slider(self, surf: pygame.Surface, rect: pygame.Rect, frac: float, enabled: bool = True,
+               accent: theme.Color = theme.FRIEND) -> pygame.Rect:
+        """A level from 0 to 1: a thin rail, filled to the knob. Returns where it listens (the caller drags it)."""
+        frac = max(0.0, min(1.0, frac))
+        rail = pygame.Rect(rect.x, rect.centery - 2, rect.width, 4)
+        col = accent if enabled else theme.TEXT_FAINT
+        gfx.draw.rect(surf, theme.BG_INPUT, rail, border_radius=2)
+        gfx.draw.rect(surf, theme.BORDER, rail, 1, border_radius=2)
+        gfx.draw.rect(surf, theme.dim(col, 0.8), pygame.Rect(rail.x, rail.y, int(rail.width * frac), rail.height),
+                      border_radius=2)
+        knob = (rail.x + int(rail.width * frac), rail.centery)
+        hover = rect.inflate(0, 8).collidepoint(self.mouse) and enabled
+        gfx.draw.aacircle(surf, theme.BG_PANEL_HI, knob, 9)
+        gfx.draw.aacircle(surf, col if hover else theme.dim(col, 0.85), knob, 9, 2)
+        return rect.inflate(18, 8)
+
     def draw_tooltip(self, surf: pygame.Surface) -> None:
         if not self.tooltip:
             return
@@ -76,4 +126,98 @@ class UI:
         theme.text(surf, self.tooltip, (r.x + 8, r.y + 4), theme.TEXT, 12)
 
 
-__all__ = ["Hotspot", "UI"]
+@dataclass
+class TextField:
+    """A line of text the captain types: click to edit, Enter (or a click elsewhere) keeps it, Esc puts it back.
+
+    The screen owns the fields and passes them keys while one is focused; `commit` saves the text and returns
+    what is wrong with it, if anything, shown under the field (the text stays as typed so it can be fixed)."""
+
+    value: str = ""
+    placeholder: str = ""
+    commit: Callable[[str], str | None] = lambda _text: None
+    draft: str = ""
+    focused: bool = False
+    error: str = ""
+    rect: pygame.Rect = field(default_factory=lambda: pygame.Rect(0, 0, 0, 0))
+    born: float = 0.0           # when it was focused: the caret blinks from then
+    prefill: bool = False       # an empty field starts from its placeholder (the shipped words), to edit rather than retype
+
+    def focus(self, now: float = 0.0) -> None:
+        if not self.focused:
+            start = self.value or (self.placeholder if self.prefill else "")
+            self.focused, self.draft, self.born = True, start, now
+
+    def done(self) -> None:
+        """Keep what was typed (Enter, Tab or a click elsewhere)."""
+        if not self.focused:
+            return
+        self.focused = False
+        text = " ".join(self.draft.split())
+        if self.prefill and not self.value and text == " ".join(self.placeholder.split()):
+            return                  # opened and closed again: the shipped words stay the shipped words
+        if text == self.value and not self.error:
+            return
+        problem = self.commit(text)
+        self.value = text
+        self.error = problem or ""
+
+    def cancel(self) -> None:
+        self.focused, self.draft = False, self.value
+
+    def key(self, ev: pygame.event.Event) -> None:
+        if ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_TAB):
+            self.done()
+        elif ev.key == pygame.K_ESCAPE:
+            self.cancel()
+        elif ev.key == pygame.K_BACKSPACE:
+            if ev.mod & (pygame.KMOD_CTRL | pygame.KMOD_META | pygame.KMOD_ALT):
+                self.draft = self.draft.rstrip().rsplit(" ", 1)[0] if " " in self.draft.strip() else ""
+            else:
+                self.draft = self.draft[:-1]
+        elif ev.key == pygame.K_v and ev.mod & (pygame.KMOD_CTRL | pygame.KMOD_META):
+            self.draft += _clipboard()
+
+    def text(self, s: str) -> None:
+        self.draft += s.replace("\n", " ")
+
+    def draw(self, surf: pygame.Surface, rect: pygame.Rect, ui: UI, tooltip: str = "", now: float = 0.0,
+             enabled: bool = True, mono: bool = False) -> None:
+        self.rect = rect
+        hover = rect.collidepoint(ui.mouse) and enabled
+        gfx.draw.rect(surf, theme.BG_INPUT, rect, border_radius=3)
+        edge = (theme.ALERT if self.error else theme.FRIEND if self.focused else theme.BORDER_HI if hover
+                else theme.BORDER)
+        gfx.draw.rect(surf, edge, rect, 1, border_radius=3)
+        shown = self.draft if self.focused else self.value
+        face = "mono" if mono else "ui"
+        size = 13 if mono else 14
+        inner = rect.width - 24
+        while shown and theme.text_width(shown, size, face) > inner:     # the end of a long line, where you type
+            shown = shown[1:] if self.focused else shown[:-2] + "…"
+            if not self.focused and shown == "…":
+                break
+        y = rect.centery - size // 2 - 2
+        if shown:
+            theme.text(surf, shown, (rect.x + 10, y), theme.TEXT if enabled else theme.TEXT_FAINT, size, face)
+        elif self.placeholder:
+            theme.text(surf, self.placeholder, (rect.x + 10, y), theme.TEXT_FAINT, size, face)
+        if self.focused and int((now - self.born) * 2) % 2 == 0:
+            cx = rect.x + 11 + (theme.text_width(shown, size, face) if shown else 0)
+            gfx.draw.line(surf, theme.FRIEND, (cx, rect.y + 7), (cx, rect.bottom - 8), 1)
+        if enabled:
+            ui.add(rect, partial(self.focus, now), tooltip)
+
+
+def _clipboard() -> str:
+    """Text on the clipboard (for pasting an address or a model name), or nothing."""
+    try:
+        get = getattr(pygame.scrap, "get_text", None)
+        if get is not None:
+            return " ".join(str(get() or "").split())
+    except pygame.error:
+        pass
+    return ""
+
+
+__all__ = ["Hotspot", "TextField", "UI"]
