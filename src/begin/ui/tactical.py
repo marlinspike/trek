@@ -516,7 +516,7 @@ class TacticalView:
         n = len(path) - 1
         for i in range(n):                    # a faint thread, fainter the older it is
             k = (i + 1) / n
-            gfx.draw.aaline(overlay, (*col, int(70 * k * k)), path[i], path[i + 1], 1)
+            gfx.draw.aaline(overlay, (*col, int(70 * k * k)), path[i], path[i + 1], 0.75)   # a hair-thin thread
         warm = theme.mix(col, (255, 255, 255), 0.35)
         for i, (x, y, born) in enumerate(pts):   # and a stream of sparks that drift apart and fade
             age = now - born

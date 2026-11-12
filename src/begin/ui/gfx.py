@@ -271,6 +271,37 @@ def _pts(c: Canvas, pts: Sequence[Point]) -> list[tuple[int, int]]:
     return [(int(round(p[0] * s)), int(round(p[1] * s))) for p in pts]
 
 
+STROKE_LINES = 16.0     # real pixels: strokes up to this wide are smooth lines laid side by side (solid cores);
+                        # wider ones (soft glow) are a filled band with smooth edges and round ends
+
+
+def _stroke(surf: pygame.Surface, color: Any, a: tuple[float, float], b: tuple[float, float], w: float) -> pygame.Rect:
+    """A straight stroke `w` real pixels wide, measured square to its direction, with round smooth ends and
+    smooth edges (pygame's own wide lines are cut flat across an axis and thin out on a diagonal)."""
+    r = w / 2.0
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    L = math.hypot(dx, dy)
+    if L < 1e-6:
+        return pygame.draw.aacircle(surf, color, a, max(0.5, r))
+    nx, ny = -dy / L, dx / L
+    if w <= STROKE_LINES:                                   # up to here: smooth lines side by side, under a pixel apart
+        n = max(2, math.ceil(w))
+        rects = []
+        for i in range(n):
+            o = (i - (n - 1) / 2.0) * (w - 1.0) / (n - 1)
+            rects.append(pygame.draw.aaline(surf, color, (a[0] + nx * o, a[1] + ny * o), (b[0] + nx * o, b[1] + ny * o)))
+        return rects[0].unionall(rects[1:])
+    ri = max(0.0, r - 0.5)                                  # the solid inside; the smooth edges go round it
+    quad = [(a[0] + nx * ri, a[1] + ny * ri), (b[0] + nx * ri, b[1] + ny * ri),
+            (b[0] - nx * ri, b[1] - ny * ri), (a[0] - nx * ri, a[1] - ny * ri)]
+    got = pygame.draw.polygon(surf, color, quad)
+    pygame.draw.aaline(surf, color, quad[0], quad[1])
+    pygame.draw.aaline(surf, color, quad[2], quad[3])
+    got.union_ip(pygame.draw.aacircle(surf, color, a, r))
+    got.union_ip(pygame.draw.aacircle(surf, color, b, r))
+    return got
+
+
 class _Draw:
     """`pygame.draw` that understands a Canvas: same calls, same arguments, logical coordinates."""
 
@@ -297,12 +328,12 @@ class _Draw:
 
     @staticmethod
     def aaline(surf: pygame.Surface, color: Any, start: Point, end: Point, width: float = 1) -> pygame.Rect:
-        """A smooth straight line at sub-pixel positions, `width` wide: what beams and trails are drawn with."""
-        if not isinstance(surf, Canvas):
-            return pygame.draw.aaline(surf, color, start, end, max(1, round(width)))
-        s = surf._s
-        return surf.logical_rect(pygame.draw.aaline(surf, color, (start[0] * s, start[1] * s), (end[0] * s, end[1] * s),
-                                                    max(1, round(width * s))))
+        """A smooth straight line at sub-pixel positions, `width` wide: what beams and trails are drawn with.
+        Past a pixel and a half it is a true stroke with round ends (`_stroke`)."""
+        s = surf._s if isinstance(surf, Canvas) else 1.0
+        p, q, w = (start[0] * s, start[1] * s), (end[0] * s, end[1] * s), width * s
+        got = _stroke(surf, color, p, q, w) if w > 1.5 else pygame.draw.aaline(surf, color, p, q)
+        return surf.logical_rect(got) if isinstance(surf, Canvas) else got
 
     @staticmethod
     def aalines(surf: pygame.Surface, color: Any, closed: bool, points: Sequence[Point], *a: Any) -> pygame.Rect:
