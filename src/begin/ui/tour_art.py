@@ -340,6 +340,7 @@ def wrap(s: str, size: int, width: int, family: str = "ui") -> list[str]:
 def glass(surf: pygame.Surface, rect: pygame.Rect, title: str | None = None, accent: theme.Color = theme.FRIEND,
           alpha: int = 238) -> int:
     """A panel over the chart, nearly opaque so the chart's labels never show through the text; returns the y where its content starts."""
+    theme.frame(surf, rect)
     pane = gfx.Surface(rect.size, pygame.SRCALPHA)
     gfx.draw.rect(pane, (*theme.BG_PANEL, alpha), pane.get_rect(), border_radius=6)
     gfx.draw.rect(pane, (*theme.BORDER_HI, 160), pane.get_rect(), 1, border_radius=6)

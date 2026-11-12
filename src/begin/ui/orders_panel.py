@@ -74,8 +74,8 @@ class OrdersPanel(Panel):
                 continue
             cards.append((k, v, None, v, [v]))
         if not cards:
-            theme.text(surf, "No orders yet. Give a few orders after 'record <name>' and they're kept here.",
-                       (x0 + 2, y + 4), theme.TEXT_DIM, 12)
+            theme.para(surf, "No orders yet. Give a few orders after 'record <name>' and they're kept here.",
+                       (x0 + 2, y + 4), rect.right - 14 - x0, theme.TEXT_DIM, 12, 18, bottom=rect.bottom - 4)
             return
         running = hud.session.running_order()
         for name, what, key, line, steps in cards:

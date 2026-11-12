@@ -6,6 +6,9 @@ red for hostiles, amber for caution, teal for healthy systems.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -182,6 +185,8 @@ def text(surf: pygame.Surface, s: str, pos: tuple[float, float], color: Color = 
     r = img.get_rect()
     setattr(r, anchor, (int(pos[0]), int(pos[1])))
     surf.blit(img, r)
+    if _ink is not None:
+        _ink.append(Ink("text", s, r.copy(), surf, surf.get_clip()))
     return r
 
 
@@ -193,6 +198,8 @@ def label(surf: pygame.Surface, s: str, pos: tuple[float, float], color: Color =
     r = img.get_rect().inflate(-2, -2)
     setattr(r, anchor, (int(pos[0]), int(pos[1])))
     surf.blit(img, (r.x - 1, r.y - 1))
+    if _ink is not None:
+        _ink.append(Ink("label", s, r.copy(), surf, surf.get_clip()))
     return r
 
 
@@ -233,6 +240,102 @@ def _text_width_at(s: str, size: int, family: str, weight: str, scale: float) ->
         return _fallback(size).size(s)[0]
 
 
+def wrap(s: str, size: int, width: int, family: str = "ui", weight: str = "regular") -> list[str]:
+    """The lines of `s` that fit `width` pixels, broken between words; a line break in `s` starts a new line,
+    and a single word too long for the width is broken between its letters rather than left to run over.
+    Words joined by a no-break space ("3\u00a0×\u00a0Dreadnought") stay on one line."""
+    out: list[str] = []
+    for para in s.split("\n"):
+        line = ""
+        for word in (w for w in para.split(" ") if w):     # a no-break space (U+00A0) keeps words together
+            trial = f"{line} {word}" if line else word
+            if text_width(trial, size, family, weight) <= width:
+                line = trial
+                continue
+            if line:
+                out.append(line)
+            line = word
+            while len(line) > 1 and text_width(line, size, family, weight) > width:
+                cut = len(line) - 1
+                while cut > 1 and text_width(line[:cut], size, family, weight) > width:
+                    cut -= 1
+                out.append(line[:cut])
+                line = line[cut:]
+        out.append(line)
+    return out
+
+
+def fit(s: str, size: int, width: int, family: str = "ui", weight: str = "regular") -> str:
+    """`s` as it is if it fits `width` pixels, otherwise cut short with an ellipsis so it does."""
+    if text_width(s, size, family, weight) <= width:
+        return s
+    while s and text_width(s.rstrip() + "…", size, family, weight) > width:
+        s = s[:-1]
+    return s.rstrip() + "…" if s else ""
+
+
+def clip_lines(lines: list[str], most: int, size: int, width: int, family: str = "ui",
+               weight: str = "regular") -> list[str]:
+    """At most `most` of `lines`; if some are left out the last one kept ends with an ellipsis."""
+    if most <= 0:
+        return []
+    if len(lines) <= most:
+        return lines
+    kept = lines[:most]
+    kept[-1] = fit(kept[-1] + " " + lines[most], size, width, family, weight)
+    if not kept[-1].endswith("…"):
+        kept[-1] = fit(kept[-1].rstrip() + "…", size, width, family, weight)
+    return kept
+
+
+def para(surf: pygame.Surface, s: str, pos: tuple[float, float], width: int, color: Color = TEXT, size: int = 14,
+         line_h: int | None = None, family: str = "ui", weight: str = "regular", bottom: float | None = None) -> int:
+    """Draw `s` wrapped to `width` pixels from `pos` down; with `bottom`, lines that would pass it are left
+    out and the last one shown ends with an ellipsis. Returns the y just below the last line."""
+    step = line_h or round(size * 1.6)
+    x, y = int(pos[0]), int(pos[1])
+    lines = wrap(s, size, width, family, weight)
+    if bottom is not None:
+        lines = clip_lines(lines, max(1, int((bottom - y) // step)), size, width, family, weight)
+    for ln in lines:
+        text(surf, ln, (x, y), color, size, family, weight)
+        y += step
+    return y
+
+
+# ------------------------------------------------------------------ the text-fits check
+
+@dataclass
+class Ink:
+    """One thing drawn while `watching`: a line of text or a panel, and the surface it went on."""
+    kind: str                  # "text", "label" or "panel"
+    text: str
+    rect: pygame.Rect
+    surf: pygame.Surface
+    clip: pygame.Rect          # the surface's clip when it was drawn (a scrolling list clips to its view)
+
+
+_ink: list[Ink] | None = None
+
+
+@contextmanager
+def watching() -> Iterator[list[Ink]]:
+    """Record every line of text and every panel drawn inside the block, so a test can check that no words
+    run past their panel or off the screen (tests/test_text_fits.py). Costs nothing when not in use."""
+    global _ink
+    before, _ink = _ink, []
+    try:
+        yield _ink
+    finally:
+        _ink = before
+
+
+def frame(surf: pygame.Surface, rect: pygame.Rect) -> None:
+    """Tell `watching` that `rect` on `surf` is a panel whose words must stay inside it."""
+    if _ink is not None:
+        _ink.append(Ink("panel", "", pygame.Rect(rect), surf, surf.get_clip()))
+
+
 def bar(surf: pygame.Surface, rect: pygame.Rect, frac: float, color: Color, bg: Color = (24, 36, 60)) -> None:
     gfx.draw.rect(surf, bg, rect, border_radius=2)
     frac = max(0.0, min(1.0, frac))
@@ -263,6 +366,7 @@ SHADOW_ALPHA = 150         # how dark it is under the card
 def shadow(surf: pygame.Surface, rect: pygame.Rect, radius: int = 4) -> None:
     """A soft shadow under a card, so it sits above the map rather than painted on it (off with the lighting
     switch on the Display page). Only the rim that shows past the card is drawn: the card covers the rest."""
+    frame(surf, rect)
     if not gfx.LIGHTING or rect.w <= 0 or rect.h <= 0:
         return
     img = _shadow(rect.w, rect.h, radius, gfx.SCALE)
@@ -287,7 +391,7 @@ def _shadow(w: int, h: int, radius: int, scale: float) -> pygame.Surface:
 
 
 def panel(surf: pygame.Surface, rect: pygame.Rect, title: str | None = None, accent: Color = FRIEND) -> int:
-    """Draw a panel frame; returns the y where content should start."""
+    """Draw a panel frame (`shadow` notes it for `watching`); returns the y where content should start."""
     shadow(surf, rect)
     gfx.draw.rect(surf, BG_PANEL, rect, border_radius=4)
     gfx.draw.rect(surf, border(), rect, 1, border_radius=4)
@@ -345,5 +449,6 @@ def title_art(s: str, size: int, lean: float = 0.15) -> pygame.Surface:
     return out
 
 
-__all__ = [n for n in dir() if n.isupper()] + ["bar", "border", "set_alert", "dim", "font", "health_color", "mix", "panel",
-                                                "render", "text", "text_width", "title_art"]
+__all__ = [n for n in dir() if n.isupper()] + ["Ink", "bar", "border", "clip_lines", "set_alert", "dim", "fit", "font",
+                                                "frame", "health_color", "mix", "panel", "para", "render", "text",
+                                                "text_width", "title_art", "watching", "wrap"]

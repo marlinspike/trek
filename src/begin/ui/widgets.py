@@ -56,8 +56,14 @@ class UI:
         # command labels in the display face; data (long, or a list of facts joined by ·) stays in the text face
         if face is None:
             face = "display" if len(label) <= 20 and "·" not in label else "ui"
-        theme.text(surf, label, rect.center, col, size, face, weight="medium" if face == "ui" else "regular",
-                   anchor="center")
+        weight = "medium" if face == "ui" else "regular"
+        theme.frame(surf, rect)
+        room = rect.width - 8
+        floor = max(9, size - 2)
+        while size > floor and theme.text_width(label, size, face, weight) > room:   # a tight button: smaller words,
+            size -= 1                                                                  # and only then cut short
+        theme.text(surf, theme.fit(label, size, room, face, weight), rect.center, col, size, face,
+                   weight=weight, anchor="center")
         if enabled:
             self.add(rect, action, tooltip, right)
         elif tooltip and rect.collidepoint(self.mouse):
@@ -86,11 +92,23 @@ class UI:
 
     def choice(self, surf: pygame.Surface, at: tuple[int, int], options: list[tuple[str, str, str]], current: str,
                pick: Callable[[str], object], enabled: bool = True, size: int = 13, height: int = 34,
-               min_width: int = 64) -> int:
-        """A row of joined buttons, one lit: (value, label, tooltip) each. Returns the x after the row."""
+               min_width: int = 64, room: int | None = None) -> int:
+        """A row of joined buttons, one lit: (value, label, tooltip) each. Returns the x after the row.
+
+        With `room` (pixels) the row never runs past it: the buttons hug their words, then the words get smaller."""
         x, y = at
+        pad = 28
+
+        def span() -> int:
+            return sum(max(min_width, theme.text_width(lb, size, "display") + pad) + 4 for _, lb, _ in options) - 4
+
+        if room is not None:
+            if span() > room:
+                min_width, pad = 0, 18
+            while span() > room and size > 10:
+                size -= 1
         for value, label, tip in options:
-            w = max(min_width, theme.text_width(label, size, "display") + 28)
+            w = max(min_width, theme.text_width(label, size, "display") + pad)
             self.button(surf, pygame.Rect(x, y, w, height), label, partial(pick, value), tip,
                         active=value == current, enabled=enabled, size=size, face="display")
             x += w + 4
@@ -115,15 +133,19 @@ class UI:
     def draw_tooltip(self, surf: pygame.Surface) -> None:
         if not self.tooltip:
             return
-        w = theme.text_width(self.tooltip, 12) + 16
-        x = min(self.mouse[0] + 14, surf.get_width() - w - 4)
+        lines = theme.wrap(self.tooltip, 12, min(520, surf.get_width() - 24))      # a long tip wraps, never runs off
+        w = max(theme.text_width(ln, 12) for ln in lines) + 16
+        h = 6 + 18 * len(lines)
+        x = max(4, min(self.mouse[0] + 14, surf.get_width() - w - 4))
         y = self.mouse[1] + 18
-        if y + 24 > surf.get_height():
-            y = self.mouse[1] - 28
-        r = pygame.Rect(x, y, w, 22)
+        if y + h + 2 > surf.get_height():
+            y = max(4, self.mouse[1] - h - 6)
+        r = pygame.Rect(x, y, w, h)
+        theme.frame(surf, r)
         gfx.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=3)
         gfx.draw.rect(surf, theme.BORDER_HI, r, 1, border_radius=3)
-        theme.text(surf, self.tooltip, (r.x + 8, r.y + 4), theme.TEXT, 12)
+        for i, ln in enumerate(lines):
+            theme.text(surf, ln, (r.x + 8, r.y + 4 + 18 * i), theme.TEXT, 12)
 
 
 @dataclass
@@ -201,7 +223,8 @@ class TextField:
         if shown:
             theme.text(surf, shown, (rect.x + 10, y), theme.TEXT if enabled else theme.TEXT_FAINT, size, face)
         elif self.placeholder:
-            theme.text(surf, self.placeholder, (rect.x + 10, y), theme.TEXT_FAINT, size, face)
+            theme.text(surf, theme.fit(self.placeholder, size, inner, face), (rect.x + 10, y), theme.TEXT_FAINT, size,
+                       face)
         if self.focused and int((now - self.born) * 2) % 2 == 0:
             cx = rect.x + 11 + (theme.text_width(shown, size, face) if shown else 0)
             gfx.draw.line(surf, theme.FRIEND, (cx, rect.y + 7), (cx, rect.bottom - 8), 1)

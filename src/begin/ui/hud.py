@@ -53,9 +53,10 @@ class Panel:
     title: ClassVar[str] = ""
     weight: ClassVar[float] = 1.0   # share of leftover column height
     min_height: ClassVar[int] = 120
+    accent: ClassVar[theme.Color] = theme.FRIEND
 
     def draw(self, surf: pygame.Surface, rect: pygame.Rect, hud: BattleScene) -> None:
-        y = theme.panel(surf, rect, self.title)
+        y = theme.panel(surf, rect, self.title, self.accent)
         self.body(surf, rect, y, hud)
 
     def body(self, surf: pygame.Surface, rect: pygame.Rect, y: int, hud: BattleScene) -> None:
@@ -294,8 +295,9 @@ class TargetPanel(Panel):
     min_height = 236
     weight = 0.0
 
-    def draw(self, surf: pygame.Surface, rect: pygame.Rect, hud: BattleScene) -> None:
-        y = theme.panel(surf, rect, self.title, theme.HOSTILE)
+    accent: ClassVar[theme.Color] = theme.HOSTILE
+
+    def body(self, surf: pygame.Surface, rect: pygame.Rect, y: int, hud: BattleScene) -> None:
         ship = hud.player
         obs = hud.obs
         tid = ship.target if ship else None
@@ -485,8 +487,9 @@ class WeaponsPanel(Panel):
     min_height = 188
     weight = 0.0
 
-    def draw(self, surf: pygame.Surface, rect: pygame.Rect, hud: BattleScene) -> None:
-        y = theme.panel(surf, rect, self.title, theme.PHASER)
+    accent: ClassVar[theme.Color] = theme.PHASER
+
+    def body(self, surf: pygame.Surface, rect: pygame.Rect, y: int, hud: BattleScene) -> None:
         ship = hud.player
         if ship is None:
             return
@@ -835,15 +838,36 @@ class FleetPanel(Panel):
                       accent=theme.FRIEND, size=11)
 
 
+TABS_MIN_HEIGHT = 196     # the tallest tab's contents (the fleet orders) fit without running out of the panel
+
+
 class TabbedPanel(Panel):
     """Several panels sharing one slot, with a tab strip for a header."""
 
     weight = 1.0
-    min_height = 150
 
     def __init__(self, tabs: list[Panel]) -> None:
-        self.tabs = tabs
+        self.own = tabs
+        self.folded: list[Panel] = []     # panels moved in from the column on a short window (Target, Weapons)
         self.active = 0
+
+    @property
+    def min_height(self) -> int:  # type: ignore[override]
+        """Tall enough for the fleet orders, and for any panel folded in."""
+        return max([TABS_MIN_HEIGHT] + [p.min_height for p in self.folded])
+
+    @property
+    def tabs(self) -> list[Panel]:
+        return self.own + self.folded
+
+    def fold(self, panels: list[Panel]) -> None:
+        """Show `panels` as tabs too (a window too short for the whole column); the open tab stays open."""
+        if panels == self.folded:
+            return
+        tabs = self.tabs
+        current = tabs[self.active] if self.active < len(tabs) else None
+        self.folded = list(panels)
+        self.active = self.tabs.index(current) if current in self.tabs else 0
 
     def show(self, cls: type[Panel]) -> None:
         for i, t in enumerate(self.tabs):
@@ -852,20 +876,35 @@ class TabbedPanel(Panel):
 
     def draw(self, surf: pygame.Surface, rect: pygame.Rect, hud: BattleScene) -> None:
         theme.panel(surf, rect)
+        tabs = self.tabs
+        self.active = min(self.active, len(tabs) - 1)
+        # the tab names, as many words as fit across the panel: counts first go, then the letters get smaller
+        room = rect.width - 12 - 2 * (len(tabs) - 1)
+        size = 11
+        labels = [t.tab_label(hud).upper() for t in tabs]
+        if sum(theme.text_width(lb, size, "display", "medium") + 20 for lb in labels) > room:
+            labels = [t.title.upper() for t in tabs]
+        while size > 9 and sum(theme.text_width(lb, size, "display", "medium") + 20 for lb in labels) > room:
+            size -= 1
+        pad = 20 if sum(theme.text_width(lb, size, "display", "medium") + 20 for lb in labels) <= room else 10
         x = rect.x + 6
-        for i, t in enumerate(self.tabs):
-            label = t.tab_label(hud).upper()
-            w = theme.text_width(label, 11, "display", weight="medium") + 20
+        for i, (t, label) in enumerate(zip(tabs, labels)):
+            w = theme.text_width(label, size, "display", weight="medium") + pad
             r = pygame.Rect(x, rect.y + 2, w, 22)
             on = i == self.active
             if on:
-                gfx.draw.line(surf, theme.FRIEND, (r.x + 4, rect.y + 1), (r.x + 28, rect.y + 1), 2)
+                gfx.draw.line(surf, t.accent if t in self.folded else theme.FRIEND, (r.x + 4, rect.y + 1),
+                              (r.x + 28, rect.y + 1), 2)
             elif r.collidepoint(hud.ui.mouse):
                 gfx.draw.rect(surf, theme.BG_PANEL_HI, r, border_radius=3)
-            theme.text(surf, label, (r.x + 4, rect.y + 7), theme.TEXT if on else theme.TEXT_FAINT, 11, "display", weight="medium")
+            theme.text(surf, label, (r.x + pad // 5, rect.y + 7), theme.TEXT if on else theme.TEXT_FAINT, size, "display",
+                       weight="medium")
             hud.ui.add(r, partial(setattr, self, "active", i), t.title)
             x += w + 2
-        self.tabs[self.active].body(surf, rect, rect.y + 28, hud)
+        clip = surf.get_clip()
+        surf.set_clip(rect.clip(clip) if clip else rect)       # whatever a tab draws stays inside the panel
+        tabs[self.active].body(surf, rect, rect.y + 28, hud)
+        surf.set_clip(clip)
 
 
 __all__ = [

@@ -34,6 +34,15 @@ def _key_label(name: str) -> str:
     return "Enter" if name == "return" else name.upper() if len(name) == 1 else name.title()
 
 
+def roster(names: list[str]) -> str:
+    """A fleet's ships in words, alike ones counted together in the order they first appear:
+    "3 × Dreadnought, 2 × Battle Cruiser, Frigate" (no-break spaces, so a count never wraps away from its ship)."""
+    counts: dict[str, int] = {}
+    for n in names:
+        counts[n] = counts.get(n, 0) + 1
+    return ", ".join(f"{k}\u00a0×\u00a0{n}" if k > 1 else n for n, k in counts.items())
+
+
 class MenuScene:
     def __init__(self, content: ContentDB, settings: Settings, start: Callable[[BattleSetup], object],
                  quit_: Callable[[], None], show_help: Callable[[], None] | None = None,
@@ -245,9 +254,10 @@ class MenuScene:
             ("Open config folder", self._open_config, "Your settings, officers, orders and sounds: plain text files you can edit"),
             ("Quit", self.quit, "Esc"),
         ]
-        step = max(40, min(49, (surf.get_height() - y - 90) // len(items)))    # a short window: closer together
+        # a short window: closer together, and small enough that the side switch below still fits on screen
+        step = max(28, min(49, (surf.get_height() - y - 64) // len(items)))
         for label, act, tip in items:
-            self.ui.button(surf, pygame.Rect(x, y, 300, step - 7), label.upper(), act, tip, size=16)
+            self.ui.button(surf, pygame.Rect(x, y, 300, step - 7), label.upper(), act, tip, size=16 if step >= 38 else 14)
             y += step
         pf = self.custom["player_faction"]
         self.ui.button(surf, pygame.Rect(x, y + 12, 300, 30), f"QUICK BATTLE SIDE: {self.content.factions[pf].name.upper()}",
@@ -283,29 +293,22 @@ class MenuScene:
             y += 40
         self.ui.button(surf, pygame.Rect(x, y + 14, 140, 34), "Back", lambda: setattr(self, "page", "main"), size=13)
         p = self.presets[self.preset_i]
-        r = pygame.Rect(420, 210, min(760, surf.get_width() - 460), 420)
+        r = pygame.Rect(420, 210, min(760, surf.get_width() - 460), max(300, min(420, surf.get_height() - 230)))
         yy = theme.panel(surf, r, p.title)
-        words = p.description.split()
-        line = ""
-        for wd in words:
-            if theme.text_width(line + " " + wd, 15) > r.width - 40:
-                theme.text(surf, line.strip(), (r.x + 20, yy), theme.TEXT, 15)
-                yy += 24
-                line = ""
-            line += " " + wd
-        theme.text(surf, line.strip(), (r.x + 20, yy), theme.TEXT, 15)
-        yy += 40
+        start = pygame.Rect(r.right - 180, r.bottom - 50, 160, 36)
+        yy = theme.para(surf, p.description, (r.x + 20, yy), r.width - 40, theme.TEXT, 15, 24) + 16
+        label_w = 20 + max(theme.text_width(self._side_name(f), 14, "display", "medium") for f in p.fleets)
+        col_x = r.x + 20 + max(180, label_w)
         for f in p.fleets:
-            side = int(f["side"])
-            names = [self.content.classes[c].name for c in f["ships"]]
-            fac = self.content.classes[f["ships"][0]].faction
             col = theme.FRIEND if f.get("player") else theme.HOSTILE
-            lab = self.content.factions[fac].name + (" (you)" if f.get("player") else "")
-            theme.text(surf, lab, (r.x + 20, yy), col, 14, "display", weight="medium")
-            theme.text(surf, ", ".join(names), (r.x + 200, yy), theme.TEXT_DIM, 13)
-            yy += 24 + 0 * side
-        self.ui.button(surf, pygame.Rect(r.right - 180, r.bottom - 50, 160, 36), "Start (Enter)",
-                       lambda: self.start(p.setup()), size=14, accent=theme.GOOD)
+            theme.text(surf, self._side_name(f), (r.x + 20, yy + 1), col, 14, "display", weight="medium")
+            yy = theme.para(surf, roster([self.content.classes[c].name for c in f["ships"]]), (col_x, yy),
+                            r.right - 20 - col_x, theme.TEXT_DIM, 13, 20, bottom=start.y - 8) + 4
+        self.ui.button(surf, start, "Start (Enter)", lambda: self.start(p.setup()), size=14, accent=theme.GOOD)
+
+    def _side_name(self, fleet: dict) -> str:  # type: ignore[type-arg]
+        fac = self.content.classes[fleet["ships"][0]].faction
+        return self.content.factions[fac].name + (" (you)" if fleet.get("player") else "")
 
     def _custom(self, surf: pygame.Surface) -> None:
         c = self.custom
