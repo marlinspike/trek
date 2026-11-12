@@ -71,8 +71,15 @@ def test_disabling_stops_at_the_system_and_spares_the_ship(content, system: str,
     assert enemy.exists and enemy.structure > 0
     assert me.target_subsystem is None                  # by default we are back to aiming at the hull
     assert enemy.id in me.spared
-    hull = enemy.structure
     start = len(sc.world.command_log)
+    # a salvo already in flight when the system fell still lands: let it, then she must take no more
+    for _ in range(15 * 20):
+        if not any(t.owner == me.id for t in sc.world.torpedoes):
+            break
+        sc.update(0.05)
+        sc.overlay = None
+    assert enemy.exists and enemy.structure > 0
+    hull = enemy.structure
     for _ in range(40 * 20):
         sc.update(0.05)
         sc.overlay = None

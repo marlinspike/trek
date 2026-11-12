@@ -1,3 +1,11 @@
+## What's new in 1.2
+
+**Klingons that look Klingon.** The battle cruiser, frigate and dreadnought are redrawn on the classic plan: a command pod on a long boom, a slim engine hull, and thin wings swept back to long nacelles. The escort is now a bird-of-prey, with a wedge head, broad wings and a disruptor cannon at each wingtip. Zoomed out, every ship is drawn as one clean, smoothed silhouette instead of a tangle of outlines, and a ship's speed line starts at her bow so it no longer runs through her.
+
+**Big battles run faster.** Enemy captains decide exactly as before, but working out how to dodge torpedoes now takes half the time, so a 60-ship battle runs about twice as fast.
+
+**Small fixes.** Ship names near the edge of the map stay on screen, the target and contact lists no longer spill out of their panels, and the helm officer doesn't repeat the incoming-torpedo warning every few seconds.
+
 ## What's new in 1.1
 
 **Weapons you can read at a glance.** A phaser bank glows as it charges, then its beam races to the target and stops where the blow really landed: on the shield if it held, on the hull if it got through. A full-power volley is heavier than a weak or point-defense shot. Klingon and Orion disruptors fly as real bolts. Torpedoes are drawn each nation's own way (a turning photon star, a harsh Klingon flare, a wobbling Romulan plasma ball) and stay easy to find at any zoom, and a round heading for you is ringed with its fuse radius, or marked at the edge of the map when it's off screen.

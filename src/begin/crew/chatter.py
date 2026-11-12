@@ -114,7 +114,7 @@ class Chatter:
         """Incoming fire (when the captain is flying) and hot engines."""
         threats = len([o for o in obs.threats() if math.hypot(o.x - s.x, o.y - s.y) < 8000])
         if threats > self._threats and "helm" not in s.delegated and not s.evasive:
-            self._maybe(out, obs, "helm", "incoming", 0.5)   # advice: with an officer at the helm, they just dodge
+            self._maybe(out, obs, "helm", "incoming", 0.5, gap=20.0)   # advice (not nagging); an officer at the helm just dodges
         self._threats = threats
         temp = max((d.temp for d in s.drives if not d.destroyed), default=0.0)
         if temp > obs.rules.temp_limit * 0.85:
