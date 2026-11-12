@@ -20,6 +20,7 @@ class Tokens:
         self.toks = [t if is_num(t) else (t.rstrip("!?.") or t) for t in text.split()]
         self.i = 0
         self.max_mount = 12
+        self.swallowed = False      # rest() took words the verb did not read one by one
 
     def peek(self, k: int = 0) -> str | None:
         j = self.i + k
@@ -37,6 +38,7 @@ class Tokens:
     def rest(self) -> list[str]:
         out = self.toks[self.i:]
         self.i = len(self.toks)
+        self.swallowed = self.swallowed or bool(out)
         return out
 
     def skip_filler(self) -> None:

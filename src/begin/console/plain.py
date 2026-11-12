@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from .vocab import AIM_FIRST, VERBS, is_num, match_word, system_word
+from .vocab import AIM_FIRST, VERBS, candidates, is_num, match_word, system_word
 
 
 # plain-English stop orders said to the bridge at large [E]; "seize fire" is a cease fire, not a capture
@@ -73,7 +73,7 @@ def _starts_order(piece: str) -> bool:
     if not first or is_num(first) or system_word(first) or first in AIM_FIRST:
         return False
     return first in ("i", "i've", "ive", "i'll", "ill", "stand", "take", "knock", "all", "give", "finish") or \
-        match_word(first, VERBS) is not None or bool(STOP_FIRE.match(piece) or STOP_ALL.match(piece))
+        match_word(first, VERBS) is not None or len(candidates(first, VERBS)) > 1 or bool(STOP_FIRE.match(piece) or STOP_ALL.match(piece))
 
 
 def split_orders(text: str) -> list[str]:
