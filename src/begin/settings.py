@@ -20,6 +20,8 @@ def settings_dir() -> Path:
 class Settings:
     window: tuple[int, int] = (1600, 900)
     fullscreen: bool = False
+    renderer: str = "auto"                                     # auto (GPU if it can), gpu, or software (see ui/present.py)
+    bloom: bool = True                                         # GPU only: soft glow round weapon light, a calm map edge
     speed: float = 1.0
     custom: dict[str, object] = field(default_factory=dict)
     llm: dict[str, object] = field(default_factory=dict)       # provider settings (no secrets: keys come from env)

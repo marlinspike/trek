@@ -10,7 +10,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Code: MIT. See LICENSING.md for content and trademark notes." }
 dependencies = [
-  "pygame-ce>=2.4",
+  "pygame-ce>=2.5",
+  "moderngl>=5.8",          # GPU presenter (sharp on Retina/4K, bloom); the game falls back to software without it
   "tomli>=2.0; python_version < '3.11'",
 ]
 

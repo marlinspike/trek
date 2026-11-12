@@ -12,6 +12,7 @@ from ..content import default_content
 from ..tour.run import TourRun
 from .battle_scene import BattleScene
 from .menu_scene import MenuScene
+from .present import Presenter, open_presenter, prepare
 from ..settings import Settings
 from .tour_scene import TourScene
 
@@ -21,28 +22,30 @@ TARGET_FPS = 60
 ICON = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
 
 
-def _set_window_icon() -> None:
+def _window_icon() -> pygame.Surface | None:
     """The Enterprise on the title bar, taskbar and (when run from Python) the Dock; drawn by tools/make_icon.py."""
     try:
-        pygame.display.set_icon(pygame.image.load(str(ICON)))
+        return pygame.image.load(str(ICON))
     except (pygame.error, FileNotFoundError):
-        pass
+        return None
 
 
 class App:
-    def __init__(self, size: tuple[int, int] | None = None, headless: bool = False) -> None:
+    def __init__(self, size: tuple[int, int] | None = None, headless: bool = False,
+                 renderer: str | None = None) -> None:
         if headless:
             os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
             os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+        self.settings = Settings.load()
+        chosen = "software" if headless else (renderer or self.settings.renderer)
+        prepare(chosen)
         pygame.init()
         pygame.key.set_repeat(350, 40)
-        self.settings = Settings.load()
         w, h = self.settings.window
         self.size: tuple[int, int] = size or (w, h)
-        flags = pygame.RESIZABLE
-        _set_window_icon()
-        self.screen = pygame.display.set_mode(self.size, flags)
-        pygame.display.set_caption("Begin — tactical starship simulation")
+        self.presenter: Presenter = open_presenter(chosen, self.size, _window_icon(), bloom=self.settings.bloom)
+        if not headless:
+            print(f"Begin: {self.presenter.note}")
         self.clock = pygame.time.Clock()
         self.content = default_content()
         self.running = True
@@ -52,6 +55,11 @@ class App:
         self.tour_run: TourRun | None = None      # the tour whose battle is being fought
         self.scene: MenuScene | BattleScene | TourScene = self.menu
         self.fps = 0.0
+
+    @property
+    def screen(self) -> pygame.Surface:
+        """What the scenes draw on: the window's logical size, at the presenter's density."""
+        return self.presenter.screen
 
     def stop(self) -> None:
         self.running = False
@@ -115,7 +123,7 @@ class App:
         self.scene = self.menu
 
     def frame(self, dt: float) -> None:
-        for ev in pygame.event.get():
+        for ev in self.presenter.events():
             if ev.type == pygame.QUIT:
                 self.running = False
             elif ev.type == pygame.VIDEORESIZE:
@@ -125,7 +133,7 @@ class App:
                 self.scene.handle(ev)
         self.scene.update(dt)
         self.scene.draw(self.screen)
-        pygame.display.flip()
+        self.presenter.present()
 
     def run(self) -> None:
         while self.running:
@@ -137,6 +145,7 @@ class App:
         elif isinstance(self.scene, TourScene):
             self.scene.save()
         self.settings.save()
+        self.presenter.close()
         pygame.quit()
 
 

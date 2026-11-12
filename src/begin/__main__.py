@@ -24,6 +24,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--quick", type=int)
     ap.add_argument("--patrol", type=int, help="start a patrol with this seed")
     ap.add_argument("--size", default=None, help="window size, e.g. 1600x900")
+    ap.add_argument("--renderer", choices=("auto", "gpu", "software"), default=None,
+                    help="how to draw: the GPU at the screen's full sharpness (auto tries it), or software")
     ap.add_argument("--screenshot")
     ap.add_argument("--cycles", type=float, default=0.0)
     ap.add_argument("--overlay", default=None, help="for screenshots: help, damage, scan, debrief, manual[:<topic>], fleet[:<ally>], crew")
@@ -79,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from .ui.app import App
 
-    app = App(size=size, headless=bool(args.screenshot))
+    app = App(size=size, headless=bool(args.screenshot), renderer=args.renderer)
     scene = None
     if args.preset:
         from .presets import load_presets

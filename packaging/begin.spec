@@ -21,6 +21,8 @@ datas = collect_data_files("begin", excludes=["**/__pycache__", "**/*.pyc"])
 datas += [(str(ROOT / "packaging" / "config_seed" / "README.md"), "config_seed")]
 datas += [(str(f), "config_seed") for f in sorted((ROOT / "config").glob("*.example.*"))]
 hiddenimports = collect_submodules("begin")
+# the GPU presenter: moderngl picks its OpenGL loader (WGL, CGL, GLX or EGL) by name at run time
+hiddenimports += collect_submodules("moderngl") + collect_submodules("glcontext")
 from begin import __version__ as VERSION
 
 a = Analysis(

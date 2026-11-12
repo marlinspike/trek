@@ -496,7 +496,9 @@ class WeaponsPanel(Panel):
         x0 = rect.x + 12
         # phasers
         theme.text(surf, "Phasers", (x0, y), theme.TEXT_DIM, 12, weight="medium")
-        bw = 40
+        # one cell per bank or tube, as wide as fits: a Dreadnought's eight tubes in a 1440-point window too
+        cells = max(1, len(ship.banks), len(ship.tubes))
+        bw = max(26, min(40, (rect.right - 12 - (x0 + 64) - 4 * (cells - 1)) // cells))
         for i, b in enumerate(ship.banks):
             r = pygame.Rect(x0 + 64 + i * (bw + 4), y - 2, bw, 30)
             frac = b.charge / ship.cls.banks_charge
@@ -590,14 +592,15 @@ class WeaponsPanel(Panel):
         yy += 30
         theme.text(surf, "Probes", (x0, yy + 4), theme.TEXT_DIM, 12, weight="medium")
         lx = x0 + 64
+        step = max(30, min(48, (rect.right - 12 - lx - 184) // max(1, len(ship.launchers))))
         for i, lch in enumerate(ship.launchers):
             lab = lch.loaded.code if lch.loaded else ("DMG" if not lch.intact else "…")
             col = theme.GOOD if lch.loaded else theme.TEXT_FAINT
-            r = pygame.Rect(lx + i * 48, yy, 44, 22)
+            r = pygame.Rect(lx + i * step, yy, step - 4, 22)
             gfx.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
             gfx.draw.rect(surf, theme.BORDER, r, 1, border_radius=3)
             theme.text(surf, lab, r.center, col, 11, "mono", anchor="center")
-        px = lx + max(1, len(ship.launchers)) * 48 + 6
+        px = lx + max(1, len(ship.launchers)) * step + 6
         hud.ui.button(surf, pygame.Rect(px, yy, 86, 22), "Launch (P)", hud.launch_probe,
                       "Launch a probe at the target", enabled=bool(ship.launchers), accent=theme.PROBE)
         mine = [p for p in obs.ordnance() if p.friendly and p.kind == "probe" and p.owner == ship.id]

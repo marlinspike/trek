@@ -56,6 +56,7 @@ Useful shortcuts:
 | `begin --preset border-incident` | Jumps straight into a preset battle (ids are in `src/begin/content/data/presets.toml`). |
 | `begin --quick 42` | Starts seeded quick battle number 42: your ship against two enemies. |
 | `begin --patrol 42` | Starts patrol number 42: one of five situations (ambush, wolf pack, second wave, escort, flagship) against a random enemy. |
+| `begin --renderer software` | Draws without the GPU (see "Sharp screens and the GPU" below); `gpu` and `auto` are the others. |
 | `begin --preset fleet-action --cycles 30 --screenshot shot.png` | Simulates 30 cycles headlessly and saves a screenshot. |
 | `begin --tournament 20` | Runs 20 headless AI-versus-AI battles and prints a balance summary. |
 | `begin --balance 8` | Fights every preset 8 times with AI captains on both sides and prints win rates. |
@@ -179,6 +180,12 @@ Enemy captains, and your allies, fight to their ship's strengths. Each one weigh
 Damage-control crews repair systems and now the hull too, slowly in space (up to 75%) and fully when docked; `repair hull` or `repair shields` sets the priority. Every crew has morale from 0 to 100, shaken by damage and losses and lifted by hits, kills and your `address crew`. It nudges repair speed, loading and accuracy, and a shaken AI crew gives up sooner. **I** (or a click on the hull diagram in the Own Ship panel) opens the damage assessment: every system where it sits in the hull, coloured by damage, with what the crews are repairing and the shields' strength around it.
 
 ![The damage assessment after a punishing exchange: hull at 61%, reactors and shields damaged, repairs under way](docs/screenshots/damage.png)
+
+### Sharp screens and the GPU
+
+On a high-density screen (a Mac's Retina display, a 4K monitor, Windows at 150% or 200%) the game draws at the screen's real pixel density, so text, hulls and beams are crisp instead of stretched. It does that through the graphics card with [moderngl](https://github.com/moderngl/moderngl), which also adds a soft glow round phaser beams, disruptor bolts and blasts and darkens the very edge of the map a little, like a viewscreen. Text and panels are never blurred or tinted.
+
+Nothing is required. If OpenGL 3.3 isn't there (an old driver, a remote desktop, a virtual machine drawing on the CPU), the game uses pygame's own drawing as before and says so in the terminal. `"renderer"` in `config/settings.json` chooses: `"auto"` (the default), `"gpu"` or `"software"`, and `"bloom": false` keeps the sharpness but turns off the glow and the vignette. `begin --renderer ...` does the same for one run.
 
 ### Sound
 

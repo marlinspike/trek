@@ -221,6 +221,39 @@ def take_dirty(layer: pygame.Surface) -> pygame.Rect | None:
     return got
 
 
+# -------------------------------------------------------------------- light, for a presenter that can bloom it
+
+_LIGHT: list[tuple[pygame.Surface, pygame.Rect]] = []
+_STAGE: list[pygame.Rect] = []
+
+
+def offer_light(layer: pygame.Surface, rect: Any) -> None:
+    """`rect` (logical, in screen coordinates) of `layer`, a screen-sized surface of added light (weapon glow),
+    was lit this frame. A GPU presenter blurs it into a soft bloom; the software one ignores it, and the light
+    has already been added to the frame either way."""
+    r = pygame.Rect(rect)
+    if r.w > 0 and r.h > 0:
+        _LIGHT.append((layer, r))
+
+
+def set_stage(rect: Any) -> None:
+    """The area of the screen that is the view of space this frame (the map), where a presenter may darken
+    the edges a little. Nothing else is touched. The map sets it as it starts drawing, which also drops light
+    from a frame no presenter took (so nothing piles up when frames are drawn without being shown)."""
+    r = pygame.Rect(rect)
+    if r.w > 0:
+        _LIGHT.clear()
+    _STAGE[:] = [r]
+
+
+def take_light() -> tuple[list[tuple[pygame.Surface, pygame.Rect]], pygame.Rect | None]:
+    """What was offered since the last call, and start over."""
+    light, stage = list(_LIGHT), (_STAGE[0] if _STAGE else None)
+    _LIGHT.clear()
+    _STAGE.clear()
+    return light, stage
+
+
 # -------------------------------------------------------------------- pygame.draw, density-aware
 
 def _w(c: Canvas, width: int) -> int:
@@ -360,4 +393,5 @@ class _Transform:
 transform = _Transform()
 
 
-__all__ = ["Canvas", "SCALE", "Surface", "adopt", "draw", "hires", "mark", "set_scale", "take_dirty", "track", "transform"]
+__all__ = ["Canvas", "SCALE", "Surface", "adopt", "draw", "hires", "mark", "offer_light", "set_scale", "set_stage",
+           "take_dirty", "take_light", "track", "transform"]

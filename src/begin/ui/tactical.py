@@ -321,6 +321,7 @@ class TacticalView:
               jolt: tuple[float, float]) -> None:
         cam = self.cam
         r = cam.rect
+        gfx.set_stage(r)
         if self._overlay is None or self._overlay.get_size() != surf.get_size():
             self._overlay = gfx.Surface(surf.get_size(), pygame.SRCALPHA)
             gfx.track(self._overlay)
@@ -420,6 +421,7 @@ class TacticalView:
             self._glow_used = lit = gfx.take_dirty(glow)
             if lit is not None and (lit := lit.clip(r)).w > 0:
                 surf.blit(glow, lit.topleft, area=lit, special_flags=pygame.BLEND_RGB_ADD)
+                gfx.offer_light(glow, lit)
         self._fire(surf, pose)
         self._overlay_used = used = gfx.take_dirty(overlay)
         if used is not None and (used := used.clip(r)).w > 0:

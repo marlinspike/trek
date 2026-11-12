@@ -64,6 +64,7 @@ class RenderMixin(SceneState):
         self._column(surf)
         if self.overlay:
             self._draw_overlay(surf)
+            gfx.set_stage((0, 0, 0, 0))          # a page over the map: no viewscreen edge on it
         if self.toast and (self.prefs.classic or self.prefs.subtitles == "off"):
             msg, col, t = self.toast
             w = theme.text_width(msg, 13) + 24
