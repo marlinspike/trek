@@ -9,13 +9,13 @@ back to its outline, as before.
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 import pygame
 
-from .showpiece import SHIP_DIR
 from . import gfx
 
-FLEET_DIR = SHIP_DIR / "fleet"
+FLEET_DIR = Path(__file__).resolve().parent.parent / "assets" / "ships" / "fleet"
 BAKED = 12                          # sprites per class, one per 30° of heading
 HAND_BUILT = frozenset({"federation.hc"})
 

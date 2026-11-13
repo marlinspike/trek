@@ -83,7 +83,7 @@ def test_torpedo_salvos_come_often_and_stay_in_view() -> None:
         f.update(0.05, (w, h))
         if f.current is not None and f.current is not last:
             last = f.current
-            passes += not f.current.klingon               # a Klingon pass has its own fight instead
+            passes += not f.current.foe                   # an enemy pass has its own fight instead
             salvos += any(kind == "torpedo" for _, kind, _ in f.current.fires)
         if any(s.kind == "torpedo" and s.trail and 0 <= s.pos[0] <= w and 0 <= s.pos[1] <= h for s in f.shots):
             seen += 0.05
@@ -167,3 +167,86 @@ def test_the_title_is_drawn_as_gold_lettering() -> None:
     assert box.width > 250 and box.height > 50
     r, g, b, _ = art.get_at(box.center)
     assert r > b                                               # warm gold, not the old cyan
+
+
+def _meet_the_cube(f: Flybys, size: tuple[int, int], limit: float = 120.0):  # type: ignore[no-untyped-def]
+    from begin.ui.cube_battle import CubeBattle
+
+    t = 0.0
+    while t < limit:
+        f.update(0.05, size)
+        t += 0.05
+        if isinstance(f.encounter, CubeBattle):
+            return f.encounter
+    return None
+
+
+def test_a_borg_cube_comes_out_trades_salvos_and_is_destroyed() -> None:
+    from begin.ui.cube_battle import CHAIN, CubeBattle
+
+    surf = _display()
+    w, h = surf.get_size()
+    played: list[str] = []
+    f = Flybys(seed=11, sound=lambda name, pan, level: played.append(name))
+    f.summon("borg")
+    cube = _meet_the_cube(f, (w, h))
+    assert cube is not None
+    assert cube.x - cube.side * 0.7 > 470 and cube.x + cube.side * 0.5 < w     # right of the menu, on screen
+    cut_on_her = torp_on_her = adapted = failed = hull = boomed = False
+    shield_flares = 0
+    while f.encounter is cube:
+        f.update(0.05, (w, h))
+        cut_on_her |= any(fl.strength < 1.0 for fl in cube.her_flares)
+        torp_on_her |= any(fl.strength >= 1.0 for fl in cube.her_flares)
+        shield_flares = max(shield_flares, len(cube.flares))
+        adapted |= cube.adapted_at is not None
+        failed |= cube.shields_fail is not None
+        hull |= cube.hull_hit is not None and len(cube.fires) >= 1
+        boomed |= cube.blast is not None and cube.blast.t > 0.5
+        f.draw(surf)
+        assert cube.t < 30                                       # the whole fight is over well within a pass
+    assert isinstance(cube, CubeBattle) and f.encounter is None   # it blew up and the scene cleared
+    assert cut_on_her and torp_on_her                            # it cut at her and fired, and her shields held
+    assert shield_flares >= 1 and adapted and failed and hull and boomed
+    assert len(cube.fires) == 2 + len(CHAIN)                     # two rounds on the hull, then the fires inside
+    assert {"hive", "cutter", "phaser", "launch", "collapse", "breakup"} <= set(played)
+
+
+def test_the_klingon_and_the_borg_take_turns() -> None:
+    from begin.ui.cube_battle import CubeBattle
+
+    surf = _display()
+    f = Flybys(seed=2)
+    seen: list[str] = []
+    last = None
+    t = 0.0
+    while len(seen) < 3 and t < 600:
+        f.update(0.05, surf.get_size())
+        t += 0.05
+        if f.encounter is not None and f.encounter is not last:
+            last = f.encounter
+            seen.append("borg" if isinstance(f.encounter, CubeBattle) else "klingon")
+    assert seen == ["klingon", "borg", "klingon"]
+
+
+def test_the_cube_fits_a_small_window() -> None:
+    surf = _display()
+    for seed in range(6):
+        f = Flybys(seed=seed)
+        f.summon("borg")
+        cube = _meet_the_cube(f, (1024, 640))
+        assert cube is not None
+        assert cube.x - cube.side * 0.5 > 470 and cube.x + cube.side * 0.5 < 1024
+        assert cube.side < 640 * 0.4
+    assert surf is not None
+
+
+def test_b_on_the_main_menu_summons_the_borg() -> None:
+    from begin.content.loader import default_content
+    from begin.settings import Settings
+    from begin.ui.menu_scene import MenuScene
+
+    _display()
+    m = MenuScene(default_content(), Settings(), lambda setup: None, lambda: None)
+    m.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_b, mod=0, unicode="b"))
+    assert m.flybys.next_foe == "borg" and m.flybys.hurry

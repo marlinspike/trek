@@ -3,7 +3,9 @@
 The ship is a pre-rendered sprite (baked by `tools/render_ship.py`, one per 30° of heading
 so the light stays put on screen while she turns). `Flybys` plans passes from varied
 directions, sizes and speeds, with quiet gaps between, and sometimes has her fire phasers
-or a torpedo salvo at something off screen. No enemy is ever shown.
+or a torpedo salvo at something off screen. Now and then a pass meets an enemy, taking turns: a Klingon
+battle cruiser decloaks off her beam (`Encounter`, below), or a Borg cube comes out of a transwarp conduit
+beside her (`cube_battle.CubeBattle`). Either way it is destroyed after a few salvos each way.
 """
 
 from __future__ import annotations
@@ -13,13 +15,16 @@ import random
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 import pygame
 
 from . import theme
 from .blast import SHIELD, Blast, CLOAK, HullHit, ShieldFlare, add_light, halo, level as blast_level, ring
 from . import gfx
+
+if TYPE_CHECKING:                     # cube_battle builds on this module, so it is imported where it is used
+    from .cube_battle import CubeBattle
 
 SPRITE_PX = 7.0           # sprite pixels per hull unit at scale 1 (tools/render_ship.py PX)
 SPRITE_CENTRE_Y = -1.0    # hull-unit y at the sprite's centre
@@ -35,7 +40,11 @@ TORP_LIFE = 4.5           # seconds before a torpedo is forgotten (long gone off
 BEAM_TIME = 0.75          # seconds a phaser shot lasts
 ENCOUNTER_ODDS = 0.25     # chance that a distant pass meets a Klingon
 ENCOUNTER_FAR = 0.42      # only passes drawn at this scale or smaller (she is far off)
-ENCOUNTER_EVERY = 4       # passes at most between Klingons; the first pass always meets one
+ENCOUNTER_EVERY = 4       # passes at most between enemies; the first pass always meets one
+FOES = ("klingon", "borg")   # the enemies, met in turn
+CUBE_SCALE = (0.24, 0.30) # her scale on a pass that meets the cube: far off, so the cube can be huge beside her
+CUBE_SLOW = 0.6           # ... and she glides more slowly, so the fight happens beside her
+MENU_EDGE = 470           # the menu's buttons are left of this; enemies keep to the right of it
 KLINGON_SPRITE = "klingon-battlecruiser.png"
 KLINGON_SCALE = 0.9       # the Klingon's scale relative to hers (it is a little smaller)
 KLINGON_BUBBLE = 38.0     # shield radius, hull units
@@ -143,8 +152,14 @@ class Pass:
     scale: float
     fires: list[tuple[float, str, float]]     # (fraction of the pass, "phaser"|"torpedo", bearing off her heading)
     t: float = 0.0
-    klingon: bool = False                     # a distant pass on which a Klingon decloaks and is destroyed
+    foe: str = ""                             # "klingon" or "borg": a pass that meets one, which is destroyed
     met: bool = False                         # ... and it has
+    site: tuple[float, float] = (0.0, 0.0)    # where the cube comes out (a Borg pass)
+    cube_heading: float = 0.0
+
+    @property
+    def klingon(self) -> bool:
+        return self.foe == "klingon"
 
     @property
     def heading(self) -> float:
@@ -524,9 +539,10 @@ class Flybys:
         self.next_kind = "torpedo"            # firing passes take turns to lead with torpedoes and phasers
         self.clock = 0.0                      # seconds since the menu opened, for the lights
         self.encounter_odds = ENCOUNTER_ODDS
-        self.encounter: Encounter | None = None
-        self.since = ENCOUNTER_EVERY          # passes since the last Klingon: the first pass meets one
-        self.hurry = False                    # a Klingon was asked for: the next pass follows at once
+        self.encounter: Encounter | CubeBattle | None = None
+        self.since = ENCOUNTER_EVERY          # passes since the last enemy: the first pass meets one
+        self.hurry = False                    # an enemy was asked for: the next pass follows at once
+        self.next_foe = FOES[0]               # who the next enemy pass meets: they take turns
         klingon_sprite()                      # loaded now, not in the middle of a pass
         self.size = (1600, 900)
 
@@ -537,31 +553,23 @@ class Flybys:
         r = self.rng
         # a different vantage point each pass, from close by to far off; even odds of near and far
         due = self.since >= ENCOUNTER_EVERY - 1
-        if due:                                                    # a Klingon is due: she is drawn far off
+        if due:                                                    # an enemy is due: she is drawn far off
             scale = r.uniform(0.27, 0.38)
         else:
             scale = math.exp(r.uniform(math.log(SCALE_FAR), math.log(SCALE_NEAR)))
         self.since += 1
-        reach = 420 * scale + 60                                   # far enough that she is wholly off screen
         travel = r.uniform(0, 360)
-        tx, ty = math.sin(math.radians(travel)), -math.cos(math.radians(travel))
         mid = (r.uniform(0.42, 0.86) * w, r.uniform(0.25, 0.75) * h) if not due else (r.uniform(0.5, 0.7) * w, r.uniform(0.4, 0.6) * h)
-        # how far along the line to either edge, plus the sprite's reach
-        def to_edge(sx: float, sy: float) -> float:
-            ts = []
-            for d, p, lim in ((sx, mid[0], w), (sy, mid[1], h)):
-                if abs(d) > 1e-6:
-                    ts.append(((lim - p) / d) if d > 0 else (-p / d))
-            return min(ts) + reach
-        a_len, b_len = to_edge(-tx, -ty), to_edge(tx, ty)
-        start = (mid[0] - tx * a_len, mid[1] - ty * a_len)
-        end = (mid[0] + tx * b_len, mid[1] + ty * b_len)
+        start, end, length = self._line(mid, travel, scale)
         speed = r.uniform(100, 130) * math.sqrt(scale)            # a stately glide; farther off looks slower
-        duration = (a_len + b_len) / speed
+        duration = length / speed
         fires: list[tuple[float, str, float]] = []
         roll = r.random()
         if due or (scale <= ENCOUNTER_FAR and r.random() < self.encounter_odds):
-            return Pass(start, mid, end, (a_len + b_len) / speed, scale, [], klingon=True)
+            foe, self.next_foe = self.next_foe, FOES[(FOES.index(self.next_foe) + 1) % len(FOES)]
+            if foe == "borg":
+                return self._plan_cube()
+            return Pass(start, mid, end, duration, scale, [], foe=foe)
         if roll < 0.85:
             for n in range(r.choice((1, 1, 2))):
                 kind = self.next_kind if n == 0 else r.choice(("phaser", "torpedo"))
@@ -570,6 +578,56 @@ class Flybys:
         if fires:
             self.next_kind = "phaser" if self.next_kind == "torpedo" else "torpedo"
         return Pass(start, mid, end, duration, scale, sorted(fires))
+
+    def _plan_cube(self) -> Pass:
+        """A pass that sails by a patch of stars right of the menu, where a cube will come out to meet her.
+
+        She comes in from the right on a slant and passes the cube just clear of its shields, so the
+        whole fight happens beside her while she is in view."""
+        from .cube_battle import BUBBLE, cube_side
+
+        w, h = self.size
+        r = self.rng
+        scale = r.uniform(*CUBE_SCALE) * min(1.0, h / 900, w / 1500)    # a smaller window: all of it smaller
+        side = cube_side(scale)
+        her = HER_BUBBLE * SPRITE_PX * scale
+        cx = min(w - side * 0.62, max(MENU_EDGE + side * 0.8, r.uniform(0.64, 0.72) * w))
+        cy = r.uniform(0.47, 0.6) * h
+        gap = side * 0.5 * BUBBLE + her + 18                  # her shields just clear of its own
+        # she comes in from the right on a slant (or steeply, from above or below) and passes it on the
+        # side that keeps her clear of the title, the buttons and the edges at her closest
+        best: tuple[float, tuple[float, float], float] | None = None
+        for _ in range(16):
+            travel = r.uniform(215, 325)
+            tx, ty = math.sin(math.radians(travel)), -math.cos(math.radians(travel))
+            for k in (1, -1):
+                m = (cx - ty * gap * k, cy + tx * gap * k)
+                clear = min(m[0] - MENU_EDGE - her, w - 20 - her - m[0], m[1] - 0.2 * h - her, h - 20 - her - m[1])
+                if best is None or clear > best[0]:
+                    best = (clear, m, travel)
+            if best is not None and best[0] > 0 and r.random() < 0.5:
+                break
+        assert best is not None
+        _, mid, travel = best
+        start, end, length = self._line(mid, travel, scale)
+        speed = r.uniform(100, 130) * math.sqrt(scale) * CUBE_SLOW
+        return Pass(start, mid, end, length / speed, scale, [], foe="borg", site=(cx, cy),
+                    cube_heading=r.uniform(-18, 18) % 360)
+
+    def _line(self, mid: tuple[float, float], travel: float, scale: float) -> tuple[tuple[float, float], tuple[float, float], float]:
+        """(start, end, length) of a straight pass through `mid` along `travel`, from wholly off screen to wholly off."""
+        w, h = self.size
+        reach = 420 * scale + 60
+        tx, ty = math.sin(math.radians(travel)), -math.cos(math.radians(travel))
+
+        def to_edge(sx: float, sy: float) -> float:
+            ts = []
+            for d, p, lim in ((sx, mid[0], w), (sy, mid[1], h)):
+                if abs(d) > 1e-6:
+                    ts.append(((lim - p) / d) if d > 0 else (-p / d))
+            return min(ts) + reach
+        a_len, b_len = to_edge(-tx, -ty), to_edge(tx, ty)
+        return (mid[0] - tx * a_len, mid[1] - ty * a_len), (mid[0] + tx * b_len, mid[1] + ty * b_len), a_len + b_len
 
     # ------------------------------------------------------------ running
 
@@ -612,8 +670,10 @@ class Flybys:
         for when, kind, off in p.fires:
             if before < when <= u:
                 self._fire(p, kind, off)
-        if p.klingon and not p.met and self.encounter is None:
+        if p.foe == "klingon" and not p.met and self.encounter is None:
             self._meet(p, u)
+        elif p.foe == "borg" and not p.met and self.encounter is None:
+            self._meet_cube(p, u)
         if u >= 1.0:
             self.current = None
             self.wait = 0.5 if self.hurry else self.rng.uniform(2.5, 7.0)
@@ -641,10 +701,25 @@ class Flybys:
                     self.encounter = Encounter(kx, ky, p.scale, self.rng, self.sound, w)
                     return
 
-    def summon(self) -> None:
-        """A Klingon on demand: her next pass meets one, with only a moment's wait for it."""
-        if self.current is not None and self.current.klingon and not self.current.met:
+    def _meet_cube(self, p: Pass, u: float) -> None:
+        """As soon as she is in view, the conduit opens and the cube comes out to meet her."""
+        from .cube_battle import CubeBattle
+
+        w, h = self.size
+        x, y, _ = p.at(u)
+        if u > 0.5:
+            p.met = True                        # she never came into view (the window shrank): let it go
+            return
+        if 30 < x < w - 30 and 30 < y < h - 30:
+            p.met = True
+            self.since = 0
+            self.encounter = CubeBattle(p.site[0], p.site[1], p.scale, self.rng, self.sound, w, p.cube_heading)
+
+    def summon(self, foe: str = "klingon") -> None:
+        """An enemy on demand ("klingon" or "borg"): her next pass meets one, with only a moment's wait for it."""
+        if self.current is not None and self.current.foe and not self.current.met:
             return                              # this pass already has one coming
+        self.next_foe = foe
         self.since = ENCOUNTER_EVERY
         self.wait = min(self.wait, 0.5)
         self.hurry = True

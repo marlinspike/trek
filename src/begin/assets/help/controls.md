@@ -3,7 +3,7 @@ title: Keyboard and mouse
 category: Getting started
 order: 1
 aliases: controls, keyboard, mouse, shortcuts, hotkeys, hud, detail, display
-summary: Every key and mouse action in battle.
+summary: Every key and mouse action in battle, and the keys of the main menu.
 see: console, keys
 ---
 ## Time
@@ -81,3 +81,20 @@ The panels show what matters at a glance: warp, course, crew, hull, morale, and 
 | `hud simple` | back to the essentials (hover a panel for the rest) |
 | `hud` | say which it is |
 
+
+## The main menu
+
+| Key | Action |
+|---|---|
+| **Enter** | Quick battle |
+| **P** | Patrol |
+| **T** | Tour of duty |
+| **C** | Coach & training |
+| **H** | The manual |
+| **F1** | This page |
+| **S** | Settings (**D** opens Display, **V** Character voices) |
+| **K** | The Enterprise's next pass meets a Klingon battle cruiser, which decloaks and fights her |
+| **B** | Her next pass meets a Borg cube, which comes out of a transwarp conduit, trades a few salvos with her, adapts to her phasers and is destroyed |
+| **Esc** | Quit |
+
+Left alone, the menu shows a pass that meets an enemy every few passes, the Klingon and the Borg taking turns.

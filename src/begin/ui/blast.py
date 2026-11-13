@@ -206,6 +206,7 @@ class Blast:
     t: float = 0.0
     life: float = 4.0
     tilt: float = 0.0
+    shock: float = 7.5                              # how far the shockwave runs, in ship sizes
     chunks: list[_Chunk] = field(default_factory=list)
     embers: list[list[float]] = field(default_factory=list)
     puffs: list[tuple[float, float, float, float]] = field(default_factory=list)    # (dx, dy, at, size)
@@ -303,7 +304,7 @@ class Blast:
         for lag, share in ((0.0, 1.0), (0.18, 0.45)):
             u = (t - 0.05 - lag) / 1.5
             if 0 <= u < 1:
-                rr = R * (0.6 + 7.5 * u ** 0.7)
+                rr = R * (0.6 + self.shock * u ** 0.7)
                 ring(glow, self.x, self.y, rr, rr * 0.32, SHOCK, share * (1 - u) ** 1.4, 2, self.tilt)
         # 4. secondary bursts as the pieces go up
         for dx, dy, at in self.secondaries:
