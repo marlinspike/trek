@@ -278,6 +278,8 @@ Every class in the game, Federation, Klingon, Romulan and Orion, is drawn as a l
 
 ### The manual and coach
 
+**[The Captain's Manual](docs/MANUAL.md)** is the whole game in one book. Its first part, *Command*, covers the powers you'll meet, your officers, how a battle works underneath, every way to give orders, the arsenal, tactics with a playbook for each enemy, and the moves no button tells you about. Its second part is the reference for every command. It is built from the same pages as the in-game manual and from the game's own data, and a test keeps it current.
+
 `help` (or `man`) opens the in-game manual. It covers every command, grouped by station, with search, links and examples you can click into the console; `help tor` opens a command's page. `coach` reads your battle and suggests what to do next, most urgent first: whether the target is in your torpedo envelope, which warhead and proximity suit it, which shield to turn toward it. The manual is Markdown in `src/begin/assets/help/`, and a page of yours in `config/help/` replaces the bundled one.
 
 ### Hailing enemy captains

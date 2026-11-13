@@ -199,7 +199,7 @@ class ManualView:
         gfx.draw.rect(surf, theme.BG_PANEL, h, border_top_left_radius=8, border_top_right_radius=8)
         gfx.draw.line(surf, theme.BORDER, (h.x, h.bottom), (h.right, h.bottom))
         gfx.draw.line(surf, theme.FRIEND, (h.x + 18, h.y + 1), (h.x + 60, h.y + 1), 2)
-        theme.text(surf, "BEGIN MANUAL", (h.x + 18, h.y + 15), theme.TEXT, 16, "display", weight="semibold")
+        theme.text(surf, "CAPTAIN'S MANUAL", (h.x + 18, h.y + 15), theme.TEXT, 16, "display", weight="semibold")
         if t is not None:
             crumb = f"{t.category}  ›  {t.title}"
             theme.text(surf, crumb, (h.x + SIDEBAR_W + 32, h.y + 19), theme.TEXT_DIM, 13)

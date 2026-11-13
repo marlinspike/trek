@@ -18,7 +18,7 @@ see: fire, lock, loading
 ---
 ```
 
-- **category** groups pages in the sidebar. The built-in groups are Getting started, Coach, Helm, Weapons, Defense, Sensors and status, Ship systems, Allies and Game.
+- **category** groups pages in the sidebar. The built-in groups are Getting started, Captain's manual (the chapters of the book), Coach, Helm, Weapons, Defense, Sensors and status, Ship systems, Allies and Game.
 - **aliases** are the words `help <word>` matches. Add a command's name here, and `help <command>` and its short forms will find the page.
 - **see** adds "See also" links at the bottom of the page.
 
@@ -47,3 +47,12 @@ These placeholders are replaced with up-to-date tables and advice built from the
 | `{{probe_table}}` | every probe type compared |
 | `{{phaser_falloff}}` | phaser damage by range and spread |
 | `{{class_table}}` | every ship class |
+| `{{crew_roster}}` | the bridge officers, their stations and traits |
+| `{{faction_profiles}}` | every power: ships, weapons, how they fight, how they take a hail |
+| `{{collaborations}}` | the projects officers build together |
+| `{{preset_list}}`, `{{tour_list}}` | the curated battles and the tours of duty |
+| `{{order_index}}` | every console order and the page that explains it |
+
+## The book
+
+`docs/MANUAL.md` is these pages bound into one book: the Captain's manual chapters first, then every other page by category, then the tables. It is built by `python -m begin.help.book`, and a test fails until it is rebuilt, so whenever you add or change a page, a ship, a weapon, an officer or an order, rebuild it and commit it with the change.

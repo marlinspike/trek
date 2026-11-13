@@ -184,6 +184,10 @@ How the captain gives orders is layered over the console rather than beside it: 
 - **On the screen**: `ui/wheel.py` (`CommandWheel`, slices from `wheel.toml` via `load_wheels`, the captain's file winning kind by kind), `ui/order_marks.py` (the captain's standing orders drawn on the map, and the ghost of the typed line), and `ui/orders_panel.py` (the Orders tab's cards).
 - **Voice** (`voice/`, `ui/microphone.py`, `ui/battle/voice.py`): `Recorder` captures 16 kHz mono through SDL while the push-to-talk key is held and returns a WAV; an `Engine` from `voice/engines.make_engine` (`MacSpeech`, `WhisperLocal`, `WhisperServer`, `CloudWhisper`) turns it into text on a worker thread, and the text is typed into the console as if by hand. `MacSpeech` builds `mac_transcribe.swift` into `config/voice/` the first time; a failure is a `VoiceError` shown as it is.
 
+## The manual
+
+There is one manual, and it is written once. The help pages (`assets/help/*.md`, read by `help/docs.py`) are what the in-game manual shows. Pages in the "Captain's manual" category are the chapters: the powers, the crew, how a battle works, orders, weapons, tactics and the moves no button tells you about. `{{...}}` blocks fill tables from the game's data when a page is shown (`help/coach.py`, `help/lore.py`). `help/book.py` binds the same pages into `docs/MANUAL.md`: the chapters, then every other page by category, then the data tables. Only shipped data goes in, never a player's own config.
+
 ## Tours of duty
 
 A tour links battles. `tour/model.py` reads tours from `content/data/tours.toml` and `config/tours/*.toml` into frozen `TourDef`s (stops, choices, waves). `tour/state.py` holds how a tour stands: a `ShipRecord` per ship of the squadron (hull, system damage, crew, magazines, morale, lost or in reserve), the flags set by choices and wins, what the enemy has learned, and the log. `TourState` is saved as JSON after every change.
@@ -232,4 +236,4 @@ The simulation costs about 0.3 ms a tick for a duel, 1.5 ms with 14 ships and ab
 
 ## Checking a change
 
-Before a pull request: `ruff check .` (all CI runs), `mypy` (no issues today; keep it that way) and `pytest`. For a change meant to keep behaviour, `begin --tournament 12` and `begin --balance 1` print the same results before and after, since every battle is deterministic; `tools/bench.py` shows whether it changed the speed.
+Before a pull request: `ruff check .` (all CI runs), `mypy` (no issues today; keep it that way) and `pytest`. If the change adds or alters anything a player meets, such as a ship, a weapon, an officer, an order, an enemy or a mode, write it into the help pages (`src/begin/assets/help/`) and rebuild the manual with `python -m begin.help.book`. `tests/test_manual.py` fails until `docs/MANUAL.md` matches, and it also fails if a power, ship, officer, battle, tour or console order goes unmentioned. For a change meant to keep behaviour, `begin --tournament 12` and `begin --balance 1` print the same results before and after, since every battle is deterministic; `tools/bench.py` shows whether it changed the speed.

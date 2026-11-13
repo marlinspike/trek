@@ -11,6 +11,8 @@ This manual covers every command, how each weapon works, and how to win. Open it
 
 ## Start here
 
+- [[welcome-aboard|The captain's manual]]: the powers, your crew, how a battle works, and how to win, in nine chapters.
+
 - [[first-battle|Your first battle]]: a five-minute walkthrough.
 - [[controls|Keyboard and mouse]]: every key.
 - [[console|The command console]]: how commands are typed, shortened and combined.

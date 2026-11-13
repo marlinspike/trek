@@ -186,8 +186,8 @@ def plasma_seen(world: World, side: int) -> dict[int, list[tuple[float, float, i
             plats.append((s.x, s.y, s.sensor_range() * (SWEEP_REACH if s.sweep > 0 else 1.0)))
     out: dict[int, list[tuple[float, float, int]]] = {}
     for sid, pts in world.plasma.items():
-        s = world.ships.get(sid)
-        if s is None or s.side == side:
+        venting = world.ships.get(sid)
+        if venting is None or venting.side == side:
             continue
         seen = [p for p in pts if any((p[0] - x) ** 2 + (p[1] - y) ** 2 <= r * r for x, y, r in plats)]
         if seen:

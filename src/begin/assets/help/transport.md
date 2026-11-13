@@ -2,7 +2,7 @@
 title: Transporters and boarding
 category: Ship systems
 order: 4
-aliases: transport, beam, board, boarding, transporter, crew, change ships, transfer command, capture
+aliases: transport, beam, board, boarding, transporter, change ships, transfer command, capture
 summary: Beam crew between ships, send boarding parties, or move your command to another ship.
 see: shields, tell, tractor
 ---

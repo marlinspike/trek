@@ -6,7 +6,7 @@ aliases: cloak, cl, decloak, uncloak, invisible, stealth, hunt, find, locate, fi
 summary: Hide your ship from enemy sensors, at the cost of energy, until you fire or are hit.
 see: tachyon, deflector, scan, chart, tactics
 ---
-Some ships, mostly Romulan and Klingon, carry a cloaking device. While it runs, enemy sensors can't find you at all.
+Every Romulan ship carries a cloaking device, and so does the Enterprise after her refit in one tour. While it runs, enemy sensors can't find the ship at all.
 
 ```console
 cloak on

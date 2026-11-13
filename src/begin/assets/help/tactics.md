@@ -6,6 +6,8 @@ aliases: tactics, strategy, how to win, tips
 summary: General advice for winning fights, from range control to shield management.
 see: coach, weapons-guide, shields, helm
 ---
+These are the basics in brief. The full guide is [[sword-and-mind|The sword and the mind]], with a playbook for every enemy, and [[hidden-depths|Hidden depths]] lists the moves no button tells you about.
+
 ## Control the range
 
 The side that chooses the range usually wins. Ships armed mainly with torpedoes want to stand off just inside their torpedo envelope, where enemy phasers cannot reach them. Ships with strong phasers want to close fast and stay close. Use `pursue <ship> warp <w>` to hold a chase, and `elude <ship>` to keep away. The [[coach]] tells you which side of each envelope you are on.
