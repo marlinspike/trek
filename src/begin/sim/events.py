@@ -231,3 +231,21 @@ class CaptainMood(Event):
     mood: str              # shaken | enraged | wavering
     cause: str = ""        # the ally they saw lost or battered, by name
     blame: int | None = None   # the enemy ship they hold responsible
+
+
+@dataclass(slots=True)
+class HiveEvent(Event):
+    """Something the Borg did, or something done to them [E] (sim/collective.py, sim/away.py).
+
+    kind: adapted (a weapon family crossed a threshold; detail "phaser:0.5"), shift (they retuned their beams
+    against our shields), beamed (drones beamed aboard `target`), seized (drones took a system; detail its label),
+    repelled (the last drones aboard were beaten), dormant / waking (a ship's drones put to sleep and waking),
+    chain (a destroyed core set off a chain reaction), surveyed (a scan added to what we know; detail "weak" or
+    "code" when it found the weak point or cracked the code), harmonics / noticed (stolen harmonics working, and
+    the moment the hive notices), remodulated (our phasers changed frequency), assimilated (a ship was taken).
+    """
+
+    ship_id: int
+    kind: str
+    target: int | None = None
+    detail: str = ""

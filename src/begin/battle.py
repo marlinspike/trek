@@ -11,6 +11,7 @@ import math
 from dataclasses import dataclass, field
 
 from .ai.captain import AICaptain
+from .ai.collective import BorgCaptain
 from .ai.computer import ShipComputer
 from .ai.personality import Personality
 from .content.schema import ContentDB, ShipClass
@@ -98,8 +99,9 @@ class Battle:
         self.computers[ship.id] = comp
         w.add_controller(comp)
         prng = w.rng.derive(f"captain:{ship.id}")
-        cap = AICaptain(ship.id, ship.side, Personality.roll(faction, prng, self.setup.personalities.get(ship.side)),
-                        prng, phase=ship.id % 2)
+        cap = _captain_class(faction)(ship.id, ship.side,
+                                      Personality.roll(faction, prng, self.setup.personalities.get(ship.side)),
+                                      prng, phase=ship.id % 2)
         self.captains[ship.id] = cap
         w.add_controller(cap)
 
@@ -131,7 +133,7 @@ class Battle:
         if old is not None and old.alive and old.crew > 0:
             faction = w.content.factions[old.faction]
             prng = w.rng.derive(f"captain:{old.id}:{w.tick}")
-            c = AICaptain(old.id, old.side, Personality.roll(faction, prng), prng, phase=old.id % 2)
+            c = _captain_class(faction)(old.id, old.side, Personality.roll(faction, prng), prng, phase=old.id % 2)
             self.captains[old.id] = c
             w.add_controller(c)
         if old is not None:
@@ -147,7 +149,13 @@ def _crew_in_command(w: World, ship_id: int) -> AICaptain:
     prng = w.rng.derive(f"captain:{ship_id}:{w.tick}")
     # the prize crew fights the way their own navy does
     faction = next((o.faction for o in w.ships.values() if o.side == s.side and o.id != ship_id), s.faction)
-    return AICaptain(ship_id, s.side, Personality.roll(w.content.factions[faction], prng), prng, phase=ship_id % 2)
+    fd = w.content.factions[faction]
+    return _captain_class(fd)(ship_id, s.side, Personality.roll(fd, prng), prng, phase=ship_id % 2)
+
+
+def _captain_class(faction: object) -> type[AICaptain]:
+    """The hive sends its own kind of captain [E]."""
+    return BorgCaptain if getattr(faction, "collective", None) is not None else AICaptain
 
 
 def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
@@ -196,7 +204,7 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
             prng = world.rng.derive(f"captain:{ship.id}")
             leanings = {**setup.personalities.get(fleet.side, {}), **(spec.personality or {})}
             pers = Personality.roll(faction, prng, leanings or None)
-            cap = AICaptain(ship.id, fleet.side, pers, prng, phase=ship.id % 2)
+            cap = _captain_class(faction)(ship.id, fleet.side, pers, prng, phase=ship.id % 2)
             captains[ship.id] = cap
             world.add_controller(cap)
     crew = None
@@ -231,7 +239,7 @@ def quick_battle(content: ContentDB, seed: int, player_faction: str = "federatio
     The enemy group is sized to roughly the player's mass, split evenly across its ships.
     """
     rng = Rng(seed).derive("quick")
-    factions = [f for f in content.factions if f != player_faction]
+    factions = [f for f, fd in content.factions.items() if f != player_faction and fd.random]
     enemy = enemy_faction or rng.choice(factions)
     mine = [c for c in content.classes_of(player_faction, include_bases=False) if c.banks > 0 and c.era == "1.65"] or \
         [c for c in content.classes_of(player_faction, include_bases=False) if c.banks > 0]
@@ -297,7 +305,7 @@ def patrol_battle(content: ContentDB, seed: int, player_faction: str = "federati
     alike. The player's flagship is the usual one (the Enterprise as a Dreadnought for the Federation)."""
     rng = Rng(seed).derive("patrol")
     sid, title, brief = next((x for x in PATROL_SITUATIONS if x[0] == situation), None) or rng.choice(PATROL_SITUATIONS)
-    enemy = rng.choice([f for f in content.factions if f != player_faction])
+    enemy = rng.choice([f for f, fd in content.factions.items() if f != player_faction and fd.random])
     mine = [c for c in content.classes_of(player_faction, include_bases=False) if c.banks > 0]
     theirs = [c for c in content.classes_of(enemy, include_bases=False) if c.banks > 0]
     default = PLAYER_FLAGSHIP_CLASSES.get(player_faction)

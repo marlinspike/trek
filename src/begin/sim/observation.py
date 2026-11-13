@@ -22,6 +22,8 @@ from .systems.sensors import Assessment, ScanRecord
 
 if TYPE_CHECKING:
     from .allies import AllyStanding
+    from .away import AwayOp
+    from .collective import Insight, Mind, Survey
     from .systems.disposition import Reading
     from .world import Outcome, PendingScan, World
 
@@ -272,6 +274,74 @@ class Observation:
         if me is None or s is None or not s.alive or s.side == self.side:
             return None
         return reading(self._w, me, s)
+
+    # ------------------------------------------------------------- the Borg [E] (sim/collective.py, sim/away.py)
+
+    def is_hive(self, ship_id: int) -> bool:
+        """A Borg ship (an identified contact, or one of ours)."""
+        from . import collective
+
+        s = self._w.ships.get(ship_id)
+        if s is None:
+            return False
+        if s.side != self.side:
+            c = self.contact(ship_id)
+            if c is None or not c.identified:
+                return False
+        return collective.is_hive(self._w, s)
+
+    def hive(self) -> Mind | None:
+        """Our own hive's memory, when we are the Borg: who has hurt us, and what we have learned."""
+        from . import collective
+
+        own = next((s for s in self.own_ships(alive_only=False) if collective.is_hive(self._w, s)), None)
+        return self._w.minds.get(own.faction) if own is not None else None
+
+    def adaptation(self, ship_id: int, by: int) -> dict[str, float]:
+        """How far a Borg contact's hive has adapted to the weapons of our ship `by`: phaser (her current
+        frequency), torpedo and harmonic, 0..1 each. Seven can read it in how their shields answer."""
+        from . import collective
+
+        s, me = self._w.ships.get(ship_id), self.own(by)
+        if s is None or me is None or not self.is_hive(ship_id):
+            return {}
+        m = self._w.minds.get(s.faction)
+        if m is None:
+            return {f: 0.0 for f in ("phaser", "torpedo", "harmonic")}
+        return {f: m.level(collective.weapon_key(f, me)) for f in ("phaser", "torpedo", "harmonic")}
+
+    def insight(self) -> Insight:
+        """What our side has learned of the hives: surveys, stolen harmonics."""
+        from . import collective
+
+        return self._w.insight.get(self.side) or collective.Insight()
+
+    def survey(self, ship_id: int) -> Survey | None:
+        ins = self._w.insight.get(self.side)
+        return ins.surveys.get(ship_id) if ins is not None else None
+
+    def weak_point(self, ship_id: int) -> str | None:
+        """The system a Borg ship's vinculum relay runs through, once our scans have found it."""
+        ins = self._w.insight.get(self.side)
+        s = self._w.ships.get(ship_id)
+        if ins is None or s is None or not ins.knows_weak(ship_id) or not s.weak_point:
+            return None
+        return s.weak_point
+
+    def dormant(self, ship_id: int) -> float:
+        """Cycles before a dark Borg ship's drones wake (0: awake). Anyone can see a ship go dark."""
+        s = self._w.ships.get(ship_id)
+        return s.dormant if s is not None and (s.side == self.side or self._w.is_visible(self.side, ship_id)) else 0.0
+
+    def away_ops(self) -> list[AwayOp]:
+        """Our away teams, out or coming home."""
+        return [op for op in self._w.away_ops if op.phase != "done" and (s := self._w.ships.get(op.mother)) is not None
+                and s.side == self.side]
+
+    def noticed(self) -> set[int]:
+        """Small craft our hive has noticed (the Borg ignore the rest)."""
+        m = self.hive()
+        return m.noticed if m is not None else set()
 
     # ------------------------------------------------------------- events
 

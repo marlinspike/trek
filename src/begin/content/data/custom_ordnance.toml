@@ -21,3 +21,37 @@ load_energy = 10.0
 reveal_radius = 6000.0
 reveal_cycles = 30.0
 special = true
+
+# The Borg torpedo [E]: a dense green round, slower than a photon and harder hitting.
+[[torpedo]]
+id = "bgt"
+name = "Borg torpedo"
+velocity = 24.0
+damage = 18.0
+arm_time = 0.6
+max_time_fuse = 7.0
+max_prox = 600.0
+homing = false
+speed_variance = 0.04
+warhead_type = 0
+charge_time = 4.0
+load_energy = 15.0
+
+# A harmonic torpedo [E]: a photon casing whose warhead Seven tunes to one Borg ship's shield code, cracked by
+# scanning her key systems. Against a ship whose code we hold it passes straight through her shields; the hive
+# adapts to it too, but slowly. A crew project builds three (sim/projects.py, "harmonic").
+[[torpedo]]
+id = "harmonic"
+name = "Harmonic torpedo"
+velocity = 28.0
+damage = 26.0
+arm_time = 0.5
+max_time_fuse = 8.0
+max_prox = 400.0
+homing = false
+speed_variance = 0.0
+warhead_type = 0
+charge_time = 3.0
+load_energy = 12.0
+special = true
+blast_scale = 0.8

@@ -30,8 +30,9 @@ def test_every_race_has_its_own_readable_colours(content) -> None:  # type: igno
     for f in fs:
         for c in (f.phaser_color, f.torpedo_color):
             assert _contrast(c, (5, 9, 18)) >= 4.5, f.id     # against the map background
-        assert f.phaser_style in ("beam", "pulse")
+        assert f.phaser_style in ("beam", "pulse", "cutter")
     assert content.factions["klingon"].phaser_style == "pulse"
+    assert content.factions["borg"].phaser_style == "cutter"      # green like the Klingons', but a sweeping cut
     assert _hex("#FF8000", "x") == (255, 128, 0)
     with pytest.raises(ContentError):
         _hex("orange", "x")

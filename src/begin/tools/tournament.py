@@ -13,7 +13,7 @@ from ..core.rng import Rng
 def run_tournament(n: int, cycles: float = 600.0, seed: int = 1) -> dict[str, int]:
     content = default_content()
     rng = Rng(seed)
-    factions = list(content.factions)
+    factions = [f for f, fd in content.factions.items() if fd.random]
     wins: Counter[str] = Counter()
     games: Counter[str] = Counter()
     t0 = time.perf_counter()

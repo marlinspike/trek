@@ -73,7 +73,7 @@ def _detonate_split(world: World, t: Torpedo, n: int) -> None:
 
     kind = DamageKind.SHIELD_BORE if t.spec.is_shield_bore else DamageKind.BLAST
     blast(world, t.x, t.y, t.yield_, "torpedo", t.owner, n, kind, None, None, cause="intercepted",
-          radius_scale=t.spec.blast_scale)
+          radius_scale=t.spec.blast_scale, family="harmonic" if t.spec.id == "harmonic" else "torpedo")
 
 
 def fire_bank(
@@ -162,7 +162,7 @@ def fire_bank(
         if selector and other.id == target_id:
             acc = targeting_accuracy(world, ship, other, selector, d, spread)
             aim = Aim(selector, min(1.0, acc * (1.0 + world.rules.morale_accuracy * ship.morale_factor)))
-        apply_damage(world, other, dmg, ox, oy, DamageKind.PHASER, ship.id, aim)
+        apply_damage(world, other, dmg, ox, oy, DamageKind.PHASER, ship.id, aim, "phaser")
         ev.hits.append(other.id)
         if other.id == target_id:
             end_d = min(end_d, d)

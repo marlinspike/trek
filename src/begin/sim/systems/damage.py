@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from ...core.angles import bearing, norm360
 from ..events import HullHit, ShieldHit, SubsystemDamaged
+from .. import collective
 from ..rules import DamageModel
 from .sensors import assess
 from ..ship import CREW_DECKS, DAMAGE_WEIGHT, TARGETABLE_GROUPS, Kind, Ship, ShipStatus, Subsystem
@@ -69,17 +70,25 @@ def apply_damage(
     kind: DamageKind,
     attacker: int | None = None,
     aim: Aim | None = None,
+    family: str = "",
 ) -> float:
-    """Apply a hit to a ship. Returns damage that penetrated the shields."""
+    """Apply a hit to a ship. Returns damage that penetrated the shields.
+
+    `family` names the weapon ("phaser", "torpedo", "harmonic", "probe"; "" for explosions and the like): a Borg
+    ship adapts to what hurts her, and our tuned shields turn aside some of a Borg beam (sim/collective.py)."""
     if not target.exists or target.docked_to is not None:
         return 0.0
-    amount = float(round(amount))
+    att = world.ships.get(attacker) if attacker is not None else None
+    raw = float(round(amount))
+    factor, pierce = collective.incoming(world, target, att, family) if family else (1.0, False)
+    amount = float(round(amount * factor))
+    if family:
+        collective.learn(world, target, att, family, raw, amount)
     if amount <= 0:
         return 0.0
     rules = world.rules
     rel = relative_bearing_from(target, from_x, from_y)
     target.reveal_time = max(target.reveal_time, rules.cloak_hit_reveal_cycles)
-    att = world.ships.get(attacker) if attacker is not None else None
     if att is not None:
         att.stats.damage_dealt += amount
     target.stats.damage_taken += amount
@@ -88,7 +97,7 @@ def apply_damage(
     remaining = amount
     shield = target.shield_for_bearing(rel)
     seen = assess(world, att.side, target) if att is not None and att.side != target.side else None
-    if shield is not None and shield.up and not shield.destroyed:
+    if shield is not None and shield.up and not shield.destroyed and not pierce:
         capacity = target.cls.shield_strength * shield.effective / 100.0
         incoming = amount * 4.0 if kind == DamageKind.SHIELD_BORE else amount
         absorbed = min(incoming, capacity)
@@ -111,7 +120,7 @@ def apply_damage(
                              was_up and shield.strength <= 1.0, attacker, shield.effective))
     elif kind == DamageKind.SHIELD_BORE:
         return 0.0
-    elif shield is not None and seen is not None:
+    elif shield is not None and seen is not None and not pierce:
         seen.shields[shield.index] = 0.0      # it went straight through: that facing is down
     if remaining <= 0.0:
         return 0.0

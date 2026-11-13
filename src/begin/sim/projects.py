@@ -33,6 +33,8 @@ class ProjectDef:
     hint: str = ""                                         # how to use the result, told when it is done
     use: str = ""                                          # console command that uses a lasting result
     is_ready: Callable[[Ship], bool] | None = None         # a lasting result is already in place
+    can_start: Callable[[World, Ship], str | None] | None = None   # why it can't be started now (None: it can)
+    rounds: int = 1                                        # special rounds it loads
 
 
 def _free_tube(ship: Ship, ordnance: str) -> Tube | None:
@@ -75,6 +77,56 @@ def configure_deflector(world: World, ship: Ship, proj: ProjectDef) -> int | Non
     return None
 
 
+def load_rounds(world: World, ship: Ship, proj: ProjectDef) -> int | None:
+    """Several designed rounds, one to a tube; returns the first tube loaded."""
+    first: int | None = None
+    for _ in range(proj.rounds):
+        i = load_special_round(world, ship, proj)
+        if i is None:
+            break
+        first = i if first is None else first
+    return first
+
+
+def _needs_harmonics(world: World, ship: Ship) -> str | None:
+    ins = world.insight.get(ship.side)
+    if ins is None or not any(ins.has_code(sid) for sid in ins.surveys):
+        return ("We don't have any Borg ship's shield harmonics yet. Scan them until Seven has resolved one "
+                "('seven, scan for their harmonics').")
+    if not any(t.intact for t in ship.tubes):
+        return "The harmonic torpedoes need a working tube."
+    return None
+
+
+def _needs_boarders_or_hive(world: World, ship: Ship) -> str | None:
+    from . import collective
+
+    if not any(collective.is_hive(world, s) for s in world.ships.values() if s.side != ship.side):
+        return "There are no Borg here, Captain."
+    return None
+
+
+def _needs_drones_aboard(world: World, ship: Ship) -> str | None:
+    if ship.boarders <= 0:
+        return "There are no drones aboard to cut off."
+    return None
+
+
+def _inoculate(world: World, ship: Ship, proj: ProjectDef) -> int | None:
+    ship.inoculated = True
+    return None
+
+
+def _encrypt(world: World, ship: Ship, proj: ProjectDef) -> int | None:
+    ship.encrypted = True
+    return None
+
+
+def _sever(world: World, ship: Ship, proj: ProjectDef) -> int | None:
+    ship.severed = ship.boarders > 0
+    return None
+
+
 PROJECTS: dict[str, ProjectDef] = {
     "deflector": ProjectDef("deflector", "deflector tachyon pulse", 12.0, configure_deflector,
                             hint="Sweep ahead of the ship with 'pulse'.", use="pulse",
@@ -82,6 +134,20 @@ PROJECTS: dict[str, ProjectDef] = {
     "tachyon": ProjectDef("tachyon", "tachyon detector torpedo", 20.0, load_special_round,
                           ordnance="tachyon", needs_tubes=True,
                           hint="Fire it with 'tachyon <bearing> <range>' or 'tachyon <ship>'."),
+    # the Borg [E] (sim/collective.py)
+    "harmonic": ProjectDef("harmonic", "harmonic torpedoes", 16.0, load_rounds, ordnance="harmonic", needs_tubes=True,
+                           rounds=3, can_start=_needs_harmonics,
+                           hint="They go with your next torpedo volley, straight through the shields of any Borg "
+                                "ship whose harmonics we hold."),
+    "inoculate": ProjectDef("inoculate", "counter-nanoprobe inoculation", 26.0, lambda w, s, p: _inoculate(w, s, p),
+                            can_start=_needs_boarders_or_hive, is_ready=lambda ship: ship.inoculated,
+                            hint="Crew the drones beat now die rather than turn."),
+    "encrypt": ProjectDef("encrypt", "computer lockout", 14.0, lambda w, s, p: _encrypt(w, s, p),
+                          can_start=_needs_boarders_or_hive, is_ready=lambda ship: ship.encrypted,
+                          hint="The drones can't seize any more of the ship's systems."),
+    "sever": ProjectDef("sever", "link to the hive cut", 6.0, lambda w, s, p: _sever(w, s, p),
+                        can_start=_needs_drones_aboard, is_ready=lambda ship: ship.severed,
+                        hint="The drones aboard fight alone now: slower, and they seize nothing."),
 }
 
 

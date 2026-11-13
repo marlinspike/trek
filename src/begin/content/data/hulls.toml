@@ -418,3 +418,76 @@ anchors = {bridge=[0, 30], core=[0, 0], nose=[0, 45], aft=[0, -40], nacelles=[[0
 banks = [{pos=[0, 44], arc=[0, 240]}, {pos=[0, -40], arc=[180, 240]}]
 tubes = [{pos=[-4, 44], arc=[0, 150]}, {pos=[4, 44], arc=[0, 150]}]
 launchers = [{pos=[0, -36], arc=[180, 360]}]
+
+# ---------------------------------------------------------------- Federation small craft [E]
+
+[hull."federation.sh"]
+length = 40
+shapes = [
+  {kind="poly", pts=[[-12, 34], [12, 34], [16, 10], [16, -30], [-16, -30], [-16, 10]], role="hull"},
+  {kind="ellipse", c=[-20, -8], r=[4, 18], role="nacelle"},
+  {kind="ellipse", c=[20, -8], r=[4, 18], role="nacelle"},
+  {kind="poly", pts=[[-8, 30], [8, 30], [10, 20], [-10, 20]], role="detail"},
+]
+anchors = {bridge=[0, 26], core=[0, 0], nose=[0, 32], aft=[0, -26], nacelles=[[-20, -8], [20, -8]]}
+banks = []
+tubes = []
+launchers = []
+
+# ---------------------------------------------------------------- the Borg [E]
+#
+# Seen from above a cube is a square of machinery and a sphere a disc, so their outlines don't turn with them the
+# way a starship's do: what you read is the size. Banks ring every face (a Borg ship has no blind side), and the
+# drives (`nacelles`) are buried at the corners. tools/render_fleet.py builds their art procedurally (build_borg):
+# a lattice of conduits and plating, recessed seams lit green from inside.
+
+[hull."borg.pr"]
+length = 160
+shapes = [
+  {kind="poly", pts=[[-16, 44], [16, 44], [20, 30], [20, -40], [16, -46], [-16, -46], [-20, -40], [-20, 30]], role="hull"},
+  {kind="poly", pts=[[-12, 36], [12, 36], [12, 10], [-12, 10]], role="detail"},
+  {kind="poly", pts=[[-12, -6], [12, -6], [12, -34], [-12, -34]], role="detail"},
+]
+anchors = {bridge=[0, 20], core=[0, 0], nose=[0, 42], aft=[0, -42], nacelles=[[-14, -38], [14, -38]]}
+banks = [
+  {pos=[0, 44], arc=[0, 240]},
+  {pos=[-20, -10], arc=[-120, 240]}, {pos=[20, -10], arc=[120, 240]},
+]
+tubes = [{pos=[-6, 44], arc=[0, 360]}, {pos=[6, 44], arc=[0, 360]}]
+launchers = []
+
+[hull."borg.sp"]
+length = 330
+shapes = [
+  {kind="ellipse", c=[0, 0], r=[44, 44], role="hull"},
+  {kind="ellipse", c=[0, 0], r=[30, 30], role="detail"},
+  {kind="ellipse", c=[0, 0], r=[14, 14], role="detail"},
+]
+anchors = {bridge=[0, 0], core=[0, 0], nose=[0, 40], aft=[0, -40], nacelles=[[-28, -28], [28, -28], [0, 38]]}
+banks = [
+  {pos=[0, 44], arc=[0, 220]}, {pos=[38, 22], arc=[60, 220]}, {pos=[38, -22], arc=[120, 220]},
+  {pos=[0, -44], arc=[180, 220]}, {pos=[-38, -22], arc=[240, 220]}, {pos=[-38, 22], arc=[300, 220]},
+]
+tubes = [{pos=[0, 42], arc=[0, 360]}, {pos=[42, 0], arc=[90, 360]}, {pos=[0, -42], arc=[180, 360]}, {pos=[-42, 0], arc=[270, 360]}]
+launchers = []
+
+[hull."borg.cu"]
+length = 900
+shapes = [
+  {kind="poly", pts=[[-44, 44], [44, 44], [44, -44], [-44, -44]], role="hull"},
+  {kind="poly", pts=[[-30, 30], [30, 30], [30, -30], [-30, -30]], role="detail"},
+  {kind="poly", pts=[[-12, 12], [12, 12], [12, -12], [-12, -12]], role="detail"},
+]
+anchors = {bridge=[0, 0], core=[0, 0], nose=[0, 40], aft=[0, -40], nacelles=[[-36, -36], [36, -36], [36, 36], [-36, 36], [0, -40], [0, 40]]}
+banks = [
+  {pos=[-22, 44], arc=[0, 200]}, {pos=[22, 44], arc=[0, 200]},
+  {pos=[44, 22], arc=[90, 200]}, {pos=[44, -22], arc=[90, 200]},
+  {pos=[22, -44], arc=[180, 200]}, {pos=[-22, -44], arc=[180, 200]},
+  {pos=[-44, -22], arc=[270, 200]}, {pos=[-44, 22], arc=[270, 200]},
+  {pos=[0, 44], arc=[0, 200]}, {pos=[44, 0], arc=[90, 200]}, {pos=[0, -44], arc=[180, 200]}, {pos=[-44, 0], arc=[270, 200]},
+]
+tubes = [
+  {pos=[-10, 44], arc=[0, 360]}, {pos=[10, 44], arc=[0, 360]}, {pos=[44, 10], arc=[90, 360]},
+  {pos=[-10, -44], arc=[180, 360]}, {pos=[10, -44], arc=[180, 360]}, {pos=[-44, -10], arc=[270, 360]},
+]
+launchers = []

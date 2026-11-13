@@ -396,10 +396,10 @@ def resolve_detonations(world: World) -> None:
             cause = "intercepted" if t.shot_down else "fuse" if t.burst_at_fuse and t.fuse <= 0.0 else "proximity"
             reached = blast(world, t.x, t.y, t.yield_, "torpedo", t.owner, t.salvo, kind,
                             t.target if t.target is not None else t.aim_ship, t.target_subsystem, cause=cause,
-                            radius_scale=t.spec.blast_scale)
+                            radius_scale=t.spec.blast_scale, family="harmonic" if t.spec.id == "harmonic" else "torpedo")
             ended.append((t, "burst", reached))
         for p in boom_p:
-            blast(world, p.x, p.y, p.yield_, "probe", p.owner, 1, DamageKind.BLAST, p.target, None)
+            blast(world, p.x, p.y, p.yield_, "probe", p.owner, 1, DamageKind.BLAST, p.target, None, family="probe")
     if any(t.blind is not None for t, _, _ in ended):
         report_blind_shots(world, ended)
 
@@ -486,6 +486,7 @@ def blast(
     exclude: int | None = None,
     cause: str = "",
     radius_scale: float = 1.0,
+    family: str = "",
 ) -> set[int]:
     """[R] total = yield × 5; radius = total × 10; dmg = total × sqrt(1 − d/radius).
 
@@ -514,7 +515,7 @@ def blast(
         for _ in range(max(1, salvo)):
             if not s.exists:
                 break
-            apply_damage(world, s, dmg, x, y, kind, owner, aim)
+            apply_damage(world, s, dmg, x, y, kind, owner, aim, family)
         if att is not None and s.side != att.side:
             hit_any = True
     if att is not None and hit_any:

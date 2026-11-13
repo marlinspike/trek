@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .schema import (
+    CollectiveRules,
     CaptainModel,
     ContentDB,
     Doctrine,
@@ -51,8 +52,8 @@ def _weapon_colors(f: dict[str, Any]) -> dict[str, Any]:
     if "torpedo" in c:
         out["torpedo_color"] = _hex(c["torpedo"], f"faction {f['id']} colors.torpedo")
     if "phaser_style" in c:
-        if c["phaser_style"] not in ("beam", "pulse"):
-            raise ContentError(f"faction {f['id']}: phaser_style is beam or pulse")
+        if c["phaser_style"] not in ("beam", "pulse", "cutter"):
+            raise ContentError(f"faction {f['id']}: phaser_style is beam, pulse or cutter")
         out["phaser_style"] = str(c["phaser_style"])
     if "torpedo_style" in c:
         if c["torpedo_style"] not in TORPEDO_STYLES:
@@ -61,7 +62,29 @@ def _weapon_colors(f: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-TORPEDO_STYLES = ("photon", "disruptor", "plasma", "pulse")   # how a race's rounds look in flight (ui/torpedo_art.py)
+def _collective(f: dict[str, Any]) -> CollectiveRules | None:
+    """A hive's `[faction.collective]` table (sim/collective.py); None for every other race."""
+    c = f.get("collective")
+    if c is None:
+        return None
+    if not isinstance(c, dict):
+        raise ContentError(f"faction {f['id']}: collective must be a table")
+    kw: dict[str, Any] = {}
+    for k, v in c.items():
+        if k == "adapt":
+            kw[k] = {str(a): float(b) for a, b in v.items()}
+        elif k == "weak_kinds":
+            kw[k] = tuple(str(x) for x in v)
+        elif k in ("party", "grace"):
+            kw[k] = int(v)
+        elif k in CollectiveRules.__dataclass_fields__:
+            kw[k] = float(v)
+        else:
+            raise ContentError(f"faction {f['id']}: unknown collective key {k!r}")
+    return CollectiveRules(**kw)
+
+
+TORPEDO_STYLES = ("photon", "disruptor", "plasma", "pulse", "borg")   # how a race's rounds look in flight (ui/torpedo_art.py)
 
 
 def _pt(v: Any) -> tuple[float, float]:
@@ -170,6 +193,8 @@ def load_content(data_dir: Path = DATA_DIR) -> ContentDB:
             temper=float(f.get("temperament", {}).get("temper", 0.5)),
             obstinacy=float(f.get("temperament", {}).get("obstinacy", 0.5)),
             temperament_dev=float(f.get("temperament", {}).get("deviation", 0.2)),
+            collective=_collective(f),
+            random=bool(f.get("random", True)),
             **_weapon_colors(f),
         )
 

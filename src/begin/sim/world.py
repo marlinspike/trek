@@ -26,10 +26,12 @@ from typing import TYPE_CHECKING, Callable, Iterable, Protocol
 
 from ..content.schema import ContentDB
 from ..core.rng import Rng
+from . import collective
 from .arrivals import Arrival, update_arrivals, waves_pending
+from .away import AwayOp, update_away
 from .allies import MOVEMENT_ORDERS, WEAPON_ORDERS, AllyStanding
 from .commands import AllyOrder, Authority, Command, Rejected, fire_target, offensive_fire
-from .events import CommandRejected, Event, Message, ShipStatusChanged, SubsystemDamaged, Tone
+from .events import CommandRejected, Event, HiveEvent, Message, ShipStatusChanged, SubsystemDamaged, Tone
 from .factory import build_ship
 from .ordnance import Probe, Torpedo
 from .projects import update_projects
@@ -68,6 +70,7 @@ class PendingScan:
     ship_id: int
     target_id: int
     done_tick: int
+    by: str = ""          # the officer running it ("" the captain): Seven learns most from a Borg ship [E]
 
 
 @dataclass(slots=True)
@@ -113,6 +116,10 @@ class World:
     arrivals: list[Arrival] = field(default_factory=list)      # waves and reinforcements still to come [E]
     faith_broken: dict[int, set[int]] = field(default_factory=dict)   # side -> ships it fired on after a surrender or truce [E]
     on_arrival: Callable[[Ship], None] | None = None           # gives an arriving ship her captain and computer
+    minds: dict[str, collective.Mind] = field(default_factory=dict)       # each hive's memory (sim/collective.py) [E]
+    said: dict[tuple[int, str], int] = field(default_factory=dict)        # (ship, callout) -> tick last said, to keep it calm
+    insight: dict[int, collective.Insight] = field(default_factory=dict)  # what each side has learned of them [E]
+    away_ops: list[AwayOp] = field(default_factory=list)                  # away teams out (sim/away.py) [E]
 
     _next_id: int = 1
     _queue: list[Command] = field(default_factory=list)
@@ -163,6 +170,7 @@ class World:
         self.side_names.setdefault(side, faction.name)
         update_power(self, ship, self.rules.dt)  # settle max warp and shields before the first tick
         sensors_sys.update_sensors(self)
+        collective.commission(self, ship)
         return ship
 
     def add_controller(self, c: Controller) -> None:
@@ -359,6 +367,8 @@ class World:
                 if len(s.trail) > 24:
                     del s.trail[0]
         self._complete_scans()
+        collective.update(self, dt)
+        update_away(self, dt)
         update_disposition(self, self.morale_events, dt)   # captains weigh what they saw before the crews do
         update_morale(self, dt)
         for k in list(self.torpedo_pressure):
@@ -499,10 +509,10 @@ class World:
         """Torpedoes recently aimed at a target; AI uses it to spread fire and lead [R]."""
         self.torpedo_pressure[target_id] = self.torpedo_pressure.get(target_id, 0.0) + 10.0 * n
 
-    def begin_scan(self, ship: Ship, target_id: int) -> None:
+    def begin_scan(self, ship: Ship, target_id: int, by: str = "") -> None:
         dur = sensors_sys.scan_duration(ship)
         self._scans = [s for s in self._scans if s.ship_id != ship.id]
-        self._scans.append(PendingScan(ship.id, target_id, self.tick + max(1, int(dur * self.rules.ticks_per_cycle))))
+        self._scans.append(PendingScan(ship.id, target_id, self.tick + max(1, int(dur * self.rules.ticks_per_cycle)), by))
         self.say(ship, f"Scanning {self.label(ship.side, target_id)}…", "info", speaker="Science")
 
     def _complete_scans(self) -> None:
@@ -520,6 +530,7 @@ class World:
                 continue
             sensors_sys.perform_scan(self, ship, tgt)
             self.say(ship, f"Scan of {tgt.name} complete.", "good", speaker="Science")
+            collective.on_scan(self, ship, tgt, sc.by)
         self._scans = keep
 
     def pending_scan(self, ship_id: int) -> PendingScan | None:
@@ -545,7 +556,21 @@ class World:
                 target.boarders = 0
             target.boarders += n
             target.boarder_side = ship.side
-            self.say(ship, f"Boarding party of {n} beamed aboard {target.name}.", "alert", public=True)
+            if collective.is_hive(self, ship):
+                self.emit(HiveEvent(self.tick, ship.id, "beamed", target.id, str(n)))
+                if collective.fresh(self, target.id, "intruders", 20.0):
+                    self.emit(Message(self.tick, f"Intruder alert! {n} Borg drones have beamed aboard {target.name}, "
+                                      f"decks {self._decks()}.", Tone.ALERT, speaker="Security", ship_id=target.id,
+                                      visible_to=frozenset({target.side})))
+                self.say(ship, f"{n} drones beamed aboard {target.name}.", "alert", public=False)
+            else:
+                self.say(ship, f"Boarding party of {n} beamed aboard {target.name}.", "alert", public=True)
+
+    def _decks(self) -> str:
+        """Where the drones came aboard: colour for the alert (a fixed rng stream, so battles replay the same)."""
+        r = self.rng.derive(f"decks:{self.tick}")
+        a = 2 + int(r.unit() * 30)
+        return f"{a} through {a + 1 + int(r.unit() * 4)}"
 
     def standing(self, ship_id: int) -> AllyStanding:
         return self.ally_orders.setdefault(ship_id, AllyStanding())
@@ -675,8 +700,19 @@ class World:
             blast(self, x, y, energy, "destruct", ship.id, exclude=ship.id)
 
     def _boarding(self, ship: Ship) -> None:
-        """One cycle of boarding combat [R]: rounds = rand × boarders, rolled against the boarders' nation."""
+        """One cycle of boarding combat [R]: rounds = rand × boarders, rolled against the boarders' nation.
+        Drones assimilate rather than kill, and seize systems (sim/collective.py) [E]."""
         attacker_side = ship.boarder_side
+        hive = next((self.content.factions[s.faction].collective for s in self.ships.values()
+                     if s.side == attacker_side and self.content.factions[s.faction].collective is not None), None)
+        if hive is not None and ship.status == ShipStatus.ACTIVE:
+            collective.board_round(self, ship, hive)
+            if ship.crew < 6 and ship.boarders >= 6:
+                collective.assimilated_ship(self, ship)
+                self._capture(ship, attacker_side)
+            elif ship.crew <= 0 and ship.status == ShipStatus.ACTIVE:
+                self.lose_all_hands(ship, "drones")
+            return
         if ship.status == ShipStatus.SURRENDERED:
             # [E] she struck her colours: her crew lay down their arms, and a party of six takes her without a shot
             if ship.boarders >= 6:
@@ -756,8 +792,8 @@ class World:
         alive = [e for e in self.ships.values() if e.alive]   # gathered once (this runs for every ship every tick);
         bases = [b for b in alive if b.cls.is_base]           # still checked below, as a ship may escape mid-loop
         for s in self.ships.values():
-            if not s.alive or s.cls.is_base or s.docked_to is not None:
-                s.escape_time = 0.0  # bases can't leave, and a docked ship goes where its base goes
+            if not s.alive or s.cls.is_base or s.docked_to is not None or s.cls.craft:
+                s.escape_time = 0.0  # bases can't leave, a docked ship goes where its base goes, a shuttle is recalled
                 continue
             enemies = [e for e in alive if e.alive and e.side != s.side]
             if not enemies:
@@ -789,8 +825,8 @@ class World:
         return fighting or self.time - self._prize_since < self.rules.prize_window
 
     def _check_outcome(self) -> None:
-        sides = {s.side for s in self.ships.values() if s.alive}
-        all_sides = {s.side for s in self.ships.values()}
+        sides = {s.side for s in self.ships.values() if s.alive and not s.cls.craft}   # a shuttle holds no field [E]
+        all_sides = {s.side for s in self.ships.values() if not s.cls.craft}
         if len(all_sides) < 2 or len(sides) > 1:
             return
         if waves_pending(self) and self.player_side in sides:
