@@ -2,7 +2,7 @@
 title: Cloaking device
 category: Ship systems
 order: 3
-aliases: cloak, cl, decloak, uncloak, invisible, stealth, hunt, find, locate, find cloaked ship, sweep, sniff, exhaust, plasma, plasma trail, seeker, seekers, plasma-seeker
+aliases: cloak, cl, decloak, uncloak, invisible, stealth, hunt, find, locate, find cloaked ship, sweep, sniff, exhaust, plasma, plasma trail, seeker, seekers, plasma-seeker, strike, sweep and strike, sweepstrike, kill chain, firing solution
 summary: Hide your ship from enemy sensors, at the cost of energy, until you fire or are hit.
 see: tachyon, deflector, scan, chart, tactics
 ---
@@ -55,6 +55,30 @@ seeker talon
 
 - `sweep` (or "Seven, look for exhaust") has your science officer follow plasma much further than usual for a while and report every trail found. `sweep <ship>` looks for one ship's.
 - `design seeker` has Seven or Spock build a **plasma-seeker** torpedo. `seeker <ship>` fires it into her trail, and `seeker` alone fires down the nearest one. The torpedo flies the trail itself, every turn she made, and homes on her at the end of it. If the trail goes cold first, it bursts where the trail ends.
+
+## Sweep and strike
+
+The whole kill chain in one order. When a cloaked ship leaks plasma, tell your science officer to **sweep and strike**, and name what to hit:
+
+```console
+strike talon shields
+sweep strike talon warp
+str tal sh
+Seven, sweep and strike the Talon's weapons
+track her exhaust and hit her engines
+strike off
+```
+
+Seven keeps a sweep running for the trail, designs a plasma-seeker if none is loaded, and has the helm close to about 5,000 units off the trail fix: torpedo range, outside most disruptors. She fires the seeker down the trail. **The moment it hits, its telemetry gives you a firing solution for six seconds.** She shows on your sensors wherever she is, cloak or no cloak, and Seven puts every loaded torpedo, and every phaser that bears, into the system you named. Then the window closes, she is gone again, and Seven starts over until that system is out.
+
+On the map the hit bursts out from her in a ring of plasma light. Four hot brackets snap onto her, and a thin ring around them drains clockwise as the seconds run out. Her label reads **FIRING SOLUTION** with the seconds left, and so does her line in the contacts list.
+
+- **Name the system**: shields, phasers, torpedoes, weapons, warp (or engines), sensors or cloak. Name none, or say `hull`, and the salvo goes into her hull to kill her. Systems shorten like anything else: `str tal sh` is the Talon's shields.
+- **Say it any way you like.** "Seven, sweep and strike the Talon", "seeker strike talon warp", "follow her plasma trail and take out her engines", "fire a seeker at the Talon and knock out her weapons" and "kill chain on the Talon" all work, typed or spoken, with or without a language model.
+- **Name no ship** and Seven takes the nearest one whose trail she can see.
+- **It only works while she leaks.** A captain who repairs her drive, or drops below warp 1, leaves nothing to follow. After 45 seconds with no trail and no sight of her, Seven calls it off and tells you why.
+- **A ship you can already see** gets the same aimed salvo straight away, with no seeker needed.
+- The counsel (O) offers it whenever a cloaked enemy is leaking. Seven picks the system that decides the fight: her warp drive if she is running, her weapons if you are badly hurt, otherwise her shields. Worf would rather put the whole salvo into her hull.
 
 ## The Enterprise's refit cloak
 

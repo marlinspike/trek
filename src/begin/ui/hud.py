@@ -342,7 +342,10 @@ class TargetPanel(Panel):
         if c.cls is not None:
             line = f"{c.cls.name} · " + line
         theme.text(surf, line, (rect.x + 12, y + 20), theme.TEXT_DIM, 12)
-        if c.exhaust:
+        if c.solution > 0:
+            theme.text(surf, theme.fit(f"Firing solution from our seeker: {c.solution:.0f}s left", 12, rect.width - 24),
+                       (rect.x + 12, y + 36), theme.mix(theme.EXHAUST, (255, 255, 255), 0.45), 12)
+        elif c.exhaust:
             theme.text(surf, theme.fit("Cloaked: placed by her plasma trail, give or take "
                                        f"{c.uncertainty:,.0f}", 12, rect.width - 24), (rect.x + 12, y + 36), theme.EXHAUST, 12)
         elif not c.visible:
@@ -754,6 +757,8 @@ class ContactsPanel(Panel):
                 col = theme.dim(col, 0.55)
             what = c.cls.abbrev if c.cls else "?"
             state = ("hazy" if c.haze > 0 else "tracking") if c.visible else "exhaust" if c.exhaust else "lost"
+            if c.solution > 0:
+                col, state = theme.mix(theme.EXHAUST, (255, 255, 255), 0.45), f"solution {c.solution:.0f}s"
             rows.append((d, c.label if c.identified else f"Contact #{c.id}", col, c.id, f"{what} · {state}"))
         rows.sort()
         rh = 20

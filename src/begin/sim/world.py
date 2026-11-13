@@ -361,6 +361,7 @@ class World:
             update_projects(self, s, dt)
             s.reveal_time = max(0.0, s.reveal_time - dt)
             s.sweep = max(0.0, s.sweep - dt)
+            s.solution = max(0.0, s.solution - dt)
             s.deflector_cooldown = max(0.0, s.deflector_cooldown - dt)
             if s.pending_volley is not None and self.tick >= s.pending_volley[0]:
                 self._follow_up(s)

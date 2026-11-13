@@ -49,6 +49,8 @@ Everything here works in the game today. None of it is on a button, and most of 
 - **Aim ahead of a vanishing ship.** A cloaked ship keeps moving. Burst the tachyon detector a little ahead of her last fix, along her last heading.
 - **Turn before you pulse.** The deflector pulse only looks ahead, a 60° cone from your bow.
 - **A damaged drive gives anyone away.** A badly damaged warp drive vents plasma at warp, cloak or no cloak. `sweep` follows trails much further than usual, and `seeker` flies a torpedo down one.
+- **Sweep and strike.** `strike <ship> <system>` runs the whole chain: Seven sweeps, sends a seeker down the trail, and the instant it lands she has six seconds of firing solution and spends them on the system you named. Name her shields first. Once they are down, the next window's salvo goes straight to her hull.
+- **Six seconds is enough if you are close.** The helm holds about 5,000 off her trail so the torpedoes arrive inside the window. If you fly the ship yourself, keep her within torpedo range and the salvo still lands.
 - **It works against you too.** If Geordi says you are venting plasma, repair the drives or drop below warp 1, or every enemy sensor can follow you.
 - **Under the refit cloak, move after every shot.** The enemy sees only the flash where you fired.
 

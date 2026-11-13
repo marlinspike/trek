@@ -142,6 +142,42 @@ def exhaust_fix(surf: pygame.Surface, overlay: pygame.Surface, sx: float, sy: fl
     gfx.draw.circle(surf, theme.mix(col, (255, 255, 255), 0.6), (int(sx), int(sy + 1)), 1)
 
 
+SNAP = 0.28                 # seconds a firing solution's brackets take to snap onto her
+SOLUTION_FLASH = 0.6        # seconds of the ring that bursts out from her the moment the seeker hits
+
+
+def firing_solution(surf: pygame.Surface, overlay: pygame.Surface, sx: float, sy: float, rad: float, left: float,
+                    total: float, age: float, clock: float) -> None:
+    """[E] Our seeker hit her: a firing solution for `left` of `total` seconds. A bright ring bursts out from her at
+    the moment of the hit, four hot brackets snap onto her, and a thin ring round them drains clockwise as the
+    window closes, so the captain sees at a glance how long is left to shoot. The colour is the plasma's own,
+    burned whiter: the trail is what gave her away."""
+    hot = theme.mix(theme.EXHAUST, (255, 255, 255), 0.45)
+    if 0.0 <= age < SOLUTION_FLASH:
+        k = age / SOLUTION_FLASH
+        gfx.draw.circle(overlay, (*hot, int(190 * (1.0 - k) ** 2)), (int(sx), int(sy)), int(rad * (1.0 + 1.6 * k)), 2)
+        gfx.draw.circle(overlay, (*theme.EXHAUST, int(60 * (1.0 - k))), (int(sx), int(sy)), int(rad * (0.9 + 0.6 * k)))
+    t = min(1.0, max(0.0, age / SNAP)) if age >= 0 else 1.0
+    ease = 1 - (1 - t) ** 3
+    b = rad + 12 + rad * 1.2 * (1 - ease)
+    frac = max(0.0, min(1.0, left / max(0.1, total)))
+    urgent = frac < 0.34
+    beat = 0.5 + 0.5 * math.sin(clock * (14.0 if urgent else 6.0))
+    col = theme.mix(hot, (255, 255, 255), 0.25 * beat) if not urgent else theme.mix(theme.EXHAUST, hot, beat)
+    arm = max(6.0, b * 0.42)
+    for dx, dy in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+        cx, cy = sx + dx * b, sy + dy * b
+        gfx.draw.line(surf, col, (cx, cy), (cx - dx * arm, cy), 2)
+        gfx.draw.line(surf, col, (cx, cy), (cx, cy - dy * arm), 2)
+    r = b * 1.25
+    box = pygame.Rect(0, 0, int(r * 2), int(r * 2))
+    box.center = (int(sx), int(sy))
+    gfx.draw.arc(overlay, (*theme.EXHAUST, 40), box, 0.0, math.tau, 1)
+    if frac > 0.0:
+        start = math.pi / 2                       # from twelve o'clock, draining clockwise as the seconds go
+        gfx.draw.arc(overlay, (*hot, int(150 + 90 * beat)), box, start, start + math.tau * frac, 2)
+
+
 def fire_flash(overlay: pygame.Surface, sx: float, sy: float, rad: float, age: float) -> None:
     """Where a ship fired from her cloak: a brief bright shiver of the field, gone in half a second."""
     t = age / FLICKER
@@ -153,4 +189,5 @@ def fire_flash(overlay: pygame.Surface, sx: float, sy: float, rad: float, age: f
     gfx.draw.circle(overlay, (*theme.CLOAK, a // 4), (int(sx), int(sy)), int(r * 0.8))
 
 
-__all__ = ["FLICKER", "cloak_field", "cloaked_art", "exhaust_fix", "fire_flash", "plasma_trail", "scent"]
+__all__ = ["FLICKER", "cloak_field", "cloaked_art", "exhaust_fix", "fire_flash", "firing_solution", "plasma_trail",
+           "scent"]

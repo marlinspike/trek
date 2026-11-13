@@ -106,7 +106,7 @@ def draw_intent(surf: pygame.Surface, cam: Camera, obs: Observation, ship: Ship 
             continue
         if a.target is not None:
             c = obs.contact(a.target)
-            if c is not None and c.visible:
+            if c is not None and c.visible and c.solution <= 0:   # [E] lit by our seeker: its own brackets show
                 sx, sy = cam.to_screen(c.x, c.y)
                 _brackets(surf, theme.CREW, (sx, sy), 20)
                 what = a.role.split(" on ")[0].lower() if " on " in a.role else a.role.lower()

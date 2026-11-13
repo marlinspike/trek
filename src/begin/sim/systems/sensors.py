@@ -101,6 +101,8 @@ def update_sensors(world: World) -> None:
             hidden = s.cloaked and s.reveal_time <= 0
             true_ratio = min((math.hypot(s.x - px, s.y - py) / r for px, py, r in platforms), default=math.inf)
             ratio = math.inf if hidden else true_ratio
+            if s.solution > 0 and s.solution_side == side:
+                hidden, ratio = False, min(true_ratio, 1.0)   # [E] a seeker's hit: her exact fix, whatever the range
             sweeping = any(o.side == side and o.sweep > 0 for o in ships)
             if hidden and leaking(s) and true_ratio <= (SWEEP_REACH if sweeping else 1.0):
                 _trail_fix(world, side, c, s)        # her damaged nacelles leave a plasma trail [E]

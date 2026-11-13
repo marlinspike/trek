@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import Callable
 
+from ..sim.objectives import STRIKE_GROUPS
 from ..sim.commands import (
     AllyOrder, CeaseFire, Command, ConfigureAutoload, DelegateStation, DeflectorPulse, Dock, EngineBoost, EndObjective, Evasive,
     FireBait, FirePhasers, FireTorpedoes, LaunchProbe, LoadTubes, LockWeapons, ManageRepairs, OpenFire, Pursue,
@@ -144,6 +145,9 @@ def readback(cmd: Command, name_of: NameOf) -> str:
                 f"Knocking out the {cmd.group} on {ships}."
         if cmd.goal == "hunt":
             return f"Hunting for {ships}."
+        if cmd.goal == "strike":
+            what = "" if cmd.group == "hull" else f"'s {STRIKE_GROUPS.get(cmd.group, cmd.group)}"
+            return f"Sweep and strike: the moment the seeker lands, a salvo into {ships}{what}."
         return f"Standing order: {cmd.goal} {ships}."
     if isinstance(cmd, EndObjective):
         return "Standing order ended."

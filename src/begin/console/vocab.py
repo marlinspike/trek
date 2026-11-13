@@ -118,6 +118,7 @@ VERBS: dict[str, tuple[str, ...]] = {
     "recall": ("recall",),
     "sweep": ("sweep", "sniff", "exhaust", "plasma"),
     "seeker": ("seeker", "seekers"),
+    "strike": ("strike", "sweepstrike", "killchain"),
 }
 
 WEAPONS = {
@@ -186,6 +187,7 @@ HELP = [
     "Special:  design tachyon|deflector · tachyon <ship>|<bearing> <range> · pulse · conn <officer>|captain",
     "          boost [off]   (a team keeps the drives cooler: 40% longer before they overheat; other repairs slow)",
     "          hunt|find <ship>   (the science officer finds a cloaked or lost ship and targets her) · hunt off",
+    "          sweep [ship] · seeker [ship] · strike [ship] [shields|weapons|warp|...]   (sweep and strike: a seeker down her plasma trail, then a salvo the instant it hits) · strike off",
     "          disable|cripple <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> · disable off",
     "          target|take out their <system> · target all their <system>   (the weapons officer knocks it out, then spares her) · target their hull",
     "          destroy <ships> · capture <ship> · bait <ship>   (standing objectives and tricks for Seven)",

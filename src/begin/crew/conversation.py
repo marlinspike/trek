@@ -29,7 +29,7 @@ from collections import deque
 from typing import Iterable
 
 from ..console.parser import NOTHING_LOST
-from ..console.plain import split_orders
+from ..console.plain import is_strike, plain_order, split_orders
 from ..console.reports import morale_words
 from ..console.vocab import DISABLE_WORDS, HAVE_WORDS
 from ..help.coach import HelpContext, tips
@@ -191,6 +191,8 @@ class Bridge(Chatter):
             rel.nudge(-0.08)
         said_now = self._bridge_order(officer, low, ctx, run)
         if said_now is None and not asked:
+            said_now = self._strike_order(officer, low, run)
+        if said_now is None and not asked:
             said_now = self._hunt_order(officer, low, run)
         if said_now is None and not asked and not FIRING.match(low):
             early = collaborations.matching(officer.id, low, first=True)    # "doctor, inoculate the crew" [E]
@@ -257,6 +259,20 @@ class Bridge(Chatter):
         return [self._line(eng, "boost")
                 or self._say(eng, "You got it. I've got a team on the drives: she'll run hot about forty percent "
                                   "longer. Repairs everywhere else go slower till they're done.")]
+
+    def _strike_order(self, officer: OfficerProfile, low: str, run: RunCommand) -> list[Utterance] | None:
+        """'Seven, sweep and strike the Talon's shields': the whole kill chain in one order [E]. She sweeps for the
+        trail, sends a seeker down it, and puts a salvo into the named system the moment it hits."""
+        if not is_strike(low):
+            return None
+        line = plain_order(low)
+        err = run(line, officer)
+        if err:
+            return [self._say(officer, err, "caution")]
+        if any(w in line.split() for w in ("off", "cancel", "stop", "belay", "abort")):
+            return [self._line(officer, "ack") or self._say(officer, "Understood.")]
+        return [self._line(officer, "strike")
+                or self._say(officer, "Sweeping for her trail. The moment the seeker lands I'll put a salvo into her.")]
 
     def _hunt_order(self, officer: OfficerProfile, low: str, run: RunCommand) -> list[Utterance] | None:
         """'Seven, find the Talon': the officer hunts for a lost or cloaked ship until she shows, then targets her [E].
@@ -701,6 +717,7 @@ COMMAND_SYNTAX = """\
   boost | boost off   (an engineering team keeps the drives cooler: about 40% longer before they overheat, for a
   while; other repairs run at half speed until the team is done)
   hunt <ship> (a standing order to find a cloaked or lost ship and target her) | hunt off
+  strike <ship> [shields|weapons|warp|sensors|cloak|hull] (sweep and strike: seeker down her plasma trail, then an aimed salvo the instant it hits) | strike off
   disable <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> | disable off   (a standing objective)
   delegate <helm|tactical|engineering|science> | assume <station>   (hand a station to its officer, or take it back)
   stand down   (cease fire, every objective ends, every station and the bridge back to the captain)"""

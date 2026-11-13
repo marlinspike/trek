@@ -448,6 +448,8 @@ class Ship:
     away: set[str] = field(default_factory=set)      # officers off the ship (on an away team) [E]
     wounded: set[str] = field(default_factory=set)   # officers back from an away team hurt: in sickbay [E]
     sweep: float = 0.0                                # cycles left of a science sweep for plasma trails [E]
+    solution: float = 0.0                             # cycles left of a firing solution on her, from a seeker's hit [E]
+    solution_side: int = -1                           # ... held by this side
     critical: float = 0.0                             # cycles before a Borg ship's chain reaction takes her [E]
     mending: float = 0.0                              # cycles before the Doctor sends the wounded back to duty
 

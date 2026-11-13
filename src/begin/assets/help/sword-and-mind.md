@@ -96,7 +96,7 @@ They decide when you see them.
 - **Make the plasma fly far.** Plasma homes in but fades as it travels, so open the range and keep it open. Every unit it flies is damage it loses.
 - **Don't chase blindly.** The feint is a turn and a run, often under cloak, that ends with a full spread at the ship that followed. Pursue at an angle, keep a fresh shield toward where she will turn, and keep your tubes loaded for the moment she shows.
 - **When she vanishes:** your science officer gives the last fix and heading. Say `hunt <ship>`, or burst a tachyon detector a little ahead of where she was going. At close range, turn your bow toward her and use the deflector pulse.
-- **When she is hurt:** a damaged warp drive vents plasma at warp, cloak or no cloak. `sweep` finds the trail and a plasma-seeker follows it. See [[cloak]].
+- **When she is hurt:** a damaged warp drive vents plasma at warp, cloak or no cloak. `sweep` finds the trail and a plasma-seeker follows it. Better still, `strike <ship> shields`: Seven fires the seeker and, the moment it hits, a salvo into her shields while she is lit up. See [[cloak]].
 - Their point defense is disciplined, so it won't take the bait. Use Seven's ring salvo instead ([[disable]]).
 
 ### Against Orions

@@ -416,6 +416,14 @@ def _cloak_tips(s: Ship, obs: Observation, tip: AddTip) -> None:
     cloaked = [h for h in obs.hostile_contacts() if h.cloaked_hint]
     if not (cloaked and s.tubes):
         return
+    venting = [h for h in cloaked if h.exhaust]
+    if venting and not any(o.goal == "strike" for o in s.objectives):     # [E] sweep and strike
+        h = min(venting, key=lambda h: h.distance_to(s.x, s.y))
+        name = _contact_name(h)
+        tip(1, "Her plasma gives her away", f"**{name}** is cloaked but leaking warp plasma. Tell your science officer "
+            "to sweep and strike: a seeker down the trail, then a salvo into the system you name the moment it hits.",
+            f"strike {name.lower()} shields", f"strike {name.lower()}")
+        return
     h = min(cloaked, key=lambda h: h.distance_to(s.x, s.y))
     name = _contact_name(h)
     brg = bearing(h.x - s.x, h.y - s.y)
