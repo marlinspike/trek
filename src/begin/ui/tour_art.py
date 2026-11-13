@@ -120,9 +120,11 @@ def _dashes(surf: pygame.Surface, col: tuple[int, ...], a: tuple[float, float], 
 
 
 def draw_chart(surf: pygame.Surface, rect: pygame.Rect, tour: TourDef, done: list[str], outcomes: list[str],
-               current: int, glide: float, t: float, dim: float = 0.0) -> tuple[float, float]:
+               current: int, glide: float, t: float, dim: float = 0.0,
+               covered: tuple[pygame.Rect, ...] = ()) -> tuple[float, float]:
     """The patrol chart in `rect`. `done` are the stops fought (with their `outcomes`), `current` the next
-    stop's index, `glide` 0..1 how far the flagship has flown the leg to it. Returns where she is drawn."""
+    stop's index, `glide` 0..1 how far the flagship has flown the leg to it. A stop's name is left off where it
+    would sit under one of the `covered` panels, or run off the screen. Returns where she is drawn."""
     surf.blit(chart_background(tour.id, rect.width, rect.height), rect.topleft)
     overlay = gfx.Surface(rect.size, pygame.SRCALPHA)
     pts = [chart_point(pygame.Rect(0, 0, rect.width, rect.height), s.chart) for s in tour.stops]
@@ -156,8 +158,16 @@ def draw_chart(surf: pygame.Surface, rect: pygame.Rect, tour: TourDef, done: lis
     surf.blit(overlay, rect.topleft)
     for i, (p, s) in enumerate(zip(pts, tour.stops)):
         col = theme.TEXT if i == current else theme.TEXT_DIM if i < len(outcomes) else theme.TEXT_FAINT
-        theme.text(surf, f"{i + 1}  {s.system.upper()}", (rect.x + p[0] + 18, rect.y + p[1] - 9), col, 11, "display")
-        theme.text(surf, s.title, (rect.x + p[0] + 18, rect.y + p[1] + 6), theme.dim(col, 0.8), 11)
+        name = f"{i + 1}  {s.system.upper()}"
+        lw = max(theme.text_width(name, 11, "display"), theme.text_width(s.title, 11)) + 4
+        lx = rect.x + p[0] + 18
+        if lx + lw > rect.right - 8:                   # near the right edge: the name goes on the star's left
+            lx = rect.x + p[0] - 18 - lw
+        box = pygame.Rect(int(lx), int(rect.y + p[1] - 10), int(lw), 32)
+        if any(box.colliderect(c) for c in covered):
+            continue
+        theme.text(surf, name, (lx, rect.y + p[1] - 9), col, 11, "display")
+        theme.text(surf, s.title, (lx, rect.y + p[1] + 6), theme.dim(col, 0.8), 11)
     # the flagship, gliding along the leg ahead (or at rest at the last stop)
     a = route[min(current, len(route) - 1)]
     b = route[min(current + 1, len(route) - 1)]

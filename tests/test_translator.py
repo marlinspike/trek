@@ -97,7 +97,7 @@ def test_unclear_orders_get_a_question_and_the_answer_is_understood(scene) -> No
     sc = scene
     fake = _hook(sc, '{"commands": [], "say": "", "clarify": "Which ship, Captain?"}',
                  '{"commands": ["target derango"], "say": "", "clarify": ""}')
-    sc.run_console("go after him")
+    sc.run_console("deal with the one bothering us")
     _settle(sc)
     assert "Computer: Which ship, Captain?" in _log(sc) and sc.session.translator.awaiting
     course = sc.player.desired_course
@@ -112,7 +112,7 @@ def test_unclear_orders_get_a_question_and_the_answer_is_understood(scene) -> No
 def test_a_parsed_command_runs_at_once_even_while_the_computer_waits_for_an_answer(scene) -> None:  # type: ignore[no-untyped-def]
     sc = scene
     fake = _hook(sc, '{"commands": [], "say": "", "clarify": "Which ship, Captain?"}')
-    sc.run_console("go after him")
+    sc.run_console("deal with the one bothering us")
     _settle(sc)
     assert sc.session.translator.awaiting
     sc.run_console("tor al")                 # short for fire all torpedoes: no model, no waiting
@@ -173,8 +173,8 @@ def test_failures_and_modes(scene) -> None:  # type: ignore[no-untyped-def]
     _settle(sc)
     assert "'make it so, number one' not interpreted: down. Type 'help' for the commands." in _log(sc)
     fake = _hook(sc, '{"commands": ["lower all"]}', mode="off")
-    sc.run_console("bring us about")
-    assert fake.seen == [] and "Unknown command 'bring'. Type 'help' for the list." in _log(sc)
+    sc.run_console("deal with the one bothering us")
+    assert fake.seen == [] and "Unknown command 'deal'. Type 'help' for the list." in _log(sc)
     sc.run_console("translate always")
     assert sc.session.translator.mode == "always" and sc.session.llm_settings["console"] == "always"
     sc.run_console("raise all")             # even an exact command goes to the model now

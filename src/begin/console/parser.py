@@ -104,6 +104,11 @@ DUTY_WORDS = {"shields": ("shields", "shield", "harmonics-shields", "deflectors"
 
 KEEP_MIN = 100.0     # [E] a bare number after pursue/elude above this is a range to hold, not a warp
 
+# [E] how a captain points at a ship without naming her: our target (else the nearest enemy), or the nearest enemy
+_POINTING = frozenset(("target", "her", "him", "it", "them", "that", "this", "she", "they", "enemy", "hostile"))
+_NEAREST = frozenset(("nearest", "closest", "near"))
+_SHIP_NOUNS = frozenset(("ship", "vessel", "one", "enemy", "enemies", "hostile", "contact", "target"))
+
 
 class Parser:
     def __init__(self, ctx: ParseContext) -> None:
@@ -141,6 +146,9 @@ class Parser:
             tok.next()  # 'tell tau escort me'
             return self.ship.id
         table = self._ship_table()
+        pointed = self._pointed_ship(tok, table, allow_none)
+        if pointed is not None:
+            return pointed
         # allow multi-word names: try the longest run of tokens that matches
         for span in (3, 2, 1):
             words = [tok.peek(k) for k in range(span)]
@@ -157,6 +165,41 @@ class Parser:
         if allow_none:
             return None
         raise ParseError(f"No ship named '{t}' on sensors.")
+
+    def _pointed_ship(self, tok: Tokens, table: list[tuple[str, int]], quiet: bool = False) -> int | None:
+        """[E] A ship named the way a captain points at one: 'the target', 'her', 'them', 'that ship' mean the
+        one we have targeted; 'the nearest (enemy)', 'the closest one' the nearest enemy on sensors. A ship
+        whose name really is the word ('Target') still wins."""
+        t = tok.peek()
+        if t is None or any(n == t for n, _ in table):
+            return None
+        if t in _POINTING:
+            span = 2 if tok.peek(1) in _SHIP_NOUNS else 1
+            sid = self.ship.target if self.ship.target is not None else self._nearest_enemy()
+            if sid is None:
+                if quiet:
+                    return None
+                raise ParseError("No target, and no enemy on sensors. Name a ship, or press Tab for the nearest.")
+            tok.i += span
+            return sid
+        if t in _NEAREST:
+            span = 2 if tok.peek(1) in _SHIP_NOUNS else 1
+            sid = self._nearest_enemy()
+            if sid is None:
+                if quiet:
+                    return None
+                raise ParseError("No enemy on sensors.")
+            tok.i += span
+            return sid
+        return None
+
+    def _nearest_enemy(self) -> int | None:
+        """The nearest enemy we can see (the one Tab would pick)."""
+        seen = [c for c in self.obs.hostile_contacts() if c.visible and not c.exhaust]
+        if not seen:
+            return None
+        x, y = self.ship.x, self.ship.y
+        return min(seen, key=lambda c: c.distance_to(x, y)).id
 
     def _ship_name(self, sid: int) -> str:
         s = self.obs.own(sid)
@@ -271,6 +314,15 @@ class Parser:
     # helm ------------------------------------------------------------
     def _v_helm(self, tok: Tokens, res: ParseResult) -> None:
         tok.take_word("course")
+        tok.skip_filler()
+        turn = 180.0 if tok.take_word("about", "around", "reverse") else None
+        if turn is None and tok.peek() in ("port", "left", "starboard", "right"):
+            side = -1.0 if tok.next() in ("port", "left") else 1.0      # [E] 'hard to port', 'turn right 45'
+            turn = side * (tok.opt_number() or 90.0)
+        if turn is not None:
+            course_now = self.ship.course
+            res.commands.append(self._cmd(SetHelm, course=(course_now + turn) % 360, warp=None))
+            return
         course = tok.opt_number()
         warp = None
         if tok.take_word("warp", "w", "speed"):
@@ -284,6 +336,15 @@ class Parser:
         res.commands.append(self._cmd(SetHelm, course=course % 360 if course is not None else None, warp=warp))
 
     def _v_warp(self, tok: Tokens, res: ParseResult) -> None:
+        tok.skip_filler()
+        if tok.take_word("max", "maximum", "full", "flank"):
+            res.commands.append(self._cmd(SetHelm, warp=self.ship.cls.max_warp))     # [E] 'full speed', 'maximum warp'
+            return
+        step = 1 if tok.take_word("up", "faster", "more") else -1 if tok.take_word("down", "slower", "less") else 0
+        if step:                                    # [E] 'speed up', 'slow down': two warp at a time
+            now = self.ship.desired_warp
+            res.commands.append(self._cmd(SetHelm, warp=max(0.0, min(self.ship.cls.max_warp, now + 2.0 * step))))
+            return
         res.commands.append(self._cmd(SetHelm, warp=tok.number("warp")))
 
     def _v_stop(self, tok: Tokens, res: ParseResult) -> None:
@@ -907,6 +968,9 @@ class Parser:
 
     def _v_range(self, tok: Tokens, res: ParseResult) -> None:
         """Begin's `range <r>` / `display <r>` / `scan <r>`: set the position display range; bare `range` reports it."""
+        if tok.peek() in ("in", "out"):            # [E] 'zoom in', 'zoom out': halve or double the range shown
+            res.actions.append(("range", tok.next()))
+            return
         v = tok.opt_number()
         if v is not None and not (200 <= v <= 500000):
             raise ParseError("Display range must be between 200 and 500,000 units.")

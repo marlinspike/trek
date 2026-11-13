@@ -56,7 +56,10 @@ class RenderMixin(SceneState):
         self._map_overlay_text(surf)
         counsel_box = None
         if self.counsel_open and not obs.outcome.over:
-            counsel_box = counsel_view.draw_counsel(surf, counsel_view.counsel_rect(self.map_rect), self.session.counsel(), self.ui,
+            area = counsel_view.counsel_rect(self.map_rect)
+            if self._proposal_height() and self.map_rect.right - area.right <= 300:
+                area.height -= self._proposal_height() + 14     # no room beside it: the proposal sits below the counsel
+            counsel_box = counsel_view.draw_counsel(surf, area, self.session.counsel(), self.ui,
                                       lambda plan: self._follow(plan, None), self._follow,
                                       lambda: self.toggle_counsel(False), self.counsel_ran, time.monotonic(),
                                       self.paused, self.session.counsel_goal.text if self.session.counsel_goal else "",

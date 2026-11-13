@@ -60,6 +60,7 @@ class TourScene:
         self.ui = UI()
         self.size = (1600, 900)
         self.page = "tours"
+        self._panes: list[pygame.Rect] = []     # last frame's glass panels: the chart writes no names under them
         self.t = 0.0
         self.glide = 1.0
         self.tours: list[TourDef] = []
@@ -351,7 +352,8 @@ class TourScene:
             current = st.stop if st is not None else 0
             glide = self.glide if st is not None else 0.0
             dim = {"tours": 0.25, "squadron": 0.45, "log": 0.5, "end": 0.45}.get(self.page, 0.0)
-            draw_chart(surf, surf.get_rect(), tour, [], outcomes, current, glide, self.t, dim)
+            draw_chart(surf, surf.get_rect(), tour, [], outcomes, current, glide, self.t, dim, tuple(self._panes))
+        self._panes = []
         if self.page == "tours":
             self._tours(surf)
         elif self.page == "squadron":
@@ -363,6 +365,11 @@ class TourScene:
         elif self.page == "end":
             self._end(surf)
         self.ui.draw_tooltip(surf)
+
+    def _glass(self, surf: pygame.Surface, rect: pygame.Rect, *args: object, **kw: object) -> int:
+        """A glass panel, remembered so the next frame's chart keeps its stop names out from under it."""
+        self._panes.append(pygame.Rect(rect))
+        return glass(surf, rect, *args, **kw)  # type: ignore[arg-type]
 
     def _heading(self, surf: pygame.Surface, title: str, sub: str) -> None:
         theme.text(surf, title.upper(), (40, 28), theme.CAUTION, 26, "display", weight="semibold")
@@ -396,7 +403,7 @@ class TourScene:
         lines = wrap(tour.description, 15, r.width - 40)
         stops = [f"{i + 1}. {s.title}  ({s.system})" for i, s in enumerate(tour.stops)]
         r.height = 150 + 24 * len(lines) + 22 * len(stops)
-        y = glass(surf, r, tour.sector or "Tour of duty", theme.CAUTION)
+        y = self._glass(surf, r, tour.sector or "Tour of duty", theme.CAUTION)
         theme.text(surf, tour.title, (r.x + 20, y), theme.TEXT, 22, "display", weight="semibold")
         y += 38
         for ln in lines:
@@ -455,13 +462,13 @@ class TourScene:
         self._heading(surf, "Assemble your squadron", f"{tour.title}: choose the ships that sail with the flagship.")
         # the budget
         br = pygame.Rect(40, 100, 360, 70)
-        y = glass(surf, br, "Fleet budget", theme.CAUTION)
+        y = self._glass(surf, br, "Fleet budget", theme.CAUTION)
         theme.bar(surf, pygame.Rect(br.x + 14, y + 4, br.width - 120, 12), left / max(1, tour.budget),
                   theme.GOOD if left > 0 else theme.CAUTION)
         theme.text(surf, f"{left} of {tour.budget}", (br.right - 14, y), theme.TEXT, 14, "mono", anchor="topright")
         # the yard: classes to add
         yr = pygame.Rect(40, 186, 360, 70 + 48 * len(self._classes(tour)))
-        y = glass(surf, yr, "Starfleet yard")
+        y = self._glass(surf, yr, "Starfleet yard")
         for cid in self._classes(tour):
             cls = self.content.classes[cid]
             cost = fleet_cost(cid, self.content)
@@ -474,7 +481,7 @@ class TourScene:
         # the squadron: the flagship and the escorts, lit and turning
         sx = 430
         sr = pygame.Rect(sx, 100, w - sx - 40, h - 200)
-        glass(surf, sr, "The squadron", theme.FRIEND, alpha=150)
+        self._glass(surf, sr, "The squadron", theme.FRIEND, alpha=150)
         ships = [(tour.flagship, "Enterprise (flagship)", None)] + [
             (cid, self.content.classes[cid].name, i) for i, cid in enumerate(self.escorts)]
         cols = 3
@@ -519,7 +526,7 @@ class TourScene:
         lessons = [ln for lesson in run.lesson_lines() for ln in wrap(lesson, 13, bw - 40)]
         enemies = self._enemy_words(run)
         br = pygame.Rect(40, 100, bw, 130 + 21 * max(len(lines), 5) + 19 * len(lessons) + (26 if enemies else 0))
-        y = glass(surf, br, f"Briefing: {stop.title}", theme.CAUTION)
+        y = self._glass(surf, br, f"Briefing: {stop.title}", theme.CAUTION)
         pic = portrait(stop.officer, 104)
         surf.blit(pic, (br.x + 14, y + 4))
         name = OFFICER_TITLES.get(stop.officer, stop.officer).split(",")[0]
@@ -540,7 +547,7 @@ class TourScene:
         y = br.bottom + 14
         if stop.choices:
             cr = pygame.Rect(40, y, bw, 46 + sum(30 + 18 * len(wrap(c.consequence, 12, bw - 40)) for c in stop.choices))
-            yy = glass(surf, cr, "Your decision", theme.ALERT if run.needs_choice() else theme.GOOD)
+            yy = self._glass(surf, cr, "Your decision", theme.ALERT if run.needs_choice() else theme.GOOD)
             for i, c in enumerate(stop.choices):
                 cons = wrap(c.consequence, 12, bw - 40)
                 box = pygame.Rect(cr.x + 10, yy - 4, cr.width - 20, 26 + 18 * len(cons))
@@ -558,34 +565,61 @@ class TourScene:
         if self.note:
             for k, ln in enumerate(wrap(self.note, 13, bw)):
                 theme.text(surf, ln, (42, y + 18 * k), theme.GOOD, 13)
-        # the squadron, as Geordi expects it to arrive
-        sq = pygame.Rect(w - min(560, int(w * 0.36)) - 40, 100, min(560, int(w * 0.36)), h - 200)
-        self._squadron_panel(surf, run, sq)
-        # between them, each officer's view of the stop
+        # the squadron, as Geordi expects it to arrive, and between the two each officer's view of the stop; on a
+        # narrow window there is no room between them, so the officers speak under the squadron instead
+        sw = min(560, int(w * 0.36))
+        sq = pygame.Rect(w - sw - 40, 100, sw, h - 200)
         mid = pygame.Rect(br.right + 16, 100, min(560, sq.x - br.right - 32), h - 200)   # lines a reader can follow
         if mid.width >= 250:
+            self._squadron_panel(surf, run, sq)
             self._officers_view(surf, run, mid)
-        # the buttons along the bottom
+        else:
+            sq.height = min(sq.height, self._squadron_height(run, sq))
+            self._squadron_panel(surf, run, sq)
+            below = pygame.Rect(sq.x, sq.bottom + 14, sq.width, h - 100 - (sq.bottom + 14))
+            if below.height >= 120:
+                self._officers_view(surf, run, below)
+        # the buttons along the bottom: as wide as they like on a big window, sharing the row on a small one
         by = h - 76
         launch_tip = "Make your decision first" if run.needs_choice() else f"{run.transit_cycles():.0f} cycles to {stop.system}"
-        self.ui.button(surf, pygame.Rect(w - 340, by, 300, 46), f"Set course for {stop.system}", self._launch, launch_tip,
-                       enabled=not run.needs_choice(), size=15, accent=theme.GOOD, face="ui")
-        calls = st.calls_left
-        pw = 250 if w >= 1400 else 220                       # the prisoners button, narrower on a small window
-        rx = max(w - 640, 472 + pw + 16)
-        self.ui.button(surf, pygame.Rect(rx, by, w - 360 - rx, 46),
-                       f"Request reinforcements ({calls})", self._reinforce,
-                       f"Starfleet's ships take {stop.eta:.0f} cycles to reach {stop.system}. You can also call from the "
-                       f"battle: 'request reinforcements'.", enabled=calls > 0, size=14, face="ui")
-        self.ui.button(surf, pygame.Rect(40, by, 200, 46), "Captain's log", self._open_log,
-                       "Every stop's page, and your entries", enabled=bool(st.log), size=14)
-        self.ui.button(surf, pygame.Rect(256, by, 200, 46), "Save and leave", self.close, "Esc", size=14)
-        held = st.prisoners
-        self.ui.button(surf, pygame.Rect(472, by, pw, 46), f"Hand over prisoners ({held})", self._prisoners,
-                       "A Starfleet transport takes the prisoners of war in our brig to a detention facility. It "
-                       "leaves torpedoes and probes, and every 40 prisoners earns another reinforcement call. "
-                       "Or keep them: in battle you can offer them back for a ship's withdrawal over a hail.",
-                       enabled=held > 0, size=14, face="ui")
+        calls, held = st.calls_left, st.prisoners
+        row = [
+            (200, ("Captain's log", "Log"), self._open_log, "Every stop's page, and your entries", bool(st.log), 14, {}),
+            (200, ("Save and leave", "Save, leave"), self.close, "Esc", True, 14, {}),
+            (250, (f"Hand over prisoners ({held})", f"Prisoners ({held})"), self._prisoners,
+             "A Starfleet transport takes the prisoners of war in our brig to a detention facility. It "
+             "leaves torpedoes and probes, and every 40 prisoners earns another reinforcement call. "
+             "Or keep them: in battle you can offer them back for a ship's withdrawal over a hail.", held > 0, 14,
+             {"face": "ui"}),
+            (250, (f"Request reinforcements ({calls})", f"Reinforcements ({calls})"), self._reinforce,
+             f"Starfleet's ships take {stop.eta:.0f} cycles to reach {stop.system}. You can also call from the "
+             f"battle: 'request reinforcements'.", calls > 0, 14, {"face": "ui"}),
+            (300, (f"Set course for {stop.system}", "Set course"), self._launch, launch_tip, not run.needs_choice(), 15,
+             {"face": "ui", "accent": theme.GOOD}),
+        ]
+        gap = 16
+        room = w - 80 - gap * (len(row) - 1)
+        scale = min(1.0, room / sum(r[0] for r in row))
+        widths = [int(r[0] * scale) for r in row]
+        widths[-1] += room - sum(widths) if scale < 1.0 else 0
+        x = 40 if scale < 1.0 else None
+        if x is None:          # room to spare: the first three on the left, the last two on the right
+            xs = [40, 256, 472, w - 340 - gap - widths[3], w - 340]
+        else:
+            xs = []
+            for wd in widths:
+                xs.append(x)
+                x += wd + gap
+        for (_, labels, act, tip, on, size, kw), bx, bw_ in zip(row, xs, widths):
+            label = labels[0] if theme.text_width(labels[0], size, "ui") <= bw_ - 20 else labels[1]
+            self.ui.button(surf, pygame.Rect(bx, by, bw_, 46), label, act, tip, enabled=on, size=size, **kw)
+
+    def _squadron_height(self, run: TourRun, r: pygame.Rect) -> int:
+        """How tall the squadron panel needs to be for its ships and Geordi's note, at most `r.height`."""
+        n = max(1, len(run.state.squadron))
+        row_h = max(64, min(96, (r.height - 90) // n))
+        note = len(wrap("Geordi: " + "x" * 120, 12, r.width - 28))
+        return min(r.height, 96 + n * row_h + 16 * max(0, note - 2))   # rows start 32 down; the note sits 40 up
 
     def _ready_views(self, run: TourRun) -> list[ReadyView]:
         st = run.state
@@ -608,7 +642,7 @@ class TourScene:
             blocks = [(v, wrap(v.text, size, r.width - pic - 40)) for v in views]
             need = 44 + sum(max(pic + 22, 20 + 18 * len(lines)) + 10 for _, lines in blocks)
         box = pygame.Rect(r.x, r.y, r.width, min(r.height, need))
-        y = glass(surf, box, "Your officers' view", theme.CREW)
+        y = self._glass(surf, box, "Your officers' view", theme.CREW)
         for v, lines in blocks:
             row = max(pic + 22, 20 + 18 * len(lines))
             if y + row > box.bottom:
@@ -634,7 +668,7 @@ class TourScene:
         return "Sensors: " + ", ".join(parts) + more if parts else ""
 
     def _squadron_panel(self, surf: pygame.Surface, run: TourRun, r: pygame.Rect) -> None:
-        y = glass(surf, r, "Squadron, as Geordi expects it to arrive", theme.FRIEND)
+        y = self._glass(surf, r, "Squadron, as Geordi expects it to arrive", theme.FRIEND)
         projected = {p.name: p for p in run.projected()}
         recs = [x for x in run.state.squadron if not x.lost] + [x for x in run.state.squadron if x.lost]
         row_h = max(64, min(96, (r.height - 90) // max(1, len(recs))))
@@ -658,7 +692,8 @@ class TourScene:
             col = theme.TEXT_FAINT if rec.lost else theme.FRIEND
             theme.text(surf, title, (tx, box.y + 6), col, 15, "display", weight="medium")
             sub = f"{cls.name}{'  ·  ' + role if role else ''}{'  ·  ' + rec.captain if rec.captain else ''}"
-            theme.text(surf, theme.fit(sub, 12, box.right - 126 - tx), (tx, box.y + 26), theme.TEXT_DIM, 12)
+            theme.text(surf, theme.fit(sub, 12, box.right - (10 if rec.role == "flagship" else 126) - tx), (tx, box.y + 26),
+                       theme.TEXT_DIM, 12)
             if rec.lost:
                 theme.text(surf, "Lost" + (f" at {self._stop_title(run, rec.lost_at)}" if rec.lost_at else ""),
                            (tx, box.y + 44), theme.ALERT, 12)
@@ -705,7 +740,7 @@ class TourScene:
         e = run.state.log[self.log_i]
         r = pygame.Rect(0, 0, min(980, w - 80), h - 120)
         r.midtop = (w // 2, 30)
-        y0 = glass(surf, r, "Captain's log", theme.CAUTION, alpha=225)
+        y0 = self._glass(surf, r, "Captain's log", theme.CAUTION, alpha=225)
         theme.text(surf, f"{e.title}", (r.x + 24, y0), theme.TEXT, 22, "display", weight="semibold")
         outcome = OUTCOME_WORDS.get(e.outcome, e.outcome)
         col = theme.GOOD if e.outcome == "victory" else theme.CAUTION if e.outcome == "withdrew" else theme.ALERT
@@ -809,7 +844,7 @@ class TourScene:
         crew = [x for x in run.state.squadron]
         r.height = 260 + 26 * len(lines) + 24 * len(crew)
         r.center = (w // 2, h // 2)
-        y = glass(surf, r, f"{run.tour.title}: the end of the tour", theme.CAUTION if won else theme.ALERT, alpha=230)
+        y = self._glass(surf, r, f"{run.tour.title}: the end of the tour", theme.CAUTION if won else theme.ALERT, alpha=230)
         last = run.state.results[-1] if run.state.results else None
         head = ("Tour complete" if won else
                 "The flagship was lost" if last is not None and last.outcome == "lost" else

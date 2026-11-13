@@ -328,7 +328,9 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
             if val is None:
                 self._log(f"Display range {self.display_range():,.0f} units.", theme.TEXT_DIM)
             else:
-                r = float(val)  # type: ignore[arg-type]
+                r = (self.display_range() / 2 if val == "in" else self.display_range() * 2) if isinstance(val, str) \
+                    else float(val)  # type: ignore[arg-type]
+                r = max(200.0, min(500000.0, r))
                 self.set_display_range(r)
                 self._log(f"Display range set to {r:,.0f} units.", theme.TEXT_DIM)
         elif name == "counsel":

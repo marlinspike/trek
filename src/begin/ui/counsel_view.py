@@ -52,7 +52,12 @@ def draw_counsel(surf: pygame.Surface, area: pygame.Rect, plans: list[Plan], ui:
         blocks = _blocks(plans, inner, most)
         heights = [22 + 20 + len(r) * 17 + 6 + len(rows) * 26 + 10 for _, r, rows in blocks]
         h = head_h + sum(heights) + max(0, len(blocks) - 1) * 8 + foot_h
-        if h <= area.height or most <= 0:
+        if h <= area.height:
+            break
+        if most <= 0:             # still too tall: each plan shrinks to its title and All in, its steps in a tooltip
+            blocks = [(p, r, []) for p, r, _ in blocks]
+            heights = [22 + 20 + len(r) * 17 + 10 for _, r, _ in blocks]
+            h = head_h + sum(heights) + max(0, len(blocks) - 1) * 8 + foot_h
             break
         most -= 1                 # at 0 the reasons go to each title's tooltip: all four plans stay in view
     if not blocks:
@@ -131,7 +136,10 @@ def _draw(surf: pygame.Surface, box: pygame.Rect, blocks: list[tuple[Plan, list[
                   size=11)
         theme.text(surf, theme.fit(p.title, 15, inner - 20, weight="medium"), (card.x + 12, card.y + 24), theme.TEXT,
                    15, weight="medium")
-        if len(reason) == 0 or (reason and reason[-1].endswith("…")):
+        if not rows and p.steps:
+            ui.add(pygame.Rect(card.x + 8, card.y + 22, card.width - 100, 22), lambda: None,
+                   p.reason + "  Steps: " + "; ".join(st.line for st in p.steps))
+        elif len(reason) == 0 or (reason and reason[-1].endswith("…")):
             ui.add(pygame.Rect(card.x + 8, card.y + 22, card.width - 100, 22), lambda: None, p.reason)
         ry = card.y + 46
         for ln in reason:
@@ -154,7 +162,8 @@ def _draw(surf: pygame.Surface, box: pygame.Rect, blocks: list[tuple[Plan, list[
                 x += w + 6
             ry += 26
         y += bh + 8
-    foot = "O closes  ·  1–4 all in  ·  click a step to run it  ·  'counsel <goal>' aims it"
+    steps = "click a step to run it" if any(rows for _, _, rows in blocks) or not blocks else "hover a plan for its steps"
+    foot = f"O closes  ·  1–4 all in  ·  {steps}  ·  'counsel <goal>' aims it"
     theme.text(surf, theme.fit(foot, 11, inner), (box.x + pad, box.bottom - 20), theme.TEXT_FAINT, 11)
     surf.set_clip(old_clip)
     return box
