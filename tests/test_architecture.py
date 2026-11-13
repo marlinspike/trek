@@ -130,7 +130,8 @@ def _sample(hint: Any, name: str) -> Any:
     if origin is Literal:
         return typing.get_args(hint)[0]
     if origin is tuple:
-        return (0, 2)
+        inner = typing.get_args(hint)[0] if typing.get_args(hint) else int
+        return (0, 2) if inner is int else (_sample(inner, name), _sample(inner, name + "2"))
     if isinstance(hint, type) and issubclass(hint, Enum):
         return list(hint)[-1]
     if hint is bool:

@@ -33,7 +33,7 @@ def test_arc_membership() -> None:
 
 
 def test_content_mount_counts(content) -> None:  # type: ignore[no-untyped-def]
-    assert len(content.classes) == 20
+    assert len(content.classes) == 25   # Begin's 20, the Borg probe, sphere and cube, a shuttle and the cloak refit
     for cls in content.classes.values():
         assert len(cls.hull.banks) == cls.banks, cls.id
         assert len(cls.hull.tubes) == cls.tubes, cls.id

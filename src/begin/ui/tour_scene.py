@@ -40,7 +40,8 @@ if TYPE_CHECKING:
 
 TURN_RATE = 7.0           # degrees a second the squadron's ships turn on their stands
 MAX_ESCORTS = 5
-OUTCOME_WORDS = {"victory": "Victory", "withdrew": "Withdrew", "lost": "Flagship lost", "base lost": "Starbase lost"}
+OUTCOME_WORDS = {"victory": "Victory", "withdrew": "Withdrew", "lost": "Flagship lost", "base lost": "Starbase lost",
+                 "assimilated": "Assimilated"}
 
 
 def tours_dir() -> Path:
@@ -766,6 +767,7 @@ class TourScene:
         last = run.state.results[-1] if run.state.results else None
         head = ("Tour complete" if won else
                 "The flagship was lost" if last is not None and last.outcome == "lost" else
+                "The flagship has been assimilated" if last is not None and last.outcome == "assimilated" else
                 f"{run.tour.starbase} has fallen" if last is not None and last.outcome == "base lost" else "Tour failed")
         theme.text(surf, head.upper(), (r.centerx, y + 8), theme.TEXT, 28, "display", weight="semibold", anchor="midtop")
         theme.text(surf, grade, (r.centerx, y + 52), theme.CAUTION if won else theme.ALERT, 17, weight="medium",

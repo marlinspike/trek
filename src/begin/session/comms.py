@@ -10,10 +10,14 @@ from ..console.parser import ParseContext, parse
 from ..crew.characters import OfficerProfile
 from ..crew.utterance import Utterance
 from ..crew.officers import STATION_COMMANDS, Activity, station_of
-from ..sim.commands import CeaseFire, DelegateStation, EndObjective, ManageRepairs, SetObjective, TakeConn, offensive_fire
+from ..sim.commands import (
+    AwayTeam, CeaseFire, DelegateStation, EndObjective, ManageRepairs, SetObjective, StartProject, TakeConn, offensive_fire,
+)
 from ..sim.events import Event
 from ..sim.observation import Observation
 from .common import HAIL_ORDER
+
+AWAY_CREW = ("worf", "seven", "sulu", "spock")     # the officers who can go across to a Borg ship [E]
 from .news import Prompt
 from .state import SessionState
 
@@ -118,9 +122,16 @@ class CommsMixin(SessionState):
         if self.player is not None and self.player.conn == officer.id:
             allowed |= set(STATION_COMMANDS)   # in command of the bridge
         for cmd in res.commands:
-            if isinstance(cmd, (ManageRepairs, CeaseFire, SetObjective, EndObjective)) or (
+            if isinstance(cmd, AwayTeam):          # "Worf, take a shuttle across": he goes himself [E]
+                if officer.id not in AWAY_CREW:
+                    return "That is a job for Mr. Worf, Captain."
+                lead = officer.id in ("worf", "sulu")
+                cmd.members = tuple(dict.fromkeys((officer.id, *cmd.members[1:]) if lead else (*cmd.members, officer.id)))
+                continue
+            if isinstance(cmd, (ManageRepairs, CeaseFire, SetObjective, EndObjective, StartProject)) or (
                     isinstance(cmd, DelegateStation) and not cmd.on):
-                continue       # any officer can direct repairs, cease fire, hand a station back or take an objective
+                continue       # any officer can direct repairs, cease fire, hand a station back, take an objective,
+                               # or set to work on something they were asked to build (the Doctor's inoculation) [E]
             st = cmd.station if isinstance(cmd, DelegateStation) else station_of(cmd)
             if st is None or st not in allowed:
                 return "That is not my station, Captain."

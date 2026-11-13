@@ -287,10 +287,13 @@ class MenuScene:
 
     def _presets(self, surf: pygame.Surface) -> None:
         x, y = 84, 210
+        # the list closes up when there are more battles than room for them (a short window, the Borg presets)
+        room = surf.get_height() - y - 34 - 14 - 12
+        pitch = max(26, min(40, room // max(1, len(self.presets))))
         for i, p in enumerate(self.presets):
-            self.ui.button(surf, pygame.Rect(x, y, 300, 34), p.title, partial(setattr, self, "preset_i", i),
-                           active=i == self.preset_i, size=14)
-            y += 40
+            self.ui.button(surf, pygame.Rect(x, y, 300, pitch - 6), p.title, partial(setattr, self, "preset_i", i),
+                           active=i == self.preset_i, size=14 if pitch >= 36 else 13)
+            y += pitch
         self.ui.button(surf, pygame.Rect(x, y + 14, 140, 34), "Back", lambda: setattr(self, "page", "main"), size=13)
         p = self.presets[self.preset_i]
         r = pygame.Rect(420, 210, min(760, surf.get_width() - 460), max(300, min(420, surf.get_height() - 230)))

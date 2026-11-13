@@ -62,3 +62,16 @@ cloak_ambush = 0.0
 self_destruct = 0.6
 prefers_disabling = true
 styles = {raid = 0.6}
+
+# The Borg [E]: no retreat, no surrender, no self-destruct but the chain reaction that takes them when their
+# core goes. Point defense is near perfect. Targets are chosen by threat (ai/collective.py), not by Begin's score.
+[doctrine.collective]
+weapon_bias = {phaser = 1.2, torpedo = 0.8, probe = 0.0}
+focus_fire = 1.0
+probe_use = 0.0
+retreat_threshold_scale = 99.0
+surrender_willingness = 0.0
+point_defense = "balanced"
+cloak_ambush = 0.0
+self_destruct = 0.0
+prefers_disabling = true

@@ -61,6 +61,9 @@ MATERIALS = {
                         (-0.12, -0.05, 0.0, 0.0, 0.04, 0.08)),
     "romulan": Material((0.55, 0.64, 0.57), (0.42, 0.5, 0.46), (2.8, 2.8), (0.75, 1.0, 0.8),
                         (0.3, 1.0, 0.48), (0.45, 1.0, 0.6), (0.3, 0.9, 0.45), (0.3, 0.58, 0.46)),
+    "borg": Material((0.25, 0.27, 0.27), (0.25, 0.27, 0.27), (6.0, 6.0), (0.35, 1.0, 0.45),
+                     (0.3, 1.0, 0.42), (0.45, 1.0, 0.5), (0.3, 1.0, 0.42), (0.26, 0.5, 0.36),
+                     (-0.16, -0.08, -0.03, 0.0, 0.03, 0.07)),
     "orion": Material((0.66, 0.55, 0.42), (0.47, 0.41, 0.35), (2.2, 3.0), (1.0, 0.82, 0.5),
                       (1.0, 0.6, 0.18), (1.0, 0.68, 0.22), (1.0, 0.5, 0.15), (0.62, 0.48, 0.32),
                       (-0.1, -0.04, 0.0, 0.0, 0.03, 0.07)),
@@ -115,7 +118,93 @@ def _is_saucer(s: Shape) -> bool:
     return rx >= 12 and abs(rx - ry) <= 0.2 * max(rx, ry)
 
 
+def _hash(i: np.ndarray, j: np.ndarray, k: float) -> np.ndarray:
+    """A repeatable pseudo-random 0..1 for each cell (i, j) of layer k."""
+    return (np.sin(i * 12.9898 + j * 78.233 + k * 37.719) * 43758.5453) % 1.0
+
+
+def build_borg(hull: HullDef, px: float, seed: int) -> Baked:
+    """A hive ship: no plan, only accretion. A dark lattice of blocks and conduits at three scales over the hull's
+    form (a slab, or a sphere's dome), stepped tiers where the hull has details, and seams lit green from inside."""
+    mat = MATERIALS["borg"]
+    R = _extent(hull)
+    step = 1.0 / (px * SS)
+    x, y = np.meshgrid(np.arange(-R, R, step), np.arange(R, -R, -step))
+    ship = np.zeros(x.shape, bool)
+    H = np.zeros(x.shape)
+    parts: list[Part] = []
+    for s in hull.shapes:
+        if s.role != "hull":
+            continue
+        if s.kind == "ellipse":
+            (cx, cy), (rx, ry) = s.center, s.radii
+            q = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2
+            m = q < 1
+            H = np.where(m, np.maximum(H, 2.0 + 0.32 * min(rx, ry) * np.sqrt(np.clip(1 - q, 0, 1))), H)
+            parts.append(Part("dome", s))
+        else:
+            m = _poly_mask(x, y, list(s.points))
+            H = np.where(m, np.maximum(H, 3.0 + 2.2 * np.sqrt(_bevel(m, 2.5, px))), H)
+            parts.append(Part("slab", s))
+        ship |= m
+    size = max(6.0, hull.length / 70.0)          # the coarsest block, hull units: a cube is busier than a probe
+    base = np.zeros(x.shape + (3,))
+    base[:] = mat.hull
+    em = np.zeros(x.shape + (3,))
+    green = np.array(mat.glow)
+    for k, (cell, lift, keep) in enumerate(((size, 2.6, 0.5), (size / 2.2, 1.4, 0.45), (size / 5.0, 0.6, 0.4))):
+        ox, oy = (seed % 7) * 0.37 * cell, (seed % 5) * 0.53 * cell
+        i, j = np.floor((x + ox) / cell), np.floor((y + oy) / cell)
+        r = _hash(i, j, k + seed)
+        up = ship & (r < keep)
+        H += np.where(up, lift * (0.35 + r / keep), 0.0)
+        base[up] *= (1.0 + (_hash(i, j, k + 11.0) - 0.5) * 0.4)[up][:, None]
+        fx, fy = (x + ox) / cell - i, (y + oy) / cell - j
+        if k < 2:          # wells: the deepest cells sink into the dark, a green light far down in a few
+            well = ship & (r > 0.9) & (fx > 0.12) & (fx < 0.88) & (fy > 0.12) & (fy < 0.88)
+            H -= np.where(well, 1.8 * lift, 0.0)
+            base[well] *= 0.35
+            glow = well & (_hash(i, j, k + 31.0 + seed) < 0.4)
+            depth = np.clip(np.minimum(np.minimum(fx - 0.12, 0.88 - fx), np.minimum(fy - 0.12, 0.88 - fy)) * 6, 0, 1)
+            em[glow] = green[None, :] * (0.05 + 0.22 * depth[glow, None] ** 2)
+        gap = 0.05 if k == 0 else 0.08
+        H -= np.where(ship & ((fx < gap) | (fy < gap)), 0.3 * lift, 0.0)
+        base[ship & ((fx < gap) | (fy < gap))] *= 0.7
+    # conduits: long raised pipes running the length and breadth, the hive's arteries
+    for k, ang in enumerate((0.0, 90.0)):
+        a = math.radians(ang)
+        along, across = x * math.cos(a) + y * math.sin(a), -x * math.sin(a) + y * math.cos(a)
+        pitch = size * 2.3
+        lane = np.floor(across / pitch)
+        on = ship & (_hash(lane, lane * 0.0, 50.0 + k + seed) < 0.35)
+        d = np.abs(across - (lane + 0.5) * pitch)
+        pipe = on & (d < 0.5) & (np.sin(along / (size * 1.3) + lane * 2.1) > -0.6)
+        H = np.where(pipe, np.maximum(H, H + 0.9 * np.sqrt(np.clip(1 - (d / 0.5) ** 2, 0, 1))), H)
+        base[pipe] *= 0.85
+    # tiers where the hull has details: stepped plates, a thin green line along stretches of their rims
+    for s in hull.shapes:
+        if s.role != "detail":
+            continue
+        if s.kind == "ellipse":
+            (cx, cy), (rx, ry) = s.center, s.radii
+            m = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 < 1
+        else:
+            m = _poly_mask(x, y, list(s.points))
+        H += np.where(ship & m, 1.4 * np.sqrt(_bevel(m, 0.8, px)), 0.0)
+        rim = ship & m & (_bevel(m, 0.5, px) < 0.4)
+        em[rim & (_hash(np.floor(x / 5.0), np.floor(y / 5.0), 70.0 + seed) < 0.35)] = green * 0.45
+    # scattered ports, and the faint light of the central plexus
+    i_, j_ = np.round(x / 1.3), np.round(y / 1.3)
+    ports = ship & (_hash(i_, j_, 99.0 + seed) < 0.02) & (np.hypot(x - i_ * 1.3, y - j_ * 1.3) < 0.18)
+    em[ports] = np.array(mat.window) * 0.8
+    base *= (1.0 + _hash(np.floor(x / 1.1), np.floor(y / 1.1), 5.0 + seed) * 0.14 - 0.07)[..., None]
+    H = np.where(ship, H, 0.0)
+    return Baked(px, x, y, H, ship, base, em, mat.rim, parts)
+
+
 def build(hull: HullDef, faction: str, px: float, seed: int) -> Baked:
+    if faction == "borg":
+        return build_borg(hull, px, seed)
     mat = MATERIALS.get(faction, MATERIALS["federation"])
     R = _extent(hull)
     step = 1.0 / (px * SS)

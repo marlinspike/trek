@@ -39,6 +39,9 @@ REACH = 0.07           # seconds the beam's tip takes to reach the end of the sh
 HOLD = 0.30            # seconds a full-power beam stays on (less for a weaker shot)
 FADE = 0.13            # seconds the tail takes to pull in
 PD_HOLD = 0.12         # a point-defence shot: no charge, a short flick
+CUTTER_HOLD = 3.2      # a Borg cutting beam stays on this many times longer, dragging across the hull
+CUTTER_SWEEP_PX = 14.0 # how far, on screen, its end drags to either side
+CUTTER_HZ = 0.45       # how fast it drags back and forth
 
 BOLT_LEAD = 0.05       # seconds of charge before a disruptor's first bolt
 BOLT_GAP = 0.06        # seconds between bolts
@@ -69,7 +72,7 @@ class Beam:
     age: float = 0.0
     width: float = 2.0
     cone: tuple[float, float, float] | None = None  # (facing, spread, range) for the faint cone
-    style: str = "beam"        # "beam" | "pulse" (bolts) | "sweep" (a deflector pulse: the old flat look)
+    style: str = "beam"        # "beam" | "pulse" (bolts) | "sweep" (a deflector pulse) | "cutter" (a Borg cutting beam)
     power: float = 1.0         # 0..1: the bank's charge
     defensive: bool = False
     strip: float = 0.0         # world length of the bank's emitter strip (0: none drawn)
@@ -96,6 +99,8 @@ class Beam:
             return 0.0, 0.0, self.life * 0.6 if self.life else 0.8, self.life or 1.4
         charge = 0.0 if self.defensive else CHARGE
         hold = PD_HOLD if self.defensive else HOLD * (0.55 + 0.45 * self.power)
+        if self.style == "cutter" and not self.defensive:
+            hold *= CUTTER_HOLD              # a cutting beam lingers, dragging across her hull
         return charge, charge + REACH, charge + REACH + hold, charge + REACH + hold + FADE
 
     @property
@@ -145,6 +150,8 @@ class Beam:
             return
         head = _ease_out(min(1.0, (t - charge) / max(arrive - charge, 1e-6)))
         back = _ease_in(max(0.0, (t - tail) / max(gone - tail, 1e-6)))
+        if self.style == "cutter":
+            p1 = self._cut(p0, p1, cam, t - arrive)
         a = _lerp(p0, p1, back)
         b = _lerp(p0, p1, head)
         k = 1.0 - back ** 2                   # how bright the shot still is
@@ -164,6 +171,17 @@ class Beam:
         else:                                                                                # the splash where it lands
             add_light(surf, p1[0], p1[1], (6 + 9 * w) * (0.8 + 0.2 * flicker), theme.mix(self.color, WHITE, 0.45), 0.85 * k)
         add_light(surf, a[0], a[1], 3 + 3 * w, theme.mix(self.color, WHITE, 0.5), 0.6 * k)   # the bank still lit
+
+    def _cut(self, p0: tuple[float, float], p1: tuple[float, float], cam: Camera,
+             since: float) -> tuple[float, float]:
+        """Where a cutting beam bites now: once it lands, its end drags slowly across the target, side to side."""
+        if since <= 0:
+            return p1
+        dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+        L = math.hypot(dx, dy) or 1.0
+        reach = CUTTER_SWEEP_PX * max(0.6, min(1.6, cam.zoom / 0.12))
+        off = reach * math.sin(since * CUTTER_HZ * math.tau + self.seed)
+        return p1[0] - dy / L * off, p1[1] + dx / L * off
 
     def _charge(self, surf: pygame.Surface, overlay: pygame.Surface, cam: Camera, p0: tuple[float, float],
                 u: float) -> None:

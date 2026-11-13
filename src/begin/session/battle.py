@@ -41,6 +41,7 @@ from ..sim.events import CommandRejected, Event, Message, ObjectiveEnded, Projec
 from ..sim.observation import Observation
 from ..sim.scoring import Assessment
 from ..sim.ship import BankRole, Ship
+from ..sim.systems.sensors import ScanRecord
 from ..sim.systems.repair import in_battle
 from ..sim.world import World
 from ..tour.run import TourRun
@@ -77,6 +78,7 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
         self.acc = 0.0
         self.obs: Observation = self.world.observe(self.side)
         self.hits = HitReport(None)           # "Hits on Wraith: ..." lines in the log
+        self._scans_seen: dict[int, ScanRecord] = {}   # the scan each contact last showed, for "what changed" [E]
         self.assessment = Assessment.begin(self.world)
         self.prefs = prefs if prefs is not None else BridgePrefs()
         self.captain_typing = False           # the presenter says so: proposals wait, or come as a chip
@@ -381,11 +383,15 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
                 who = f"{ev.speaker}: " if ev.speaker and ev.speaker not in ev.text else ""
                 self._log(who + ev.text, EVENT_TONE.get(ev.tone, "text"),
                           channel="bridge" if ev.speaker and ev.speaker != "captain" else "computer")
-            elif (isinstance(ev, ScanCompleted) and ev.ship_id == self.player_id
-                  and not (self.player is not None and "science" in self.player.delegated)):  # Seven's routine scans stay quiet
+            elif isinstance(ev, ScanCompleted) and ev.ship_id == self.player_id and not ev.by:   # officers' scans stay quiet
                 c = self.obs.contact(ev.target_id)
                 if c is not None and c.scan is not None:
-                    self._show(reports.scan_lines(self.obs, c), None)
+                    before = self._scans_seen.get(c.id)
+                    self._show(reports.scan_lines(self.obs, c, self.player, before), None)
+            if isinstance(ev, ScanCompleted) and ev.ship_id == self.player_id:
+                c = self.obs.contact(ev.target_id)
+                if c is not None and c.scan is not None:
+                    self._scans_seen[c.id] = c.scan     # what the next report compares against
 
     def update(self, dt: float, rate: float | None = None) -> int:
         """Let `dt` seconds of wall-clock time pass at `rate` × (the captain's speed unless given): the

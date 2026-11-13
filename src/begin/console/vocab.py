@@ -110,6 +110,13 @@ VERBS: dict[str, tuple[str, ...]] = {
     "record": ("record", "rec"),
     "style": ("style", "styles", "ribbons"),
     "voice": ("voice", "mic", "microphone"),
+    "remodulate": ("remodulate", "remod", "modulate", "rotate"),
+    "duty": ("duty", "tune", "retune"),
+    "repel": ("repel", "security", "intruders", "seal", "vent"),
+    "away": ("away", "shuttle", "infiltrate", "sneak"),
+    "recall": ("recall",),
+    "sweep": ("sweep", "sniff", "exhaust", "plasma"),
+    "seeker": ("seeker", "seekers"),
 }
 
 WEAPONS = {
@@ -137,9 +144,11 @@ AIM_WORDS: dict[str, tuple[str, ...]] = {
     "propulsion": ("propulsion", "engines", "engine", "drives", "drive", "warp", "nacelles", "impulse", "warpdrive"),
     "sensors": ("sensors", "sensor", "computer", "scanners"),
     "cloak": ("cloak", "cloaking"),
+    "relay": ("relay", "vinculum", "weakpoint", "vinculumrelay"),     # a Borg ship's weak point, once found [E]
 }
 AIM_FIRST = {"hull"} | {sp for spellings in AIM_WORDS.values() for sp in spellings}   # words that start an aim
-AIM_HELP = "hull, shields, power (warp core), life support (crew), weapons, phasers, torpedoes, propulsion, sensors, cloak"
+AIM_HELP = ("hull, shields, power (warp core), life support (crew), weapons, phasers, torpedoes, propulsion, sensors, "
+            "cloak, relay (a Borg ship's weak point)")
 
 
 FILLER = {"with", "the", "to", "at", "on", "of", "and", "set", "please", "by", "using", "for", "a", "an", "from"}

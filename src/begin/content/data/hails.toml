@@ -197,3 +197,53 @@ wavering = [
 enraged = [
     "You blew up {lost}! That was our best crew!",
 ]
+
+# The Borg Collective [E]: one voice for the whole hive. It never yields or bargains (sim/systems/disposition.py
+# answers every demand with a refusal or silence), so only refuse, defy, silence and talk lines are ever heard.
+[borg]
+title = "Collective"
+refuse = [
+    "We are the Borg. Your demands are irrelevant. Lower your shields and surrender your vessel.",
+    "Negotiation is irrelevant. You will be assimilated.",
+    "We do not withdraw. We do not surrender. Resistance is futile.",
+]
+defy = [
+    "Your threats are irrelevant. Your ship will be assimilated.",
+    "We have assimilated stronger species than yours, {us}.",
+]
+waver = [
+    "Your terms are irrelevant.",
+]
+silence = [
+    "(No reply. The channel carries only the hive's low, endless murmur.)",
+    "(No reply. The Collective has nothing to say to you.)",
+]
+talk_calm = [
+    "We are the Borg. Lower your shields and surrender your ship. Your distinctiveness will be added to our own. Resistance is futile.",
+    "{us}. Your vessel has been scanned. It will be assimilated.",
+    "Strength is irrelevant. Resistance is futile.",
+]
+talk_shaken = [
+    "Damage is irrelevant. We will adapt.",
+]
+talk_enraged = [
+    "You will be assimilated.",
+]
+talk_wavering = [
+    "Resistance is futile.",
+]
+talk_broken = [
+    "We... are... the Borg.",
+]
+enraged = [
+    "{us}. You will be assimilated.",
+]
+shaken = [
+    "We have adapted. Your weapons are now ineffective.",
+]
+wavering = [
+    "Resistance is futile.",
+]
+betrayed = [
+    "Your treachery is irrelevant. You will be assimilated.",
+]

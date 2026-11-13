@@ -79,6 +79,7 @@ TARGETABLE_GROUPS: dict[str, tuple[Kind, ...]] = {
     "sensors": (Kind.SENSORS, Kind.COMPUTER),
     "cloak": (Kind.CLOAK,),
     "crew": (),          # life support and the crew decks: aimed hits kill crew, not machinery [E]
+    "relay": (),         # a Borg ship's vinculum relay: whichever system carries it (sim/collective.py) [E]
 }
 CREW_DECKS = "crew"
 
@@ -92,6 +93,7 @@ class Subsystem:
     damage: int = 0
     repair_progress: float = 0.0
     aimed_hit: bool = False   # knocked about by aimed fire: slow to repair until whole again [E]
+    assimilated: bool = False  # seized by drones aboard: dead to us until they are driven out [E] (sim/collective.py)
 
     @property
     def health(self) -> float:
@@ -419,6 +421,31 @@ class Ship:
     surrender_time: float = 0.0
     mood: Mood = field(default_factory=Mood)   # an AI captain's state of mind toward the enemy [E]
     prisoners: int = 0                 # crew of a surrendered ship held aboard after she was taken [E]
+
+    # the Borg [E] (sim/collective.py, sim/away.py)
+    phaser_freq: int = 0               # our phasers' modulation: every remodulation is a frequency the hive must learn
+    freq_pattern: float = 1.0          # how predictable the current frequency is (Seven's random pattern: least)
+    remodulating: float = 0.0          # cycles before the banks fire again on their new frequency
+    tuning: float = 0.0                # 0..1: our shields' harmonics tuned against the hive's beams
+    duty: str = ""                     # the hive work an officer is on: "" | "shields" | "phasers" | "harmonics"
+    duty_by: str = ""                  # who is on it (officer id)
+    weak_point: str = ""               # a hive ship: the subsystem her vinculum relay runs through
+    dormant: float = 0.0               # a hive ship: cycles before her drones wake
+    cores_lost: int = 0                # a hive ship: drives and reactors already counted for chain reactions
+    last_attacker: int | None = None   # who hit her last (credit for a chain reaction)
+    beam_ready: float = 0.0            # a hive ship: cycles before her transporters can send more drones
+    assimilated: int = 0               # our crew turned into drones this battle
+    rescued: int = 0                   # drones an away team brought home
+    inoculated: bool = False           # the Doctor's counter-nanoprobes: beaten crew die rather than turn
+    encrypted: bool = False            # Spock's lockout: drones can't seize systems
+    severed: bool = False              # Seven cut the drones aboard off from the hive: they fight alone
+    security: float = 0.0              # cycles of security teams sweeping the decks
+    seal_ready: float = 0.0            # cycles before another section can be sealed
+    away: set[str] = field(default_factory=set)      # officers off the ship (on an away team) [E]
+    wounded: set[str] = field(default_factory=set)   # officers back from an away team hurt: in sickbay [E]
+    sweep: float = 0.0                                # cycles left of a science sweep for plasma trails [E]
+    critical: float = 0.0                             # cycles before a Borg ship's chain reaction takes her [E]
+    mending: float = 0.0                              # cycles before the Doctor sends the wounded back to duty
 
     base_sophistication: float = 0.5
     pd_doctrine: PDDoctrine = PDDoctrine.BALANCED

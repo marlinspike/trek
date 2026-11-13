@@ -15,6 +15,7 @@ from ..events import Detonation, Message, ProbeLaunched, Tone, TorpedoLaunched
 from ..ordnance import Probe, Torpedo
 from ..ship import Launcher, Ship, Tube
 from .damage import Aim, DamageKind, apply_damage
+from . import sensors
 
 if TYPE_CHECKING:
     from ...content.schema import TorpedoDef
@@ -91,7 +92,6 @@ def launch_torpedoes(
     fan: float = 0.0,
 ) -> int:
     """Fire the given loaded tubes. Returns the number of torpedoes launched."""
-    rules = world.rules
     rng = world.rng
     n = len(tubes)
     fired = 0
@@ -132,7 +132,7 @@ def launch_torpedoes(
         world.emit(TorpedoLaunched(world.tick, ship.id, torp.id, tube.index, 1, spec.id))
     if fired:
         ship.stats.torpedoes_fired += fired
-        ship.reveal_time = max(ship.reveal_time, rules.cloak_reveal_cycles)
+        sensors.fired_from(world, ship)
         if target_id is not None:
             world.note_torpedo_pressure(target_id, fired)
             _mark_blind(world, ship, list(salvo.values()) if fan <= 0 else world.torpedoes[-fired:], target_id)
@@ -263,7 +263,9 @@ def fly_ordnance(world: World, dt: float, prev: dict[int, tuple[float, float]]) 
     for t in world.torpedoes:
         if t.detonate or t.fizzle:
             continue
-        if t.target is not None:  # homing (plasma) turns almost instantly [M]
+        if t.follow is not None:
+            _follow_plasma(world, t)
+        elif t.target is not None:  # homing (plasma) turns almost instantly [M]
             pos = world.apparent_position(t.side, t.target)
             if pos is not None:
                 t.course = bearing(pos[0] - t.x, pos[1] - t.y)
@@ -396,10 +398,10 @@ def resolve_detonations(world: World) -> None:
             cause = "intercepted" if t.shot_down else "fuse" if t.burst_at_fuse and t.fuse <= 0.0 else "proximity"
             reached = blast(world, t.x, t.y, t.yield_, "torpedo", t.owner, t.salvo, kind,
                             t.target if t.target is not None else t.aim_ship, t.target_subsystem, cause=cause,
-                            radius_scale=t.spec.blast_scale)
+                            radius_scale=t.spec.blast_scale, family="harmonic" if t.spec.id == "harmonic" else "torpedo")
             ended.append((t, "burst", reached))
         for p in boom_p:
-            blast(world, p.x, p.y, p.yield_, "probe", p.owner, 1, DamageKind.BLAST, p.target, None)
+            blast(world, p.x, p.y, p.yield_, "probe", p.owner, 1, DamageKind.BLAST, p.target, None, family="probe")
     if any(t.blind is not None for t, _, _ in ended):
         report_blind_shots(world, ended)
 
@@ -438,6 +440,44 @@ def suggested_prox(spec: TorpedoDef, target_max_warp: float, rules: Rules) -> fl
     return max(rules.prox_floor, want)
 
 
+SEEKER_REACH = 180.0      # a plasma-seeker counts a trail point as reached this close [E]
+SEEKER_SCENT = 2500.0     # ... and at the trail's end homes on the ship venting it, if she is this close
+
+
+def _follow_plasma(world: World, t: Torpedo) -> None:
+    """[E] A plasma-seeker flies the trail point by point, then homes on the ship at its end; a trail gone cold
+    leaves it to burst where the trail ends."""
+    pts = world.plasma.get(t.follow, [])  # type: ignore[arg-type]
+    while t.follow_i < len(pts) and math.hypot(pts[t.follow_i][0] - t.x, pts[t.follow_i][1] - t.y) < SEEKER_REACH:
+        t.follow_i += 1
+    if t.follow_i < len(pts):
+        x, y, _ = pts[t.follow_i]
+        t.course = bearing(x - t.x, y - t.y)
+        t.fuse = max(t.fuse, 1.0)        # on the scent: it keeps flying
+        return
+    s = world.ships.get(t.follow) if t.follow is not None else None
+    if s is not None and s.exists and sensors.leaking(s) and math.hypot(s.x - t.x, s.y - t.y) < SEEKER_SCENT:
+        t.course = bearing(s.x - t.x, s.y - t.y)
+        t.fuse = max(t.fuse, 1.0)
+        return
+    if t.armed:
+        t.detonate = True                # the trail went cold: burst where it ends
+
+
+def launch_seeker(world: World, ship: Ship, tube: Tube, follow: int) -> Torpedo | None:
+    """Fire a plasma-seeker into the nearest point of `follow`'s trail [E]."""
+    pts = world.plasma.get(follow, [])
+    if not pts:
+        return None
+    i = min(range(len(pts)), key=lambda k: math.hypot(pts[k][0] - ship.x, pts[k][1] - ship.y))
+    torp = launch_at_point(world, ship, tube, pts[i][0], pts[i][1])
+    if torp is not None:
+        torp.follow, torp.follow_i, torp.burst_at_fuse = follow, i, True
+        torp.arm = min(torp.arm, torp.spec.arm_time)
+        torp.fuse = max(torp.fuse, 2.0)
+    return torp
+
+
 def launch_at_point(world: World, ship: Ship, tube: Tube, x: float, y: float, prox: float | None = None,
                     target: int | None = None, subsystem: str | None = None) -> Torpedo | None:
     """Fire one tube's round straight at a point, fused to burst there [E].
@@ -467,7 +507,7 @@ def launch_at_point(world: World, ship: Ship, tube: Tube, x: float, y: float, pr
     world.torpedoes.append(torp)
     world.emit(TorpedoLaunched(world.tick, ship.id, torp.id, tube.index, 1, spec.id))
     ship.stats.torpedoes_fired += 1
-    ship.reveal_time = max(ship.reveal_time, world.rules.cloak_reveal_cycles)
+    sensors.fired_from(world, ship)
     _mark_blind(world, ship, [torp], target)
     return torp
 
@@ -486,6 +526,7 @@ def blast(
     exclude: int | None = None,
     cause: str = "",
     radius_scale: float = 1.0,
+    family: str = "",
 ) -> set[int]:
     """[R] total = yield × 5; radius = total × 10; dmg = total × sqrt(1 − d/radius).
 
@@ -514,7 +555,7 @@ def blast(
         for _ in range(max(1, salvo)):
             if not s.exists:
                 break
-            apply_damage(world, s, dmg, x, y, kind, owner, aim)
+            apply_damage(world, s, dmg, x, y, kind, owner, aim, family)
         if att is not None and s.side != att.side:
             hit_any = True
     if att is not None and hit_any:

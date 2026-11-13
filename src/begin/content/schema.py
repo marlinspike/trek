@@ -124,6 +124,9 @@ class ShipClass:
     repair: RepairRates
     hull: HullDef
     sensor_scale: float = 1.0   # [E] the faction's sensor technology: × scanner_range
+    craft: bool = False         # [E] a small craft (a shuttle): no combatant, so she never holds the field alone
+    cloak_fire: bool = False    # [E] a cloak made to fire through (the Enterprise's refit): no lingering reveal
+    story: bool = False         # [E] made for one story (the Enterprise's cloak refit): never offered in setups
 
     @property
     def rated_sensor_range(self) -> float:
@@ -228,6 +231,34 @@ class Doctrine:
 
 
 @dataclass(frozen=True, slots=True)
+class CollectiveRules:
+    """How a hive fights [E] (sim/collective.py): what makes the Borg the Borg. A faction with one adapts to
+    the weapons that hurt it, regenerates, beams drones through shields and assimilates crews.
+
+    adapt: per weapon family ("phaser", "torpedo", "harmonic", "probe"), the damage that teaches the whole
+      hive to shrug that weapon off; a new phaser frequency is learned faster each time (`relearn`).
+    floor: the share of a fully adapted weapon's damage that still gets through.
+    """
+
+    adapt: dict[str, float] = field(default_factory=dict)
+    floor: float = 0.12
+    relearn: float = 0.6
+    regen_hull: float = 0.004        # share of the structure grown back per cycle
+    regen_hurt: float = 0.25         # ... × this while under fire (hurt in the last `regen_quiet` cycles)
+    regen_quiet: float = 6.0
+    assimilate: float = 0.65         # chance a defender beaten in a boarding round becomes a drone
+    takeover: float = 0.18           # per cycle, × the drones' share of the bodies aboard: a system is seized
+    party: int = 14                  # drones in one beam-over
+    beam_every: float = 9.0          # cycles between beam-overs
+    sleep_cycles: float = 50.0       # how long the drones stay dormant when the vinculum relay fails
+    chain: float = 0.3               # chance a destroyed drive or reactor sets off the ship (certain while dormant)
+    tune_cut: float = 0.6            # most of their beam's damage our tuned shields can turn aside
+    shift_after: float = 140.0       # damage our tuning turns aside before they shift their beam's frequency
+    grace: int = 14                  # hits with stolen shield harmonics before they notice
+    weak_kinds: tuple[str, ...] = ("battery", "transporter", "launcher", "tractor")   # where the relay can hide
+
+
+@dataclass(frozen=True, slots=True)
 class Faction:
     id: str
     name: str
@@ -258,6 +289,10 @@ class Faction:
     temper: float = 0.5
     obstinacy: float = 0.5
     temperament_dev: float = 0.2
+    # [E] a hive (the Borg): adaptation, regeneration, drones and assimilation (sim/collective.py)
+    collective: CollectiveRules | None = None
+    # [E] chosen for random battles and patrols; False keeps a race for stories, presets and its own mode
+    random: bool = True
 
 
 @dataclass(slots=True)
@@ -268,7 +303,7 @@ class ContentDB:
     factions: dict[str, Faction] = field(default_factory=dict)
 
     def classes_of(self, faction: str, include_bases: bool = True) -> list[ShipClass]:
-        out = [c for c in self.classes.values() if c.faction == faction]
+        out = [c for c in self.classes.values() if c.faction == faction and not c.story]
         if not include_bases:
             out = [c for c in out if not c.is_base]
         return sorted(out, key=lambda c: c.mass)

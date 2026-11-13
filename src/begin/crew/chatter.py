@@ -16,6 +16,7 @@ from ..sim.objectives import DISABLE_GROUPS
 from ..sim.observation import Observation
 from ..sim.ship import HULL, KIND_LABEL, Kind, Ship
 from . import collaborations
+from .borg_talk import hive_remarks
 from .characters import OfficerProfile
 from .station_reports import contact_name
 from .utterance import Utterance
@@ -59,6 +60,7 @@ class Chatter:
         out.extend(self._callouts(s, obs))
         out.extend(self._repair_reports(s, obs))
         out.extend(self._morale_remarks(events, s, obs))
+        out.extend(hive_remarks(self, events, s, obs))     # the Borg: what the captain needs to decide [E]
         if not self.chatter:
             return out
         commander = self.find(s.conn) if s.conn else None

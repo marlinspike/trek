@@ -63,6 +63,7 @@ class Choice:
     refit: bool = False                 # put in at the starbase: hull, systems, crew and magazines made good
     transit: float | None = None        # cycles of travel instead of the stop's own (a detour)
     flags: tuple[str, ...] = ()
+    flagship: str = ""                  # [E] a refit that makes the flagship this class (a story class, like the cloak refit)
 
 
 @dataclass(frozen=True)
@@ -153,7 +154,8 @@ def parse_tour(t: dict[str, Any], source: str = "shipped") -> TourDef:
     stops = []
     for i, s in enumerate(t.get("stop", [])):
         choices = tuple(Choice(str(c["label"]), str(c.get("consequence", "")), bool(c.get("refit", False)),
-                               float(c["transit"]) if "transit" in c else None, _flags(c.get("flags")))
+                               float(c["transit"]) if "transit" in c else None, _flags(c.get("flags")),
+                               str(c.get("flagship", "")))
                         for c in s.get("choice", []))
         waves = tuple(WaveDef(tuple(w["ships"]), float(w["after_clear"]) if "after_clear" in w else None,
                               float(w["at"]) if "at" in w else None, _pair(w.get("center"), (0.0, 16000.0)),
@@ -201,7 +203,7 @@ def check_tour(tour: TourDef, classes: set[str]) -> list[str]:
     names = [tour.flagship, *tour.reinforcements]
     for s in tour.stops:
         names += [*s.enemies, *s.friends, *(c for w in s.waves for c in w.ships),
-                  *(c for v in s.add.values() for c in v)]
+                  *(c for v in s.add.values() for c in v), *(ch.flagship for ch in s.choices if ch.flagship)]
     for cid in names:
         if cid not in classes:
             out.append(f"{tour.title}: unknown ship class '{cid}'")

@@ -13,8 +13,10 @@ import math
 from ..content.schema import ContentDB, ProbeDef, ShipClass, TorpedoDef
 from ..core.angles import bearing, norm360
 from ..sim.allies import AllyStanding
+from ..sim.away import TASKS
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import HelmMode, Ship
+from ..sim.systems.sensors import ScanRecord
 
 
 def _pct(v: float) -> str:
@@ -118,40 +120,160 @@ def damage_lines(obs: Observation, ship: Ship) -> list[str]:
     ]
 
 
-def scan_lines(obs: Observation, c: ContactView) -> list[str]:
-    """`scan <ship>`: what our last scan of another ship revealed (manual p. 11)."""
+SHIELD_SIDES = ("fore", "fore-stbd", "fore-port", "aft-stbd", "aft-port", "aft")   # shields 1-6 (ship.py)
+BAR = 12
+
+
+def bar(frac: float, width: int = BAR) -> str:
+    """A gauge in the log: ■■■■□□□ (squares both bundled faces carry; ▰▱ would print as boxes)."""
+    n = round(max(0.0, min(1.0, frac)) * width)
+    return "\u25a0" * n + "\u25a1" * (width - n)
+
+
+def sid_label(sid: str) -> str:
+    """'transporter3' -> 'transporter 3'."""
+    stem = sid.rstrip("0123456789")
+    return f"{stem} {sid[len(stem):]}".strip() if stem != sid else sid
+
+
+def scan_lines(obs: Observation, c: ContactView, me: Ship | None = None, before: ScanRecord | None = None) -> list[str]:
+    """`scan <ship>`: what our last scan of another ship revealed, laid out to decide on [E]: hull and crew,
+    each shield by side (the one facing us marked), weapons ready, drives, what changed since the scan before,
+    and what it means. For a Borg ship, the hive's adaptation to our weapons, how far our harmonic survey has
+    got, her weak point and her drones. Begin's own scan (manual p. 11) carried the same numbers, as a table."""
     name = c.label.split(" (")[0]
     if c.cls is None:
-        return [f"SHIP NAME: {name}", "CLASS: unidentified", "Scan it at closer range to learn more."]
+        return [f"SCAN  {name}", "Unidentified. Close in and scan again to learn more."]
     sc = c.scan
-    if sc is None:
-        return [f"SHIP NAME: {name}", f"CLASS: {c.cls.name}", "No scan yet: the scan is under way."]
-
-    def group(prefix: str, n: int) -> list[str]:
-        out = []
-        for i in range(n):
-            dmg = sc.subsystems.get(f"{prefix}{i + 1}", 0)
-            out.append("XX" if dmg >= 100 else f"{100 - dmg}%")
-        return out
-
     cls: ShipClass = c.cls
-    banks = ["ch"] * min(sc.charged_banks, cls.banks)
-    banks += [".."] * (cls.banks - len(banks))
-    tubes = ["ld"] * min(sc.loaded_tubes, cls.tubes)
-    tubes += [".."] * (cls.tubes - len(tubes))
-    return [
-        f"SHIP NAME: {name}",
-        f"CLASS: {cls.name}",
-        f"SURVIVORS: {sc.crew}",
-        "REACTORS: " + _marks(group("reactor", cls.reactors)),
-        "BANKS: " + _marks(banks) + "   (" + _marks(group("phaser", cls.banks)) + ")",
-        "TUBES: " + _marks(tubes) + "   (" + _marks(group("tube", cls.tubes)) + ")",
-        "LAUNCHERS: " + _marks(group("launcher", cls.launchers)) + f"   loaded {sc.probes_loaded}",
-        "SHIELDS: " + _marks(["XX" if v < 0 else f"{v:.0f}%" for v in sc.shields]),
-        "WARP: " + _marks(group("drive", cls.drives)),
-        f"HULL: {sc.structure_frac * 100:.0f}%   scan age {(obs.tick - sc.tick) * obs.rules.dt:.0f} cycles"
-        f"   confidence {sc.confidence * 100:.0f}%",
-    ]
+    age = (obs.tick - sc.tick) * obs.rules.dt if sc is not None else 0.0
+    title = name if name.lower().startswith(cls.name.lower()) else f"{name} · {cls.name}"
+    out = [f"SCAN  {title}" + (f"   {age:.0f} s old · {sc.confidence * 100:.0f}% sure" if sc else "")]
+    if sc is None:
+        out.append("The scan is under way.")
+        return out + _hive_lines(obs, c, me)
+
+    def health(prefix: str, n: int) -> list[int]:
+        return [100 - sc.subsystems.get(f"{prefix}{i + 1}", 0) for i in range(n)]
+
+    out.append(f"HULL      {bar(sc.structure_frac)} {sc.structure_frac * 100:3.0f}%    CREW {sc.crew:,} of {cls.crew:,}")
+    facing = _facing_us(c, me, len(sc.shields))
+    cells = []
+    for i, v in enumerate(sc.shields):
+        side = SHIELD_SIDES[i] if len(sc.shields) == 6 and i < 6 else str(i + 1)
+        mark = "*" if i == facing else ""
+        cells.append(f"{side}{mark} {'down' if v < 0 else f'{v:.0f}%'}")
+    if cells:
+        out.append("SHIELDS   " + " · ".join(cells) + ("   (* faces us)" if facing is not None else ""))
+    banks = health("phaser", cls.banks)
+    tubes = health("tube", cls.tubes)
+    live_b = sum(1 for h in banks if h > 0)
+    live_t = sum(1 for h in tubes if h > 0)
+    weapons = []
+    if cls.banks:
+        weapons.append(f"banks {min(sc.charged_banks, live_b)} charged of {live_b}" + (
+            f" ({cls.banks - live_b} out)" if live_b < cls.banks else ""))
+    if cls.tubes:
+        weapons.append(f"tubes {min(sc.loaded_tubes, live_t)} loaded of {live_t}" + (
+            f" ({cls.tubes - live_t} out)" if live_t < cls.tubes else ""))
+    if cls.launchers:
+        weapons.append(f"probes {sc.probes_loaded} ready")
+    if weapons:
+        out.append("WEAPONS   " + " · ".join(weapons))
+    drives = health("drive", cls.drives)
+    reactors = health("reactor", cls.reactors)
+    out.append(f"POWER     reactors {sum(1 for h in reactors if h > 0)} of {cls.reactors} · "
+               f"warp drives {sum(1 for h in drives if h > 0)} of {cls.drives}")
+    if before is not None and before.tick != sc.tick:
+        out.append("CHANGED   " + _changes(before, sc))
+    out += _hive_lines(obs, c, me)
+    advice = _advice(obs, c, me, sc, facing, banks, tubes, drives)
+    if advice:
+        out.append("READ      " + advice)
+    return out
+
+
+def _facing_us(c: ContactView, me: Ship | None, n: int) -> int | None:
+    """Which of her shields faces us now (index), from her heading and where we are."""
+    if me is None or n != 6:
+        return None
+    rel = norm360(bearing(me.x - c.x, me.y - c.y) - c.course)
+    from ..sim.ship import SHIELD_FACINGS
+
+    return min(range(6), key=lambda i: abs((rel - SHIELD_FACINGS[i] + 180.0) % 360.0 - 180.0))
+
+
+def _changes(a: ScanRecord, b: ScanRecord) -> str:
+    out = []
+    dh = (b.structure_frac - a.structure_frac) * 100
+    if abs(dh) >= 1:
+        out.append(f"hull {dh:+.0f}%")
+    if b.crew != a.crew:
+        out.append(f"crew {b.crew - a.crew:+,}")
+    for i, (x, y) in enumerate(zip(a.shields, b.shields)):
+        side = SHIELD_SIDES[i] if len(b.shields) == 6 else str(i + 1)
+        if x >= 0 > y:
+            out.append(f"{side} shield down")
+        elif y >= 0 > x:
+            out.append(f"{side} shield back up")
+    lost = [sid_label(k) for k, v in b.subsystems.items() if v >= 100 and a.subsystems.get(k, 0) < 100]
+    fixed = [sid_label(k) for k, v in b.subsystems.items() if v < 100 and a.subsystems.get(k, 0) >= 100]
+    if lost:
+        out.append("lost " + ", ".join(lost[:4]) + (" ..." if len(lost) > 4 else ""))
+    if fixed:
+        out.append("repaired " + ", ".join(fixed[:3]))
+    return " · ".join(out) or "nothing worth noting"
+
+
+def _hive_lines(obs: Observation, c: ContactView, me: Ship | None) -> list[str]:
+    """What a Borg ship shows to a crew that knows how to look [E]."""
+    if not obs.is_hive(c.id):
+        return []
+    out = []
+    if me is not None:
+        ad = obs.adaptation(c.id, me.id)
+        plural = {"phaser": "phasers", "torpedo": "torpedoes", "harmonic": "harmonics"}
+        cells = [f"{plural.get(k, k)} {bar(v, 6)} {v * 100:.0f}%" for k, v in ad.items() if k != "harmonic" or v > 0]
+        out.append("ADAPTED   " + " · ".join(cells))
+    sv = obs.survey(c.id)
+    from ..sim.collective import CODE_AT
+
+    got = sv.progress / CODE_AT if sv is not None else 0.0
+    weak = obs.weak_point(c.id)
+    out.append(f"HARMONICS {bar(got)} {got * 100:3.0f}%" + ("   ready: 'design harmonic'" if got >= 1.0 else
+                                                            "   each scan adds more; Seven reads them best"))
+    out.append("RELAY     " + (f"runs through her {sid_label(weak)}: destroy it and her drones sleep" if weak else
+                               "hidden; half the harmonic survey will find it"))
+    dorm = obs.dormant(c.id)
+    if dorm > 0:
+        out.append(f"DORMANT   {dorm:.0f} s left: shields down, weapons cold. Board her, or hit her drives.")
+    return out
+
+
+def _advice(obs: Observation, c: ContactView, me: Ship | None, sc: ScanRecord, facing: int | None,
+            banks: list[int], tubes: list[int], drives: list[int]) -> str:
+    """A line on what the scan means for the captain: the opening it shows, and the danger."""
+    tips = []
+    if obs.is_hive(c.id) and me is not None:
+        ad = obs.adaptation(c.id, me.id)
+        if ad.get("phaser", 0.0) >= 0.5:
+            tips.append("they have our phaser frequency: remodulate")
+        if ad.get("torpedo", 0.0) >= 0.5:
+            tips.append("torpedoes are losing their bite")
+    down = [i for i, v in enumerate(sc.shields) if v < 0]
+    if down and len(sc.shields) == 6:
+        tips.append(f"her {SHIELD_SIDES[down[0]]} shield is down: put a volley there")
+    elif sc.shields:
+        weakest = min(range(len(sc.shields)), key=lambda i: sc.shields[i])
+        if sc.shields[weakest] < 40 and len(sc.shields) == 6:
+            tips.append(f"her {SHIELD_SIDES[weakest]} shield is weakest ({sc.shields[weakest]:.0f}%)")
+    if drives and all(h <= 0 for h in drives):
+        tips.append("no warp: she can't run or turn quickly")
+    if banks and sc.charged_banks >= max(2, len(banks) // 2):
+        tips.append(f"{sc.charged_banks} banks charged: expect a volley")
+    if me is not None and not obs.is_hive(c.id) and 0 < sc.crew < me.boarding_party():
+        tips.append(f"her crew is down to {sc.crew}: a boarding party could take her")
+    return "; ".join(tips[:3]) + "." if tips else ""
 
 
 # ------------------------------------------------------------------ weapon status tables
@@ -405,8 +527,30 @@ def library_lines(content: ContentDB, words: list[str]) -> list[str]:
     return [f"The library has no subject '{words[0]}'. Subjects: ships, torpedoes, probes."]
 
 
+def away_lines(obs: Observation, me: Ship | None) -> list[str]:
+    """The away teams out from our ship [E]: who, in what, where, doing what, and how long it has left."""
+    ops = [op for op in obs.away_ops() if me is None or op.mother == me.id]
+    if not ops:
+        return ["AWAY  No away team is out. 'away <Borg ship> <task>' sends one."]
+    out = []
+    for op in ops:
+        craft = obs.own(op.shuttle).name if op.shuttle is not None and obs.own(op.shuttle) is not None else "transporter"
+        where = obs.contact(op.target)
+        name = where.label.split(" (")[0] if where is not None and where.identified else f"#{op.target}"
+        team = ", ".join(m.title() for m in op.members)
+        state = {"outbound": f"crossing to {name}", "aboard": f"aboard {name}: {op.label}",
+                 "return": "coming home"}.get(op.phase, op.phase)
+        out.append(f"AWAY  {team} · {craft} · {state}")
+        if op.phase == "aboard":
+            total = TASKS[op.task][0]
+            out.append(f"      {bar(1.0 - op.work / total)}  {op.work:.0f} cycles to go"
+                       + ("  ·  THE HIVE HAS NOTICED THEM" if op.noticed else ""))
+    out.append("      'hail galileo come back' calls them home; 'hail galileo <task>' gives them a new one.")
+    return out
+
+
 __all__ = [
-    "banks_lines", "chart_lines", "damage_lines", "fleet_lines", "group_lines", "launchers_lines", "library_lines",
+    "away_lines", "banks_lines", "chart_lines", "damage_lines", "fleet_lines", "group_lines", "launchers_lines", "library_lines",
     "probes_lines", "report_lines", "scan_lines", "shields_lines", "tubes_lines",
 ]
 

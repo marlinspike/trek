@@ -38,6 +38,7 @@ MODE_CYCLE = [FireMode.MANUAL, FireMode.ASSISTED, FireMode.AUTOMATIC]
 PD_CYCLE = [PDDoctrine.OFF, PDDoctrine.CONSERVATIVE, PDDoctrine.BALANCED, PDDoctrine.AGGRESSIVE]
 SUB_GROUPS = [None, "shields", "power", "crew", "weapons", "propulsion", "sensors"]
 SUB_LABELS = {None: "hull", "power": "warp core", "crew": "life support", "propulsion": "engines"}
+SUB_SHORT = {None: "hull", "power": "core", "crew": "crew", "propulsion": "drives", "weapons": "arms"}   # a narrow panel
 SUB_TIPS = {
     None: "Fire at the hull: the fastest way to destroy her",
     "shields": "Precision fire at her shield generators: a destroyed one leaves a hole to beam through",
@@ -341,7 +342,10 @@ class TargetPanel(Panel):
         if c.cls is not None:
             line = f"{c.cls.name} · " + line
         theme.text(surf, line, (rect.x + 12, y + 20), theme.TEXT_DIM, 12)
-        if not c.visible:
+        if c.exhaust:
+            theme.text(surf, theme.fit("Cloaked: placed by her plasma trail, give or take "
+                                       f"{c.uncertainty:,.0f}", 12, rect.width - 24), (rect.x + 12, y + 36), theme.EXHAUST, 12)
+        elif not c.visible:
             theme.text(surf, f"Contact lost {c.age:.0f} cycles ago — position estimated", (rect.x + 12, y + 36),
                        theme.CAUTION, 12)
         # their shield facing us
@@ -362,13 +366,17 @@ class TargetPanel(Panel):
         theme.text(surf, "Aim", (rect.x + 12, yy + 4), theme.TEXT_DIM, 12)
         x = rect.x + 42
         cur = ship.target_subsystem
-        for g in SUB_GROUPS:
-            label = SUB_LABELS.get(g, g or "hull")
-            w = theme.text_width(label, 10, "display") + 10
+        relay = obs.weak_point(c.id)
+        groups = SUB_GROUPS + (["relay"] if relay else [])     # [E] a Borg ship once Seven has found her relay
+        labels, size = self._aim_labels(groups, rect.right - 12 - x)
+        for g, label in zip(groups, labels):
+            w = theme.text_width(label, size, "display") + 10
+            tip = (f"Precision fire at her vinculum relay (in her {relay}): cut it and her drones go dormant"
+                   if g == "relay" else SUB_TIPS.get(g, "Precision fire at a subsystem group"))
             hud.ui.button(surf, pygame.Rect(x, yy, w, 22), label,
                           partial(hud.issue, SelectTarget(ship_id=ship.id, target=c.id, subsystem=g)),
-                          SUB_TIPS.get(g, "Precision fire at a subsystem group") + " (R cycles)", active=cur == g,
-                          accent=theme.CAUTION, size=10)
+                          tip + " (R cycles)", active=cur == g, accent=theme.HIVE if g == "relay" else theme.CAUTION,
+                          size=size)
             x += w + 3
         # scan
         yy += 30
@@ -413,6 +421,15 @@ class TargetPanel(Panel):
             theme.text(surf, f"From our hits: {hull_txt}. Scan for her crew and weapons.",
                        (rect.x + 12, yy + 28), theme.TEXT_DIM, 11)
         hud.ui.add(pygame.Rect(rect.x, yy - 2, rect.width, 44), lambda: hud.toggle_overlay("scan"), "Open scan view")
+
+    @staticmethod
+    def _aim_labels(groups: list[str | None], room: int) -> tuple[list[str], int]:
+        """The aim buttons' words and size: in full when they fit the row, else shorter, else smaller."""
+        for names, size in ((SUB_LABELS, 10), (SUB_SHORT, 10), (SUB_SHORT, 9)):
+            labels = [names.get(g, g or "hull") for g in groups]
+            if sum(theme.text_width(t, size, "display") + 13 for t in labels) - 3 <= room:
+                break
+        return labels, size
 
     @staticmethod
     def _sensed(hud: BattleScene) -> list[ContactView]:
@@ -725,11 +742,13 @@ class ContactsPanel(Panel):
         for c in obs.contacts().values():
             d = c.distance_to(ship.x, ship.y)
             col = theme.HOSTILE if c.identified else theme.UNKNOWN
-            if not c.visible:
+            if c.exhaust:
+                col = theme.EXHAUST
+            elif not c.visible:
                 col = theme.dim(col, 0.55)
             what = c.cls.abbrev if c.cls else "?"
-            rows.append((d, c.label if c.identified else f"Contact #{c.id}", col, c.id,
-                         f"{what} · {('hazy' if c.haze > 0 else 'tracking') if c.visible else 'lost'}"))
+            state = ("hazy" if c.haze > 0 else "tracking") if c.visible else "exhaust" if c.exhaust else "lost"
+            rows.append((d, c.label if c.identified else f"Contact #{c.id}", col, c.id, f"{what} · {state}"))
         rows.sort()
         rh = 20
         for k, (d, name, col, sid, note) in enumerate(rows):

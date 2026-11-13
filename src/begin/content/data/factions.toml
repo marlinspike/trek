@@ -103,3 +103,40 @@ captains = {competence = 0.55, competence_dev = 0.30, discipline = 0.30, creativ
 colors = {phaser = "#E070FF", phaser_style = "pulse", torpedo = "#FF7AD9", torpedo_style = "pulse"}      # violet bolts, magenta torpedoes
 morale = {start = 60, steadiness = 1.3}   # pirates fight for profit, and break when it stops paying
 temperament = {temper = 0.25, obstinacy = 0.25, deviation = 0.25}
+
+# The Borg Collective [E]: a hive, not a navy. They never yield, never bargain and never break; they adapt to the
+# weapons that hurt them, regenerate, beam drones through shields and assimilate the crews they take
+# (sim/collective.py). `random = false` keeps them out of random battles and patrols: they come in their own
+# battles and in the tour "The Collective".
+#
+# collective (a hive's rules; see CollectiveRules in content/schema.py):
+#   adapt         per weapon family, the damage that teaches the whole hive to shrug it off
+#   floor         share of a fully adapted weapon's damage that still gets through
+#   relearn       how much faster each new phaser frequency is learned than the last
+#   regen_hull    share of the structure grown back per cycle; × regen_hurt while hurt in the last regen_quiet cycles
+#   assimilate    chance a crewman beaten in a boarding round becomes a drone
+#   takeover      per cycle, × the drones' share of the bodies aboard: a system is seized
+#   party / beam_every   drones per beam-over, and cycles between them
+#   sleep_cycles  how long the drones stay dormant when a ship's vinculum relay fails
+#   chain         chance a destroyed drive or reactor sets the ship off (certain while she is dormant)
+#   tune_cut / shift_after   how much a tuned shield turns aside, and how much before they shift frequency
+#   grace         hits with stolen shield harmonics before the hive notices
+[[faction]]
+id = "borg"
+name = "Borg"
+long_name = "The Borg Collective"
+command = "The Collective"
+doctrine = "collective"
+torpedoes = ["bgt"]
+probes = []
+officer_names = []
+captain_names = []
+dogma = {aggression = 0.9, bravery = 1.0, loyalty = 1.0, fanaticism = 0.0, boarding = 0.75, deviation = 0.0}
+computer = {sophistication = 0.95, pd_discipline = 0.9}
+sensors = {range = 1.1}
+captains = {competence = 0.85, competence_dev = 0.0, discipline = 1.0, creativity = 0.2, deviation = 0.0}
+colors = {phaser = "#9CFF8A", phaser_style = "cutter", torpedo = "#5DFF7A", torpedo_style = "borg"}   # pale green cutting beams that sweep, green torpedoes
+morale = {start = 100, steadiness = 0.0}     # there is no one to frighten
+temperament = {temper = 0.0, obstinacy = 1.0, deviation = 0.0}
+random = false
+collective = {adapt = {phaser = 1300.0, torpedo = 2200.0, harmonic = 3000.0, probe = 900.0}, floor = 0.25, relearn = 0.35, regen_hull = 0.002, regen_hurt = 0.25, regen_quiet = 6.0, assimilate = 0.65, takeover = 0.18, party = 14, beam_every = 9.0, sleep_cycles = 50.0, chain = 0.25, tune_cut = 0.6, shift_after = 140.0, grace = 14}

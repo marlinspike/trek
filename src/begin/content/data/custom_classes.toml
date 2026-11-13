@@ -1,0 +1,295 @@
+# Hand-written ship classes [E]. The importer regenerates classes.toml but never touches this file.
+# Every field of a class is needed unless it is made from another with `base = "<class id>"`.
+
+# ---------------------------------------------------------------- Federation
+
+# The Enterprise after her cloak refit in the tour "The Collective": a Dreadnought with a cloaking device Geordi
+# and Spock built from Romulan salvage. Only that story fits it; every other battle has the plain Dreadnought.
+[[class]]
+id = "federation.dnc"
+base = "federation.dn"
+name = "Dreadnought (cloak refit)"
+abbrev = "DN"
+story = true
+can_cloak = true
+cloak_fire = true          # made to fire through: no lingering reveal, only the flash where she fired
+cloak_energy = 160.0
+repair = {reactor = 1.0, battery = 1.2, phaser = 0.6, tube = 0.4, launcher = 0.8, drive = 0.2, shield = 0.4, transporter = 1.0, sensors = 1.0, cloak = 0.5, impulse = 1.0, tractor = 1.0}
+
+# A shuttlecraft: unarmed, small enough for the Borg to ignore while something bigger hurts them. An away team
+# flies one across to a Borg ship (sim/away.py).
+[[class]]
+id = "federation.sh"
+name = "Shuttlecraft"
+abbrev = "SH"
+faction = "federation"
+craft = true
+era = "remake"
+torpedo = "mk7"
+probe = "px2"
+crew = 8
+mass = 6
+max_warp = 5.0
+w1accel = 3.0
+decel = 3.0
+warp_power_use = 4.0
+w1turn = 260.0
+destruct = 0.0
+destruct_energy = 2
+scanner_reflect = 0.25
+scanner_range = 30000.0
+reactors = 1
+reactor_output = 25.0
+batteries = 1
+battery_capacity = 40.0
+banks = 0
+banks_rate = 0.0
+banks_charge = 10.0
+banks_range = 0.0
+tubes = 0
+launchers = 0
+drives = 1
+warp_power = 22.0
+warp_efficiency = 0.8
+shields = 6
+shield_strength = 25.0
+shield_absorption = 0.5
+shield_recharge = 0.5
+shield_energy = 1.0
+transporters = 1
+beam_cap = 8
+beam_range = 3000.1
+can_cloak = false
+cloak_energy = 0.0
+armour = 0.0
+mass_capacity = 0.0
+docked_repair_ratio = 1.0
+life_support = 20
+has_impulse = true
+has_tractor = false
+tractor_strength = 0
+tractor_energy = 0.0
+torps_carried = 0
+probes_carried = 0
+ship_names = ["Galileo", "Copernicus", "Magellan", "Columbus", "Onizuka", "Sakharov", "El-Baz", "Goddard"]
+[class.repair]
+reactor = 1.0
+battery = 1.0
+phaser = 0.0
+tube = 0.0
+launcher = 0.0
+drive = 0.5
+shield = 0.5
+transporter = 1.0
+sensors = 1.0
+cloak = 0.0
+impulse = 1.0
+tractor = 0.0
+
+# ---------------------------------------------------------------- the Borg [E]
+#
+# Borg ships carry far more power than their size suggests (thousands of drones need life support too) and
+# their drives run cool: a cube never burns out her own engines.
+# Drones repair whatever is hurt as fast as it is hurt (high repair rates), shields recharge quickly, and the
+# hull grows back (collective.regen_hull in factions.toml). Crew counts are drones.
+
+[[class]]
+id = "borg.pr"
+name = "Probe"
+abbrev = "PR"
+faction = "borg"
+era = "remake"
+torpedo = "bgt"
+probe = ""
+crew = 260
+mass = 110
+max_warp = 9.0
+w1accel = 2.4
+decel = 2.4
+warp_power_use = 40.0
+w1turn = 110.0
+destruct = 0.0
+destruct_energy = 30
+scanner_reflect = 1.0
+scanner_range = 55000.0
+reactors = 4
+reactor_output = 70.0
+batteries = 4
+battery_capacity = 100.0
+banks = 3
+banks_rate = 3.0
+banks_charge = 10.0
+banks_range = 2400.0
+tubes = 2
+launchers = 0
+drives = 2
+warp_power = 200.0
+warp_efficiency = 0.95
+shields = 6
+shield_strength = 150.0
+shield_absorption = 0.8
+shield_recharge = 1.0
+shield_energy = 14.0
+transporters = 2
+beam_cap = 10
+beam_range = 3000.1
+can_cloak = false
+cloak_energy = 0.0
+armour = 0.0
+mass_capacity = 0.0
+docked_repair_ratio = 1.0
+life_support = 400
+has_impulse = true
+has_tractor = true
+tractor_strength = 700
+tractor_energy = 60.0
+torps_carried = 40
+probes_carried = 0
+ship_names = ["Probe 7 of 12", "Probe 3 of 9", "Probe 2 of 4", "Probe 5 of 8", "Probe 9 of 11", "Probe 1 of 6"]
+[class.repair]
+reactor = 2.4
+battery = 2.4
+phaser = 2.0
+tube = 1.6
+launcher = 1.0
+drive = 1.2
+shield = 1.6
+transporter = 2.4
+sensors = 2.4
+cloak = 0.0
+impulse = 2.4
+tractor = 2.4
+
+[[class]]
+id = "borg.sp"
+name = "Sphere"
+abbrev = "SP"
+faction = "borg"
+era = "remake"
+torpedo = "bgt"
+probe = ""
+crew = 1400
+mass = 330
+max_warp = 9.0
+w1accel = 1.6
+decel = 1.6
+warp_power_use = 100.0
+w1turn = 70.0
+destruct = 0.0
+destruct_energy = 70
+scanner_reflect = 1.6
+scanner_range = 60000.0
+reactors = 8
+reactor_output = 75.0
+batteries = 8
+battery_capacity = 110.0
+banks = 6
+banks_rate = 3.0
+banks_charge = 10.0
+banks_range = 2600.0
+tubes = 4
+launchers = 0
+drives = 3
+warp_power = 330.0
+warp_efficiency = 0.95
+shields = 6
+shield_strength = 240.0
+shield_absorption = 0.85
+shield_recharge = 1.0
+shield_energy = 30.0
+transporters = 6
+beam_cap = 12
+beam_range = 3000.1
+can_cloak = false
+cloak_energy = 0.0
+armour = 0.0
+mass_capacity = 0.0
+docked_repair_ratio = 1.0
+life_support = 2000
+has_impulse = true
+has_tractor = true
+tractor_strength = 1600
+tractor_energy = 120.0
+torps_carried = 120
+probes_carried = 0
+ship_names = ["Sphere 4 of 13", "Sphere 9 of 31", "Sphere 2 of 17", "Sphere 6 of 22", "Sphere 11 of 40", "Sphere 7 of 19"]
+[class.repair]
+reactor = 2.2
+battery = 2.2
+phaser = 1.8
+tube = 1.4
+launcher = 1.0
+drive = 1.0
+shield = 1.4
+transporter = 2.2
+sensors = 2.2
+cloak = 0.0
+impulse = 2.2
+tractor = 2.2
+
+[[class]]
+id = "borg.cu"
+name = "Cube"
+abbrev = "CU"
+faction = "borg"
+era = "remake"
+torpedo = "bgt"
+probe = ""
+crew = 9000
+mass = 1900
+max_warp = 7.0
+w1accel = 0.8
+decel = 0.8
+warp_power_use = 420.0
+w1turn = 30.0
+destruct = 0.0
+destruct_energy = 160
+scanner_reflect = 3.0
+scanner_range = 70000.0
+reactors = 14
+reactor_output = 150.0
+batteries = 12
+battery_capacity = 140.0
+banks = 12
+banks_rate = 3.0
+banks_charge = 10.0
+banks_range = 2900.0
+tubes = 6
+launchers = 0
+drives = 6
+warp_power = 520.0
+warp_efficiency = 0.95
+shields = 6
+shield_strength = 420.0
+shield_absorption = 0.88
+shield_recharge = 1.1
+shield_energy = 60.0
+transporters = 12
+beam_cap = 15
+beam_range = 3200.1
+can_cloak = false
+cloak_energy = 0.0
+armour = 0.0
+mass_capacity = 0.0
+docked_repair_ratio = 1.0
+life_support = 15000
+has_impulse = true
+has_tractor = true
+tractor_strength = 8000
+tractor_energy = 300.0
+torps_carried = 400
+probes_carried = 0
+ship_names = ["Cube 630", "Cube 512", "Cube 117", "Cube 909", "Cube 401", "Cube 228", "Cube 73"]
+[class.repair]
+reactor = 2.0
+battery = 2.0
+phaser = 1.6
+tube = 1.2
+launcher = 1.0
+drive = 0.9
+shield = 1.2
+transporter = 2.0
+sensors = 2.0
+cloak = 0.0
+impulse = 2.0
+tractor = 2.0

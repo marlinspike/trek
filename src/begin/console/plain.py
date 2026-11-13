@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from ..sim.away import SHUTTLE_NAMES
 from .vocab import AIM_FIRST, VERBS, candidates, is_num, match_word, system_word
 
 
@@ -24,7 +25,29 @@ _POSSESSIVE = re.compile(r"\b(their|her|its|his|them|enemy|enemies|all|both|ever
 _SOFT_DISABLE = re.compile(r"^(?:hit|shoot(?:\s+at)?|go\s+after|bring\s+down|take\s+down|knock\s+down|get|"
                            r"blast|pound|hammer|concentrate\s+(?:fire\s+)?on)\s+(.+)$")
 _WANT_DOWN = re.compile(r"^(?:i want|i need|we need|i'?d like)\s+((?:their|her|its|his)\b.*?)\s+(?:down|out|gone|offline)\W*$")
-_REWRITES: tuple[tuple[re.Pattern[str], str], ...] = (
+_PLASMA = r"(?:warp\s+|nacelle\s+)?(?:exhaust|plasma(?:\s+trails?)?|trails?|leaks?)"
+_HIVE_REWRITES: tuple[tuple[re.Pattern[str], str], ...] = (
+    # [E] the Borg and the hunt by plasma, in a captain's words
+    (re.compile(r"^(" + "|".join(n.lower() for n in SHUTTLE_NAMES) + r")\b[\s,:]*(.*)$"), r"hail \1 \2"),   # "Galileo, come back"
+    (re.compile(r"^(?:take|fly|grab|use|get\s+in(?:to)?)\s+(?:a|the|one\s+of\s+the)\s+shuttle(?:craft)?s?\b"
+                r"\s*(?:over\s+|across\s+)?(?:to\s+)?(.*)$"), r"away \1"),
+    (re.compile(r"^(?:go|beam)\s+(?:over|across|aboard)\b\s*(?:to\s+)?(.*)$"), r"away \1"),
+    (re.compile(r"^(?:look|search|scan|sniff|watch|check|hunt)\s+(?:out\s+)?(?:around\s+)?for\s+(?:any\s+)?"
+                + _PLASMA + r"\b.*$"), "sweep"),
+    (re.compile(r"^(?:try\s+(?:to\s+)?)?(?:detect|find|look\s+for|search\s+for)\s+(?:any\s+)?"
+                r"(?:ships?|anything|anyone|contacts?)\s+(?:nearby|around|close\s+by|out\s+there)\W*$"), "sweep"),
+    (re.compile(r"^(?:try\s+(?:to\s+)?)?(?:find|follow|track|detect|trace)\s+(.+?)\s+(?:by|from|through|with)\s+"
+                r"(?:her|its|his|their|the)\s+" + _PLASMA + r"\W*$"), r"sweep \1"),
+    (re.compile(r"^(?:program|design|build|make|rig|prepare|modify)\s+(?:us\s+)?(?:a|the|some)?\s*"
+                r"(?:torpedo(?:es)?|torps?|round)\s+(?:to\s+|that\s+will\s+|that\s+can\s+)?"
+                r"(?:follow|track|chase|ride|home\s+on|seek|hunt)\b.*$"), "design seeker"),
+    (re.compile(r"^(?:fire|launch|send)\s+(?:a\s+|the\s+|our\s+)?(?:plasma[-\s])?seekers?\b\s*(.*)$"), r"seeker \1"),
+    (re.compile(r"^(?:scan|analy[sz]e|study|survey)\s+(?:.+?\s+)?(?:for\s+)?(?:(?:the|their|her|its)\s+)?"
+                r"(?:shield\s+)?harmonics\W*$"), "duty harmonics"),
+    (re.compile(r"^(?:find|get|crack|steal\s+their)\s+(?:the\s+|their\s+|her\s+|its\s+)?(?:shield\s+)?harmonics\W*$"),
+     "duty harmonics"),
+)
+_REWRITES: tuple[tuple[re.Pattern[str], str], ...] = _HIVE_REWRITES + (
     (re.compile(r"^all\s+stop\b"), "stop"),                           # "all stop": the engines, as on any bridge
     (re.compile(r"^i'?ll\s+take\s+(?:it\s+from\s+here|over|it)\b"), "i have it"),
     (re.compile(r"^i'?ll\s+(?:take|handle|run)\s+"), "i have "),         # "I'll take the helm"
@@ -51,7 +74,7 @@ def plain_order(text: str) -> str:
     for pat, repl in _REWRITES:
         new = pat.sub(repl, low, count=1)
         if new != low:
-            return new
+            return new.strip()
     m = _WANT_DOWN.match(low)
     if m is not None and any(system_word(w) for w in m.group(1).split()):
         return f"disable {m.group(1)}"           # "I want their shields down"

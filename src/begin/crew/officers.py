@@ -31,8 +31,10 @@ from ..ai.personality import Personality
 from ..content.schema import ContentDB
 from ..core.rng import Rng
 from ..sim.allies import AllyStanding
+from ..sim.away import TASKS
+from ..sim.collective import CODE_AT, TUNE_BLOCKS_BEAMING
 from ..sim.commands import (
-    Authority, Command, ConfigureAutoload, ControlProbe, DeflectorPulse, Dock, EndObjective, EngineBoost, Evasive, FireAtPoint, FirePhasers,
+    Authority, Command, ConfigureAutoload, Remodulate, SetDuty, ControlProbe, DeflectorPulse, Dock, EndObjective, EngineBoost, Evasive, FireAtPoint, FirePhasers,
     FireSpecialRound, FireTorpedoes, LaunchProbe, LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetObjective, SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, StartProject, TurnMounts,
     offensive_fire,
@@ -43,16 +45,16 @@ from ..sim.ship import HULL, HelmMode, Kind, RepairTarget, Ship
 from ..sim.systems.ordnance import suggested_prox
 from .characters import STATIONS, OfficerProfile
 from .helm import HelmPlan, incoming, plan_helm, support_range, threatened
-from .objectives import Planner
+from .objectives import Planner, label, progress
 
 STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
     "helm": (SetHelm, Pursue, Evasive, Dock),
     "tactical": (SelectTarget, LockWeapons, TurnMounts, FirePhasers, SetPhaserSpread, SetBanks, FireTorpedoes, FireAtPoint,
                  ConfigureAutoload, LoadTubes, SetTubes, LaunchProbe, ControlProbe, SetFireMode, SetPointDefense,
-                 FireSpecialRound),
+                 FireSpecialRound, Remodulate),
     "engineering": (SetShields, ReinforceShield, SetRepairPriority, SetCloak, EngineBoost),
-    "science": (Scan, StartProject, DeflectorPulse, SetObjective, EndObjective),
-}
+    "science": (Scan, StartProject, DeflectorPulse, SetObjective, EndObjective, SetDuty),
+}   # (Countermeasure and AwayTeam stay the captain's: who goes across, and when to vent a section)
 
 OUTNUMBERED_RANGE = 15000.0   # hostile ships this close count against us when the officer judges the odds
 TEMPERED_AGGRESSION = 0.55
@@ -60,6 +62,8 @@ OUTNUMBERED_DOCK = 0.3        # damage at which an outnumbered officer takes her
 APPROACH_SLACK = 3000.0   # beyond the supporting range by more than this, the helm just closes
 EVASIVE_SETTLE = 2.0      # cycles clear of torpedoes before evasive manoeuvres return to the captain's course
 HULL_URGENT = 0.5         # below this share of the hull, patching it comes before spreading the work
+REMODULATE_AT = 0.55      # the hive's grip on our phaser frequency at which an officer changes it [E]
+HIVE_SCAN_CYCLES = 4.0    # between the science officer's harmonic scans [E]
 
 STATION_NAMES = {"helm": "Helm", "tactical": "Tactical", "engineering": "Engineering", "science": "Science"}
 
@@ -310,6 +314,12 @@ def repair_priority(ship: Ship, obs: Observation) -> RepairTarget | None:
     return None
 
 
+def _system(sid: str) -> str:
+    """'battery8' -> 'battery 8'."""
+    stem = sid.rstrip("0123456789")
+    return f"{stem} {sid[len(stem):]}" if stem != sid else sid
+
+
 @dataclass
 class Activity:
     """What one officer is doing right now, for the activity panel, the map and their callouts."""
@@ -323,6 +333,7 @@ class Activity:
     plan: HelmPlan | None = None  # the helm's chosen course, for the map
     target: int | None = None
     aim: tuple[float, float, float, int] | None = None   # the last salvo's burst point and spread
+    gauge: float | None = None    # 0..1: how far a long job has got, drawn as a bar beside `progress` [E]
 
 
 @dataclass
@@ -342,16 +353,133 @@ class Crew:
     evasive_plan: HelmPlan | None = None    # the helm's last move under evasive manoeuvres, for the HUD
     evasive_seen: frozenset[int] = frozenset()
     evasive_at: int = -10**9                # tick of the last dodge
+    roster: dict[str, OfficerProfile] = field(default_factory=dict)    # everyone aboard, by id (the bench too) [E]
+    regulars: dict[str, OfficerProfile] = field(default_factory=dict)  # who runs each station when all are aboard
+    covering: list[tuple[str, OfficerProfile, OfficerProfile | None]] = field(default_factory=list)
+    hive_at: int = -10 ** 9                 # tick of the last hive-duty action
+    # ^ stand-ins who have just taken a station (station, who, for whom), for the bridge to announce
+
+    def __post_init__(self) -> None:
+        for o in self.officers.values():
+            self.roster.setdefault(o.id, o)
+        self.regulars = dict(self.officers)
 
     def officer(self, station: str) -> OfficerProfile | None:
         return self.officers.get(station)
+
+    def everyone(self) -> list[OfficerProfile]:
+        """The station officers first, then the rest of the roster (Sulu, Chekov, the Doctor)."""
+        return list(dict.fromkeys([*self.officers.values(), *self.roster.values()]))
+
+    def present(self, ship: Ship | None) -> list[OfficerProfile]:
+        """Who is aboard and fit for duty: not on an away team, not in sickbay."""
+        out = self.everyone()
+        if ship is None:
+            return out
+        gone = ship.away | ship.wounded
+        return [o for o in out if o.id not in gone]
+
+    def absent(self, ship: Ship | None, o: OfficerProfile) -> str:
+        """Why an officer can't answer: "away" (on an away team), "sickbay" (hurt), or "" (here)."""
+        if ship is None:
+            return ""
+        return "away" if o.id in ship.away else "sickbay" if o.id in ship.wounded else ""
+
+    def cover(self, ship: Ship) -> None:
+        """Fill each station whose officer is away or hurt with whoever covers it [E]: Spock takes science for Seven,
+        Chekov the helm Spock leaves, Sulu tactical for Worf. Back aboard, the regulars take their stations again."""
+        gone = ship.away | ship.wounded
+        want = {st: o for st, o in self.regulars.items() if o.id not in gone}
+        busy = {o.id for o in want.values()}
+
+        def free(station: str) -> OfficerProfile | None:
+            return next((o for o in self.roster.values() if station in o.covers and o.id not in gone
+                         and o.id not in busy), None)
+
+        for station in STATIONS:
+            if station in want or station not in self.regulars:
+                continue
+            sub = free(station)
+            if sub is None:
+                # a regular who covers it (Spock) moves across, if someone (Chekov) can take his own station
+                for st, o in list(want.items()):
+                    if station in o.covers and self.regulars.get(st) is o:
+                        busy.discard(o.id)
+                        back = free(st)
+                        busy.add(o.id)
+                        if back is not None:
+                            want[st] = back
+                            busy.add(back.id)
+                            sub = o
+                            break
+            if sub is not None:
+                want[station] = sub
+                busy.add(sub.id)
+        want = {st: want[st] for st in STATIONS if st in want}
+        if want == self.officers:
+            return
+        for station, o in want.items():
+            if self.officers.get(station) is not o:
+                self.covering.append((station, o, self.regulars.get(station)))
+                self.brains.pop(station, None)
+        for station in list(self.officers):
+            if station not in want:
+                self.brains.pop(station, None)
+        self.officers = want
+
+    def _scanner(self, ship: Ship, commander: OfficerProfile | None) -> str:
+        """Who runs a routine scan: the officer with the conn, else the science officer (their skill counts
+        against the Borg)."""
+        if commander is not None and "science" in ship.delegated:
+            return commander.id
+        o = self.officers.get("science")
+        return o.id if o is not None else ""
+
+    def _hive_work(self, obs: Observation, ship: Ship) -> list[Command]:
+        """The Borg duties [E]: the science officer's survey and shield tuning, and remodulating the phasers before
+        the hive has learned them. A science officer running her own station takes the harmonic survey without
+        being asked (Seven, or Spock in her place); a delegated tactical officer remodulates on his own."""
+        hives = [c for c in obs.hostile_contacts() if c.visible and c.identified and obs.is_hive(c.id)]
+        if not hives:
+            return []
+        tpc = obs.rules.ticks_per_cycle
+        if obs.tick - self.hive_at < tpc:
+            return []
+        sci = self.officers.get("science")
+        out: list[Command] = []
+
+        def cmd(cls: type[Command], who: OfficerProfile | None, **kw: object) -> Command:
+            return cls(ship_id=ship.id, issuer=Authority.OFFICER, source=who.title if who else "Science", **kw)  # type: ignore[arg-type]
+
+        unsurveyed = [c for c in hives if (sv := obs.survey(c.id)) is None or sv.progress < CODE_AT]
+        if "science" in ship.delegated and sci is not None and sci.id in ("seven", "spock") and sci.id not in ship.away:
+            if not ship.duty and unsurveyed:
+                out.append(cmd(SetDuty, sci, duty="harmonics", by=sci.id))
+            elif ship.duty == "harmonics" and not unsurveyed and ship.shields:
+                out.append(cmd(SetDuty, sci, duty="shields", by=sci.id))   # harmonics done: tune the shields
+        if ship.duty == "harmonics" and unsurveyed and obs.tick - self.hive_at >= HIVE_SCAN_CYCLES * tpc:
+            reach = ship.sensor_range() * obs.rules.scan_range_fraction
+            near = [c for c in unsurveyed if c.distance_to(ship.x, ship.y) <= reach]
+            if near and obs.pending_scan(ship.id) is None:
+                c = min(near, key=lambda c: (c.id != ship.target, c.distance_to(ship.x, ship.y)))
+                out.append(cmd(Scan, self.find(ship.duty_by), target=c.id, by=ship.duty_by))
+        tac = self.officers.get("tactical")
+        watcher = (self.find(ship.duty_by) if ship.duty == "phasers" else
+                   tac if "tactical" in ship.delegated else None)
+        if watcher is not None and ship.remodulating <= 0 and ship.banks:
+            grip = max((obs.adaptation(c.id, ship.id).get("phaser", 0.0) for c in hives), default=0.0)
+            if grip >= REMODULATE_AT:
+                out.append(cmd(Remodulate, watcher, by=watcher.id))
+        if out:
+            self.hive_at = obs.tick
+        return out
 
     def find(self, name: str) -> OfficerProfile | None:
         """An officer by id, name, alias or station, or a unique prefix of one."""
         q = name.lower().strip(" ,:")
         if not q:
             return None
-        everyone = list(dict.fromkeys(self.officers.values()))
+        everyone = self.everyone()
         for o in everyone:
             if q in (o.id, o.name.lower(), o.station, *o.aliases):
                 return o
@@ -435,8 +563,6 @@ class Crew:
 
     def activity(self, obs: Observation) -> list[Activity]:
         """Every officer doing something the captain asked for: flying the ship, or working an objective."""
-        from .objectives import label, progress
-
         ship = obs.own(self.ship_id)
         if ship is None or not ship.alive:
             return []
@@ -473,6 +599,53 @@ class Crew:
                                 pl.step_kind if pl is not None else "", pl.step_tick if pl is not None else 0,
                                 progress(obs, o, self.names), target=ship.target,
                                 aim=pl.aim if pl is not None else None))
+        return out + self._hive_activity(obs, ship)
+
+    def _hive_activity(self, obs: Observation, ship: Ship) -> list[Activity]:
+        """The Borg work [E] in the activity panel: the officer on a hive duty with a gauge of how far it has got,
+        and each away team out, with what they are doing over there."""
+        out: list[Activity] = []
+        who = self.find(ship.duty_by) if ship.duty_by else self.officer("science")
+        hives = [c for c in obs.hostile_contacts() if c.identified and obs.is_hive(c.id)]
+        if ship.duty == "harmonics" and who is not None:
+            mine = [c for c in hives if c.visible]
+            c = min(mine, key=lambda c: ((sv := obs.survey(c.id)) is not None and sv.progress >= CODE_AT,
+                                         c.id != ship.target, c.distance_to(ship.x, ship.y)), default=None)
+            if c is not None:
+                sv = obs.survey(c.id)
+                frac = min(1.0, (sv.progress if sv is not None else 0.0) / CODE_AT)
+                found = obs.weak_point(c.id)
+                doing = (f"Scanning the {label(obs, c.id, self.names)} for her shield harmonics" if frac < 1.0 else
+                         f"The {label(obs, c.id, self.names)}'s harmonics are ours")
+                note = f"relay in her {_system(found)}" if found else "her weak point at half way"
+                out.append(Activity(who.id, "Harmonics", doing, "harmonics", 0, f"{frac * 100:.0f}%  ·  {note}",
+                                    target=c.id, gauge=frac))
+        elif ship.duty == "shields" and who is not None:
+            note = "their transporters can't lock on" if ship.tuning >= TUNE_BLOCKS_BEAMING else "drones can still beam in"
+            out.append(Activity(who.id, "Shield harmonics", "Tuning our shields against the hive's weapons", "tune", 0,
+                                f"{ship.tuning * 100:.0f}%  ·  {note}", gauge=ship.tuning))
+        elif ship.duty == "phasers" and who is not None:
+            grip = max((obs.adaptation(c.id, ship.id).get("phaser", 0.0) for c in hives if c.visible), default=0.0)
+            out.append(Activity(who.id, "Phaser frequencies", "Remodulating before the hive learns them", "remodulate", 0,
+                                f"the hive has learned them {grip * 100:.0f}%", gauge=grip))
+        for op in obs.away_ops():
+            if op.mother != ship.id or not op.members:
+                continue
+            lead = self.find(op.members[0])
+            if lead is None:
+                continue
+            name = label(obs, op.shuttle, self.names) if op.shuttle is not None else "the transporter"
+            where = label(obs, op.target, self.names)
+            doing = {"outbound": f"Crossing to the {where}", "aboard": TASKS[op.task][1][:1].upper() + TASKS[op.task][1][1:],
+                     "return": "Coming home"}.get(op.phase, "")
+            total = TASKS[op.task][0]
+            prog = (f"{op.work:.0f} cycles to go" if op.phase == "aboard" else
+                    "they've been noticed" if op.noticed else "")
+            if op.shuttle is not None and op.phase != "return":
+                prog = " · ".join(x for x in (prog, f"hail {name} to change their orders") if x)
+            names = ", ".join(n for m in op.members if (o := self.find(m)) is not None for n in [o.name.split()[0]])
+            out.append(Activity(lead.id, f"Away team · {names} · {name}", doing, "away", op.started, prog,
+                                target=op.target, gauge=1.0 - op.work / total if op.phase == "aboard" else None))
         return out
 
     def move_to(self, ship_id: int) -> None:
@@ -497,7 +670,9 @@ class Crew:
         ship = obs.own(self.ship_id)
         if ship is None or not ship.alive or ship.crew <= 0:
             return []
-        out = self._objectives(obs, ship) + self._repairs(obs, ship) + self._evasive(obs, ship)
+        self.cover(ship)
+        out = (self._objectives(obs, ship) + self._repairs(obs, ship) + self._evasive(obs, ship)
+               + self._hive_work(obs, ship))
         if not ship.delegated:
             return out
         commander = self.find(ship.conn) if ship.conn else None
@@ -510,6 +685,7 @@ class Crew:
                 if station not in ship.delegated or station not in self.officers:
                     continue
                 routine.extend(c for c in self._brain(station, ship).think(obs) if station_of(c) == station)
+        routine = [replace(c, by=self._scanner(ship, commander)) if isinstance(c, Scan) else c for c in routine]
         if attacking(ship.objectives):
             # an objective decides targets and offensive fire; it steers only when it has to
             steering = any(isinstance(c, (SetHelm, Pursue)) for c in out)
@@ -522,10 +698,11 @@ class Crew:
 
 
 def default_crew(officers: dict[str, OfficerProfile]) -> dict[str, OfficerProfile]:
-    """Station -> officer: the first officer listed for each station."""
+    """Station -> officer: the first officer listed for each bridge station (the rest stand by)."""
     out: dict[str, OfficerProfile] = {}
     for o in officers.values():
-        out.setdefault(o.station, o)
+        if o.station in STATIONS:
+            out.setdefault(o.station, o)
     return out
 
 

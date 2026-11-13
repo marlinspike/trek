@@ -79,8 +79,8 @@ class ShipComputer:
 
     def think(self, obs: Observation) -> Iterable[Command]:
         ship = obs.own(self.ship_id)
-        if ship is None or not ship.alive or ship.crew <= 0:
-            return []
+        if ship is None or not ship.alive or ship.crew <= 0 or ship.dormant > 0:
+            return []    # [E] a dormant Borg ship's drones sleep at their stations
         out: list[Command] = []
         out.extend(self._point_defense(obs, ship))
         if obs.tick - self.last_offense_tick >= 5:

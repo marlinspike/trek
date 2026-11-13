@@ -18,10 +18,12 @@ from ..content.schema import ContentDB, ShipClass
 from .events import ContactChanged, Event, Message
 from .rules import Rules
 from .ship import Ship, ShipStatus
-from .systems.sensors import Assessment, ScanRecord
+from .systems.sensors import PLASMA_LIFE, TRAIL_ERROR, Assessment, ScanRecord
 
 if TYPE_CHECKING:
     from .allies import AllyStanding
+    from .away import AwayOp
+    from .collective import Insight, Mind, Survey
     from .systems.disposition import Reading
     from .world import Outcome, PendingScan, World
 
@@ -46,6 +48,7 @@ class ContactView:
     assessed: Assessment | None = None   # her condition as our own hits have shown it, kept current
     haze: float = 0.0           # 0 = exact; up to 1 beyond rated sensor range
     uncertainty: float = 0.0    # possible position error, world units
+    exhaust: bool = False       # [E] not on sensors, but placed (roughly) by her plasma trail: a cloaked, damaged ship
 
     def distance_to(self, x: float, y: float) -> float:
         return math.hypot(self.x - x, self.y - y)
@@ -69,6 +72,7 @@ class OrdnanceView:
     fuse: float = 0.0           # own ordnance: cycles until the time fuse expires
     count: int = 1              # rounds flying together in this group (a salvo), which anyone can count
     faction: str = ""           # whose make it is: anyone can tell a race's torpedoes by their look [E]
+    follow: int | None = None   # own plasma-seekers [E]: the ship whose plasma trail it flies
 
 
 def _make(w: World, owner: int | None) -> str:
@@ -127,13 +131,16 @@ class Observation:
                         continue
                     age = (w.tick - c.last_tick) * w.rules.dt
                     vx, vy = (c.vx, c.vy) if c.visible or intel.dead_reckoning else (0.0, 0.0)
+                    exhaust = not c.visible and c.trail >= 0 and w.tick - c.trail <= 2 * w.rules.ticks_per_cycle
                     out[cid] = ContactView(
                         id=cid, label=w.label(self.side, cid), visible=c.visible, identified=c.identified,
                         side=s.side if c.identified else None, cls=s.cls if c.identified else None,
                         x=pos[0], y=pos[1], vx=vx, vy=vy, course=c.course, warp=c.warp, age=age,
                         scan=c.scan, cloaked_hint=(not c.visible and s.cls.can_cloak and c.identified),
-                        haze=c.haze if c.visible else 0.0, uncertainty=c.uncertainty if c.visible else 0.0,
+                        haze=c.haze if c.visible else 0.0,
+                        uncertainty=c.uncertainty if c.visible else (TRAIL_ERROR if exhaust else 0.0),
                         assessed=c.assessed,
+                        exhaust=exhaust,
                     )
             self._contacts = out
         return self._contacts
@@ -155,8 +162,11 @@ class Observation:
         w = self._w
         rules = w.rules
         out: list[tuple[int, float, float, float, float]] = []
+        from . import collective
+
         for s in w.ships.values():
-            if not s.exists or not 0.0 < s.self_destruct <= 5.0:
+            critical = 0.0 < s.critical <= 5.0      # [E] a Borg ship going up in a chain reaction
+            if not s.exists or not (0.0 < s.self_destruct <= 5.0 or critical):
                 continue
             if s.side == self.side:
                 x, y = s.x, s.y
@@ -167,6 +177,10 @@ class Observation:
                 x, y = c.x, c.y
             from .systems.power import warp_budget
 
+            if critical:
+                reach = collective.chain_energy(s) * rules.splash_mult * rules.splash_radius_per_damage
+                out.append((s.id, x, y, s.critical, reach * collective.CHAIN_RADIUS))
+                continue
             energy = warp_budget(s) / rules.destruct_divisor + s.cls.destruct
             out.append((s.id, x, y, s.self_destruct, energy * rules.splash_mult * rules.splash_radius_per_damage))
         return out
@@ -197,6 +211,7 @@ class Observation:
                     t.id, "torpedo", mine, t.owner if mine else None, t.x, t.y, t.course, t.velocity * upw,
                     t.armed, t.yield_ if mine else t.spec.damage, t.prox if mine else t.spec.max_prox,
                     t.target if mine else None, count=t.salvo, faction=_make(w, t.owner),
+                    follow=t.follow if mine else None,
                 ))
             for p in w.probes:
                 if p.detonate:
@@ -272,6 +287,97 @@ class Observation:
         if me is None or s is None or not s.alive or s.side == self.side:
             return None
         return reading(self._w, me, s)
+
+    # ------------------------------------------------------------- the Borg [E] (sim/collective.py, sim/away.py)
+
+    def is_hive(self, ship_id: int) -> bool:
+        """A Borg ship (an identified contact, or one of ours)."""
+        from . import collective
+
+        s = self._w.ships.get(ship_id)
+        if s is None:
+            return False
+        if s.side != self.side:
+            c = self.contact(ship_id)
+            if c is None or not c.identified:
+                return False
+        return collective.is_hive(self._w, s)
+
+    def hive(self) -> Mind | None:
+        """Our own hive's memory, when we are the Borg: who has hurt us, and what we have learned."""
+        from . import collective
+
+        own = next((s for s in self.own_ships(alive_only=False) if collective.is_hive(self._w, s)), None)
+        return self._w.minds.get(own.faction) if own is not None else None
+
+    def adaptation(self, ship_id: int, by: int) -> dict[str, float]:
+        """How far a Borg contact's hive has adapted to the weapons of our ship `by`: phaser (her current
+        frequency), torpedo and harmonic, 0..1 each. Seven can read it in how their shields answer."""
+        from . import collective
+
+        s, me = self._w.ships.get(ship_id), self.own(by)
+        if s is None or me is None or not self.is_hive(ship_id):
+            return {}
+        m = self._w.minds.get(s.faction)
+        if m is None:
+            return {f: 0.0 for f in ("phaser", "torpedo", "harmonic")}
+        return {f: m.level(collective.weapon_key(f, me)) for f in ("phaser", "torpedo", "harmonic")}
+
+    def insight(self) -> Insight:
+        """What our side has learned of the hives: surveys, stolen harmonics."""
+        from . import collective
+
+        return self._w.insight.get(self.side) or collective.Insight()
+
+    def survey(self, ship_id: int) -> Survey | None:
+        ins = self._w.insight.get(self.side)
+        return ins.surveys.get(ship_id) if ins is not None else None
+
+    def weak_point(self, ship_id: int) -> str | None:
+        """The system a Borg ship's vinculum relay runs through, once our scans have found it."""
+        ins = self._w.insight.get(self.side)
+        s = self._w.ships.get(ship_id)
+        if ins is None or s is None or not ins.knows_weak(ship_id) or not s.weak_point:
+            return None
+        return s.weak_point
+
+    def dormant(self, ship_id: int) -> float:
+        """Cycles before a dark Borg ship's drones wake (0: awake). Anyone can see a ship go dark."""
+        s = self._w.ships.get(ship_id)
+        return s.dormant if s is not None and (s.side == self.side or self._w.is_visible(self.side, ship_id)) else 0.0
+
+    def away_ops(self) -> list[AwayOp]:
+        """Our away teams, out or coming home."""
+        return [op for op in self._w.away_ops if op.phase != "done" and (s := self._w.ships.get(op.mother)) is not None
+                and s.side == self.side]
+
+    def plasma(self) -> dict[int, list[tuple[float, float, int]]]:
+        """[E] The plasma trails our sensors can make out, by the ship venting them: (x, y, tick) oldest first.
+        A cloaked ship with a damaged warp drive shows only this way."""
+        from .systems import sensors
+
+        return sensors.plasma_seen(self._w, self.side)
+
+    def plasma_fresh(self, born: int) -> float:
+        """How fresh a point of plasma trail laid at tick `born` still is: 1 just laid, 0 gone."""
+        return max(0.0, 1.0 - (self.tick - born) / (PLASMA_LIFE * self.rules.ticks_per_cycle))
+
+    def venting(self) -> dict[int, list[tuple[float, float, int]]]:
+        """[E] The plasma trails our own ships are leaving: what any enemy sensor in range can follow."""
+        return {sid: list(pts) for sid, pts in self._w.plasma.items()
+                if (s := self._w.ships.get(sid)) is not None and s.side == self.side}
+
+    def leaking(self, ship_id: int) -> bool:
+        """One of ours is venting warp plasma that anyone can follow (a damaged drive, at warp) [E]."""
+        from .systems import sensors
+
+        s = self.own(ship_id)
+        return s is not None and sensors.leaking(s)
+
+    def noticed(self) -> set[int]:
+        """Small craft our hive has noticed (the Borg ignore the rest)."""
+        m = self.hive()
+        return m.noticed if m is not None else set()
 
     # ------------------------------------------------------------- events
 

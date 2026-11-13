@@ -40,6 +40,7 @@ from ..core.angles import ang_dist, bearing, norm360
 from ..core.rng import Rng
 from ..sim.commands import (
     Authority, Command, ConfigureAutoload, ControlProbe, Dock, FirePhasers, FireTorpedoes, LaunchProbe, ReinforceShield,
+    Remodulate,
     SelectTarget, SelfDestruct, SetCloak, SetHelm, SetShields, Surrender, Tractor, Transport,
 )
 from ..crew.helm import incoming, plan_helm, threatened
@@ -79,6 +80,7 @@ AI_KNIFE_FIGHT_RANGE = 1.5       # [E] × phaser range: inside it, fight rather 
 AI_BASE_STANDOFF = 0.6           # [E] × phaser range: the closest an attacker comes to a base
 AI_STANDOFF_OPEN_ANGLE = 70.0     # [E] degrees off dead astern when opening to torpedo standoff
 AI_FANATIC_RAM = 0.9
+AI_REMODULATE_AT = 0.6           # [E] the Borg's grip on our phasers at which a captain changes frequency
 AI_WEAVE_CADENCE = 2.0           # [R] cycles a weave leg is held before the helm swings to the other side
 AI_INCOMING_CONE = 10.0          # [R] degrees: a ship heading at us within this is "incoming"
 AI_FLEE_MARGIN = 1.2             # × a self-destruct's blast radius: inside it, run [R reflex, margin E]
@@ -500,6 +502,7 @@ class AICaptain:
             out.extend(self._weapons(obs, ship, c, st))
         out.extend(self._shields(obs, ship, c))
         out.extend(self._cloak(obs, ship, c))
+        out.extend(self._remodulate(obs, ship, c))
         handled = False
         if st is not None:
             handled = self._standing_orders(obs, ship, c, st, out)
@@ -516,6 +519,14 @@ class AICaptain:
             if helm is not None:
                 out.append(helm)
         return out
+
+    def _remodulate(self, obs: Observation, ship: Ship, c: ContactView | None) -> list[Command]:
+        """[E] Against the Borg: once they have our phaser frequency, change it."""
+        if c is None or not ship.banks or ship.remodulating > 0 or not obs.is_hive(c.id) or obs.is_hive(ship.id):
+            return []
+        if obs.adaptation(c.id, ship.id).get("phaser", 0.0) < AI_REMODULATE_AT:
+            return []
+        return [self._cmd(Remodulate, ship)]
 
     # ------------------------------------------------------------ reflexes [R]
 

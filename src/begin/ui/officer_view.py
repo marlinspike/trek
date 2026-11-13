@@ -31,6 +31,7 @@ PANEL_W = 470
 AIM_FADE = 4.0          # seconds a salvo's ring stays on the map
 HELM_SECONDS = 5.0      # how far ahead the helm officer's course is drawn
 
+GAUGE_W = 84               # pixels: the bar of a long job's progress [E]
 ROLE_WORDS = {"conn": "has the conn", "helm": "at the helm", "evasive": "evasive manoeuvres"}
 
 
@@ -49,16 +50,16 @@ def draw_panel(surf: pygame.Surface, top_left: tuple[int, int], acts: list[Activ
     if not acts:
         return None
     x, y = top_left
-    rows: list[tuple[str, theme.Color, int, str]] = []
+    rows: list[tuple[str, theme.Color, int, str, float | None]] = []     # text, colour, size, weight, gauge
     for a in acts:
         head = f"{name_of(a.officer_id).upper()}  ·  {ROLE_WORDS.get(a.role, a.role)}"
-        rows.append((head, theme.TEXT if speaking == a.officer_id else theme.CREW, 12, "semibold"))
+        rows.append((head, theme.TEXT if speaking == a.officer_id else theme.CREW, 12, "semibold", None))
         fresh = (tick - a.since) < 2 * tpc
         col = theme.CAUTION if a.kind == "evade" else (theme.TEXT if fresh else theme.TEXT_DIM)
-        rows.append((a.doing, col, 13, "regular"))
-        if a.progress:
-            rows.append((a.progress, theme.TEXT_DIM, 12, "regular"))
-    h = sum(size + 6 for _, _, size, _ in rows) + 12 + 6 * (len(acts) - 1)
+        rows.append((a.doing, col, 13, "regular", None))
+        if a.progress or a.gauge is not None:
+            rows.append((a.progress, theme.TEXT_DIM, 12, "regular", a.gauge))
+    h = sum(size + 6 for _, _, size, _, _ in rows) + 12 + 6 * (len(acts) - 1)
     box = pygame.Rect(x, y, PANEL_W, h)
     theme.shadow(surf, box)
     gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
@@ -66,10 +67,15 @@ def draw_panel(surf: pygame.Surface, top_left: tuple[int, int], acts: list[Activ
     if speaking is not None and any(a.officer_id == speaking for a in acts):
         gfx.draw.rect(surf, theme.CREW, box, 2, border_radius=4)
     cy = y + 7
-    for i, (s, col, size, weight) in enumerate(rows):
+    for i, (s, col, size, weight, gauge) in enumerate(rows):
         if i and weight == "semibold":
             cy += 6
-        theme.text(surf, _fit(s, size, PANEL_W - 20), (x + 10, cy), col, size, weight=weight)
+        tx = x + 10
+        if gauge is not None:              # a long job's progress [E]: a bar, then what it means
+            bar = pygame.Rect(tx, cy + 4, GAUGE_W, 6)
+            theme.bar(surf, bar, gauge, theme.CREW, bg=theme.dim(theme.CREW, 0.22))
+            tx = bar.right + 8
+        theme.text(surf, _fit(s, size, x + PANEL_W - 10 - tx), (tx, cy), col, size, weight=weight)
         cy += size + 6
     return box
 

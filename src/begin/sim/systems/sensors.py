@@ -12,7 +12,7 @@ import random
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ..events import ContactChanged, Message, ScanCompleted, Tone
+from ..events import CloakFlash, ContactChanged, Message, ScanCompleted, Tone
 from ..ship import Kind, Ship
 
 if TYPE_CHECKING:
@@ -60,6 +60,8 @@ class Contact:
     uncertainty: float = 0.0     # how far off the reported position may be, in world units
     scan: ScanRecord | None = None
     assessed: Assessment | None = None
+    ghost: bool = False          # [E] lost to a cloak that leaves nothing to follow: no dead reckoning, the last fix only
+    trail: int = -1              # [E] tick of the last fix from her leaking warp plasma (cloaked, drives damaged)
 
 
 @dataclass(slots=True)
@@ -97,8 +99,11 @@ def update_sensors(world: World) -> None:
             # beyond it the return grows hazier until sensor_haze_limit × range, where it fades out. A cloaked
             # ship is not detected at all (until it gives itself away by firing).
             hidden = s.cloaked and s.reveal_time <= 0
-            ratio = math.inf if hidden else min(
-                (math.hypot(s.x - px, s.y - py) / r for px, py, r in platforms), default=math.inf)
+            true_ratio = min((math.hypot(s.x - px, s.y - py) / r for px, py, r in platforms), default=math.inf)
+            ratio = math.inf if hidden else true_ratio
+            sweeping = any(o.side == side and o.sweep > 0 for o in ships)
+            if hidden and leaking(s) and true_ratio <= (SWEEP_REACH if sweeping else 1.0):
+                _trail_fix(world, side, c, s)        # her damaged nacelles leave a plasma trail [E]
             seen = ratio <= rules.sensor_haze_limit
             exact = ratio <= 1.0
             if seen:
@@ -123,6 +128,7 @@ def update_sensors(world: World) -> None:
                         world.emit(Message(world.tick, f"Contact regained: {world.label(side, s.id)}.",
                                            Tone.CAUTION, visible_to=frozenset({side})))
             elif c.visible:
+                c.ghost = s.cloaked and s.cls.cloak_fire and c.trail < world.tick
                 c.visible = False
                 world.emit(ContactChanged(world.tick, side, s.id, False))
                 if side == world.player_side:
@@ -142,6 +148,90 @@ def update_sensors(world: World) -> None:
                     vis.add(o.id)
                     break
         intel.visible_ordnance = vis
+
+
+TRAIL_ERROR = 700.0          # how far off a fix from a plasma trail may be [E]
+TRAIL_DAMAGE = 25            # % damage at which a warp drive starts to leak plasma [E]
+
+
+PLASMA_LIFE = 40.0           # cycles a plasma trail lingers [E]
+PLASMA_STEP = 0.5            # cycles between trail points
+SWEEP_REACH = 1.6            # × rated sensor range: how far a science sweep follows plasma [E]
+
+
+def update_plasma(world: World) -> None:
+    """[E] Every leaking ship lays a trail of plasma; old trail fades away."""
+    tpc = world.rules.ticks_per_cycle
+    every = max(1, int(PLASMA_STEP * tpc))
+    oldest = world.tick - int(PLASMA_LIFE * tpc)
+    for sid in list(world.plasma):
+        pts = [p for p in world.plasma[sid] if p[2] >= oldest]
+        if pts and sid in world.ships:
+            world.plasma[sid] = pts
+        else:
+            del world.plasma[sid]
+    if world.tick % every:
+        return
+    for s in world.ships.values():
+        if s.alive and leaking(s):
+            world.plasma.setdefault(s.id, []).append((s.x, s.y, world.tick))
+
+
+def plasma_seen(world: World, side: int) -> dict[int, list[tuple[float, float, int]]]:
+    """[E] The plasma trails a side's sensors can make out: points inside rated sensor range of one of its ships
+    (or inside a sweep's reach), for ships not on that side."""
+    plats = []
+    for s in world.ships.values():
+        if s.side == side and s.alive and s.sensor_range() > 0:
+            plats.append((s.x, s.y, s.sensor_range() * (SWEEP_REACH if s.sweep > 0 else 1.0)))
+    out: dict[int, list[tuple[float, float, int]]] = {}
+    for sid, pts in world.plasma.items():
+        s = world.ships.get(sid)
+        if s is None or s.side == side:
+            continue
+        seen = [p for p in pts if any((p[0] - x) ** 2 + (p[1] - y) ** 2 <= r * r for x, y, r in plats)]
+        if seen:
+            out[sid] = seen
+    return out
+
+
+def leaking(ship: Ship) -> bool:
+    """[E] A ship at warp with a damaged warp drive vents plasma that any sensor can follow, cloak or no cloak.
+    Repairs stop it, and so does dropping below warp 1."""
+    return ship.warp >= 1.0 and any(not d.destroyed and d.damage >= TRAIL_DAMAGE for d in ship.drives)
+
+
+def _trail_fix(world: World, side: int, c: Contact, s: Ship) -> None:
+    """A rough fix on a cloaked ship from her plasma trail: where she is, give or take TRAIL_ERROR, with her
+    heading. It updates once a cycle and never makes her visible."""
+    if c.trail >= 0 and world.tick - c.trail < world.rules.ticks_per_cycle:
+        return
+    ex, ey = _haze_offset(world, side, s.id)
+    vx, vy = s.velocity(world.rules.units_per_warp)
+    c.x, c.y, c.vx, c.vy = s.x + ex * TRAIL_ERROR, s.y + ey * TRAIL_ERROR, vx, vy
+    c.course, c.warp, c.last_tick = s.course, s.warp, world.tick
+    c.trail, c.ever, c.ghost = world.tick, True, False
+
+
+def fired_from(world: World, ship: Ship, cycles: float | None = None) -> None:
+    """A ship fired. A cloaked ship shows herself for a while [R]; one whose cloak is made to fire through (the
+    Enterprise's refit) [E] drops it, fires and is gone again in the same moment: everyone sees the flash where she
+    fired, and nothing after it."""
+    reveal = world.rules.cloak_reveal_cycles if cycles is None else cycles
+    if not (ship.cloaked and ship.cls.cloak_fire):
+        ship.reveal_time = max(ship.reveal_time, reveal)
+        return
+    if ship.reveal_time <= 0:
+        for side, intel in world.intel.items():
+            if side == ship.side:
+                continue
+            c = intel.contacts.setdefault(ship.id, Contact(ship.id))
+            c.x, c.y, c.vx, c.vy = ship.x, ship.y, 0.0, 0.0
+            c.course, c.warp, c.last_tick = ship.course, ship.warp, world.tick
+            c.ever, c.ghost = True, True
+    if not world.step_events or not any(isinstance(e, CloakFlash) and e.ship_id == ship.id
+                                        for e in world.step_events):
+        world.emit(CloakFlash(world.tick, ship.id, ship.x, ship.y))
 
 
 def _rated_range(platforms: list[tuple[float, float, float]]) -> float:
@@ -169,7 +259,7 @@ def apparent_position(world: World, side: int, ship_id: int) -> tuple[float, flo
     c = intel.contacts.get(ship_id)
     if c is None or not c.ever:
         return None
-    if c.visible:
+    if c.visible or c.ghost:
         return c.x, c.y
     if intel.dead_reckoning:
         age = min(15.0, (world.tick - c.last_tick) * world.rules.dt)
@@ -207,7 +297,7 @@ def scan_duration(ship: Ship) -> float:
     return 2.5 - 1.5 * ship.sophistication
 
 
-def perform_scan(world: World, ship: Ship, target: Ship) -> None:
+def perform_scan(world: World, ship: Ship, target: Ship, by: str = "") -> None:
     """Complete an active scan: noisy snapshot of the target's condition."""
     rng = world.rng
     soph = ship.sophistication
@@ -240,7 +330,7 @@ def perform_scan(world: World, ship: Ship, target: Ship) -> None:
     if c is not None:
         c.scan = rec
         c.identified = True
-    world.emit(ScanCompleted(world.tick, ship.id, target.id))
+    world.emit(ScanCompleted(world.tick, ship.id, target.id, by))
 
 
 def assess(world: World, side: int, target: Ship) -> Assessment | None:

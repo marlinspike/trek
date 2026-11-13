@@ -41,6 +41,7 @@ from ..sim.observation import Observation
 from ..sim.ship import RepairTarget
 from . import collaborations
 from .characters import OfficerProfile, Relationships
+from .borg_talk import HiveTalk
 from .chatter import Chatter
 from .intents import (
     ADVICE, BOOST, BOOST_OFF, BRIDGE_RELEASE, BRIDGE_TAKE, CAPTURE, CEASE, DISABLE_ORDER, FIRING, GREET, HONORIFIC, HONORIFIC_WORDS, HUNT, KILL_VERBS,
@@ -84,6 +85,7 @@ class Bridge(Chatter):
         self._last_any: int = -999
         self._hull_band: int = 4
         self._cloaked: dict[int, int] = {}       # ship -> tick the science officer said she cloaked [E]
+        self._hive = HiveTalk()                  # what has been said about the Borg [E]
         self._repair_seen: set[str] = set()        # damaged systems already reported
         self._repair_band: int = 4                      # quarter of the hull last reported
         self._repair_said: int = -999                   # tick of the last repair report
@@ -190,6 +192,10 @@ class Bridge(Chatter):
         said_now = self._bridge_order(officer, low, ctx, run)
         if said_now is None and not asked:
             said_now = self._hunt_order(officer, low, run)
+        if said_now is None and not asked and not FIRING.match(low):
+            early = collaborations.matching(officer.id, low, first=True)    # "doctor, inoculate the crew" [E]
+            if early is not None:
+                return self.collaborate(officer, early, run)
         if said_now is None and not asked:
             said_now = self._combat_order(officer, low, run)
         if said_now is None and asked:
