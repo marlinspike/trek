@@ -233,3 +233,23 @@ def test_every_manual_page_on_a_small_window(sweep, content) -> None:  # type: i
         ui.begin_frame()
         sweep.draw(f"manual {tid}", lambda s: view.draw(s, rect, ui), surf)
     assert not sweep.found, sweep.report()
+
+
+def test_the_ready_room_keeps_every_button_and_the_officers_on_a_small_window(content) -> None:  # type: ignore[no-untyped-def]
+    """Found by the full sweep: at 1024×640 the reinforcements button shrank to '…' and the officers' view vanished."""
+    from begin.settings import Settings
+    from begin.ui.tour_scene import TourScene
+
+    pygame.init()
+    surf = pygame.display.set_mode((1024, 640))
+    ts = TourScene(content, Settings(), lambda run: None, lambda: None)
+    ts.open()
+    ts.tour_i, ts.escorts = 0, []
+    ts.commission()
+    ts.update(0.1)
+    with theme.watching() as ink:
+        ts.draw(surf)
+    said = [k.text for k in ink if k.kind != "panel"]
+    assert "YOUR OFFICERS' VIEW" in said
+    assert any(t.startswith(("Request reinforcements", "Reinforcements")) for t in said)
+    assert any(t.startswith("Set course") for t in said)

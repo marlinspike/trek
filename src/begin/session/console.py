@@ -21,6 +21,12 @@ if TYPE_CHECKING:
     from .battle import BattleSession
 
 
+# [E] a captain's answer to an officer's proposal, typed or spoken, as Y and N on the subtitle
+AYE = frozenset(("make it so", "make it so number one", "make it so, number one", "do it", "yes", "aye", "y",
+                 "very well", "proceed", "affirmative", "go ahead", "agreed", "carry on"))
+BELAY = frozenset(("no", "n", "negative", "not now", "no thanks"))     # 'belay (that)' still stops the guns
+
+
 class ConsoleMixin(SessionState):
     def run_console(self: BattleSession, text: str) -> None:
         """Run a console line; ';' separates several commands (as in key macros)."""
@@ -35,6 +41,14 @@ class ConsoleMixin(SessionState):
         self._log(f"{echo}{text}", "friend", channel="bridge")
         if self.player_id is None:
             self._log("No ship under command.", "caution")
+            return
+        said = text.strip().lower().rstrip(".!")
+        if echo == "> " and said in AYE and self.accept_proposal():
+            return          # [E] 'make it so': the officer's proposal on the screen, as Y would
+        if echo == "> " and said in BELAY and self.belay_proposal():
+            return
+        if echo == "> " and said in AYE and self.translator is None:
+            self._log("Nothing waiting on your word, Captain.", "dim")
             return
         if translate and echo == "> " and self.orders.find(text) is not None:
             self._execute_order(text)       # a named order, called by name alone

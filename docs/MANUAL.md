@@ -1227,6 +1227,32 @@ Each command the model chooses is shown in the log with a **≈** in front, then
 
 If what you said could mean more than one thing that matters, such as which of two enemy ships, the console asks instead of guessing. Just answer: "the closer one" or "gorkon" is enough, because it remembers what you were talking about. A question about the game gets a short answer, often with the command to use.
 
+#### Without a model
+
+The bridge's everyday words work with no language model at all. The console turns them into its own commands, and the log shows what it did:
+
+| You say | It does |
+|---|---|
+| "red alert", "yellow alert" | `alert red`, `alert yellow` |
+| "set course 180", "heading 270", "turn to 090" | `helm 180`, and so on |
+| "come about", "hard to port", "turn right 45" | turns from her present course: about, 90° or the degrees you give |
+| "go to warp 5", "warp factor 5" | `warp 5` |
+| "full speed ahead", "punch it" | her best warp |
+| "full stop", "slow down", "speed up" | `stop`, or two warp slower or faster |
+| "attack", "engage", "attack the Gorkon" | target her (or the nearest enemy), pursue her and open fire |
+| "take us in", "close to 3000" | pursue the target, or hold her at that range |
+| "retreat", "get us out of here", "keep our distance" | elude the target |
+| "fire everything", "fire at will", "keep firing" | every phaser and tube, or weapons free |
+| "target the nearest enemy", "lock onto the closest one" | the ship Tab would pick |
+| "damage report", "how are the shields?", "where is the enemy?" | the status, shields and chart displays |
+| "what do you recommend?" | opens the counsel |
+| "manage repairs" | an officer directs the repair crews |
+| "launch a probe", "send an away team" | `fire probes`, `away` |
+| "zoom in", "zoom out" | halves or doubles the range shown |
+| "make it so", "aye", "do it" | takes the officer's proposal on the screen, like **Y**; "no" or "not now" turns it down, like **N** |
+
+"The target", "her", "them" and "that ship" mean the ship you have targeted, or the nearest enemy if you have none. A ship whose name really is one of those words still answers to it.
+
 #### How it decides
 
 The exact console always gets the first look, so anything typed in console syntax runs at once, with no wait. Only a line the console doesn't recognise goes to the model. Every command the model proposes is checked by the console before anything runs; if one is wrong, the model gets one try to fix it, and otherwise you see what went wrong and nothing runs.
