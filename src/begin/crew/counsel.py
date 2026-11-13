@@ -550,7 +550,7 @@ def _geometry(s: Situation) -> Iterator[Move]:
                        "Romulan plasma loses its punch with every thousand it flies. "
                        + (f"At {_rng(e.range)} a hit is near full strength; double the distance and it is a fraction."
                           if e.range > 1500 else "Up close it hits at full strength; at range it is a fraction."),
-                       [Step(f"elude {e.handle} warp {s.top_warp:g} at {_round_range(max(e.range * 2.0, 9000.0)):.0f}",
+                       [Step(f"elude {e.handle} warp {s.top_warp:g} at {_round_range(min(max(e.range * 2.0, 9000.0), 15000.0)):.0f}",
                              "open the range")],
                        0.8 if s.inbound_plasma else 0.45, {**H, "engineering": 0.5}, "helm")
     # the mind: a captain close to giving way

@@ -41,3 +41,11 @@ Give the counsel a goal and each officer plans their way to it. `counsel destroy
 ## Time
 
 Reading counsel steps the battle back, like typing an order: it eases to a crawl (or stops, with `hud focus pause`) while the panel is open, and runs at your speed again when you go all in, close it, or after twenty seconds. Press **Space** first if you want the whole board frozen while you think.
+
+## Before the battle
+
+On a tour, the Ready Room has your officers' view of the next stop, two sentences each, from what the tour knows: Worf on the force to beat and where to strike, Spock on how their navy likes to fight and the geometry of the mission, La Forge on how the squadron will arrive and whether to take a refit or call Starfleet, and Seven on what the sensors can and cannot tell us yet.
+
+## Holding a range
+
+When an officer says to fight a ship at our range, the step is a hold-range order such as `elude gorkon at 9000`: the helm keeps her near that range rather than running off the map (see [[pursue]]).

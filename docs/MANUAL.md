@@ -1577,7 +1577,7 @@ See also: [Pursue and elude](#topic-pursue), [Tactics](#topic-tactics), [Keyboar
 
 ### Pursue and elude
 
-*Let the helm chase a ship, or keep away from it, automatically.*
+*Let the helm chase a ship, keep away from it, or hold it at a range you choose.*
 
 `pursue` hands steering to the helm computer, which keeps turning to intercept a ship. `elude` does the opposite: it keeps turning away from one.
 
@@ -1586,16 +1586,21 @@ pursue gorkon warp 6
 pursue gorkon
 chase #3 8
 elude gorkon warp 7
+elude gorkon at 9000
+pursue gorkon warp 6 at 4000
 ```
 
 - The warp is optional. Without it, the ship keeps its current speed.
 - The pursuit lasts until you give another helm order, such as `helm 90` or `stop`.
 - You can name the ship, use its number from the [Chart](#topic-chart) with a `#` in front (`#3`), or type a unique part of its name.
 - **Shift** + right-click a ship on the map also starts a pursuit.
+- Add `at` and a range to hold her there instead: the helm closes when she is beyond it, opens the range when she is inside it, and circles her in between. `elude gorkon at 9000` keeps a heavy cruiser at torpedo range, outside her phasers, without running off the map. A bare number above 100 means a range too (`elude gorkon 9000`). The map line reads "holding at 9,000".
 
 #### When to use which
 
-Pursue a ship you want to keep inside your weapon range, especially one that is trying to run. Elude a ship that outguns you at close range, or a stream of incoming probes. The [Coach](#topic-coach) says when the range is wrong for your weapons.
+Pursue a ship you want to keep inside your weapon range, especially one that is trying to run. Elude a ship that outguns you at close range, or a stream of incoming probes. Plain `elude` keeps running for as long as the order stands, and a ship far enough from every enemy has left the battle: when you mean to fight her at your range, not leave, give the range (`elude gorkon at 9000`). The officers' [Counsel from the bridge](#topic-counsel) does.
+
+A runner on a set heading is better met than chased: a `helm` course that leads her, at your best warp, closes the distance a stern chase never will. Spock works one out in the counsel when there is a runner to stop (see [Missions](#topic-missions)). The [Coach](#topic-coach) says when the range is wrong for your weapons.
 
 See also: [Course and speed](#topic-helm), [Tactics](#topic-tactics), [Ally orders](#topic-tell).
 
@@ -3263,6 +3268,14 @@ Give the counsel a goal and each officer plans their way to it. `counsel destroy
 
 Reading counsel steps the battle back, like typing an order: it eases to a crawl (or stops, with `hud focus pause`) while the panel is open, and runs at your speed again when you go all in, close it, or after twenty seconds. Press **Space** first if you want the whole board frozen while you think.
 
+#### Before the battle
+
+On a tour, the Ready Room has your officers' view of the next stop, two sentences each, from what the tour knows: Worf on the force to beat and where to strike, Spock on how their navy likes to fight and the geometry of the mission, La Forge on how the squadron will arrive and whether to take a refit or call Starfleet, and Seven on what the sensors can and cannot tell us yet.
+
+#### Holding a range
+
+When an officer says to fight a ship at our range, the step is a hold-range order such as `elude gorkon at 9000`: the helm keeps her near that range rather than running off the map (see [Pursue and elude](#topic-pursue)).
+
 See also: [Bridge officers](#topic-crew), [Missions](#topic-missions), [Coach](#topic-coach), [Hailing enemy captains](#topic-hailing), [Disabling or taking out enemy ships](#topic-disable), [The sword and the mind](#topic-sword-and-mind).
 
 <a id="topic-away-team"></a>
@@ -3618,7 +3631,10 @@ A freighter or tanker sails for a point at her own speed, and she cannot fight. 
 
 One enemy ship, the runner, makes for the edge of the sector with her report. She must not escape: destroy her, cripple her drives so she can't move, or make her surrender. She still fires when she can, and her friends will try to buy her the time.
 
+She carries the news, not a fight: laden and nursing her drives, she makes only part of your best warp (`runner_pace`, 0.6 by default). She is already out on the flank when the battle starts, and her friends stand between you and her. A stern chase gives her the lead she started with; a course that leads her meets her. Spock works one out in the counsel ("Cut her off"), and Worf locks on once she is in reach, not before, so your weapons stay on the ships that are.
+
     counsel disable the runner's engines
+    helm <intercept course> warp 9.5
     pursue <runner> warp 9.5
 
 #### Wards don't hold the field
@@ -3634,7 +3650,7 @@ A failed mission doesn't end a tour. It shows in Starfleet's assessment, in the 
 A tour stop or a preset can carry a mission (see [Tours of duty](#topic-tour)):
 
     [tour.stop.mission]
-    kind = "rescue"            # or "escort" (with to = [x, y]) or "intercept" (with runner and heading)
+    kind = "rescue"            # or "escort" (with to = [x, y]) or "intercept" (with runner, heading, runner_pace)
     ward = "federation.de"
     ward_name = "Aldren"
     at = [-1500, -3500]

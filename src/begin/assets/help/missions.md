@@ -25,7 +25,10 @@ A freighter or tanker sails for a point at her own speed, and she cannot fight. 
 
 One enemy ship, the runner, makes for the edge of the sector with her report. She must not escape: destroy her, cripple her drives so she can't move, or make her surrender. She still fires when she can, and her friends will try to buy her the time.
 
+She carries the news, not a fight: laden and nursing her drives, she makes only part of your best warp (`runner_pace`, 0.6 by default). She is already out on the flank when the battle starts, and her friends stand between you and her. A stern chase gives her the lead she started with; a course that leads her meets her. Spock works one out in the counsel ("Cut her off"), and Worf locks on once she is in reach, not before, so your weapons stay on the ships that are.
+
     counsel disable the runner's engines
+    helm <intercept course> warp 9.5
     pursue <runner> warp 9.5
 
 ## Wards don't hold the field
@@ -41,7 +44,7 @@ A failed mission doesn't end a tour. It shows in Starfleet's assessment, in the 
 A tour stop or a preset can carry a mission (see [[tour]]):
 
     [tour.stop.mission]
-    kind = "rescue"            # or "escort" (with to = [x, y]) or "intercept" (with runner and heading)
+    kind = "rescue"            # or "escort" (with to = [x, y]) or "intercept" (with runner, heading, runner_pace)
     ward = "federation.de"
     ward_name = "Aldren"
     at = [-1500, -3500]
