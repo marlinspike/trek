@@ -156,6 +156,8 @@ thanks = ["Hey, that's what I'm here for.", "Anytime, Captain."]
 rude = ["Okay. Noted.", "I'll let that one slide, Captain."]
 nothing = ["All systems nominal, Captain.", "Everything's running smooth for now."]
 seal = ["Sealing the section and venting it. I hate doing this.", "Bulkheads down, venting now. That'll hurt them more than us."]
+plasma = ["We're venting plasma from warp drive {n}, Captain. Anybody with a sensor can follow that trail, cloak or no cloak. Fix it or drop below warp 1.", "Drive {n}'s leaking plasma behind us like a signpost. Give me a repair team, or bring us out of warp."]
+critical = ["{target}'s core just went critical! {n} cycles, Captain. We need to be somewhere else!", "That's a chain reaction building on {target}. {n} cycles. Get us clear!"]
 
 [[officer]]
 id = "seven"
