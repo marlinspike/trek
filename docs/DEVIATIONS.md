@@ -32,7 +32,8 @@ Begin detects a ship at its rated sensor range multiplied by the ship's reflecti
 - **From 100% to 150% of rated range,** a contact is hazy. Its reported position wanders by up to 8% of the rated range at the outer edge, shown on the map as a dashed ring. A ship first seen this far out isn't identified.
 - **Beyond 150%,** nothing is seen. The last fix is kept, and Starfleet computers extrapolate it. The science officer reports where a lost contact was last seen and where it was heading.
 - **Sensor ranges differ by faction** (`sensors.range` in `factions.toml`): Federation 1.0, Romulan 0.85, Orion 0.8 and Klingon 0.7. The Federation and Klingon figures follow the player's direction that Starfleet sensors are the best and Klingon sensors notably worse; the Romulan and Orion figures are our guesses.
-- **Cloaked ships are not detected at all** until they fire, which reveals them briefly, or until a tachyon burst or deflector pulse lights them up (below).
+- **Cloaked ships are not detected at all** until they fire, which reveals them for about a cycle, or are hit, which reveals them for about three (`Rules.cloak_hit_reveal_cycles`), or until a tachyon burst or deflector pulse lights them up (below).
+- **Blind torpedo reports.** Torpedoes fired at a ship you can't see go to its last known position, and the bridge says so. When they end, it says how: a hit (and the ship shows), a burst with nothing in reach, a round shot down, or a fuse run out. Begin let them vanish silently.
 
 `Rules.sensor_haze_limit` and `Rules.sensor_haze_error` set the band and the error.
 
@@ -69,6 +70,8 @@ Begin has no standing orders. In the remake, "Seven, disable the Klingons' shiel
 - she fires full torpedo salvos from just outside arming range, fused to burst on a ring around the target's predicted position (`FireAtPoint`);
 - when two targets are close together, she bursts the salvo between them;
 - she hunts cloaked targets with the deflector or tachyon detector.
+
+**Finding a ship by name.** `hunt <ship>` (or `find`, or "Seven, find the Talon") is a standing order for the science officer: set up the detector and the dish, burst the round where the ship should be by now, and keep at it until it shows, then make it the target. It fires nothing else and leaves the weapons officer fighting. The science officer also calls it when an enemy cloaks (with the last fix and heading) and when it shows again, and "where is the Talon?" gives the last fix.
 
 She baits trigger-happy point defenses (one torpedo, then the rest while their banks recharge), and "take out the Wraith" (`destroy`) keeps her at it until the ship is gone. She never steers, and the captain's orders still override hers. Weapons count as disabled when all of them are off line, and shields when two thirds of the generators are. In 8-seed test runs with Spock at the helm, a Seven objective won the Border Incident 7 of 8 in about half the time (Spock alone won 6 of 8), and was about even in quick battles. Targets were often destroyed before she could confirm them disabled, because blast and phaser damage also reaches the hull.
 

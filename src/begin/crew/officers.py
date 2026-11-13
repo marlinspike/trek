@@ -37,6 +37,7 @@ from ..sim.commands import (
     SetFireMode, SetHelm, SetObjective, SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, StartProject, TurnMounts,
     offensive_fire,
 )
+from ..sim.objectives import attacking
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import HULL, HelmMode, Kind, RepairTarget, Ship
 from ..sim.systems.ordnance import suggested_prox
@@ -173,7 +174,7 @@ class OfficerBrain(AICaptain):
         if ship.cls.is_base or not ship.can_move() or ship.docked_to is not None or self.last_stand or self.retreating:
             return super()._maneuver(obs, ship, c, st), None
         want = None
-        if ship.objectives and c is not None and c.visible:
+        if attacking(ship.objectives) and c is not None and c.visible:
             want = support_range(obs, ship, c)
             if want is not None and c.distance_to(ship.x, ship.y) > want + APPROACH_SLACK:
                 want = None   # still on the way in: the captain's approach (weaving at combat speed) is fine
@@ -199,14 +200,22 @@ class OfficerBrain(AICaptain):
             out.extend(self._collaborate(obs, ship))
         return out
 
-    def _collaborate(self, obs: Observation, ship: Ship) -> list[Command]:
+    def _collaborate(self, obs: Observation, ship: Ship, target: int | None = None,
+                     anyone: bool = False) -> list[Command]:
         """In command, an officer uses the projects they know: Spock and Seven hunt cloaked ships with
-        the deflector pulse when one is ahead and close, else with the tachyon detector torpedo."""
+        the deflector pulse when one is ahead and close, else with the tachyon detector torpedo.
+
+        `target` hunts that one ship (the captain asked for it by name), cloaked or merely lost; `anyone`
+        lets an officer who isn't part of the collaboration run it (the captain gave them the order)."""
         from ..core.angles import ang_dist, bearing
         from ..sim.projects import PROJECTS, project_loaded
         from .collaborations import COLLABORATIONS
 
-        cloaked = [c for c in obs.hostile_contacts() if c.cloaked_hint]
+        if target is not None:
+            found = obs.contact(target)
+            cloaked = [found] if found is not None and not found.visible else []
+        else:
+            cloaked = [c for c in obs.hostile_contacts() if c.cloaked_hint]
         if not cloaked:
             return []
         c = min(cloaked, key=lambda c: c.distance_to(ship.x, ship.y))
@@ -215,7 +224,7 @@ class OfficerBrain(AICaptain):
         out: list[Command] = []
         for collab in COLLABORATIONS:
             proj = PROJECTS.get(collab.project)
-            if proj is None or self.officer_id not in collab.officers:
+            if proj is None or (self.officer_id not in collab.officers and not anyone):
                 continue
             if proj.id == "deflector":
                 if not ship.deflector_ready:
@@ -406,15 +415,22 @@ class Crew:
     def _objectives(self, obs: Observation, ship: Ship) -> list[Command]:
         """Officers working on what the captain asked of them, whether or not they run a station."""
         out: list[Command] = []
+        attacking_ran = False
+        ran: set[str] = set()
         for o in ship.objectives:
             prof = self.find(o.officer) if o.officer else self.officer("science")
-            if prof is None:
+            if prof is None or prof.id in ran:
                 continue
+            mine = [x for x in ship.objectives if (self.find(x.officer) if x.officer else self.officer("science")) is prof]
+            attacks = bool(attacking(mine))
+            if attacks and attacking_ran:
+                continue  # one officer's attack at a time keeps the orders coherent; a hunt only looks, so it runs too
+            attacking_ran = attacking_ran or attacks
+            ran.add(prof.id)
             pl = self.planners.get(prof.id)
             if pl is None:
                 pl = self.planners[prof.id] = Planner(prof.id, prof.title)
             out.extend(pl.think(obs, ship, self._brain("bridge", ship, prof)))
-            break  # one officer's plan at a time keeps the orders coherent
         return out
 
     def activity(self, obs: Observation) -> list[Activity]:
@@ -494,7 +510,7 @@ class Crew:
                 if station not in ship.delegated or station not in self.officers:
                     continue
                 routine.extend(c for c in self._brain(station, ship).think(obs) if station_of(c) == station)
-        if ship.objectives:
+        if attacking(ship.objectives):
             # an objective decides targets and offensive fire; it steers only when it has to
             steering = any(isinstance(c, (SetHelm, Pursue)) for c in out)
             # (probes too: Worf's attack probes used to finish off a ship Seven was only told to disable)

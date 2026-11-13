@@ -142,6 +142,8 @@ def readback(cmd: Command, name_of: NameOf) -> str:
         if cmd.goal == "disable":
             return f"Knocking out the {cmd.group} on {ships}, then sparing her." if many == 1 else \
                 f"Knocking out the {cmd.group} on {ships}."
+        if cmd.goal == "hunt":
+            return f"Hunting for {ships}."
         return f"Standing order: {cmd.goal} {ships}."
     if isinstance(cmd, EndObjective):
         return "Standing order ended."

@@ -80,6 +80,12 @@ class ParseContext:
 
 # ------------------------------------------------------------------ parser
 
+NOTHING_LOST = "Every enemy we know of is on sensors: there's nothing to find. Name a ship to hear where she is."
+
+# words that don't name the ship to find: "find the cloaked ship", "hunt for her", "locate that ship" [E]
+_HUNT_FILLER = frozenset(("for", "down", "the", "a", "her", "him", "it", "them", "that", "this", "ship", "vessel",
+                          "where", "is", "she", "he", "out", "again", "please", "now"))
+
 class Parser:
     def __init__(self, ctx: ParseContext) -> None:
         self.ctx = ctx
@@ -966,6 +972,45 @@ class Parser:
                 raise ParseError("Burst it where? 'tachyon <bearing> <range>' or 'tachyon <ship>'.")
             x, y = c.x, c.y
         res.commands.append(self._cmd(FireSpecialRound, ordnance="tachyon", x=x, y=y))
+
+    def _v_hunt(self, tok: Tokens, res: ParseResult) -> None:
+        """`hunt <ship>` (find, locate): the science officer finds a ship we have lost, most often a cloaked one,
+        with the tachyon detector and the deflector. With no ship named: our target if we've lost it, else the
+        nearest ship that has probably cloaked. `hunt off` calls it off [E]."""
+        words = [w.strip(".!?;,'\"").removesuffix("'s") for w in tok.rest()]
+        words = [w for w in words if w and w not in _HUNT_FILLER]
+        if any(w in ("off", "cancel", "stop", "belay", "abort") for w in words):
+            res.commands.append(self._cmd(EndObjective, group="hunt", outcome="cancelled"))
+            return
+        res.commands.append(self._cmd(SetObjective, goal="hunt", group="hunt", targets=(self._lost_ship(words),)))
+
+    def _lost_ship(self, words: list[str]) -> int:
+        """The ship the captain wants found: one named (a name, a prefix of one, or '#id'), else our lost target,
+        else the nearest contact that has probably cloaked, else the nearest one we've lost."""
+        hostile = [c for c in self.obs.hostile_contacts() if c.id not in self.obs.gone()]
+        ids = {c.id for c in hostile}
+        if words:
+            if words[0].startswith("#") and words[0][1:].isdigit() and int(words[0][1:]) in ids:
+                return int(words[0][1:])
+            table = [(n, sid) for n, sid in self._ship_table() if sid in ids]
+            for span in (3, 2, 1):
+                phrase = " ".join(words[:span])
+                if len(words) < span or len(phrase) < 2:
+                    continue
+                found = list({sid for n, sid in table if n == phrase}) or list({sid for n, sid in table if n.startswith(phrase)})
+                if len(found) == 1:
+                    return found[0]
+                if len(found) > 1:
+                    raise ParseError(f"'{phrase}' matches more than one ship.")
+            if words[0] not in ("enemy", "romulan", "romulans", "klingon", "klingons", "cloaked", "contact"):
+                raise ParseError(f"No ship named '{words[0]}' has been on our sensors.")
+        lost = [c for c in hostile if not c.visible]
+        if self.ship.target in {c.id for c in lost}:
+            return self.ship.target  # type: ignore[return-value]
+        cloaked = [c for c in lost if c.cloaked_hint] or lost
+        if not cloaked:
+            raise ParseError(NOTHING_LOST)
+        return min(cloaked, key=lambda c: c.distance_to(self.ship.x, self.ship.y)).id
 
     def _v_cloak(self, tok: Tokens, res: ParseResult) -> None:
         on = not tok.take_word("off")

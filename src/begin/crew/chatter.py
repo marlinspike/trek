@@ -30,6 +30,7 @@ CALLOUT_SETTLE = {"evade": 0.0, "bait": 0.0, "salvo": 0.0, "between": 0.0, "clos
 CALLOUT_GAP = 4.0
 CALLOUT_REPEAT = {"bait": 20.0, "salvo": 20.0, "between": 20.0, "phasers": 30.0, "close": 10.0, "open": 10.0,
                   "fight": 15.0, "hunt": 20.0, "evade": 5.0}   # seconds before the same kind of step is said again
+CLOAK_REPEAT = 30.0         # seconds before a ship that cloaks again (after firing) is called again [E]
 MORALE_GAP = 20.0           # seconds between remarks on the crew's spirits
 REPAIR_REPORT_DAMAGE = 25   # % damage before a system is worth reporting
 REPAIR_GAP = 12.0           # seconds between repair reports
@@ -120,10 +121,14 @@ class Chatter:
                 self._hull_band = band
                 self._maybe(out, obs, "engineering", "hull", 1.0,
                             n=round(100 * max(0.0, s.structure) / max(1.0, s.structure_max)))
+        elif isinstance(ev, ContactChanged) and ev.side == s.side and ev.acquired and ev.ship_id in self._cloaked:
+            self._cloak_report(out, s, obs, ev.ship_id, cloaking=False)
         elif isinstance(ev, ContactChanged) and ev.side == s.side and ev.acquired:
             c = obs.contact(ev.ship_id)
             if c is not None and c.visible:
                 self._maybe(out, obs, "science", "contact", 0.5, target=contact_name(obs, ev.ship_id))
+        elif isinstance(ev, ContactChanged) and ev.side == s.side and not ev.acquired and self._is_cloaked(obs, ev.ship_id):
+            self._cloak_report(out, s, obs, ev.ship_id, cloaking=True)
         elif isinstance(ev, ContactChanged) and ev.side == s.side and not ev.acquired:
             # the science officer gives the last fix, so the captain knows where to look
             c = obs.contact(ev.ship_id)
@@ -136,6 +141,39 @@ class Chatter:
             self._maybe(out, obs, "science", "scan", 0.7, target=contact_name(obs, ev.target_id))
         elif isinstance(ev, SubsystemRepaired) and ev.ship_id == s.id:
             self._maybe(out, obs, "engineering", "repaired", 0.3, n=ev.label)
+
+    @staticmethod
+    def _is_cloaked(obs: Observation, ship_id: int) -> bool:
+        c = obs.contact(ship_id)
+        return c is not None and not c.visible and c.cloaked_hint
+
+    def _cloak_report(self: Bridge, out: list[Utterance], s: Ship, obs: Observation, ship_id: int, cloaking: bool) -> None:
+        """[E] The science officer calls it when an enemy cloaks, with the last fix and how to find her, and when she
+        shows again (she fired, was hit or lit up). A ship flickering as she fires isn't called every time."""
+        o = self.crew.officer("science")
+        c = obs.contact(ship_id)
+        if o is None or c is None:
+            return
+        tpc = obs.rules.ticks_per_cycle
+        said = self._cloaked.get(ship_id)
+        if cloaking and said is not None and obs.tick - said < CLOAK_REPEAT * tpc:
+            return
+        if not cloaking and (said is None or obs.tick - self._last_line.get(o.id, -10 ** 9) < 4 * tpc):
+            return
+        name = contact_name(obs, ship_id)
+        brg, rng = f"{bearing(c.x - s.x, c.y - s.y):.0f}", f"{math.hypot(c.x - s.x, c.y - s.y):,.0f}"
+        if cloaking:
+            self._cloaked[ship_id] = obs.tick
+            short = name.split(" (")[0].lower()
+            u = (self._line(o, "cloaked", target=name, bearing=brg, range=rng, heading=f"{c.course:.0f}", short=short)
+                 or self._say(o, f"{name} has cloaked. Last fix: bearing {brg}, {rng} units, heading {c.course:.0f}. "
+                                 f"Say 'find {short}' and I will hunt for it."))
+        else:
+            u = (self._line(o, "decloaked", target=name, bearing=brg, range=rng)
+                 or self._say(o, f"{name} is visible: bearing {brg}, {rng} units."))
+        self._last_line[o.id] = self._last_any = obs.tick
+        if not self._voice(o, u.text, obs):
+            out.append(u)
 
     def _warnings(self: Bridge, s: Ship, obs: Observation, out: list[Utterance]) -> None:
         """Incoming fire (when the captain is flying) and hot engines."""
@@ -274,6 +312,14 @@ class Chatter:
                 continue
             systems = DISABLE_GROUPS.get(ev.group, ev.group)
             names = ", ".join(self._names.get(t, f"#{t}") for t in ev.targets)
+            if ev.outcome == "done" and ev.goal == "hunt":
+                c = obs.contact(ev.targets[0]) if ev.targets else None
+                if c is not None:
+                    brg, rng = f"{bearing(c.x - s.x, c.y - s.y):.0f}", f"{math.hypot(c.x - s.x, c.y - s.y):,.0f}"
+                    out.append(self._line(o, "hunt_found", target=names, bearing=brg, range=rng)
+                               or self._say(o, f"Found {names}: bearing {brg}, {rng} units. She is targeted, Captain."))
+                self._last_any = obs.tick
+                continue
             if ev.outcome == "done" and ev.goal == "capture":
                 out.append(self._line(o, "objective_captured", targets=names)
                            or self._say(o, f"{names} is ours, Captain. The boarding parties hold her."))
