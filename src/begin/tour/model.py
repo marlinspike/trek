@@ -51,6 +51,8 @@ A stop can carry a mission [E] (sim/mission.py), a goal beyond holding the field
     deadline = 160                     # cycles before she is lost (0: none)
     hunters = 1                        # enemy ships that go for her
     flag = "survey-team-saved"         # a flag set when the mission succeeds
+    calls = 1                          # Starfleet reinforcement calls earned by success
+    resupply = 0.5                     # share of a full magazine the squadron gets back on success
 """
 
 from __future__ import annotations

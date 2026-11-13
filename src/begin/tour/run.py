@@ -433,6 +433,12 @@ class TourRun:
         m = w.mission
         if m is not None and m.succeeded() and m.spec.flag and m.spec.flag not in self.state.flags:
             self.state.flags.append(m.spec.flag)       # [E] what the mission's success changes later on
+        if m is not None and m.succeeded() and outcome not in ("lost", "assimilated"):
+            self.state.calls_left += m.spec.calls      # [E] Starfleet's thanks
+            if m.spec.resupply > 0:
+                for r in self.state.squadron:
+                    if r.active:
+                        resupply(r, self.content, m.spec.resupply)
         # crew spirits: a win lifts them, a loss of shipmates weighs on them
         for r in self.state.squadron:
             if r.active and r.morale is not None:

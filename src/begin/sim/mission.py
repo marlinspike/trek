@@ -55,6 +55,8 @@ class MissionDef:
     heading: float = 0.0                     # intercept: the runner's course
     hunters: int = 1                         # rescue/escort: enemy ships that go for the ward
     flag: str = ""                           # a tour flag set when the mission succeeds
+    calls: int = 0                           # on a tour: Starfleet reinforcement calls earned by success
+    resupply: float = 0.0                    # on a tour: share of a full magazine the squadron gets back on success
 
     def __post_init__(self) -> None:
         if self.kind not in KINDS:
@@ -70,7 +72,8 @@ class MissionDef:
             kind=str(d["kind"]), title=str(d.get("title", "")), ward=str(d.get("ward", "federation.tn")),
             ward_name=str(d.get("ward_name", "")), at=pair("at"), people=int(d.get("people", 0)),
             deadline=float(d.get("deadline", 0.0)), to=pair("to"), runner=int(d.get("runner", 0)),
-            heading=float(d.get("heading", 0.0)), hunters=int(d.get("hunters", 1)), flag=str(d.get("flag", "")))
+            heading=float(d.get("heading", 0.0)), hunters=int(d.get("hunters", 1)), flag=str(d.get("flag", "")),
+            calls=int(d.get("calls", 0)), resupply=float(d.get("resupply", 0.0)))
 
     def heading_title(self, ward: str = "", runner: str = "") -> str:
         """The goal as the HUD shows it."""
