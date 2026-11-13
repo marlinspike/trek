@@ -89,11 +89,11 @@ class Bridge(Chatter):
         self._nudged: set[str] = set()      # officers whose empty answer has been asked for again
         self._last_line: dict[str, int] = {}
         self._last_any: int = -999
-        self._hull_band: int = 4
+        self._hull_band: int = 3                        # quarter of the hull last remarked on (chatter.hull_band)
         self._cloaked: dict[int, int] = {}       # ship -> tick the science officer said she cloaked [E]
         self._hive = HiveTalk()                  # what has been said about the Borg [E]
         self._repair_seen: set[str] = set()        # damaged systems already reported
-        self._repair_band: int = 4                      # quarter of the hull last reported
+        self._repair_band: int = 3                      # quarter of the hull last reported (chatter.hull_band)
         self._repair_said: int = -999                   # tick of the last repair report
         self._repair_prio: RepairTarget | None = None   # the priority last announced by the officer managing repairs
         self._address_pending: AddressCrew | None = None   # a speech the model is judging

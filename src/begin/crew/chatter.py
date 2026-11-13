@@ -14,7 +14,7 @@ from ..sim.events import (
 )
 from ..sim.objectives import DISABLE_GROUPS
 from ..sim.observation import Observation
-from ..sim.ship import HULL, KIND_LABEL, Kind, Ship
+from ..sim.ship import HULL, KIND_LABEL, Kind, Ship, Subsystem
 from . import collaborations
 from .borg_talk import hive_remarks
 from .characters import OfficerProfile
@@ -45,6 +45,24 @@ MORALE_CAUSES = {
     ("address", True): " after your words",
 }
 
+
+
+HULL_GRAVE = 0.5          # below this share of her hull, the engineer's hull reports turn grave
+
+
+def hull_band(frac: float) -> int:
+    """Which quarter of her hull the ship is in, for saying so once as she drops through it: 3 down to 75%,
+    so the first scratch on a fresh hull isn't news, then 2, 1 and 0."""
+    return min(3, int(4 * max(0.0, frac)))
+
+
+def damage_words(worst: list[Subsystem]) -> str:
+    """'reactor 7 is destroyed, and phaser bank 6 is 26% damaged' (the worst three first, then how many more)."""
+    said = [f"{sub.label.lower()} {'is destroyed' if sub.destroyed else f'is {sub.damage}% damaged'}"
+            for sub in worst[:3]]
+    if len(worst) > 3:
+        said.append(f"{len(worst) - 3} more {'is' if len(worst) == 4 else 'are'} hit")
+    return said[0] if len(said) == 1 else ", ".join(said[:-1]) + " and " + said[-1]
 
 class Chatter:
     """The officers' running commentary on the battle, mixed into `Bridge`."""
@@ -120,11 +138,13 @@ class Chatter:
             if c is not None and not (c.side is not None and c.side == s.side):
                 self._maybe(out, obs, "tactical", "enemy_destroyed", 0.9, target=contact_name(obs, ev.ship_id))
         elif isinstance(ev, HullHit) and ev.ship_id == s.id and s.structure > 0:
-            band = int(4 * max(0.0, s.structure) / max(1.0, s.structure_max))
+            frac = max(0.0, s.structure) / max(1.0, s.structure_max)
+            band = hull_band(frac)
             if band < self._hull_band:
                 self._hull_band = band
-                self._maybe(out, obs, "engineering", "hull", 1.0,
-                            n=round(100 * max(0.0, s.structure) / max(1.0, s.structure_max)))
+                eng = self.crew.officer("engineering")
+                grave = frac < HULL_GRAVE and eng is not None and "hull_grave" in eng.lines
+                self._maybe(out, obs, "engineering", "hull_grave" if grave else "hull", 1.0, n=round(100 * frac))
         elif isinstance(ev, ContactChanged) and ev.side == s.side and ev.acquired and ev.ship_id in self._cloaked:
             self._cloak_report(out, s, obs, ev.ship_id, cloaking=False)
         elif isinstance(ev, ContactChanged) and ev.side == s.side and ev.acquired:
@@ -260,7 +280,7 @@ class Chatter:
         new = [damaged[sid] for sid in damaged if sid not in self._repair_seen]
         self._repair_seen &= set(damaged)
         hull = max(0.0, s.structure) / max(1.0, s.structure_max)
-        band = int(hull * 4)
+        band = hull_band(hull)
         worse_hull = band < self._repair_band
         if not new and not worse_hull:
             self._repair_band = band     # repaired back up: a later drop is news again
@@ -273,12 +293,9 @@ class Chatter:
         parts = []
         if new:
             worst = sorted(new, key=lambda sub: -sub.damage)
-            names = ", ".join(f"{sub.label.lower()} {'destroyed' if sub.destroyed else f'{sub.damage}%'}"
-                              for sub in worst[:3])
-            more = f" and {len(worst) - 3} more" if len(worst) > 3 else ""
-            parts.append(f"{names}{more} need repairs")
+            parts.append(damage_words(worst))
         if worse_hull or hull < 0.75:
-            parts.append(f"hull at {hull * 100:.0f}%")
+            parts.append(f"the hull is at {hull * 100:.0f}%")
         text = "Captain, " + "; ".join(parts) + ". Shall I direct the repair crews?"
         u = self._say(reporter, text)
         u.commands = [f"repair auto {reporter.id}"]

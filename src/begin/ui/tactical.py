@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING, Callable
 
 import pygame
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
 SHIELD_FLASH = 0.7        # seconds a shield hit shimmers
 TRAIL_POINT = 0.25        # cycles between the points of an engine trail
 TRAIL_BANDS = 4           # strokes per wake, each fainter toward the tail
+LEADER_MIN, LEADER_PER_WARP = 10.0, 4.0   # pixels: a ship's velocity leader, at rest and per warp factor
 SMOULDER_BELOW = 0.5      # hull fraction below which a ship trails sparks
 SPRITE_MIN_K = 0.9         # pixels per hull unit at which a ship is drawn with her baked art
 HULL_LIGHT_MAX = 0.8       # the most a hull is lit by weapon light (1 would wash her out)
@@ -155,6 +157,8 @@ class TacticalView:
     _glow: pygame.Surface | None = None
     _lights: list[Light] = field(default_factory=list)
     _label_rects: list[pygame.Rect] = field(default_factory=list)   # labels drawn this frame
+    _range_tag: tuple[float, float] | None = None    # where 'phaser' goes by our range ring this frame
+    _names: list[Callable[[], object]] = field(default_factory=list)   # ships' names, drawn after every hull
     _label_more: dict[int, int] = field(default_factory=dict)      # a group's named ship: how many more fly with her
     _label_quiet: set[int] = field(default_factory=set)            # ships named by their group's label this frame
     _label_reach: dict[int, float] = field(default_factory=dict)   # a group's named ship: screen x of its right-most ship
@@ -358,6 +362,8 @@ class TacticalView:
             overlay.fill((0, 0, 0, 0), self._overlay_used.clip(r))
         gfx.take_dirty(overlay)
         self._label_rects = []
+        self._range_tag = None
+        self._names = []
         self._burning = []
         clip = surf.get_clip()
         surf.set_clip(r)
@@ -426,6 +432,10 @@ class TacticalView:
         for c, p in contacts:
             mark = hive_mark(obs, c.id, player_id) if c.identified else None
             self._contact(surf, c, p, c.id == target_id, selected_sub, overlay, mark)
+        for name in self._names:
+            name()
+        self._names = []
+        self._range_label(surf)
         for sid, x, y, left, reach in obs.countdowns():      # a ship about to go up: how far the blast will reach
             if cam.visible(x, y, reach + 100):
                 sx, sy = cam.to_screen(x, y)
@@ -679,13 +689,26 @@ class TacticalView:
         gfx.draw.line(surf, theme.TEXT_DIM, (x + px, y - 4), (x + px, y + 2))
         theme.text(surf, f"{units:,}", (x + px + 6, y - 7), theme.TEXT_DIM, 11, "mono")
 
+    def _later(self, draw: Callable[..., object], *args: object, **kw: object) -> None:
+        """A ship's name (or a line under it), drawn once every hull is down, so a neighbour's hull never covers it."""
+        self._names.append(partial(draw, *args, **kw))
+
+    def _range_label(self, surf: pygame.Surface) -> None:
+        """'phaser' by our weapons' range ring, unless a ship's name is already there."""
+        if self._range_tag is None:
+            return
+        x, y = self._range_tag
+        box = pygame.Rect(int(x), int(y), theme.text_width("phaser", 10), 14)
+        if box.collidelist(self._label_rects) < 0:
+            theme.text(surf, "phaser", (x, y), theme.dim(theme.FRIEND, 0.6), 10)
+
     def _ranges(self, surf: pygame.Surface, overlay: pygame.Surface, me: Ship, p: Pose) -> None:
         cam = self.cam
         sx, sy = cam.to_screen(p[0], p[1])
         rr = me.cls.banks_range * cam.zoom
         if 12 < rr < 4000:
             self._dashed_circle(surf, theme.dim(theme.FRIEND, 0.45), (sx, sy), rr)
-            theme.text(surf, "phaser", (sx + rr * 0.707 + 4, sy - rr * 0.707 - 6), theme.dim(theme.FRIEND, 0.6), 10)
+            self._range_tag = (sx + rr * 0.707 + 4, sy - rr * 0.707 - 6)   # named after the ships: see `_range_label`
         sr = me.sensor_range() * cam.zoom
         if 12 < sr < 6000:
             gfx.draw.circle(surf, theme.dim(theme.FRIEND, 0.22), (int(sx), int(sy)), int(sr), 1)
@@ -890,11 +913,7 @@ class TacticalView:
             color = theme.dim(color, 0.5)
         # velocity leader
         if s.warp > 0.05:
-            a = math.radians(p[2])
-            L = 18 + s.warp * 6
-            b = 56 * k                           # from just past her bow, so the line never draws over her
-            gfx.draw.line(surf, theme.dim(color, 0.5), (sx + math.sin(a) * b, sy - math.cos(a) * b),
-                             (sx + math.sin(a) * (b + L * 1.5), sy - math.cos(a) * (b + L * 1.5)))
+            self._velocity_leader(surf, sx, sy, p[2], s.warp, k, theme.dim(color, 0.5))
         if is_player and abs(norm180(s.desired_course - s.course)) > 1:
             a = math.radians(s.desired_course)
             L = 50 * k
@@ -931,20 +950,22 @@ class TacticalView:
         place = self._label_x(sx, sy, lx, lw)
         if place is not None:
             lx = place
-            top = self._free_label_y(lx, sy - 8, lw, 26 if op is not None else 14)
+            # our own ship's name carries her warp (and a cloak or a leak) on a line below: room is kept for it
+            tall = 26 + (12 if obs.leaking(s.id) else 0) if is_player else 26 if op is not None else 14
+            top = self._free_label_y(lx, sy - 8, max(lw, 90) if is_player else lw, tall)
             if art:
                 self._leader(surf, sx, sy, 62 * k, lx if lx > sx else lx + lw, top, color)
-            theme.label(surf, label, (lx, top), color, 12)
+            self._later(theme.label, surf, label, (lx, top), color, 12)
             ly = top + 14
             room = int(cam.rect.right - 4 - lx)
             if is_player:
-                theme.text(surf, f"w{s.warp:.1f}", (lx, ly), theme.TEXT_DIM, 10, "mono")
+                self._later(theme.text, surf, f"w{s.warp:.1f}", (lx, ly), theme.TEXT_DIM, 10, "mono")
                 if s.alive and s.cloaked:
-                    theme.text(surf, "CLOAKED", (lx + theme.text_width(f"w{s.warp:.1f}", 10, "mono") + 8, ly),
+                    self._later(theme.text, surf, "CLOAKED", (lx + theme.text_width(f"w{s.warp:.1f}", 10, "mono") + 8, ly),
                                theme.CLOAK, 10, weight="semibold")
                 ly += 12
                 if obs.leaking(s.id):
-                    theme.text(surf, theme.fit("venting plasma", 10, room), (lx, ly), theme.EXHAUST, 10)
+                    self._later(theme.text, surf, theme.fit("venting plasma", 10, room), (lx, ly), theme.EXHAUST, 10)
                     ly += 12
             elif op is not None:
                 self._shuttle_lines(surf, op, lx, ly, room, names or {})
@@ -953,11 +974,11 @@ class TacticalView:
                 st = obs.ally_order(s.id)
                 mission = st.summary(names or {}) if st is not None else ""
                 if mission:
-                    theme.text(surf, theme.fit(mission, 10, room), (lx, ly),
+                    self._later(theme.text, surf, theme.fit(mission, 10, room), (lx, ly),
                                theme.TEXT_FAINT if not selected else theme.TEXT_DIM, 10)
                     ly += 12
             if s.alive and s.boarders > 0 and s.boarder_side != s.side:
-                theme.text(surf, theme.fit(f"boarders aboard: {s.boarders}", 10, room, weight="medium"), (lx, ly),
+                self._later(theme.text, surf, theme.fit(f"boarders aboard: {s.boarders}", 10, room, weight="medium"), (lx, ly),
                            theme.ALERT, 10, weight="medium")
         if selected:
             b = 62 * k + 8
@@ -1017,11 +1038,7 @@ class TacticalView:
         if c.cls is not None:
             k = hull_pixel_scale(c.cls.hull, cam.zoom)
             if c.warp > 0.05 and c.visible:
-                a = math.radians(p[2])
-                L = 18 + c.warp * 6
-                b = 56 * k                       # from just past her bow, so the line never draws over her
-                gfx.draw.line(surf, theme.dim(color, 0.45), (sx + math.sin(a) * b, sy - math.cos(a) * b),
-                                 (sx + math.sin(a) * (b + L * 1.5), sy - math.cos(a) * (b + L * 1.5)))
+                self._velocity_leader(surf, sx, sy, p[2], c.warp, k, theme.dim(color, 0.45))
             light = self._light_on(sx, sy, 100 * k) if c.visible else None
             drawn = (self._sprite(surf, c.cls, sx, sy, p[2], k) if c.visible and c.identified and k >= SPRITE_MIN_K
                      else None)
@@ -1077,20 +1094,20 @@ class TacticalView:
         if art and not quiet:
             self._leader(surf, sx, sy, rad - 4, lx if lx > sx else lx + lw, top, color)
         if not quiet:
-            theme.label(surf, label, (lx, top), color, 12)
+            self._later(theme.label, surf, label, (lx, top), color, 12)
         if c.solution > 0 and place is not None:
-            theme.text(surf, f"FIRING SOLUTION · {c.solution:.0f}s", (lx, top + 14),
+            self._later(theme.text, surf, f"FIRING SOLUTION · {c.solution:.0f}s", (lx, top + 14),
                        theme.mix(theme.EXHAUST, (255, 255, 255), 0.45), 10, weight="semibold")
         elif c.exhaust and place is not None:
-            theme.text(surf, "EXHAUST · rough fix", (lx, top + 14), theme.EXHAUST, 10, weight="semibold")
+            self._later(theme.text, surf, "EXHAUST · rough fix", (lx, top + 14), theme.EXHAUST, 10, weight="semibold")
         elif hive is not None and c.visible and place is not None and not quiet:
             note = self._hive_note(hive, targeted)
             if note:
                 room = int(cam.rect.right - 4 - lx)
-                theme.text(surf, theme.fit(note, 10, room), (lx, top + 14),
+                self._later(theme.text, surf, theme.fit(note, 10, room), (lx, top + 14),
                            theme.HIVE if hive.dormant > 0 else theme.dim(theme.HIVE, 0.85), 10, weight="medium")
         elif lost and place is not None:
-            theme.text(surf, f"lost {c.age:.0f}s", (lx, top + 14), theme.TEXT_FAINT, 10)
+            self._later(theme.text, surf, f"lost {c.age:.0f}s", (lx, top + 14), theme.TEXT_FAINT, 10)
         if targeted:
             if self._lock[0] != c.id:
                 self._lock = (c.id, self.clock)             # a new target: the brackets close in on it
@@ -1154,6 +1171,17 @@ class TacticalView:
             gfx.draw.circle(surf, col, (int(sx), int(sy)), 1)
             if o.code:
                 theme.text(surf, o.code, (sx + 7, sy - 6), theme.dim(col, 0.9), 10, "mono")
+
+    @staticmethod
+    def _velocity_leader(surf: pygame.Surface, sx: float, sy: float, heading: float, warp: float, k: float,
+                         col: theme.Color) -> None:
+        """A short line ahead of a ship's bow, longer the faster she goes: enough to read her heading and pace at a
+        glance, never so long that it reaches across her neighbours."""
+        a = math.radians(heading)
+        b = 56 * k                           # from just past her bow, so the line never draws over her
+        L = LEADER_MIN + LEADER_PER_WARP * min(warp, 9.0)
+        gfx.draw.line(surf, col, (sx + math.sin(a) * b, sy - math.cos(a) * b),
+                      (sx + math.sin(a) * (b + L), sy - math.cos(a) * (b + L)))
 
     @staticmethod
     def _leader(surf: pygame.Surface, sx: float, sy: float, ring: float, lx: float, top: float, col: theme.Color) -> None:

@@ -1099,7 +1099,9 @@ The panels show what matters at a glance: warp, course, crew, hull, morale, and 
 | **S** | Settings (**D** opens Display, **V** Character voices) |
 | **K** | The Enterprise's next pass meets a Klingon battle cruiser, which decloaks and fights her |
 | **B** | Her next pass meets a Borg cube, which comes out of a transwarp conduit, trades a few salvos with her, adapts to her phasers and is destroyed |
-| **Esc** | Quit |
+| **Esc** | Quit: press it twice, so one Esc too many never ends the game (the **Quit** button needs only one click) |
+
+Each button shows its key at its right end.
 
 Left alone, the menu shows a pass that meets an enemy every few passes: the Borg cube first, a few seconds after the menu opens, then the Klingon and the Borg taking turns.
 
@@ -3484,7 +3486,7 @@ See also: [Keyboard and mouse](#topic-controls), [The command console](#topic-co
 
 *Change the game's settings from the main menu: display, sound, battle, the bridge, speaking orders, language models and your officers.*
 
-Choose **Settings** on the main menu (or press **S** there). The sections are down the left; click one, or move through them with **↑** and **↓**. **Esc** or **Back** returns to the menu.
+Choose **Settings** on the main menu (or press **S** there). The sections are down the left, numbered; click one, press its number (**1** to **9**), or move through them with **↑** and **↓**. **Esc** or **Back** returns to the menu.
 
 Every change is saved the moment you make it, to the same plain text files the game has always read, so you can still edit them by hand: `config/settings.json` for everything except the officers, and `config/officers.toml` for them. A box you type in (a model's name, a server's address) keeps what you typed when you press **Enter**, **Tab** or click elsewhere; **Esc** puts back what was there. **Ctrl+V** (or **⌘V**) pastes.
 

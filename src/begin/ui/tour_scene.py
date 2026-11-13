@@ -364,6 +364,7 @@ class TourScene:
             self._log(surf)
         elif self.page == "end":
             self._end(surf)
+        self._panes += [pygame.Rect(h.rect) for h in self.ui.hotspots]   # nor under a button or a list
         self.ui.draw_tooltip(surf)
 
     def _glass(self, surf: pygame.Surface, rect: pygame.Rect, *args: object, **kw: object) -> int:

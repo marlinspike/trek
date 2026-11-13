@@ -27,6 +27,7 @@ FACTIONS = ["federation", "klingon", "romulan", "orion"]
 STAR_DRIFT = 900.0        # world units per second the menu's view drifts through the stars
 TITLE_SIZE = 84           # pixels: the gold title lettering
 TITLE = "BEGIN : TREK"     # the remake's name: Begin was the original game
+QUIT_CONFIRM = 2.5        # seconds: a second Esc within this quits the game
 MENU_SOUND = 0.4          # × the player's volume: the menu's flybys are heard, quietly
 
 
@@ -61,7 +62,7 @@ class MenuScene:
         cs = settings.custom
         self.custom: dict[str, Any] = {      # the custom battle being set up, as saved in the settings
             "player_faction": cs.get("player_faction", "federation"),
-            "player_class": cs.get("player_class", "federation.hc"),
+            "player_class": cs.get("player_class", "federation.dn"),   # the Enterprise is a Dreadnought unless you choose
             "wingmen": int(cast("int | float | str", cs.get("wingmen", 0))),
             "enemy_faction": cs.get("enemy_faction", "klingon"),
             "enemy_class": cs.get("enemy_class", "klingon.bc"),
@@ -75,6 +76,7 @@ class MenuScene:
         threading.Thread(target=self._make_audio, daemon=True).start()
         self.manual: ManualView | None = None     # made the first time the coach or manual is opened
         self._swallow = False
+        self._quit_armed = -QUIT_CONFIRM      # when Esc was last pressed on the main menu
         from ..paths import config_warning
 
         self.config_warning = config_warning()
@@ -134,10 +136,12 @@ class MenuScene:
                 self.manual.wheel(ev.y, self.ui.mouse)
         elif ev.type == pygame.KEYDOWN:
             if ev.key == pygame.K_ESCAPE:
-                if self.page == "main":
-                    self.quit()
-                else:
+                if self.page != "main":
                     self.page = "main"
+                elif self.t - self._quit_armed < QUIT_CONFIRM:
+                    self.quit()
+                else:                         # one Esc too many never ends the game: it takes a second
+                    self._quit_armed = self.t
             elif self.page == "presets" and ev.key in (pygame.K_UP, pygame.K_DOWN):
                 d = -1 if ev.key == pygame.K_UP else 1
                 self.preset_i = (self.preset_i + d) % len(self.presets)
@@ -239,32 +243,35 @@ class MenuScene:
 
     def _main(self, surf: pygame.Surface) -> None:
         x, y = 84, 220
-        items: list[tuple[str, Callable[[], object], str]] = [
-            (m.title, partial(self.play, m), m.blurb + (f" ({_key_label(m.hotkey)})" if m.hotkey else ""))
-            for m in MODES]
+        items: list[tuple[str, Callable[[], object], str, str | None]] = [
+            (m.title, partial(self.play, m), m.blurb, _key_label(m.hotkey) if m.hotkey else None) for m in MODES]
         items += [
-            ("Tour of duty", self._tours, "Linked battles with a squadron that carries its damage, and a captain's log (T)"),
-            ("Preset battles", lambda: setattr(self, "page", "presets"), "Curated scenarios"),
-            ("Custom battle", lambda: setattr(self, "page", "custom"), "Choose fleets"),
-            ("Coach & training", self.open_manual, "How to fight your first battle, before you start (C)"),
-            ("Manual", lambda: self.open_manual("index"), "Every page of the manual (H)"),
+            ("Tour of duty", self._tours, "Linked battles with a squadron that carries its damage, and a captain's log", "T"),
+            ("Preset battles", lambda: setattr(self, "page", "presets"), "Curated scenarios", None),
+            ("Custom battle", lambda: setattr(self, "page", "custom"), "Choose fleets", None),
+            ("Coach & training", self.open_manual, "How to fight your first battle, before you start", "C"),
+            ("Manual", lambda: self.open_manual("index"), "Every page of the manual", "H"),
         ]
         items += [
             ("Settings", self.open_settings,
-             "Display, sound, the bridge, speaking orders, language models and your officers (S)"),
-            ("About & licensing", lambda: setattr(self, "page", "about"), ""),
-            ("Open config folder", self._open_config, "Your settings, officers, orders and sounds: plain text files you can edit"),
-            ("Quit", self.quit, "Esc"),
+             "Display, sound, the bridge, speaking orders, language models and your officers", "S"),
+            ("About & licensing", lambda: setattr(self, "page", "about"), "", None),
+            ("Open config folder", self._open_config, "Your settings, officers, orders and sounds: plain text files you can edit",
+             None),
+            ("Quit", self.quit, "Leave the game (or Esc twice)", "Esc"),
         ]
         # a short window: closer together, and small enough that the side switch below still fits on screen
         step = max(28, min(49, (surf.get_height() - y - 64) // len(items)))
-        for label, act, tip in items:
-            self.ui.button(surf, pygame.Rect(x, y, 300, step - 7), label.upper(), act, tip, size=16 if step >= 38 else 14)
+        for label, act, tip, key in items:
+            self.ui.button(surf, pygame.Rect(x, y, 300, step - 7), label.upper(), act, tip, size=16 if step >= 38 else 14,
+                           key=key)
             y += step
         pf = self.custom["player_faction"]
         self.ui.button(surf, pygame.Rect(x, y + 12, 300, 30), f"QUICK BATTLE SIDE: {self.content.factions[pf].name.upper()}",
                        lambda: self._cycle("player_faction", FACTIONS), "Which faction you command in a quick battle or a patrol",
                        size=12, face="display")
+        if self.t - self._quit_armed < QUIT_CONFIRM:
+            theme.text(surf, "Press Esc again to quit", (x + 316, y - step + 2 + (step - 7) // 2 - 8), theme.CAUTION, 13)
         if self.config_warning:
             theme.text(surf, self.config_warning, (x, surf.get_height() - 40), theme.CAUTION, 14)
 
@@ -294,7 +301,7 @@ class MenuScene:
         pitch = max(26, min(40, room // max(1, len(self.presets))))
         for i, p in enumerate(self.presets):
             self.ui.button(surf, pygame.Rect(x, y, 300, pitch - 6), p.title, partial(setattr, self, "preset_i", i),
-                           active=i == self.preset_i, size=14 if pitch >= 36 else 13)
+                           active=i == self.preset_i, size=14 if pitch >= 36 else 13, face="display")   # one face for the list
             y += pitch
         self.ui.button(surf, pygame.Rect(x, y + 14, 140, 34), "Back", lambda: setattr(self, "page", "main"), size=13)
         p = self.presets[self.preset_i]
