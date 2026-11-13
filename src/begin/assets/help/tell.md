@@ -13,10 +13,13 @@ tell excalibur attack gorkon
 tell excalibur escort enterprise at 2000
 tell excalibur defend me
 tell 1 attack gorkon
+tell all escort me
 tell excalibur hold fire
 tell excalibur run
 tell excalibur report
 ```
+
+`tell all <order>` gives the order to every ally at once; `fleet`, `squadron` and `wingmen` mean the same as `all`. You can also just say the ship's name first, as on the bridge: `yorktown, attack gorkon`, or `all ships, form up on me`. The everyday words work with no language model: "escort me", "form up on me", "attack my target", "fall back", "hold fire", "open fire", "defend me", "report" and "stop".
 
 An ally carries several orders at once: one **movement** order, a **target**, **hold fire** or **open fire**, a **weapon** preference and a **group**. A new movement order replaces the old one, but leaves the target alone, and so on.
 

@@ -25,6 +25,9 @@ _POSSESSIVE = re.compile(r"\b(their|her|its|his|them|enemy|enemies|all|both|ever
 _SOFT_DISABLE = re.compile(r"^(?:hit|shoot(?:\s+at)?|go\s+after|bring\s+down|take\s+down|knock\s+down|get|"
                            r"blast|pound|hammer|concentrate\s+(?:fire\s+)?on)\s+(.+)$")
 _WANT_DOWN = re.compile(r"^(?:i want|i need|we need|i'?d like)\s+((?:their|her|its|his)\b.*?)\s+(?:down|out|gone|offline)\W*$")
+# "can you get the warp drive back?", "bring the shields back online": our own systems, repaired first
+_BACK_UP = re.compile(r"^(?:can\s+you\s+|could\s+you\s+|i\s+need\s+you\s+to\s+)?(?:get|bring)\s+(?:the\s+|our\s+)?(.+?)\s+"
+                      r"(?:back(?:\s+(?:online|up|on\s*line))?|online|working)(?:\s+(?:soon|now|fast|quickly))?\W*$")
 _PLASMA = r"(?:warp\s+|nacelle\s+)?(?:exhaust|plasma(?:\s+trails?)?|trails?|leaks?)"
 _HIT = (r"(?:strike|hit|kill|attack|destroy|take\s+out|knock\s+out|cripple|disable|target|blast|nail|"
         r"fire\s+(?:on|at|into)|lock\s+(?:on(?:\s+to)?|onto))")
@@ -70,6 +73,7 @@ _REWRITES: tuple[tuple[re.Pattern[str], str], ...] = _HIVE_REWRITES + (
     (re.compile(r"^i'?ll\s+fly(?:\s+(?:her|it|the\s+ship))?\b"), "i have nav"),
     # "give me all she's got", said to the bridge at large: engineering puts a team on the drives [E]
     (re.compile(r"^(?:give\s+me\s+)?(?:all|everything)\s+(?:she|you)(?:['’]?s|['’]?ve|\s+has|\s+have)?\s+got\W*$"), "boost"),
+    (re.compile(r"^(?:give\s+(?:me|us)|bring\s+us\s+(?:up\s+)?to)\s+warp\s+(?:factor\s+)?(\d+(?:\.\d+)?)\W*$"), r"warp \1"),
     (re.compile(r"^give\s+me\s+"), "i have "),                          # "give me the helm"
     (re.compile(r"^(?:the\s+)?(\w+)\s+(?:is|are)\s+mine\b"), r"i have \1"),
     (re.compile(r"^stop\s+evading\b|^no\s+more\s+evasive\b"), "evasive off"),
@@ -87,7 +91,7 @@ _REWRITES: tuple[tuple[re.Pattern[str], str], ...] = _HIVE_REWRITES + (
     (re.compile(r"^(?:go\s+to|engage\s+at|ahead|ahead\s+at|increase\s+to|reduce\s+to|bring\s+us\s+to|make)\s+"
                 r"(?:warp|speed)\s*(?:factor\s+)?(\d+(?:\.\d+)?)\W*$"), r"warp \1"),
     (re.compile(r"^(?:warp\s+factor|warp\s+speed)\s+(\d+(?:\.\d+)?)\W*$"), r"warp \1"),
-    (re.compile(r"^(?:full\s+speed(?:\s+ahead)?|maximum\s+(?:warp|speed)|max\s+(?:warp|speed)|punch\s+it|"
+    (re.compile(r"^(?:ahead\s+full|full\s+ahead|full\s+speed(?:\s+ahead)?|maximum\s+(?:warp|speed)|max\s+(?:warp|speed)|punch\s+it|"
                 r"(?:engage\s+)?(?:at\s+)?flank\s+speed)\W*$"), "warp max"),
     (re.compile(r"^(?:full\s+stop|come\s+to\s+(?:a\s+)?(?:full\s+)?stop|stop\s+(?:the\s+)?(?:ship|engines)|"
                 r"cut\s+(?:the\s+)?engines)\W*$"), "stop"),
@@ -101,7 +105,7 @@ _REWRITES: tuple[tuple[re.Pattern[str], str], ...] = _HIVE_REWRITES + (
                 r"(port|left|starboard|right)\b\s*(\d+)?(?:\s*degrees)?\W*$"), r"helm \1 \2"),
     # running and closing: 'retreat', 'get us out of here', 'keep our distance', 'take us in', 'close to 3000'
     (re.compile(r"^(?:retreat|withdraw|fall\s+back|run(?:\s+away|\s+for\s+it)?|bug\s+out|get\s+us\s+out(?:\s+of\s+here)?|"
-                r"back\s+off|open\s+the\s+range|keep\s+(?:our|your|a\s+safe)\s+distance|break\s+away|"
+                r"take\s+us\s+out(?:\s+of\s+(?:here|there))?|back\s+off|open\s+the\s+range|keep\s+(?:our|your|a\s+safe)\s+distance|break\s+away|"
                 r"get\s+(?:us\s+)?(?:clear|away))\W*$"), "elude target"),
     (re.compile(r"^(?:close\s+(?:to|in\s+to)|close\s+the\s+range\s+to|get\s+within)\s+(\d+)\W*$"), r"pursue target \1"),
     (re.compile(r"^(?:take\s+us\s+in|close\s+(?:in|with\s+(?:them|her)|the\s+range|the\s+distance)|get\s+(?:us\s+)?closer|"
@@ -121,9 +125,73 @@ _REWRITES: tuple[tuple[re.Pattern[str], str], ...] = _HIVE_REWRITES + (
                 r"(?:any\s+)?(?:suggestions|recommendations|ideas)|options|what\s+are\s+(?:my|our)\s+options)\W*$"), "counsel"),
     (re.compile(r"^(?:manage|handle|run|take\s+care\s+of|direct)\s+(?:the\s+)?repairs\W*$"), "repair auto"),
     (re.compile(r"^point[\s-]+defen[cs]es?\b"), "pd"),
+    (re.compile(r"^(?:repair|fix|patch\s+up)\s+(?:the\s+|our\s+)?(.+?)\s+(?:first|now|immediately|right\s+away|asap|"
+                r"before\s+anything\s+else)\W*$"), r"repair \1"),
+    (re.compile(r"^(?:lay\s+in|plot|set)\s+(?:a\s+)?(?:course|heading)\s+(?:for|to|toward|towards)\s+(?!\d)(?:the\s+)?(.+?)\W*$"),
+     r"pursue \1"),
     (re.compile(r"^(?:lock\s+on(?:to)?|target)\s+(?:the\s+)?(?:nearest|closest)(?:\s+(?:enemy|ship|one|hostile))?\W*$"),
      "target nearest"),
+    # [E] the engineer's power, in a captain's words: "more power to the engines", "divert power to the forward shields"
+    (re.compile(r"^(?:give\s+(?:me|us)\s+|(?:i\s+need|we\s+need)\s+)?(?:more|all|full|maximum|max|extra|emergency)?\s*"
+                r"power\s+to\s+(?:the\s+)?(?:engines?|warp(?:\s+drive)?|drives?|propulsion|impulse|nacelles?)\W*$"), "boost"),
+    (re.compile(r"^(?:divert|reroute|re-route|route|transfer|shunt|channel|put|send|give)\s+(?:all\s+|more\s+|auxiliary\s+|"
+                r"emergency\s+|(?:all\s+)?(?:available|spare|reserve)\s+)?power\s+(?:to|into)\s+(?:the\s+)?"
+                r"(?:engines?|warp(?:\s+drive)?|drives?|propulsion|impulse|nacelles?)\W*$"), "boost"),
+    (re.compile(r"^(?:(?:give\s+(?:me|us)\s+|(?:i\s+need|we\s+need)\s+)?(?:more|all|full|maximum|max|extra|emergency)\s+power|"
+                r"(?:divert|reroute|re-route|route|transfer|shunt|channel|put|send|give)\s+(?:all\s+|more\s+|auxiliary\s+|"
+                r"emergency\s+|(?:all\s+)?(?:available|spare|reserve)\s+)?power)\s+(?:to|into)\s+(?:the\s+|our\s+)?"
+                r"(forward|front|fore|bow|aft|rear|stern|port|left|starboard|right)?\s*shields?\W*$"), r"reinforce \1"),
+    (re.compile(r"^(?:reinforce|strengthen|boost|bolster)\s+(?:the\s+|our\s+)?"
+                r"(forward|front|fore|bow|aft|rear|stern|port|left|starboard|right)\s+shields?\W*$"), r"reinforce \1"),
+    (re.compile(r"^(?:reinforce|strengthen|bolster)\s+(?:the\s+|our\s+)?shields?\W*$"), "reinforce"),
 )
+
+# [E] fleet orders, said to every ship of ours at once ("all ships, attack the Bismark", "fleet, fall back"); the order
+# must follow, so Begin's own `fleet` display still works, and "everyone" stays the bridge crew
+_FLEET = re.compile(r"^(?:all\s+(?:ships|hands|units|vessels)|(?:the\s+)?(?:fleet|squadron|wingmen|wing|task\s+force|flotilla)|"
+                    r"every\s+ship)\b[\s,:;-]*(.+)$")
+# the same order to the whole squadron, with no one named: "form up on me", "regroup"
+_FORM_UP = re.compile(r"^(?:form\s+up(?:\s+on\s+(?:me|us|the\s+flagship))?|regroup|rally(?:\s+on\s+(?:me|us))?|"
+                      r"fall\s+in|on\s+me|stay\s+(?:with\s+(?:me|us)|close)|follow\s+(?:me|us)|cover\s+(?:me|us)|"
+                      r"escort\s+(?:me|us)|guard\s+(?:me|us)|protect\s+(?:me|us))\W*$")
+# one ally's order in a captain's words -> the `tell` order it means
+_ALLY_WORDS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (_FORM_UP, "escort me"),
+    (re.compile(r"^(?:attack|engage|go\s+after|hit|fire\s+(?:on|at)|take\s+out)\s+(?:my|our|the)\s+target\W*$"), "attack target"),
+    (re.compile(r"^(?:attack|engage|go\s+after|hit|fire\s+(?:on|at)|take\s+out|destroy|kill|charge|"
+                r"(?:concentrate|focus)\s+(?:fire\s+)?on)\s+(?:the\s+)?(.+?)\W*$"), r"attack \1"),
+    (re.compile(r"^(?:attack|engage|charge|go\s+get\s+(?:them|her)|weapons\s+free\s+and\s+attack)\W*$"), "attack target"),
+    (re.compile(r"^(?:fall\s+back|retreat|run(?:\s+for\s+it)?|bug\s+out|pull\s+back|pull\s+out|break\s+off|"
+                r"get\s+(?:out(?:\s+of\s+there|\s+of\s+here)?|clear))\W*$"), "run"),
+    (re.compile(r"^(?:hold|cease|stop|check)\s+(?:your\s+|their\s+)?fir(?:e|ing)\W*$|^weapons\s+(?:hold|cold|tight)\W*$"),
+     "hold fire"),
+    (re.compile(r"^(?:open\s+fire|fire\s+at\s+will|weapons\s+free)\W*$"), "open fire"),
+    (re.compile(r"^(?:defend|protect|guard|cover|shield)\s+(?:the\s+)?(.+?)\W*$"), r"defend \1"),
+    (re.compile(r"^(?:report(?:\s+in)?|status(?:\s+report)?|sit\s*rep|check\s+in)\W*$"), "report"),
+    (re.compile(r"^(?:all\s+)?(?:stop|halt|hold\s+(?:your\s+)?position|hold\s+station)\W*$"), "stop"),
+)
+
+
+def ally_words(text: str) -> str:
+    """What an ally (or the whole squadron) is told, in the words `tell` reads: 'fall back' is 'run', 'form up on me'
+    is 'escort me', 'take out the Wraith' is 'attack wraith'. Anything else is passed on as it was said."""
+    low = re.sub(r"^(?:to|please)\s+", "", text.strip().lower())     # "tell the Yorktown to fall back"
+    for pat, repl in _ALLY_WORDS:
+        new = pat.sub(repl, low, count=1)
+        if new != low:
+            return new.strip()
+    return low or "attack target"
+
+
+def fleet_order(text: str) -> str | None:
+    """'tell all ...' for an order given to every ship of ours at once, else None."""
+    low = text.strip().lower()
+    m = _FLEET.match(low)
+    if m is not None:
+        return "tell all " + ally_words(m.group(1))
+    if _FORM_UP.match(low):
+        return "tell all escort me"
+    return None
 
 
 def plain_order(text: str) -> str:
@@ -133,10 +201,16 @@ def plain_order(text: str) -> str:
     if not low or _SPOKEN.match(low):
         return text          # a message, a hail or a macro: the captain's own words, untouched
     low = _THEIR_TYPOS.sub("their", low)
+    fleet = fleet_order(low)
+    if fleet is not None:
+        return fleet
     for pat, repl in _REWRITES:
         new = pat.sub(repl, low, count=1)
         if new != low:
             return new.strip()
+    m = _BACK_UP.match(low)
+    if m is not None and (named := next((w for w in m.group(1).split() if system_word(w)), None)) is not None:
+        return f"repair {named}"                 # "can you get the warp drive back?"
     m = _WANT_DOWN.match(low)
     if m is not None and any(system_word(w) for w in m.group(1).split()):
         return f"disable {m.group(1)}"           # "I want their shields down"
@@ -190,4 +264,4 @@ def split_orders(text: str) -> list[str]:
     return [plain_order(p) for p in pieces] if len(pieces) > 1 else [low]
 
 
-__all__ = ["STOP_ALL", "STOP_FIRE", "STRIKE_REWRITES", "is_strike", "plain_order", "split_orders"]
+__all__ = ["STOP_ALL", "STOP_FIRE", "STRIKE_REWRITES", "ally_words", "fleet_order", "is_strike", "plain_order", "split_orders"]

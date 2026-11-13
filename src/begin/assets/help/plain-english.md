@@ -48,7 +48,16 @@ The bridge's everyday words work with no language model at all. The console turn
 | "manage repairs" | an officer directs the repair crews |
 | "launch a probe", "send an away team" | `fire probes`, `away` |
 | "zoom in", "zoom out" | halves or doubles the range shown |
+| "more power to the engines", "divert power to engines" | `boost`, Geordi's engine boost |
+| "more power to the forward shields", "reinforce the aft shields" | reinforces that shield; with no side named, the one facing the target |
+| "give me warp 8", "ahead full" | `warp 8`, or her best warp |
+| "lay in a course for the Gorkon" | pursue her |
+| "can you get the warp drive back?", "repair the phasers first" | sends the repair crews there |
+| "all ships, attack the Gorkon", "fleet, form up on me", "squadron, hold fire" | `tell all ...`: the order goes to every ally |
+| "Yorktown, defend me", "Excalibur, fall back" | `tell yorktown defend me`, `tell excalibur run` |
 | "make it so", "aye", "do it" | takes the officer's proposal on the screen, like **Y**; "no" or "not now" turns it down, like **N** |
+
+An ally's name at the start of a line speaks to that ship, as **tell** does. Allies understand "escort me", "form up on me", "cover me", "attack the Gorkon", "attack my target", "fall back", "hold fire", "open fire", "defend the Yorktown", "report" and "stop". For the whole fleet, start with "all ships", "fleet", "squadron", "wingmen" or "task force".
 
 "The target", "her", "them" and "that ship" mean the ship you have targeted, or the nearest enemy if you have none. A ship whose name really is one of those words still answers to it.
 

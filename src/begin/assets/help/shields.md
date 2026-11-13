@@ -23,6 +23,8 @@ lower 4 5 6
 raise shields 1 2 3
 shields
 reinforce 1
+reinforce aft
+reinforce
 reinforce off
 ```
 
@@ -36,7 +38,7 @@ A shield that is up costs energy every cycle, and it recharges when it has been 
 
 ## Reinforcing
 
-`reinforce <n>` makes one shield lose strength at half the rate when it is hit, at four times the energy cost. Only one shield can be reinforced at a time. Reinforce the one facing the enemy, then turn to keep it there. `reinforce off` ends it.
+`reinforce <n>` makes one shield lose strength at half the rate when it is hit, at four times the energy cost. Only one shield can be reinforced at a time. Reinforce the one facing the enemy, then turn to keep it there. `reinforce off` ends it. You can name the side instead of the number (`reinforce forward`, `aft`, `port` or `starboard`), or a ship (`reinforce gorkon`) to reinforce the shield facing her. Plain `reinforce` picks the shield facing your target, or the nearest enemy.
 
 ## When shields must come down
 
