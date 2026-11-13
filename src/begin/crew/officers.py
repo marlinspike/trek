@@ -32,7 +32,7 @@ from ..content.schema import ContentDB
 from ..core.rng import Rng
 from ..sim.allies import AllyStanding
 from ..sim.commands import (
-    Authority, Command, ConfigureAutoload, ControlProbe, DeflectorPulse, Dock, EndObjective, Evasive, FireAtPoint, FirePhasers,
+    Authority, Command, ConfigureAutoload, ControlProbe, DeflectorPulse, Dock, EndObjective, EngineBoost, Evasive, FireAtPoint, FirePhasers,
     FireSpecialRound, FireTorpedoes, LaunchProbe, LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetObjective, SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, StartProject, TurnMounts,
     offensive_fire,
@@ -50,7 +50,7 @@ STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
     "tactical": (SelectTarget, LockWeapons, TurnMounts, FirePhasers, SetPhaserSpread, SetBanks, FireTorpedoes, FireAtPoint,
                  ConfigureAutoload, LoadTubes, SetTubes, LaunchProbe, ControlProbe, SetFireMode, SetPointDefense,
                  FireSpecialRound),
-    "engineering": (SetShields, ReinforceShield, SetRepairPriority, SetCloak),
+    "engineering": (SetShields, ReinforceShield, SetRepairPriority, SetCloak, EngineBoost),
     "science": (Scan, StartProject, DeflectorPulse, SetObjective, EndObjective),
 }
 

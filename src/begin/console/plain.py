@@ -29,6 +29,8 @@ _REWRITES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^i'?ll\s+take\s+(?:it\s+from\s+here|over|it)\b"), "i have it"),
     (re.compile(r"^i'?ll\s+(?:take|handle|run)\s+"), "i have "),         # "I'll take the helm"
     (re.compile(r"^i'?ll\s+fly(?:\s+(?:her|it|the\s+ship))?\b"), "i have nav"),
+    # "give me all she's got", said to the bridge at large: engineering puts a team on the drives [E]
+    (re.compile(r"^(?:give\s+me\s+)?(?:all|everything)\s+(?:she|you)(?:['’]?s|['’]?ve|\s+has|\s+have)?\s+got\W*$"), "boost"),
     (re.compile(r"^give\s+me\s+"), "i have "),                          # "give me the helm"
     (re.compile(r"^(?:the\s+)?(\w+)\s+(?:is|are)\s+mine\b"), r"i have \1"),
     (re.compile(r"^stop\s+evading\b|^no\s+more\s+evasive\b"), "evasive off"),

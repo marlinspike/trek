@@ -586,6 +586,41 @@ class StartProject(Command):
 
 
 @dataclass(kw_only=True)
+class EngineBoost(Command):
+    """The chief engineer puts a team on the drives ("give me all she's got") [E].
+
+    For `boost_cycles` the drives heat up 1/`boost_endurance` as fast, so they run hot that much longer before
+    they overheat. The price is the team itself: every other repair (systems and hull) runs at
+    `boost_repair_share` × its speed until it is done. `on=False` sends the team back to the repairs early.
+    """
+
+    on: bool = True
+    name: ClassVar[str] = "boost"
+
+    def channels(self) -> tuple[str, ...]:
+        return ("engineering.boost",)
+
+    def validate(self, world: World, ship: Ship) -> None:
+        from .systems.power import boost_possible
+
+        if not self.on:
+            if ship.engine_boost <= 0.0:
+                raise Rejected("The engine team is already on repairs.")
+            return
+        if ship.engine_boost > 0.0:
+            raise Rejected(f"The team's already on the engines, Captain: {ship.engine_boost:.0f} cycles left.")
+        why = boost_possible(ship)
+        if why is not None:
+            raise Rejected(why)
+
+    def apply(self, world: World, ship: Ship) -> None:
+        ship.engine_boost = world.rules.boost_cycles if self.on else 0.0
+
+    def describe(self) -> str:
+        return "engine boost" if self.on else "engine boost off"
+
+
+@dataclass(kw_only=True)
 class FireSpecialRound(Command):
     """Fire a designed round (e.g. the tachyon detector) at a point, fused to burst there [E]."""
 

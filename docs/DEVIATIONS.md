@@ -55,6 +55,10 @@ Begin detects a ship at its rated sensor range multiplied by the ship's reflecti
 
 In 140 AI battles the results matched the previous build (107 wins against 105).
 
+## Engine boost
+
+Begin's drives heat at a fixed rate above cruise warp. In the remake the captain can ask the chief engineer for "all she's got" (`boost`, or in plain words to Geordi). For `Rules.boost_cycles` (30) an engineering team nurses the drives: they heat at 1/`boost_endurance` (1/1.4) of the usual rate, so they run 40% longer before they overheat. The cost is the team: every other repair, systems and hull, runs at `boost_repair_share` (half) speed until it ends. The drives' own repairs are unaffected, and there is no penalty afterwards. `boost off` (or "back to repairs") ends it early, and it ends at once if every drive is lost. The Own ship panel marks it: the Drives label in the repair crews' colour with a hairline countdown under the heat bars, and the Repairs line reads "slowed". When the captain runs engineering and the drives pass 70% of their limit while still heating, Geordi offers it as a proposal.
+
 ## Crew projects: the tachyon detector
 
 Begin has no way to find a cloaked ship except waiting for it to fire. In the remake, Spock and Seven of Nine can design a tachyon detector torpedo when you ask them about cloaked ships (or with `design tachyon`). It takes 20 cycles with a full crew, goes into one tube for a single shot, and the tube then goes back to ordinary torpedoes. Fired with `tachyon <bearing> <range>` or `tachyon <ship>`, it bursts at that point and shows every cloaked ship within 6,000 units for 30 cycles. It does no damage. The design is ours, inspired by the tachyon detection grids of the films and series.

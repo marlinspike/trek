@@ -191,6 +191,12 @@ class ObjectiveEnded(Event):
 
 
 @dataclass(slots=True)
+class EngineBoostEnded(Event):
+    ship_id: int
+    lost: bool = False     # cut short: no drive left to nurse
+
+
+@dataclass(slots=True)
 class ProjectCompleted(Event):
     ship_id: int
     project: str

@@ -7,6 +7,9 @@ here the crew rebuilds them in space too, at the same rate, starting from 100% [
 A system hit by aimed fire repairs at `aimed_repair` × the rate in space until it
 is whole again, so a captain can knock systems out and keep them out [E].
 
+While an engineering team nurses the drives (`engine_boost`, the captain's "give me all she's got"),
+every repair but the drives' own runs at `boost_repair_share` × its speed: the team was taken off them [E].
+
 The hull is repaired too [E]: slowly in battle, faster once the fighting is
 over, and fastest at a base. Crews in space patch the hull to
 `hull_field_limit`; only a base restores it fully. The hull can be the repair
@@ -19,7 +22,7 @@ import math
 from typing import TYPE_CHECKING
 
 from ..events import HullRepaired, Message, SubsystemRepaired, Tone
-from ..ship import HULL, REPAIR_CLASS, Ship
+from ..ship import HULL, REPAIR_CLASS, Kind, Ship
 
 if TYPE_CHECKING:
     from ..world import World
@@ -69,10 +72,13 @@ def update_repair(world: World, ship: Ship, dt: float) -> None:
     rng = world.rng
     cls = ship.cls
     prio = ship.repair_priority
+    short = world.rules.boost_repair_share if ship.engine_boost > 0.0 else 1.0
     for sub in ship.subsystems():
         if sub.damage == 0:
             continue
         mult = 1.0 if prio is None else (4.0 if sub.kind == prio else 0.5)
+        if sub.kind != Kind.DRIVE:
+            mult *= short      # a team is off on the engines [E]
         rate = cls.repair.rate(REPAIR_CLASS[sub.kind]) * mult * eff
         if sub.aimed_hit and not docked:
             rate *= world.rules.aimed_repair   # aimed fire wrecks the parts crews can't patch in space [E]
@@ -99,6 +105,8 @@ def _repair_hull(world: World, ship: Ship, eff: float, docked: bool, dt: float) 
         return
     prio = ship.repair_priority
     mult = 1.0 if prio is None else (4.0 if prio == HULL else 0.5)
+    if ship.engine_boost > 0.0:
+        mult *= r.boost_repair_share
     if docked:
         rate = r.hull_repair_docked
     else:

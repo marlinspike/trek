@@ -43,7 +43,7 @@ from . import collaborations
 from .characters import OfficerProfile, Relationships
 from .chatter import Chatter
 from .intents import (
-    ADVICE, BRIDGE_RELEASE, BRIDGE_TAKE, CAPTURE, CEASE, DISABLE_ORDER, FIRING, GREET, HONORIFIC, HONORIFIC_WORDS, HUNT, KILL_VERBS,
+    ADVICE, BOOST, BOOST_OFF, BRIDGE_RELEASE, BRIDGE_TAKE, CAPTURE, CEASE, DISABLE_ORDER, FIRING, GREET, HONORIFIC, HONORIFIC_WORDS, HUNT, KILL_VERBS,
     POLITE, WHERE,
     PRAISE, RELEASE, REPAIRS_RELEASE, REPAIRS_TAKE, RUDE, SOFT_ORDER, STAND_DOWN, STATUS, TAKE, TARGET_ORDER, WEAPONS_STATE,
     could_be_officer, is_question,
@@ -213,6 +213,9 @@ class Bridge(Chatter):
             if err:
                 return [self._say(officer, err, "caution")]
             return self.handover_lines(officer, turn == "take")
+        boost = self._boost_order(officer, low, run)
+        if boost is not None:
+            return boost
         if REPAIRS_RELEASE.search(low) or REPAIRS_TAKE.search(low):
             taking = not REPAIRS_RELEASE.search(low)
             err = run(f"repair auto {officer.id}" if taking else "repair manual", officer)
@@ -230,6 +233,24 @@ class Bridge(Chatter):
         if m is not None:
             return self.release(officer, ctx, run, named=next((g for g in m.groups()[1:] if g), ""))
         return None
+
+    def _boost_order(self, officer: OfficerProfile, low: str, run: RunCommand) -> list[Utterance] | None:
+        """'Geordi, give me all she's got': the chief engineer puts a team on the drives so they run hot for longer,
+        and the other repairs slow while the team is away; 'back to repairs' ends it early [E]. Whoever is told,
+        engineering answers: it's their team."""
+        off = BOOST_OFF.search(low) is not None
+        if not off and BOOST.search(low) is None:
+            return None
+        eng = self.crew.officer("engineering") or officer
+        err = run("boost off" if off else "boost", eng)
+        if err:
+            return [self._say(eng, err, "caution")]
+        if off:
+            return [self._line(eng, "boost_off")
+                    or self._say(eng, "Pulling the team off the engines, Captain. They're back on repairs.")]
+        return [self._line(eng, "boost")
+                or self._say(eng, "You got it. I've got a team on the drives: she'll run hot about forty percent "
+                                  "longer. Repairs everywhere else go slower till they're done.")]
 
     def _hunt_order(self, officer: OfficerProfile, low: str, run: RunCommand) -> list[Utterance] | None:
         """'Seven, find the Talon': the officer hunts for a lost or cloaked ship until she shows, then targets her [E].
@@ -671,6 +692,8 @@ COMMAND_SYNTAX = """\
   scan <ship> | design tachyon (Spock and Seven build a detector round for cloaked ships)
   tachyon <bearing> <range> | tachyon <ship> (burst the loaded detector round there)
   design deflector (set the dish up for tachyon pulses) | pulse (expose cloaked ships ahead of the bow)
+  boost | boost off   (an engineering team keeps the drives cooler: about 40% longer before they overheat, for a
+  while; other repairs run at half speed until the team is done)
   hunt <ship> (a standing order to find a cloaked or lost ship and target her) | hunt off
   disable <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> | disable off   (a standing objective)
   delegate <helm|tactical|engineering|science> | assume <station>   (hand a station to its officer, or take it back)

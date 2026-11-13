@@ -30,7 +30,7 @@ from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, ManageRepairs, Evasive, AddressCrew, SetShields, SetTubes, Surrender,
-    CeaseFire, OpenFire, StandDown, DeflectorPulse, EndObjective, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
+    CeaseFire, OpenFire, StandDown, DeflectorPulse, EndObjective, EngineBoost, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
 from ..sim.ship import BankRole, FireMode, PDDoctrine
@@ -1461,6 +1461,15 @@ class Parser:
         """`pulse`: sweep the cone ahead with the deflector's tachyon pulse [E]."""
         tok.rest()
         res.commands.append(self._cmd(DeflectorPulse))
+
+    def _v_boost(self, tok: Tokens, res: ParseResult) -> None:
+        """`boost [engines] [on|off]`: an engineering team nurses the drives so they run hot for longer, at the cost
+        of slower repairs everywhere else; `boost off` sends the team back early [E]."""
+        tok.take_word("the")
+        tok.take_word("engines", "engine", "drives", "warp")
+        off = tok.take_word("off", "stop", "end", "cancel")
+        tok.take_word("on")
+        res.commands.append(self._cmd(EngineBoost, on=not off))
 
     def _v_conn(self, tok: Tokens, res: ParseResult) -> None:
         """`conn <officer>` gives an officer the whole bridge; `conn captain` (or bare `conn`) takes it back [E]."""
