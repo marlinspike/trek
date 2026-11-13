@@ -121,6 +121,9 @@ temperament = {temper = 0.25, obstinacy = 0.25, deviation = 0.25}
 #   chain         chance a destroyed drive or reactor sets the ship off (certain while she is dormant)
 #   tune_cut / shift_after   how much a tuned shield turns aside, and how much before they shift frequency
 #   grace         hits with stolen shield harmonics before the hive notices
+#   strike_*      aimed fire through an opening in her shields (harmonics, or a dead facing) wrecks what it hits:
+#                 strike_rolls / strike_accuracy / strike_damage, strike_repair (× the drones' mending of it),
+#                 strike_chain (chance a wrecked drive or reactor sets her off). Defaults in CollectiveRules.
 [[faction]]
 id = "borg"
 name = "Borg"

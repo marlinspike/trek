@@ -384,6 +384,17 @@ def _hive_tips(s: Ship, obs: Observation, c: ContactView, name: str, tip: AddTip
             "weapons, no healing. Mass everything on her now, hit her warp core and stand clear, or send a team across.",
             "fire all", f"target {low} warp", "away charges")
         return
+    opening = obs.opening(c.id)
+    stolen = opening == "stolen"
+    keyed = opening == "harmonic" and any(t.loaded is not None and t.loaded.ordnance == "harmonic" for t in s.tubes)
+    if stolen or keyed:
+        what = "every weapon you fire passes" if stolen else "your harmonic torpedoes pass"
+        cloak = (" Then cloak: she can't beam drones to a ship she can't see, or lock her beams on it."
+                 if s.cls.can_cloak else "")
+        tip(0, "Strike through her shields", f"For now {what} straight through **{name}**'s shields. Aim one full salvo "
+            "at one system: her shields, her warp drives or her crew decks. What gets through wrecks it, and drives "
+            f"destroyed this way can take her core with them.{cloak}", f"target {low} propulsion", "fire all torpedoes", "fire all phasers",
+            *(("cloak",) if s.cls.can_cloak else ()))
     weak = obs.weak_point(c.id)
     if weak is not None:
         tip(1, "Hit the relay", f"Seven has found **{name}**'s vinculum relay in her {weak}. Destroy it and every "

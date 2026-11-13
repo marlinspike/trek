@@ -49,12 +49,12 @@ The game has three layers. The simulation (`sim/`) owns every fact about the bat
 
 **The Borg** [E] are a faction with `collective` rules (`content/schema.py` `CollectiveRules`), and their behaviour lives in its own modules rather than in the shared systems:
 
-- `sim/collective.py` covers the hive's memory (`Mind`), adaptation per weapon family and phaser frequency, what each side has learned (`Insight`, `Survey`), the vinculum relay, dormancy, chain reactions and drones aboard. `damage.py` asks `collective.incoming` for the multiplier on every hit and calls `collective.learn` afterwards.
+- `sim/collective.py` covers the hive's memory (`Mind`), adaptation per weapon family and phaser frequency, what each side has learned (`Insight`, `Survey`), the vinculum relay, dormancy, chain reactions and drones aboard. `damage.py` asks `collective.incoming` for the multiplier on every hit and calls `collective.learn` afterwards. Aimed fire that reaches a hive hull without touching a shield is a strike (`collective.strike_rules`): `_hull_remake` gives it more and surer rolls that wreck harder, and `collective.struck` marks the system (`Subsystem.struck`, mended at `strike_repair` × speed in `repair.py`) and may set off a wrecked core.
 - `sim/away.py` runs away teams, by shuttle or transporter, through their phases (`AwayOp`) and tasks.
 - `sim/systems/sensors.py` covers plasma trails from a damaged drive at warp, the sweep, and the trail-following seeker. Fire from a `cloak_fire` class's cloak shows only the flash.
 - `sim/systems/disposition.py` answers a hail to a hive with a refusal or silence, and never with terms.
 
-`Observation` exposes all of this to the UI and the crew: `is_hive`, `adaptation`, `weak_point`, `dormant`, `away_ops`, `plasma`, `venting` and `plasma_fresh`. `HiveEvent` carries the moments. `crew/borg_talk.py` turns them into what the officers say, even with chatter off. On the map, `ui/hive_marks.py` draws adaptation rings, dormant veils and core-critical rings, and `ui/stealth.py` draws our ship under her cloak, plasma trails, exhaust fixes and seekers.
+`Observation` exposes all of this to the UI and the crew: `is_hive`, `adaptation`, `weak_point`, `opening`, `dormant`, `away_ops`, `plasma`, `venting` and `plasma_fresh`. `HiveEvent` carries the moments. `crew/borg_talk.py` turns them into what the officers say, even with chatter off. On the map, `ui/hive_marks.py` draws adaptation rings, dormant veils and core-critical rings, and `ui/stealth.py` draws our ship under her cloak, plasma trails, exhaust fixes and seekers.
 
 ## Content
 

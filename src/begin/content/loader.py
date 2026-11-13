@@ -75,7 +75,7 @@ def _collective(f: dict[str, Any]) -> CollectiveRules | None:
             kw[k] = {str(a): float(b) for a, b in v.items()}
         elif k == "weak_kinds":
             kw[k] = tuple(str(x) for x in v)
-        elif k in ("party", "grace"):
+        elif k in ("party", "grace", "strike_rolls"):
             kw[k] = int(v)
         elif k in CollectiveRules.__dataclass_fields__:
             kw[k] = float(v)

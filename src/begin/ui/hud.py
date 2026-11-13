@@ -352,7 +352,13 @@ class TargetPanel(Panel):
         if c.cls is not None:
             aspect = norm360(bearing(ship.x - c.x, ship.y - c.y) - c.course)
             k = min(range(6), key=lambda i: abs(((aspect - SHIELD_FACINGS[i]) + 180) % 360 - 180))
-            theme.text(surf, f"Their shield {k + 1} faces us", (rect.x + 12, y + 52), theme.TEXT_DIM, 12)
+            opening = obs.opening(c.id)        # [E] her harmonics are ours: a strike goes straight through
+            if opening:
+                hits = obs.insight().harmonics
+                how = f"{hits} hits" if opening == "stolen" else "harmonics"
+                theme.text(surf, f"Shields open · {how}", (rect.x + 12, y + 52), theme.GOOD, 12)
+            else:
+                theme.text(surf, f"Their shield {k + 1} faces us", (rect.x + 12, y + 52), theme.TEXT_DIM, 12)
         # in-arc summary
         bears = sum(1 for b in ship.banks if bank_bears(ship, b, brg))
         ready = sum(1 for b in ship.banks if bank_bears(ship, b, brg) and bank_ready(ship, b))

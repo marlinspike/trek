@@ -2,8 +2,8 @@
 title: Fighting the Borg
 category: Game
 order: 20
-aliases: borg, collective, cube, sphere, adapt, adaptation, remodulate, remod, modulate, rotate, duty, tune, retune, tune shields, harmonics, harmonic, vinculum, relay, weak point, dormant, drones, assimilation, repel, security, intruders, seal, vent
-summary: The Borg learn your weapons, take your crew and regrow their hulls. Learn them first, then strike hard.
+aliases: borg, collective, cube, sphere, strike, opening, open shields, wreck, adapt, adaptation, remodulate, remod, modulate, rotate, duty, tune, retune, tune shields, harmonics, harmonic, vinculum, relay, weak point, dormant, drones, assimilation, repel, security, intruders, seal, vent
+summary: The Borg learn your weapons, take your crew and regrow their hulls. Learn them first, open the way, then strike hard.
 see: away-team, scan, crew, tactics, transport, tour, cloak
 ---
 The Borg don't fight the way captains do. They don't retreat, bargain or surrender. Every weapon that hurts them teaches them, every drone that comes aboard is trying to make your crew into more drones, and their hulls grow back. **Trading shots loses.** What wins is guile first and then power: learn the ship, find the opening, then land everything at once.
@@ -61,14 +61,39 @@ repel seal
 - The Doctor's **inoculation** (`design inoculate`) protects your crew from assimilation. Spock's **encryption** (`design encrypt`) keeps the drones out of your systems. Seven can **sever** the drones aboard from the hive (`design sever`).
 - When the last drone is gone, any system they took comes back to you, damaged.
 
-## Power alone
+## Power through the opening
 
-A cube can be beaten by power alone, but it will cost you dearly. Guile and power together win. A good order of battle:
+Power alone loses. A cube's shields drink a whole salvo, her drones mend whatever gets through, and her hull grows back. But power is how a cube dies, **once guile has opened the way**.
 
-1. Keep the range open and let Seven survey the cube.
-2. Tune your shields before the drones come.
-3. Find the relay, then send Worf in, or burn it out.
-4. Strike while she sleeps.
+An opening is any way through her shields:
+
+- **Her harmonics.** Stolen by an [[away-team]], they let every weapon you fire pass straight through for a few hits. Cracked by Seven's survey, they let your harmonic torpedoes through.
+- **A dead facing.** A shield that is down, or a shield generator already destroyed.
+
+Aimed fire that reaches her hull through an opening is a **strike**. Your gunners can see exactly what they are hitting, so the system they aim at is wrecked rather than scratched. While her shields are open the target panel says so, and Worf tells you each system he takes out.
+
+```console
+target cube propulsion
+fire all torpedoes
+fire all phasers
+```
+
+Choose what to wreck:
+
+- **Her shields** (`target cube shields`). Destroyed generators are holes that stay open. Later salvos through them are strikes too, long after the harmonics are spent.
+- **Her warp drives** (`target cube propulsion`). She can't run or chase. Each drive or reactor wrecked this way may set off her core, however whole her hull: stand clear.
+- **Her crew decks** (`target cube crew`). Every salvo kills thousands of drones, and a ship with fewer drones repairs, regrows and boards more slowly.
+
+The drones take a long time to mend what a strike wrecked, so make the salvo count. Aim every bank and tube at one system, and time the torpedoes so they land with the phasers.
+
+**Then cloak.** The Enterprise's refit cloak lets her fire and vanish again. A cube can't beam drones to a ship she can't see, and her beams can't lock on it, so all she can shoot at is the flash where you were. Strike, cloak, move, and strike again through the holes you made.
+
+A good order of battle:
+
+1. Keep the range open and let Seven survey the cube. Tune your shields before the drones come.
+2. Find the relay. Put her to sleep, and send Worf across to steal her harmonics.
+3. When she wakes, put one full salvo through the harmonics into her shields, and the next into her drives.
+4. Cloak, and finish her through the holes.
 
 ## Talking to them
 

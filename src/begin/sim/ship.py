@@ -93,6 +93,7 @@ class Subsystem:
     damage: int = 0
     repair_progress: float = 0.0
     aimed_hit: bool = False   # knocked about by aimed fire: slow to repair until whole again [E]
+    struck: bool = False      # wrecked by a strike through a hive ship's open shields: slower still (sim/collective.py) [E]
     assimilated: bool = False  # seized by drones aboard: dead to us until they are driven out [E] (sim/collective.py)
 
     @property

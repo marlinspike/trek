@@ -115,7 +115,9 @@ Learn first, then strike hard. See [[borg|Fighting the Borg]] for the whole meth
 2. Tune your shields before the drones come (`tune shields`).
 3. Hold your fire until you can mass it, and `remodulate` when they adapt.
 4. When Seven finds the vinculum relay, destroy it (`target cube relay`), or send Worf across to do it ([[away-team]]).
-5. While she sleeps, hit her warp core and stand well clear, or board her and plant charges.
+5. While she sleeps, hit her warp core and stand well clear, or board her: plant charges, or steal her shield harmonics.
+6. Then bring the sword. Aimed fire through her open shields **wrecks** what it hits: one full salvo into her shields, the next into her drives (`target cube propulsion`). Every drive you wreck may set off her core.
+7. Cloak, and finish her through the holes. She can't beam to, or lock on to, a ship she can't see.
 
 ### Against bases and outposts
 

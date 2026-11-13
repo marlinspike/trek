@@ -21,6 +21,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
+from .. import collective
 from ..events import HullRepaired, Message, SubsystemRepaired, Tone
 from ..ship import HULL, REPAIR_CLASS, Kind, Ship
 
@@ -82,6 +83,8 @@ def update_repair(world: World, ship: Ship, dt: float) -> None:
         rate = cls.repair.rate(REPAIR_CLASS[sub.kind]) * mult * eff
         if sub.aimed_hit and not docked:
             rate *= world.rules.aimed_repair   # aimed fire wrecks the parts crews can't patch in space [E]
+        if sub.struck and not docked and (hive := collective.rules_of(world, ship)) is not None:
+            rate *= hive.strike_repair         # torn out through her open shields: the drones rebuild it [E]
         sub.repair_progress += rng.uniform(0.0, 2.0) * rate * dt
         whole = int(sub.repair_progress)
         if whole <= 0:
@@ -91,6 +94,7 @@ def update_repair(world: World, ship: Ship, dt: float) -> None:
         if sub.damage == 0:
             sub.repair_progress = 0.0
             sub.aimed_hit = False
+            sub.struck = False
             world.emit(SubsystemRepaired(world.tick, ship.id, sub.sid, sub.label))
             world.emit(Message(world.tick, f"Repairs completed on {ship.name}'s {sub.label.lower()}.",
                                Tone.GOOD, speaker="Engineering", ship_id=ship.id,

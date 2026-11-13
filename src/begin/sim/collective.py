@@ -26,6 +26,14 @@ helm, no regeneration, no learning. Then she can be boarded (sim/away.py) or tak
 destroyed while she sleeps sets off a chain reaction (awake, only `chain` of the time). When she wakes the relay
 has been rerouted through another system, and what we knew of it is gone.
 
+**A strike through an opening.** Fire aimed at one system that reaches a hive ship's hull without touching a
+shield (her harmonics, stolen or cracked, or a facing whose shield is down or destroyed) is not a sweep through a
+city of drones: the gunners can see exactly what they are hitting. It wrecks the system (`strike_*` rules), the
+drones mend it slowly, and a drive or reactor it destroys can set her off however whole her hull. So power wins
+against a cube when guile opens the way first: find the harmonics or batter one facing down, then put a full salvo
+into her shields, her drives or her crew decks. Under a cloak she can neither beam drones to us nor lock her beams
+on, so cloak, strike and cloak again finishes a crippled ship.
+
 **Stolen harmonics.** An away team that takes the hive's shield harmonics (sim/away.py) lets every weapon of our
 side pass their shields untouched and unlearned, for `grace` hits; then they notice, and the theft is spent.
 
@@ -43,7 +51,7 @@ from typing import TYPE_CHECKING
 
 from ..content.schema import CollectiveRules
 from .events import HiveEvent, Message, Tone
-from .ship import Kind, Ship, ShipStatus
+from .ship import Kind, Ship, ShipStatus, Subsystem
 
 if TYPE_CHECKING:
     from .world import World
@@ -222,6 +230,27 @@ def learn(world: World, target: Ship, attacker: Ship | None, family: str, raw: f
                 if s.side == target.side and s.tuning > 0:
                     s.tuning *= 0.35
             world.emit(HiveEvent(world.tick, attacker.id, "shift", target.id, target.duty_by))
+
+
+def strike_rules(world: World, target: Ship, attacker: Ship | None) -> CollectiveRules | None:
+    """The hive's rules when aimed fire from `attacker` that reached `target`'s hull untouched by a shield is a
+    strike through an opening; None when `target` is no hive ship, or the fire was not an enemy's."""
+    if attacker is None or attacker.side == target.side:
+        return None
+    return rules_of(world, target)
+
+
+def struck(world: World, ship: Ship, sub: Subsystem, rules: CollectiveRules, attacker: int | None) -> None:
+    """A strike through an opening hit `sub`: it is slow to mend, and if it is wrecked the bridge hears of it. A
+    drive or reactor wrecked this way can set her off, however whole her hull."""
+    sub.struck = True
+    if not sub.destroyed:
+        return
+    world.emit(HiveEvent(world.tick, ship.id, "struck", attacker, sub.label))
+    if sub.kind in (Kind.DRIVE, Kind.REACTOR) and ship.critical <= 0 and ship.dormant <= 0 \
+            and world.rng.unit() < rules.strike_chain:
+        ship.critical = CHAIN_FUSE
+        world.emit(HiveEvent(world.tick, ship.id, "critical", attacker, f"{CHAIN_FUSE:.0f}"))
 
 
 # ------------------------------------------------------------------ scans
@@ -509,6 +538,6 @@ def dormant_or_dark(ship: Ship) -> bool:
 
 __all__ = [
     "CODE_AT", "FAMILIES", "Insight", "Mind", "SKILL", "Survey", "TUNE_BLOCKS_BEAMING", "WEAK_AT", "board_round",
-    "can_beam_through", "chain_reaction", "commission", "fresh", "incoming", "insight", "is_hive", "learn", "mind", "on_scan",
+    "can_beam_through", "chain_reaction", "commission", "fresh", "incoming", "insight", "is_hive", "learn", "mind", "on_scan", "strike_rules", "struck",
     "release", "rules_of", "seal_section", "skill", "survey_of", "update", "weapon_key",
 ]

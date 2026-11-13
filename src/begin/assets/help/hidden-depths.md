@@ -55,6 +55,10 @@ Everything here works in the game today. None of it is on a button, and most of 
 ## The Borg
 
 - **Potshots teach them for free.** Mass every volley.
+- **Through the opening, aimed fire wrecks.** Once her shields are open to you (stolen or cracked harmonics, or a dead facing), a salvo aimed at one system wrecks it, and the drones are slow to mend it. `target cube propulsion`
+- **Wreck her shields first.** A destroyed generator is a hole that stays open after the stolen harmonics run out, so every later salvo through it is a strike too.
+- **A wrecked drive can take her core with it**, even with her hull untouched. Stand clear after a salvo into her drives.
+- **Strike, cloak, strike.** A cube can't beam drones to a ship she can't see, or lock her beams on it. Under the refit cloak, all she can shoot at is your flash.
 - **Each new frequency is learned faster than the last**, and least of all when Seven picks it. Let her take the phaser watch (`duty phasers`).
 - **Stolen harmonics work on every Borg ship**, not just the one you stole them from, until the hive notices.
 - **The away team is safe only while you keep hurting the hive.** Stop firing, or cloak, and the drones may notice the little ship. Each crossing in one battle is riskier than the last.

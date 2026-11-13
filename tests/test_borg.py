@@ -162,6 +162,81 @@ def test_the_coach_knows_the_hive(content) -> None:  # type: ignore[no-untyped-d
     assert titles and titles[0] == "She sleeps"
 
 
+# ------------------------------------------------------------------ a strike through an opening
+
+def _aimed_salvo(w, us, them, group: str, hits: int = 6) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.systems.damage import Aim, DamageKind, apply_damage
+
+    for _ in range(hits):
+        apply_damage(w, them, 40.0, us.x, us.y, DamageKind.PHASER, us.id, Aim(group, 0.5), family="phaser")
+
+
+def _wrecked(ship, kinds) -> int:  # type: ignore[no-untyped-def]
+    return sum(1 for s in ship.subsystems() if s.kind in kinds and s.destroyed)
+
+
+def test_her_harmonics_open_the_way_and_an_aimed_salvo_wrecks_what_it_aims_at(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.ship import TARGETABLE_GROUPS
+
+    drives = TARGETABLE_GROUPS["propulsion"]
+    shut = [_borg(content, "borg.cu", seed=s) for s in range(4)]
+    for _, w, us, them in shut:
+        _aimed_salvo(w, us, them, "propulsion")
+    assert sum(_wrecked(them, drives) for _, _, _, them in shut) == 0      # her shields took it all
+    opened = [_borg(content, "borg.cu", seed=s) for s in range(4)]
+    for _, w, us, them in opened:
+        assert w.observe(0).opening(them.id) == ""
+        ins = collective.insight(w, 0)
+        ins.harmonics, ins.harmonic_faction = 14, "borg"
+        assert w.observe(0).opening(them.id) == "stolen"
+        _aimed_salvo(w, us, them, "propulsion")
+    assert sum(_wrecked(them, drives) for _, _, _, them in opened) >= 8    # about half her drives, every time
+    _, w, _, them = opened[0]
+    assert any(isinstance(e, HiveEvent) and e.kind == "struck" for e in w.events)
+    assert all(s.struck for s in them.subsystems() if s.kind in drives and s.damage > 0)
+
+
+def test_the_drones_are_slow_to_mend_what_a_strike_wrecked(content) -> None:  # type: ignore[no-untyped-def]
+    _, w, _, them = _borg(content, "borg.cu")
+    struck, aimed = them.drives[0], them.drives[1]
+    for sub in (struck, aimed):
+        sub.damage, sub.aimed_hit = 60, True
+    struck.struck = True
+    from begin.sim.systems.repair import update_repair
+
+    for _ in range(300):
+        update_repair(w, them, 0.1)
+    assert 60 > struck.damage > aimed.damage
+
+
+def test_a_drive_wrecked_through_her_shields_can_take_her_core_with_it(content) -> None:  # type: ignore[no-untyped-def]
+    from dataclasses import replace
+
+    _, w, us, them = _borg(content, "borg.cu")
+    rules = replace(collective.rules_of(w, them), strike_chain=1.0)
+    assert them.structure == them.structure_max                            # not a scratch on her hull
+    them.drives[0].damage = 100
+    collective.struck(w, them, them.drives[0], rules, us.id)
+    assert them.critical > 0
+    assert any(isinstance(e, HiveEvent) and e.kind == "critical" for e in w.events)
+
+
+def test_the_coach_says_when_her_shields_are_open(content) -> None:  # type: ignore[no-untyped-def]
+    _, w, us, them = _borg(content, "borg.cu")
+    us.target = them.id
+    ins = collective.insight(w, 0)
+    ins.harmonics, ins.harmonic_faction = 14, "borg"
+    titles = [t.title for t in tips(HelpContext(content, w.observe(0), us))]
+    assert titles[0] == "Strike through her shields"
+
+
+def test_tactical_calls_out_a_wrecked_system() -> None:
+    from begin.crew.characters import load_officers
+
+    officers = load_officers()
+    assert officers["worf"].lines.get("struck") and officers["sulu"].lines.get("struck")
+
+
 def test_borg_torpedoes_and_cutting_beams_draw() -> None:
     from begin.ui.beams import Beam
     from begin.ui.camera import Camera

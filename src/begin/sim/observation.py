@@ -341,6 +341,17 @@ class Observation:
             return None
         return s.weak_point
 
+    def opening(self, ship_id: int) -> str:
+        """[E] How our fire gets through a Borg ship's shields now, for a strike through the opening
+        (sim/collective.py): "stolen" (every weapon, for a few hits), "harmonic" (our harmonic torpedoes) or ""."""
+        s = self._w.ships.get(ship_id)
+        ins = self._w.insight.get(self.side)
+        if s is None or ins is None or not self.is_hive(ship_id):
+            return ""
+        if ins.harmonics > 0 and ins.harmonic_faction == s.faction:
+            return "stolen"
+        return "harmonic" if ins.has_code(ship_id) else ""
+
     def dormant(self, ship_id: int) -> float:
         """Cycles before a dark Borg ship's drones wake (0: awake). Anyone can see a ship go dark."""
         s = self._w.ships.get(ship_id)

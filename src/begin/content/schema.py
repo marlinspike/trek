@@ -238,6 +238,11 @@ class CollectiveRules:
     adapt: per weapon family ("phaser", "torpedo", "harmonic", "probe"), the damage that teaches the whole
       hive to shrug that weapon off; a new phaser frequency is learned faster each time (`relearn`).
     floor: the share of a fully adapted weapon's damage that still gets through.
+    strike_*: a strike through an opening (her shield harmonics, or a facing whose shield is down or destroyed)
+      aimed at one system: the gunners can see exactly where it is, so each hit has at least `strike_rolls` goes
+      at it, lands `strike_accuracy` of them (the crew decks too) and does `strike_damage` × the harm. The drones
+      mend what such a strike wrecks at `strike_repair` × their speed, and a drive or reactor it destroys sets her
+      off `strike_chain` of the time, however whole her hull.
     """
 
     adapt: dict[str, float] = field(default_factory=dict)
@@ -256,6 +261,11 @@ class CollectiveRules:
     shift_after: float = 140.0       # damage our tuning turns aside before they shift their beam's frequency
     grace: int = 14                  # hits with stolen shield harmonics before they notice
     weak_kinds: tuple[str, ...] = ("battery", "transporter", "launcher", "tractor")   # where the relay can hide
+    strike_rolls: int = 2            # goes at the aimed system each hit through an opening gets, at least
+    strike_accuracy: float = 0.9     # ... and the share of them that land on it
+    strike_damage: float = 2.0       # × the harm each one does to the system
+    strike_repair: float = 0.3       # × the drones' repair speed on a system wrecked that way
+    strike_chain: float = 0.08       # chance a drive or reactor destroyed that way sets her off, hull or no hull
 
 
 @dataclass(frozen=True, slots=True)
