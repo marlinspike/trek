@@ -111,6 +111,7 @@ Personality per captain: `clamp01(nation value ± uniform(deviation))` for aggre
 | Klingon | .95 | .50 | .60 | .10 | .5 | .20 |
 | Romulan | .75 | .95 | 1.00 | .95 | .5 | .10 |
 | Orion | .45 | .45 | .45 | .45 | .75 | .40 |
+| Borg [E] | .90 | 1.00 | 1.00 | .00 | .75 | .00 |
 
 Per-cycle priority order [R]: reflexes (overheat slowdown, flee imminent detonations, snap phasers at the nearest approaching enemy using exactly enough banks to break the facing shield, phaser point defense against probes, reinforce the weakest shield) → target selection → remote-detonate own probes → fire phasers / torpedoes / probes / board → cloak when idle → mission or stance helm or morale + default maneuver → lock/load housekeeping.
 
@@ -121,6 +122,7 @@ Per-cycle priority order [R]: reflexes (overheat slowdown, flee imminent detonat
 - Maneuver: phaser-dominant ships close to phaser range (pursue at target warp + aggression × 4), torpedo-dominant ships hold standoff `min + (1 − aggression) × (max − min)`; weave amplitude `rand(0, (1.1 − aggression) × (31 − dist/833))` within 25 000; slow down to complete sharp turns; temperature panic hysteresis 0.85/0.4.
 - Morale: retreat when damage ratio > bravery × 0.75, recover below bravery × 0.5; fanatics (> 0.9) or desperate crews self-destruct and ram.
 - [M] Nation flavor: Federation fight to the end; Klingons aggressive and phaser-happy; Romulans avoid close combat, rely on plasma, cloak, carry suicide bombs, retreat after losing the main weapon; Orions vary widely.
+- [E] The Borg are not one of Begin's nations; we added them (see `DEVIATIONS.md`, *The Borg Collective*). Their dogma row above is ours, as is their ship computer (`computer = {sophistication = 0.95, pd_discipline = 0.9}` in `factions.toml`). Their ships are flown by `ai/collective.py`'s `BorgCaptain`, which keeps the ordinary captain's reflexes, arcs, point defense and helm but wants something else: it picks whoever has hurt the hive most (`Mind.threat`), ignores small craft until noticed, never retreats, bargains or surrenders, holds its prey in a tractor beam and beams drones across to take a ship rather than destroy it, and does nothing at all while its vinculum relay is cut.
 
 ## 15. Scoring
 

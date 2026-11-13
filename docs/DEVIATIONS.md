@@ -89,6 +89,18 @@ Begin has no automation. The remake adds a ship computer that can:
 
 It issues ordinary commands at a lower authority than the captain, so it can never override you. Your own orders hold their channel for 8 cycles against the computer and the officers.
 
+## The Borg Collective [E]
+
+Begin has four nations: the Federation, the Klingons, the Romulans and the Orions. The Borg are our addition, a fifth power with its own rules (`sim/collective.py`, the `collective` table in `factions.toml`), its own captain (`ai/collective.py`) and its own ships (probe, sphere and cube in `classes.toml`). `random = false` keeps them out of quick battles and patrols: they appear in the three Borg presets and the tour *The Collective*. The design is one rule: the Borg punish attrition, so trading shots loses and learning first, then landing a decisive blow, wins.
+
+- **Adaptation.** Each hive keeps one shared `Mind`: a level from 0 to 1 for every weapon that has hurt it, by weapon family, side and (for phasers) frequency. Each hit teaches it in proportion to the damage it carried (`adapt`), and a learned weapon does `1 - (1 - floor) × level` of its damage. A remodulated phaser starts again at zero, but each new frequency is learned faster than the last (`relearn`), less so when Seven picks it.
+- **Regeneration.** Hive ships grow back `regen_hull` of their structure a cycle, a quarter as fast while recently hurt.
+- **Drones.** Hive ships beam boarding parties through shields (`party`, `beam_every`) unless our shields are tuned against them; defenders they beat may be assimilated (`assimilate`) and established drones seize systems (`takeover`).
+- **Our answers.** Scans build a survey of each hive ship: half way we know her weak point (the vinculum relay), all the way her shield harmonics. Destroying the relay puts her drones to sleep for `sleep_cycles`, and a drive or reactor destroyed while she sleeps sets off a chain reaction. Seven can tune our shields (`tune_cut`, until the hive shifts frequency after `shift_after`), an away team can steal the harmonics for `grace` hits, and aimed fire through an opening (harmonics, or a dead facing) wrecks the system it hits (`strike_*`).
+- **The Borg captain.** It keeps the ordinary captain's reflexes and weapons handling but chooses by threat, never yields, never bargains (hails get no terms) and prefers taking a ship to destroying it.
+
+Their numbers live in `factions.toml` and `classes.toml`; the Captain's Manual (*The Borg Collective*, *Against the Borg*, *Hidden depths: The Borg*) explains them to the player.
+
 ## AI captains
 
 The captains follow Begin's decoded scoring for targets, fire discipline, weapon choice, weaving, retreat and overheating ([R]). On top of that:
