@@ -75,7 +75,7 @@ You win with the sword by choosing the range, turning a fresh shield to the enem
 - letting Seven study a Borg ship until she finds the one system that puts every drone aboard to sleep
 - reading a cloaked ship's leaking warp plasma, then programming a torpedo to follow it home
 
-Some battles can be won with the sword alone, at a cost. Against the Borg, power alone loses. The game is built so that thinking is always worth it.
+Some battles can be won with the sword alone, at a cost. Against the Borg, power alone loses, but power through an opening that guile has made can tear a cube apart. The game is built so that thinking is always worth it.
 
 ### How to read this manual
 
@@ -721,7 +721,9 @@ Learn first, then strike hard. See [Fighting the Borg](#topic-borg) for the whol
 2. Tune your shields before the drones come (`tune shields`).
 3. Hold your fire until you can mass it, and `remodulate` when they adapt.
 4. When Seven finds the vinculum relay, destroy it (`target cube relay`), or send Worf across to do it ([Away teams and the shuttle](#topic-away-team)).
-5. While she sleeps, hit her warp core and stand well clear, or board her and plant charges.
+5. While she sleeps, hit her warp core and stand well clear, or board her: plant charges, or steal her shield harmonics.
+6. Then bring the sword. Aimed fire through her open shields **wrecks** what it hits: one full salvo into her shields, the next into her drives (`target cube propulsion`). Every drive you wreck may set off her core.
+7. Cloak, and finish her through the holes. She can't beam to, or lock on to, a ship she can't see.
 
 #### Against bases and outposts
 
@@ -815,6 +817,10 @@ Everything here works in the game today. None of it is on a button, and most of 
 ### The Borg
 
 - **Potshots teach them for free.** Mass every volley.
+- **Through the opening, aimed fire wrecks.** Once her shields are open to you (stolen or cracked harmonics, or a dead facing), a salvo aimed at one system wrecks it, and the drones are slow to mend it. `target cube propulsion`
+- **Wreck her shields first.** A destroyed generator is a hole that stays open after the stolen harmonics run out, so every later salvo through it is a strike too.
+- **A wrecked drive can take her core with it**, even with her hull untouched. Stand clear after a salvo into her drives.
+- **Strike, cloak, strike.** A cube can't beam drones to a ship she can't see, or lock her beams on it. Under the refit cloak, all she can shoot at is your flash.
 - **Each new frequency is learned faster than the last**, and least of all when Seven picks it. Let her take the phaser watch (`duty phasers`).
 - **Stolen harmonics work on every Borg ship**, not just the one you stole them from, until the hive notices.
 - **The away team is safe only while you keep hurting the hive.** Stop firing, or cloak, and the drones may notice the little ship. Each crossing in one battle is riskier than the last.
@@ -3629,7 +3635,7 @@ See also: [Who fired what](#topic-weapon-colors), [Sound](#topic-sound).
 
 ### Fighting the Borg
 
-*The Borg learn your weapons, take your crew and regrow their hulls. Learn them first, then strike hard.*
+*The Borg learn your weapons, take your crew and regrow their hulls. Learn them first, open the way, then strike hard.*
 
 The Borg don't fight the way captains do. They don't retreat, bargain or surrender. Every weapon that hurts them teaches them, every drone that comes aboard is trying to make your crew into more drones, and their hulls grow back. **Trading shots loses.** What wins is guile first and then power: learn the ship, find the opening, then land everything at once.
 
@@ -3686,14 +3692,39 @@ repel seal
 - The Doctor's **inoculation** (`design inoculate`) protects your crew from assimilation. Spock's **encryption** (`design encrypt`) keeps the drones out of your systems. Seven can **sever** the drones aboard from the hive (`design sever`).
 - When the last drone is gone, any system they took comes back to you, damaged.
 
-#### Power alone
+#### Power through the opening
 
-A cube can be beaten by power alone, but it will cost you dearly. Guile and power together win. A good order of battle:
+Power alone loses. A cube's shields drink a whole salvo, her drones mend whatever gets through, and her hull grows back. But power is how a cube dies, **once guile has opened the way**.
 
-1. Keep the range open and let Seven survey the cube.
-2. Tune your shields before the drones come.
-3. Find the relay, then send Worf in, or burn it out.
-4. Strike while she sleeps.
+An opening is any way through her shields:
+
+- **Her harmonics.** Stolen by an [Away teams and the shuttle](#topic-away-team), they let every weapon you fire pass straight through for a few hits. Cracked by Seven's survey, they let your harmonic torpedoes through.
+- **A dead facing.** A shield that is down, or a shield generator already destroyed.
+
+Aimed fire that reaches her hull through an opening is a **strike**. Your gunners can see exactly what they are hitting, so the system they aim at is wrecked rather than scratched. While her shields are open the target panel says so, and Worf tells you each system he takes out.
+
+```text
+target cube propulsion
+fire all torpedoes
+fire all phasers
+```
+
+Choose what to wreck:
+
+- **Her shields** (`target cube shields`). Destroyed generators are holes that stay open. Later salvos through them are strikes too, long after the harmonics are spent.
+- **Her warp drives** (`target cube propulsion`). She can't run or chase. Each drive or reactor wrecked this way may set off her core, however whole her hull: stand clear.
+- **Her crew decks** (`target cube crew`). Every salvo kills thousands of drones, and a ship with fewer drones repairs, regrows and boards more slowly.
+
+The drones take a long time to mend what a strike wrecked, so make the salvo count. Aim every bank and tube at one system, and time the torpedoes so they land with the phasers.
+
+**Then cloak.** The Enterprise's refit cloak lets her fire and vanish again. A cube can't beam drones to a ship she can't see, and her beams can't lock on it, so all she can shoot at is the flash where you were. Strike, cloak, move, and strike again through the holes you made.
+
+A good order of battle:
+
+1. Keep the range open and let Seven survey the cube. Tune your shields before the drones come.
+2. Find the relay. Put her to sleep, and send Worf across to steal her harmonics.
+3. When she wakes, put one full salvo through the harmonics into her shields, and the next into her drives.
+4. Cloak, and finish her through the holes.
 
 #### Talking to them
 

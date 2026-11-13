@@ -252,7 +252,8 @@ class HiveEvent(Event):
     repelled (the last drones aboard were beaten), dormant / waking (a ship's drones put to sleep and waking),
     chain (a destroyed core set off a chain reaction), surveyed (a scan added to what we know; detail "weak" or
     "code" when it found the weak point or cracked the code), harmonics / noticed (stolen harmonics working, and
-    the moment the hive notices), remodulated (our phasers changed frequency), assimilated (a ship was taken).
+    the moment the hive notices), remodulated (our phasers changed frequency), assimilated (a ship was taken), struck (a strike through an
+    opening in her shields wrecked a system; detail its label).
     """
 
     ship_id: int

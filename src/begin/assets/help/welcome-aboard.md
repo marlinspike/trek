@@ -36,7 +36,7 @@ You win with the sword by choosing the range, turning a fresh shield to the enem
 - letting Seven study a Borg ship until she finds the one system that puts every drone aboard to sleep
 - reading a cloaked ship's leaking warp plasma, then programming a torpedo to follow it home
 
-Some battles can be won with the sword alone, at a cost. Against the Borg, power alone loses. The game is built so that thinking is always worth it.
+Some battles can be won with the sword alone, at a cost. Against the Borg, power alone loses, but power through an opening that guile has made can tear a cube apart. The game is built so that thinking is always worth it.
 
 ## How to read this manual
 

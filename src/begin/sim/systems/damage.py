@@ -15,6 +15,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from ...core.angles import bearing, norm360
+from ...content.schema import CollectiveRules
 from ..events import HullHit, ShieldHit, SubsystemDamaged
 from .. import collective
 from ..rules import DamageModel
@@ -130,7 +131,9 @@ def apply_damage(
     if rules.damage_model == DamageModel.CLASSIC_165:
         _hull_classic(world, target, remaining, attacker)
     else:
-        _hull_remake(world, target, remaining, rel, attacker, aim)
+        # no shield touched it: aimed at a hive ship, that is a strike through an opening [E]
+        strike = collective.strike_rules(world, target, att) if aim is not None and remaining == amount else None
+        _hull_remake(world, target, remaining, rel, attacker, aim, strike)
     if seen is not None:
         seen.hull = max(0.0, target.structure / max(1.0, target.structure_max))
     return remaining
@@ -159,8 +162,11 @@ def _hull_classic(world: World, ship: Ship, dmg: float, attacker: int | None) ->
 
 
 def _hull_remake(
-    world: World, ship: Ship, dmg: float, rel: float, attacker: int | None, aim: Aim | None
+    world: World, ship: Ship, dmg: float, rel: float, attacker: int | None, aim: Aim | None,
+    strike: CollectiveRules | None = None,
 ) -> None:
+    """Damage that got past the shields. `strike` is a hive's rules when this was aimed fire through an opening
+    in her shields (collective.strike_rules): the gunners can see the system they want, so it is wrecked."""
     rng = world.rng
     rules = world.rules
     ship.stats.hull_damage_taken += dmg
@@ -187,6 +193,11 @@ def _hull_remake(
     precise = aim is not None
     if precise:
         rolls = max(1, rolls)
+    if aim is not None and strike is not None:
+        # a strike through an opening: the gunners can see what they are hitting [E]
+        aim = Aim(aim.selector, max(aim.accuracy, strike.strike_accuracy))
+        if aim.selector != CREW_DECKS:
+            rolls = max(rolls, strike.strike_rolls)
     if aim is not None and aim.selector == CREW_DECKS:
         # fire aimed at life support and the crew decks: each roll that lands kills a slice of the crew [E]
         landed = sum(1 for _ in range(rolls) if rng.unit() < aim.accuracy)
@@ -222,7 +233,9 @@ def _hull_remake(
             # gunners keep after a system they have already hurt, so aimed fire knocks things out one by one
             weights = [(0.15 + exposure(ship, s, rel)) * (1.0 + s.damage / 25.0) for s in targeted]
             pick = _weighted(rng.unit(), targeted, weights)
-            _hit_subsystem(world, ship, pick, True)
+            _hit_subsystem(world, ship, pick, True, strike.strike_damage if strike is not None else 1.0)
+            if strike is not None:
+                collective.struck(world, ship, pick, strike, attacker)
             targeted = [s for s in targeted if not s.destroyed]
             continue
         for kind, items in by_kind.items():
@@ -248,7 +261,7 @@ def _weighted(u: float, items: list[Subsystem], weights: list[float]) -> Subsyst
     return items[-1]
 
 
-def _hit_subsystem(world: World, ship: Ship, sub: Subsystem, targeted: bool) -> None:
+def _hit_subsystem(world: World, ship: Ship, sub: Subsystem, targeted: bool, scale: float = 1.0) -> None:
     rng = world.rng
     if sub.destroyed:
         return
@@ -256,6 +269,7 @@ def _hit_subsystem(world: World, ship: Ship, sub: Subsystem, targeted: bool) -> 
     if targeted:
         amount += 10
         sub.aimed_hit = True   # gunners hit what holds it together, not just its casing [E]
+    amount = int(round(amount * scale))
     if sub.kind == Kind.REACTOR:
         # [R] 25% of reactor hits destroy it outright, otherwise double damage
         sub.damage = 100 if rng.chance(0.25) else min(100, sub.damage + amount * 2)

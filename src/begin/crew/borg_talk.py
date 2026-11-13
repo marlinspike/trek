@@ -1,5 +1,5 @@
 """What the officers say about the Borg [E]: the science officer's survey, the hive adapting to our weapons, ships
-going dark and waking, cores going critical, the shields' tuning, away teams, stand-ins taking a station, and the
+going dark and waking, systems wrecked through her open shields, cores going critical, the shields' tuning, away teams, stand-ins taking a station, and the
 Doctor's sickbay.
 
 The simulation says what happened (`HiveEvent`, sim/collective.py and sim/away.py); this turns it into the right
@@ -109,6 +109,9 @@ def hive_remarks(b: Bridge, events: Iterable[Event], s: Ship, obs: Observation) 
                 n=ev.detail or "a few")
         elif ev.kind == "waking" and obs.contact(ev.ship_id) is not None:
             say(sci, "waking", "{target} is awake again, Captain.", target=name)
+        elif ev.kind == "struck" and ev.target == s.id and _fresh(talk, "struck", obs, 4.0):
+            say(tac, "struck", "Direct hit through her shields. {target}'s {system} is gone.", target=name,
+                system=ev.detail.lower() or "system")
         elif ev.kind == "critical" and obs.contact(ev.ship_id) is not None:
             say(eng or sci, "critical", "{target}'s core has gone critical! {n} cycles. Get us clear, Captain!",
                 target=name, n=ev.detail or "a few")
