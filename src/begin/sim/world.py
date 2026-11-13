@@ -117,6 +117,7 @@ class World:
     faith_broken: dict[int, set[int]] = field(default_factory=dict)   # side -> ships it fired on after a surrender or truce [E]
     on_arrival: Callable[[Ship], None] | None = None           # gives an arriving ship her captain and computer
     minds: dict[str, collective.Mind] = field(default_factory=dict)       # each hive's memory (sim/collective.py) [E]
+    plasma: dict[int, list[tuple[float, float, int]]] = field(default_factory=dict)   # leaking ships' trails [E]
     said: dict[tuple[int, str], int] = field(default_factory=dict)        # (ship, callout) -> tick last said, to keep it calm
     insight: dict[int, collective.Insight] = field(default_factory=dict)  # what each side has learned of them [E]
     away_ops: list[AwayOp] = field(default_factory=list)                  # away teams out (sim/away.py) [E]
@@ -314,6 +315,7 @@ class World:
         dt = rules.dt
         self.step_events = []
 
+        sensors_sys.update_plasma(self)
         sensors_sys.update_sensors(self)
 
         for c in self.controllers:
@@ -356,6 +358,7 @@ class World:
             update_repair(self, s, dt)
             update_projects(self, s, dt)
             s.reveal_time = max(0.0, s.reveal_time - dt)
+            s.sweep = max(0.0, s.sweep - dt)
             s.deflector_cooldown = max(0.0, s.deflector_cooldown - dt)
             if s.pending_volley is not None and self.tick >= s.pending_volley[0]:
                 self._follow_up(s)

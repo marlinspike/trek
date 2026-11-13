@@ -31,6 +31,8 @@ class Torpedo:
     shot_down: bool = False      # [E] set off by a phaser beam rather than by its own fuse
     blind: int | None = None     # [E] fired at this ship while it was off our sensors: report how the shot went
     trail: list[tuple[float, float]] = field(default_factory=list)
+    follow: int | None = None    # [E] a plasma-seeker: the ship whose plasma trail it flies
+    follow_i: int = 0            # ... and the trail point it is making for
 
     @property
     def armed(self) -> bool:

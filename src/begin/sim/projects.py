@@ -134,6 +134,9 @@ PROJECTS: dict[str, ProjectDef] = {
     "tachyon": ProjectDef("tachyon", "tachyon detector torpedo", 20.0, load_special_round,
                           ordnance="tachyon", needs_tubes=True,
                           hint="Fire it with 'tachyon <bearing> <range>' or 'tachyon <ship>'."),
+    "seeker": ProjectDef("seeker", "plasma-seeker torpedo", 18.0, load_special_round, ordnance="seeker",
+                         needs_tubes=True,
+                         hint="Fire it down a plasma trail with 'seeker <ship>' (or 'seeker' for the nearest)."),
     # the Borg [E] (sim/collective.py)
     "harmonic": ProjectDef("harmonic", "harmonic torpedoes", 16.0, load_rounds, ordnance="harmonic", needs_tubes=True,
                            rounds=3, can_start=_needs_harmonics,

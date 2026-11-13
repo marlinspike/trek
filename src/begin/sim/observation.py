@@ -18,7 +18,7 @@ from ..content.schema import ContentDB, ShipClass
 from .events import ContactChanged, Event, Message
 from .rules import Rules
 from .ship import Ship, ShipStatus
-from .systems.sensors import Assessment, ScanRecord
+from .systems.sensors import TRAIL_ERROR, Assessment, ScanRecord
 
 if TYPE_CHECKING:
     from .allies import AllyStanding
@@ -48,6 +48,7 @@ class ContactView:
     assessed: Assessment | None = None   # her condition as our own hits have shown it, kept current
     haze: float = 0.0           # 0 = exact; up to 1 beyond rated sensor range
     uncertainty: float = 0.0    # possible position error, world units
+    exhaust: bool = False       # [E] not on sensors, but placed (roughly) by her plasma trail: a cloaked, damaged ship
 
     def distance_to(self, x: float, y: float) -> float:
         return math.hypot(self.x - x, self.y - y)
@@ -129,13 +130,16 @@ class Observation:
                         continue
                     age = (w.tick - c.last_tick) * w.rules.dt
                     vx, vy = (c.vx, c.vy) if c.visible or intel.dead_reckoning else (0.0, 0.0)
+                    exhaust = not c.visible and c.trail >= 0 and w.tick - c.trail <= 2 * w.rules.ticks_per_cycle
                     out[cid] = ContactView(
                         id=cid, label=w.label(self.side, cid), visible=c.visible, identified=c.identified,
                         side=s.side if c.identified else None, cls=s.cls if c.identified else None,
                         x=pos[0], y=pos[1], vx=vx, vy=vy, course=c.course, warp=c.warp, age=age,
                         scan=c.scan, cloaked_hint=(not c.visible and s.cls.can_cloak and c.identified),
-                        haze=c.haze if c.visible else 0.0, uncertainty=c.uncertainty if c.visible else 0.0,
+                        haze=c.haze if c.visible else 0.0,
+                        uncertainty=c.uncertainty if c.visible else (TRAIL_ERROR if exhaust else 0.0),
                         assessed=c.assessed,
+                        exhaust=exhaust,
                     )
             self._contacts = out
         return self._contacts
@@ -344,6 +348,20 @@ class Observation:
         """Our away teams, out or coming home."""
         return [op for op in self._w.away_ops if op.phase != "done" and (s := self._w.ships.get(op.mother)) is not None
                 and s.side == self.side]
+
+    def plasma(self) -> dict[int, list[tuple[float, float, int]]]:
+        """[E] The plasma trails our sensors can make out, by the ship venting them: (x, y, tick) oldest first.
+        A cloaked ship with a damaged warp drive shows only this way."""
+        from .systems import sensors
+
+        return sensors.plasma_seen(self._w, self.side)
+
+    def leaking(self, ship_id: int) -> bool:
+        """One of ours is venting warp plasma that anyone can follow (a damaged drive, at warp) [E]."""
+        from .systems import sensors
+
+        s = self.own(ship_id)
+        return s is not None and sensors.leaking(s)
 
     def noticed(self) -> set[int]:
         """Small craft our hive has noticed (the Borg ignore the rest)."""

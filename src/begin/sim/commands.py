@@ -1534,6 +1534,77 @@ class SetCloak(Command):
 
 
 @dataclass(kw_only=True)
+class Sweep(Command):
+    """[E] The science officer sweeps for plasma trails: for a while our sensors follow warp plasma much further
+    (sensors.SWEEP_REACH), cloaked ships' included. `target` names one ship to look for (the report)."""
+
+    target: int | None = None
+    name: ClassVar[str] = "sweep"
+
+    def channels(self) -> tuple[str, ...]:
+        return ("science.sweep",)
+
+    def validate(self, world: World, ship: Ship) -> None:
+        if ship.sensors is None or ship.sensors.destroyed:
+            raise Rejected("Sensors are inoperative.")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        from .systems import sensors
+
+        ship.sweep = SWEEP_CYCLES
+        seen = sensors.plasma_seen(world, ship.side)
+        if self.target is not None:
+            t = world.ships.get(self.target)
+            name = world.label(ship.side, self.target)
+            text = (f"Plasma trail found: {name}, a damaged warp drive." if self.target in seen else
+                    f"No plasma from {name}. Her drives are sound, or she isn't at warp." if t is not None else
+                    "Nothing to sweep for.")
+        else:
+            names = [world.label(ship.side, sid) for sid in seen]
+            text = (f"Plasma trails: {', '.join(names)}." if names else
+                    "Sweeping for plasma trails. Nothing yet: their drives are sound, or they aren't at warp.")
+        world.say(ship, text, "good" if seen else "info", speaker="Science")
+
+    def describe(self) -> str:
+        return "sweep for plasma trails"
+
+
+SWEEP_CYCLES = 20.0
+
+
+@dataclass(kw_only=True)
+class FireSeeker(Command):
+    """[E] Fire a plasma-seeker down a ship's plasma trail: it flies the trail and homes on her at its end."""
+
+    target: int
+    name: ClassVar[str] = "seeker"
+
+    def channels(self) -> tuple[str, ...]:
+        return ("torpedoes",)
+
+    def _tube(self, ship: Ship) -> Tube:
+        tube = next((t for t in ship.tubes if t.loaded is not None and t.loaded.ordnance == "seeker"), None)
+        if tube is None:
+            raise Rejected("No plasma-seeker is loaded. Ask Seven or Spock to design one ('design seeker').")
+        return tube
+
+    def validate(self, world: World, ship: Ship) -> None:
+        from .systems import sensors
+
+        self._tube(ship)
+        if self.target not in sensors.plasma_seen(world, ship.side):
+            raise Rejected("We have no plasma trail from that ship. Try 'sweep'.")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        from .systems.ordnance import launch_seeker
+
+        launch_seeker(world, ship, self._tube(ship), self.target)
+
+    def describe(self) -> str:
+        return "fire a plasma-seeker"
+
+
+@dataclass(kw_only=True)
 class Tractor(Command):
     target: int | None
     name: ClassVar[str] = "tractor"

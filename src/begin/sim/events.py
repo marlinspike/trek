@@ -163,6 +163,15 @@ class ContactChanged(Event):
 
 
 @dataclass(slots=True)
+class CloakFlash(Event):
+    """[E] A ship that can fire from her cloak fired: everyone saw the flash at (x, y), and nothing after."""
+
+    ship_id: int
+    x: float
+    y: float
+
+
+@dataclass(slots=True)
 class ScanCompleted(Event):
     ship_id: int
     target_id: int

@@ -115,6 +115,8 @@ VERBS: dict[str, tuple[str, ...]] = {
     "repel": ("repel", "security", "intruders", "seal", "vent"),
     "away": ("away", "shuttle", "infiltrate", "sneak"),
     "recall": ("recall",),
+    "sweep": ("sweep", "sniff", "exhaust", "plasma"),
+    "seeker": ("seeker", "seekers"),
 }
 
 WEAPONS = {

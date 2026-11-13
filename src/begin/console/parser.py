@@ -30,7 +30,7 @@ from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, ManageRepairs, Evasive, AddressCrew, SetShields, SetTubes, Surrender,
-    AwayTeam, Countermeasure, Remodulate, SetDuty, ShuttleOrder,
+    AwayTeam, Countermeasure, FireSeeker, Remodulate, SetDuty, ShuttleOrder, Sweep,
     CeaseFire, OpenFire, StandDown, DeflectorPulse, EndObjective, EngineBoost, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
@@ -1253,6 +1253,27 @@ class Parser:
         if task == "harmonics" and "seven" not in team:
             team.append("seven")          # only Seven knows how the Collective keeps them
         return tuple(dict.fromkeys(team))
+
+    def _v_sweep(self, tok: Tokens, res: ParseResult) -> None:
+        """`sweep [<ship>]`: science sweeps for plasma trails from damaged warp drives, cloaked ships' too [E]."""
+        tok.take_word("for", "trails", "trail", "exhaust", "plasma")
+        tok.take_word("from", "of")
+        sid = self.resolve_ship(tok, allow_none=True)
+        tok.rest()
+        res.commands.append(self._cmd(Sweep, target=sid))
+
+    def _v_seeker(self, tok: Tokens, res: ParseResult) -> None:
+        """`seeker [<ship>]`: fire a plasma-seeker down a ship's trail; with no ship, the nearest trail [E]."""
+        tok.take_word("at", "on", "after", "down")
+        sid = self.resolve_ship(tok, allow_none=True)
+        tok.rest()
+        trails = self.obs.plasma()
+        if sid is None:
+            if not trails:
+                raise ParseError("No plasma trail on sensors. Try 'sweep'.")
+            sid = min(trails, key=lambda k: min((p[0] - self.ship.x) ** 2 + (p[1] - self.ship.y) ** 2
+                                                  for p in trails[k]))
+        res.commands.append(self._cmd(FireSeeker, target=sid))
 
     def _v_recall(self, tok: Tokens, res: ParseResult) -> None:
         tok.rest()

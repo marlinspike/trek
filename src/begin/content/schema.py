@@ -125,6 +125,7 @@ class ShipClass:
     hull: HullDef
     sensor_scale: float = 1.0   # [E] the faction's sensor technology: × scanner_range
     craft: bool = False         # [E] a small craft (a shuttle): no combatant, so she never holds the field alone
+    cloak_fire: bool = False    # [E] a cloak made to fire through (the Enterprise's refit): no lingering reveal
     story: bool = False         # [E] made for one story (the Enterprise's cloak refit): never offered in setups
 
     @property

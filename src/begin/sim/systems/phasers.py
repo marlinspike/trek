@@ -9,6 +9,7 @@ from ...core.angles import ang_dist, bearing, norm360
 from ..events import OrdnanceDestroyed, PhaserFired
 from ..ordnance import Torpedo
 from ..ship import CREW_DECKS, PhaserBank, Ship, bank_bears
+from . import sensors
 from .damage import Aim, DamageKind, apply_damage, exposure, relative_bearing_from, subsystems_for
 
 if TYPE_CHECKING:
@@ -97,7 +98,7 @@ def fire_bank(
         bank.spread = spread
     half = spread / 2.0
     ship.stats.phaser_shots += 1
-    ship.reveal_time = max(ship.reveal_time, rules.cloak_reveal_cycles)
+    sensors.fired_from(world, ship)
 
     ev = PhaserFired(world.tick, ship.id, bank.index, (ox, oy), world_bearing, spread, rng_, defensive=defensive,
                      power=max(0.0, min(1.0, charge / max(ship.cls.banks_charge, 1e-6))))
