@@ -298,6 +298,11 @@ def answer(world: World, hailer: Ship, target: Ship, intent: str, persuasion: fl
     m.last_hailed = world.tick
     m.hails += 1
     why: list[str] = []
+    if world.content.factions[target.faction].collective is not None:   # a hive: no fear, no anger, no terms
+        outcome = "silence" if rng.unit() < 0.35 else ("refuse" if intent in DEMANDS else "talk")
+        ev = HailAnswered(world.tick, hailer.id, target.id, intent, outcome, "calm", "the Collective does not bargain")
+        world.emit(ev)
+        return ev
 
     if bluff:
         if seen_through(world, hailer, target):

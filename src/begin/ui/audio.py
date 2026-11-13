@@ -27,12 +27,13 @@ from pathlib import Path
 
 import pygame
 
-from ..sim.events import Detonation, Event, HullHit, PhaserFired, ShieldHit, TorpedoLaunched
+from ..sim.events import Detonation, Event, HiveEvent, HullHit, PhaserFired, ShieldHit, TorpedoLaunched
 
 RATE = 22050
 MIN_GAP = {"phaser": 0.12, "pulse": 0.07, "launch": 0.12, "blast": 0.08, "fizzle": 0.08, "shield": 0.06,
            "breakup": 0.3, "cloak": 0.3, "alert": 6.0, "thunk": 0.12, "incoming": 0.5, "collapse": 0.15, "hull": 0.1,
-           "lock": 0.2, "confirm": 0.05, "deny": 0.3, "hail_open": 0.5, "hail_close": 0.5}
+           "lock": 0.2, "confirm": 0.05, "deny": 0.3, "hail_open": 0.5, "hail_close": 0.5,
+           "cutter": 0.4, "hive": 2.0}
 HUM_LEVEL = 0.35       # the ship's hum, as a share of the master volume, unless settings say otherwise
 CHANNELS = 16
 
@@ -367,6 +368,28 @@ def cloak() -> array.array:
     return _render(0.7, s, 0.26, seed=7)
 
 
+def cutter() -> array.array:
+    """A Borg cutting beam: a low, even grind under a thin whine that never quite settles."""
+    lp = [0.0]
+
+    def s(i: int, n: int, rng: random.Random) -> float:
+        t = i / RATE
+        lp[0] += 0.08 * (rng.uniform(-1, 1) - lp[0])
+        grind = _saw(t * 73.0, 73.0, 6) * 0.35 * (0.8 + 0.2 * math.sin(math.tau * 9.0 * t))
+        whine = math.sin(math.tau * (1180 + 40 * math.sin(math.tau * 0.7 * t)) * t) * 0.12
+        return (grind + whine + lp[0] * 0.3) * min(1.0, i / 900, (n - i) / 3000)
+    return _render(1.3, s, 0.3, seed=41)
+
+
+def hive() -> array.array:
+    """The hive at work (drones aboard, a ship taken): many low voices in one, felt more than heard."""
+    def s(i: int, n: int, _: random.Random) -> float:
+        t = i / RATE
+        chord = sum(math.sin(math.tau * f * t + k) for k, f in enumerate((61.0, 61.7, 92.0, 122.6, 183.3)))
+        return chord * 0.2 * (0.7 + 0.3 * math.sin(math.tau * 3.0 * t)) * math.sin(math.pi * i / n)
+    return _render(1.6, s, 0.34, seed=43)
+
+
 def alert() -> array.array:
     """Red alert [E]: a two-tone whoop, rising then falling, sounded three times and then left alone."""
     whoop = 0.62
@@ -532,10 +555,11 @@ SOUNDS: dict[str, Callable[[], array.array]] = {
     "phaser": phaser, "pulse": pulse, "launch": launch, "blast": blast, "fizzle": fizzle, "shield": shield,
     "breakup": lambda: blast(1.8, 0.985, seed=9, peak=0.75), "cloak": cloak, "alert": alert,
     "thunk": thunk, "incoming": incoming, "collapse": collapse, "hull": hull_hit, "lock": lock, "confirm": confirm,
-    "deny": deny, "hail_open": hail_open, "hail_close": hail_close, "hum": hum,
+    "deny": deny, "hail_open": hail_open, "hail_close": hail_close, "hum": hum, "cutter": cutter, "hive": hive,
 }
-FAR = ("phaser", "pulse", "launch", "blast", "fizzle", "shield", "hull", "breakup", "collapse")   # have a muffled copy
+FAR = ("phaser", "pulse", "cutter", "launch", "blast", "fizzle", "shield", "hull", "breakup", "collapse")   # have a muffled copy
 FAR_LEVEL = 0.45       # below this level a sound is heard muffled, as from far off
+HIVE_HEARD = ("beamed", "assimilated")   # hive moments with a sound of their own
 LOUD = ("blast", "breakup", "hull")   # big moments: the ship's hum ducks under them
 
 
@@ -737,8 +761,11 @@ class Audio:
             wait = 0.0
             extra = ""
             if isinstance(ev, PhaserFired) and ev.ship_id in visible:
-                name, spot = ("pulse" if styles(ev.ship_id) == "pulse" else "phaser"), ev.origin
+                style = styles(ev.ship_id)
+                name, spot = (style if style in ("pulse", "cutter") else "phaser"), ev.origin
                 weight = 0.3 if ev.defensive else 0.55 + 0.45 * max(0.0, min(1.0, getattr(ev, "power", 1.0)))
+            elif isinstance(ev, HiveEvent) and ev.kind in HIVE_HEARD:
+                name, spot = "hive", where(ev.target if ev.kind == "beamed" and ev.target is not None else ev.ship_id)
             elif isinstance(ev, TorpedoLaunched) and ev.ship_id in visible:
                 name, spot, extra = "launch", where(ev.ship_id), "thunk"
             elif isinstance(ev, Detonation):

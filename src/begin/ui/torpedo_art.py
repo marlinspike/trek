@@ -6,6 +6,7 @@ The look is set per race in factions.toml (`colors.torpedo_style`):
 - **disruptor**: a harsher, flickering flare whose long spikes lie along its line of flight.
 - **plasma**: a big soft ball that wobbles as it comes, with no spikes at all.
 - **pulse**: a short bright bolt that flickers, streaking along its course.
+- **borg**: a hard green core inside a slowly tumbling square cage, with no warmth to it at all.
 
 A heavier warhead is drawn bigger and brighter. A round not yet armed glows dimmer. All sizes are in
 pixels, with a floor, so a round never shrinks to nothing when the view zooms out; they grow a little
@@ -46,6 +47,8 @@ def draw_round(surf: pygame.Surface, overlay: pygame.Surface, sx: float, sy: flo
         _disruptor(surf, overlay, sx, sy, course, col, hot, size, clock, seed, bright)
     elif style == "pulse":
         _pulse(surf, overlay, sx, sy, course, col, hot, size, clock, seed, bright)
+    elif style == "borg":
+        _borg(surf, overlay, sx, sy, col, hot, size, clock, seed, bright)
     else:
         _photon(surf, overlay, sx, sy, col, hot, size, clock, seed, bright)
 
@@ -100,6 +103,19 @@ def _pulse(surf: pygame.Surface, overlay: pygame.Surface, sx: float, sy: float, 
     gfx.draw.aaline(surf, hot, (sx, sy), (sx - ux * tail * 0.6, sy - uy * tail * 0.6), 1)
     add_light(surf, sx, sy, size * 2.4, col, 0.6 * bright * on)
     add_light(surf, sx, sy, size * 1.2, hot, 0.9 * bright)
+
+
+def _borg(surf: pygame.Surface, overlay: pygame.Surface, sx: float, sy: float, col: theme.Color,
+          hot: theme.Color, size: float, clock: float, seed: int, bright: float) -> None:
+    add_light(surf, sx, sy, size * 2.6, col, 0.5 * bright)
+    add_light(surf, sx, sy, size * 1.1, hot, 0.95 * bright)
+    for j, (spin, reach, alpha) in enumerate(((0.9, 2.3, 170), (-0.6, 1.6, 110))):   # two cages turning against each other
+        a0 = clock * spin + seed * 0.37 + j * math.pi / 4
+        r = size * reach
+        pts = [(sx + math.cos(a0 + q * math.pi / 2) * r, sy + math.sin(a0 + q * math.pi / 2) * r) for q in range(4)]
+        for q in range(4):
+            gfx.draw.aaline(overlay, (*col, int(alpha * bright)), pts[q], pts[(q + 1) % 4], 1)
+    gfx.draw.aacircle(surf, theme.mix(hot, WHITE, 0.3 * bright), (sx, sy), max(1.0, size * 0.35))
 
 
 __all__ = ["draw_round", "round_size"]

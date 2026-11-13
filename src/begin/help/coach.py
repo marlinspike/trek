@@ -157,6 +157,8 @@ TIP_STATIONS = {
     "Scan the target": "science", "Their shields": "science", "Turn a fresh shield toward them": "helm",
     "Cloaked ship nearby": "science", "Tachyon round ready": "tactical", "Deflector pulse ready": "science", "Seven's objective": "science", "Bait their point defense": "tactical", "Let Seven disable it": "science",
     "Engines running hot": "engineering", "Power is running out": "engineering", "Badly damaged": "engineering",
+    "Learn the hive": "science", "They have adapted": "tactical", "Tune the shields": "science",
+    "Hit the relay": "tactical", "She sleeps": "tactical", "Drones aboard": "tactical",
     "Dodge them": "helm", "Fan the salvo": "tactical", "Rally the crew": "engineering", "Patch the hull": "engineering",
 }
 
@@ -197,6 +199,8 @@ def tips(ctx: HelpContext) -> list[Tip]:
         _probe_tips(ctx, s, c, name, tip)
         _their_shield_tips(s, c, name, tip)
         _our_shield_tips(s, c, name, tip)
+    if c is not None and obs.is_hive(c.id):
+        _hive_tips(s, obs, c, _contact_name(c), tip)
     _crew_tips(s, obs, c, tip)
     _cloak_tips(s, obs, tip)
     _ship_tips(s, obs, tip)
@@ -368,6 +372,30 @@ def _crew_tips(s: Ship, obs: Observation, c: ContactView | None, tip: AddTip) ->
     elif c is not None and c.scan is not None and c.visible and s.tubes:
         tip(5, "Let Seven disable it", f"Seven can knock out **{_contact_name(c)}**'s weapons or shields for you, bursting "
             "torpedoes where its point defense won't react.", f"seven, disable {_contact_name(c).lower()} weapons")
+
+
+def _hive_tips(s: Ship, obs: Observation, c: ContactView, name: str, tip: AddTip) -> None:
+    """A Borg target [E]: learn her, tune against her, find the relay, then strike while she sleeps."""
+    low = name.lower()
+    if obs.dormant(c.id) > 0:
+        tip(0, "She sleeps", f"**{name}** has gone dark for about {obs.dormant(c.id):.0f} cycles: no shields, no "
+            "weapons, no healing. Mass everything on her now, hit her warp core and stand clear, or send a team across.",
+            "fire all", f"target {low} warp", "away charges")
+        return
+    weak = obs.weak_point(c.id)
+    if weak is not None:
+        tip(1, "Hit the relay", f"Seven has found **{name}**'s vinculum relay in her {weak}. Destroy it and every "
+            "drone aboard goes dormant.", f"target {low} relay", "away relay")
+    elif s.duty != "harmonics":
+        tip(2, "Learn the hive", f"Trading shots with **{name}** only teaches her. Have Seven keep scanning her: halfway "
+            "through she finds the vinculum relay, and at the end her shield harmonics.", "duty harmonics", f"scan {low}")
+    if s.tuning < 0.5 and s.duty != "shields":
+        tip(2, "Tune the shields", "Untuned shields let her drones beam aboard. Tuned past halfway, her transporters "
+            "can't lock on.", "tune shields")
+    seen = obs.adaptation(c.id, s.id)
+    if seen.get("phaser", 0.0) >= 0.5 and s.remodulating <= 0:
+        tip(1, "They have adapted", f"**{name}** has learned your phaser frequency ({seen['phaser'] * 100:.0f}%). "
+            "Remodulate, then hold your fire and mass it.", "remodulate", "duty phasers")
 
 
 def _cloak_tips(s: Ship, obs: Observation, tip: AddTip) -> None:

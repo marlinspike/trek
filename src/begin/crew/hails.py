@@ -139,6 +139,8 @@ RACE_STYLE = {
     "orion": "a mercenary pirate: cocky, practical and profit-minded; quick to bargain and quicker to run when a fight "
              "stops paying",
     "federation": "principled and measured; speaks plainly and keeps their word",
+    "borg": "not a captain but the Borg Collective speaking as one: always 'we', never 'I'; flat, certain and without "
+            "feeling; never bargains, never yields, never threatens in anger; states what will happen; short sentences",
 }
 
 
@@ -319,7 +321,10 @@ class Comms:
         if o is None:
             return []
         r = disposition.reading(self.world, player, t)
-        if "scans don't back up" in ev.reason:
+        if "Collective" in ev.reason:
+            say = ("There is no captain over there to persuade, Captain: only the hive. The Borg do not bargain, and "
+                   "they do not fear. They answer to strength, and to what we learn about them.")
+        elif "scans don't back up" in ev.reason:
             say = "They have scanned us, Captain. They know our true condition, and they did not believe you."
         elif ev.outcome == "silence":
             say = "They are too angry to listen, Captain. Words will not reach them while that lasts."
