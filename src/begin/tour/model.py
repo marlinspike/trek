@@ -39,6 +39,18 @@ A stop can also set `win_flag` (a flag set when you win it), list friendly ships
 there (`friends`, e.g. the starbase), drop enemies when a flag is set
 (`[tour.stop.drop] dreadnought-beaten = ["klingon.dr"]`) or add them
 (`[tour.stop.add] refit = ["klingon.bc"]`).
+
+A stop can carry a mission [E] (sim/mission.py), a goal beyond holding the field:
+
+    [tour.stop.mission]
+    kind = "rescue"                    # or "escort" (`to = [x, y]`) or "intercept" (`runner`, `heading`)
+    ward = "federation.de"             # the ship to save, and her name
+    ward_name = "Aldren"
+    at = [0, 2000]
+    people = 120
+    deadline = 160                     # cycles before she is lost (0: none)
+    hunters = 1                        # enemy ships that go for her
+    flag = "survey-team-saved"         # a flag set when the mission succeeds
 """
 
 from __future__ import annotations
@@ -47,6 +59,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from ..battle import PLAYER_FLAGSHIP_CLASSES
+from ..sim.mission import MissionDef
 
 try:
     import tomllib
@@ -99,6 +112,7 @@ class Stop:
     drop: dict[str, tuple[str, ...]] = field(default_factory=dict)   # flag -> enemies that don't come
     finale: bool = False                # losing the friends here (the starbase) loses the tour
     seed: int = 1
+    mission: MissionDef | None = None   # [E] a goal beyond holding the field (sim/mission.py)
 
     def enemy_ships(self, flags: set[str]) -> list[str]:
         ships = list(self.enemies)
@@ -172,6 +186,7 @@ def parse_tour(t: dict[str, Any], source: str = "shipped") -> TourDef:
             choices=choices, waves=waves, win_flag=str(s.get("win_flag", "")),
             add=_ships(s.get("add")), drop=_ships(s.get("drop")), finale=bool(s.get("finale", False)),
             seed=int(s.get("seed", 1000 + i)),
+            mission=MissionDef.from_dict(s["mission"]) if "mission" in s else None,
         ))
     return TourDef(
         id=str(t["id"]), title=str(t["title"]), description=str(t.get("description", "")).strip(),
@@ -203,7 +218,8 @@ def check_tour(tour: TourDef, classes: set[str]) -> list[str]:
     names = [tour.flagship, *tour.reinforcements]
     for s in tour.stops:
         names += [*s.enemies, *s.friends, *(c for w in s.waves for c in w.ships),
-                  *(c for v in s.add.values() for c in v), *(ch.flagship for ch in s.choices if ch.flagship)]
+                  *(c for v in s.add.values() for c in v), *(ch.flagship for ch in s.choices if ch.flagship),
+                  *((s.mission.ward,) if s.mission is not None and s.mission.kind != "intercept" else ())]
     for cid in names:
         if cid not in classes:
             out.append(f"{tour.title}: unknown ship class '{cid}'")

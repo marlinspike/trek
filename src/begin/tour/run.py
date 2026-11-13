@@ -332,7 +332,8 @@ class TourRun:
         setup = BattleSetup(fleets, seed=self.state.seed * 1000 + stop.seed, title=stop.title,
                             description=f"{stop.system}: {self.tour.title}, stop {self.state.stop + 1} of "
                                         f"{len(self.tour.stops)}.",
-                            arrivals=arrivals + called, personalities={1: lean} if lean else {})
+                            arrivals=arrivals + called, personalities={1: lean} if lean else {},
+                            mission=stop.mission)
         self.fight = Fight(stop, setup, active)
         self.fight.called.extend(called)
         return self.fight
@@ -345,7 +346,7 @@ class TourRun:
         ours = [s for s in w.ships.values() if s.side == w.player_side]
         n = len(fight.records)
         fight.ship_ids = [s.id for s in ours[:n]]
-        fight.friend_ids = [s.id for s in ours[n:]]
+        fight.friend_ids = [s.id for s in ours[n:] if not s.ward]     # a mission's ward isn't one of the friends [E]
         for rec, sid in zip(fight.records, fight.ship_ids):
             apply_record(w.ships[sid], rec)
         if fight.ship_ids:
@@ -396,7 +397,7 @@ class TourRun:
         known = set(fight.ship_ids) | set(fight.friend_ids)
         captured: list[str] = []
         for s in w.ships.values():
-            if s.id in known or s.side != side or not s.alive or s.cls.is_base:
+            if s.id in known or s.side != side or not s.alive or s.cls.is_base or s.ward:
                 continue
             role = "reinforcement" if any(s.id in a.ship_ids for a in w.arrivals if a.tag == "starfleet") else "prize"
             rec = record_of(s, role, stop.id)
@@ -429,6 +430,9 @@ class TourRun:
         self._remember_hive(battle)
         if outcome == "victory" and stop.win_flag and stop.win_flag not in self.state.flags:
             self.state.flags.append(stop.win_flag)
+        m = w.mission
+        if m is not None and m.succeeded() and m.spec.flag and m.spec.flag not in self.state.flags:
+            self.state.flags.append(m.spec.flag)       # [E] what the mission's success changes later on
         # crew spirits: a win lifts them, a loss of shipmates weighs on them
         for r in self.state.squadron:
             if r.active and r.morale is not None:

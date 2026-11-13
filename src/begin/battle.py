@@ -21,6 +21,7 @@ from .crew.officers import Crew, default_crew
 from .paths import config_dir
 from .sim.arrivals import Arrival
 from .sim.events import Event
+from .sim.mission import MissionDef, install as install_mission
 from .sim.rules import DEFAULT_RULES, Rules
 from .sim.ship import PDDoctrine, Ship
 from .sim.world import World
@@ -55,6 +56,7 @@ class BattleSetup:
     rules: Rules = DEFAULT_RULES
     arrivals: list[Arrival] = field(default_factory=list)   # waves and reinforcements that join later [E]
     personalities: dict[int, dict[str, float]] = field(default_factory=dict)  # side -> captains' leanings (a tour's memory) [E]
+    mission: MissionDef | None = None   # a goal beyond holding the field: rescue, escort or intercept (sim/mission.py) [E]
 
     @property
     def player_side(self) -> int:
@@ -207,6 +209,20 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
             cap = _captain_class(faction)(ship.id, fleet.side, pers, prng, phase=ship.id % 2)
             captains[ship.id] = cap
             world.add_controller(cap)
+    if setup.mission is not None and setup.player_side >= 0:
+        enemies = [s.id for s in world.ships.values() if s.side != setup.player_side]
+        m = install_mission(world, setup.mission, setup.player_side, enemies)
+        if m.ward_id is not None:
+            ward = world.ships[m.ward_id]
+            faction = content.factions[ward.cls.faction]
+            ward.pd_doctrine = PDDoctrine(faction.doctrine.point_defense)
+            comp = ShipComputer(ward.id, ward.side, world.rng.derive(f"computer:{ward.id}"), phase=ward.id % 2)
+            computers[ward.id] = comp
+            world.add_controller(comp)
+            prng = world.rng.derive(f"captain:{ward.id}")
+            cap = _captain_class(faction)(ward.id, ward.side, Personality.roll(faction, prng), prng, phase=ward.id % 2)
+            captains[ward.id] = cap
+            world.add_controller(cap)
     crew = None
     if player_ship is not None:
         roster = load_officers(traits_file=config_dir() / "officers.toml")
@@ -296,7 +312,23 @@ PATROL_SITUATIONS = (
                          "<ship> attack <target>'."),
     ("flagship", "Flagship", "A {enemy} heavy and her escorts. The heavy is the prize; the escorts will make you pay for "
                              "going straight at her."),
+    # [E] missions (sim/mission.py): a goal beyond holding the field
+    ("rescue", "Distress call", "The {ward} is crippled and drifting with {people} aboard, and a {enemy} group has found "
+                                "her first. Get her people off: within transporter range, with the shield facing her "
+                                "lowered. Her reactor will not last long."),
+    ("convoy", "Convoy", "The freighter {ward} is making for the shipping lane and a {enemy} group means to take her. Get "
+                         "her through: she sails at her own speed, and she can't fight."),
+    ("runner", "Runner", "A {enemy} group, and one of them, the {runner}, is making for the edge of the sector with "
+                         "what she has seen of us. She must not get away."),
 )
+WARD_NAMES = ("Aldren", "Tamar Kessel", "Ardent Star", "Corvallis", "Halvorsen", "Ibsen", "Meridian", "Sato")
+
+
+def _articles(text: str) -> str:
+    """'a Orion' -> 'an Orion'."""
+    import re
+
+    return re.sub(r"\b([Aa]) (?=[AEIOU])", lambda m: m.group(1) + "n ", text)
 
 
 def patrol_battle(content: ContentDB, seed: int, player_faction: str = "federation",
@@ -337,13 +369,39 @@ def patrol_battle(content: ContentDB, seed: int, player_faction: str = "federati
         extra = sum(content.classes[c].mass for c in wings)
         fleets.append(FleetSpec(1, [ShipSpec(c) for c in _fill(rng, theirs, (mass + extra) * 1.25, 3 + len(wings))],
                                 center=(0.0, 12000.0)))
-    else:  # flagship
+    elif sid == "flagship":
         heavy = max(theirs, key=lambda c: c.mass)
         screen = _fill(rng, theirs, max(heavy.mass * 0.8, mass * 1.9 - heavy.mass), rng.choice((3, 4)), 0.7)
         fleets.append(FleetSpec(1, [ShipSpec(heavy.id)] + [ShipSpec(c) for c in screen], center=(0.0, 12500.0)))
+    ward = rng.choice(WARD_NAMES)
+    people = 0
+    runner = ""
+    mission: MissionDef | None = None
+    if sid == "rescue":
+        people = rng.choice((60, 80, 120, 150))
+        group = _fill(rng, theirs, mass * 1.0, rng.choice((3, 4)))
+        fleets.append(FleetSpec(1, [ShipSpec(c) for c in group], center=(rng.uniform(-4000, 4000), 14000.0)))
+        mission = MissionDef("rescue", title=f"Rescue the crew of the {ward}", ward="federation.de", ward_name=ward,
+                             at=(rng.uniform(-3000, 3000), -3000.0), people=people,
+                             deadline=rng.choice((150.0, 180.0, 210.0)), hunters=1)
+    elif sid == "convoy":
+        group = _fill(rng, theirs, mass * 1.05, rng.choice((3, 4)), 0.85)
+        side = rng.choice((-1.0, 1.0))
+        fleets.append(FleetSpec(1, [ShipSpec(c) for c in group], center=(-side * 4000.0, 15000.0)))
+        mission = MissionDef("escort", title=f"Protect the {ward}", ward="federation.tn", ward_name=ward,
+                             at=(side * 2000.0, -8000.0), to=(side * 26000.0, -8000.0), hunters=2)
+    elif sid == "runner":
+        group = _fill(rng, theirs, mass * 1.1, rng.choice((3, 4)))
+        lightest = min(range(len(group)), key=lambda i: content.classes[group[i]].mass)
+        group.insert(0, group.pop(lightest))       # the runner is the one sent with the news: the lightest
+        fleets.append(FleetSpec(1, [ShipSpec(c) for c in group], center=(0.0, 12000.0)))
+        mission = MissionDef("intercept", runner=0, heading=rng.uniform(-35.0, 35.0) % 360.0)
+        runner = content.classes[group[0]].name
     return BattleSetup(fleets=fleets, seed=seed, arrivals=arrivals,
                        title=f"Patrol #{seed}: {title}",
-                       description=brief.format(enemy=content.factions[enemy].name))
+                       description=_articles(brief.format(enemy=content.factions[enemy].name, ward=ward,
+                                                          people=people, runner=runner)),
+                       mission=mission)
 
 
 __all__ = ["Battle", "BattleSetup", "FleetSpec", "MAX_OBJECTS", "PATROL_SITUATIONS", "PLAYER_FLAGSHIP_CLASSES",

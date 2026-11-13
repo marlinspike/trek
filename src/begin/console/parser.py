@@ -1157,6 +1157,11 @@ class Parser:
         tok.rest()
         res.actions.append(("manual", "coach"))
 
+    def _v_counsel(self, tok: Tokens, res: ParseResult) -> None:
+        """`counsel [on|off]`: the officers' plans from here, over the map (the O key) [E]."""
+        words = tok.rest()
+        res.actions.append(("counsel", words[0] if words and words[0] in ("on", "off") else None))
+
     def _v_quit(self, tok: Tokens, res: ParseResult) -> None:
         res.actions.append(("quit", None))
 

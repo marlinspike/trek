@@ -30,6 +30,8 @@ from ..console.translator import Translator
 from ..crew.career import Career
 from ..crew.characters import OfficerProfile
 from ..crew.conversation import Bridge
+from ..crew.counsel import Plan, counsel as build_counsel
+from ..crew.situation import MissionView, Situation, build as build_situation, mission_view
 from ..crew.review import standout
 from ..crew.hails import Comms, load_lines
 from ..crew.proposals import Proposal, Proposer
@@ -89,6 +91,8 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
         self.chart_all = False
         self.chart_origin: int | None = None
         self.proposer = Proposer()
+        self._counsel: list[Plan] = []        # [E] the officers' plans, rebuilt about once a cycle (crew/counsel.py)
+        self._counsel_tick = -10**9
         self.proposal: Proposal | None = None
         self._propose_t = 0.0
         self.career = Career(career)
@@ -347,6 +351,51 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
         self._log(f"{p.name}: warp {p.warp:.1f}, course {p.course:.0f}, crew {p.crew}, hull "
                   f"{max(0.0, p.structure) / p.structure_max * 100:.0f}%, torps {p.torps_remaining}, probes {p.probes_remaining}",
                   "text")
+
+    # ------------------------------------------------------------ counsel [E]
+
+    def situation(self) -> Situation | None:
+        """The fight as the bridge officers see it now (crew/situation.py)."""
+        p = self.player
+        if p is None or not p.alive:
+            return None
+        calls, eta = 0, 0.0
+        run = self.tour
+        if isinstance(run, TourRun) and not run.over:
+            calls = run.state.calls_left
+            stop = run.stop
+            eta = stop.eta if stop is not None else 0.0
+        return build_situation(self.obs, p, calls, eta)
+
+    def mission(self) -> MissionView | None:
+        """Our mission, for the mission card: the goal, the ward or the runner, people aboard, time left."""
+        p = self.player
+        if p is None:
+            return None
+        return mission_view(self.obs, p)
+
+    def counsel(self, force: bool = False) -> list[Plan]:
+        """Each officer's way forward from here: rebuilt from the live situation about once a cycle, and only
+        with lines the console would accept now."""
+        if self.bridge is None or self.world.outcome.over:
+            return []
+        tick = self.world.tick
+        if force or tick - self._counsel_tick >= self.world.rules.ticks_per_cycle or tick < self._counsel_tick:
+            s = self.situation()
+            self._counsel = build_counsel(s, self.officers(), self.dry_run) if s is not None else []
+            self._counsel_tick = tick
+        return self._counsel
+
+    def follow(self, plan: Plan, lines: list[str] | None = None) -> None:
+        """Run an officer's plan, or some of its steps, as if the captain typed them."""
+        run = lines if lines is not None else plan.lines
+        if not run:
+            return
+        whole = lines is None or len(run) == len(plan.steps)
+        self._log(f"{plan.name}'s counsel{'' if whole else ' (in part)'}: {plan.title}.", "dim")
+        for line in run:
+            self.say(line)
+        self._counsel_tick = -10**9          # the next look reads the new situation
 
     def _reinforcements(self) -> None:
         if self.tour is None:

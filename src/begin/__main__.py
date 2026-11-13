@@ -24,6 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--preset")
     ap.add_argument("--quick", type=int)
     ap.add_argument("--patrol", type=int, help="start a patrol with this seed")
+    ap.add_argument("--situation", default=None, help="with --patrol: the situation (rescue, convoy, runner, ambush...)")
     ap.add_argument("--size", default=None, help="window size, e.g. 1600x900")
     ap.add_argument("--renderer", choices=("auto", "gpu", "software"), default=None,
                     help="how to draw: the GPU at the screen's full sharpness (auto tries it), or software")
@@ -102,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.patrol is not None:
         from .battle import patrol_battle
 
-        scene = app.start_battle(patrol_battle(app.content, args.patrol))
+        scene = app.start_battle(patrol_battle(app.content, args.patrol, situation=args.situation))
 
     if args.screenshot:
         import pygame

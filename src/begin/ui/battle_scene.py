@@ -13,7 +13,7 @@ voice (push-to-talk) and render (drawing). `ui/battle/state.py` declares the sta
 from __future__ import annotations
 
 import time
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 import pygame
 
@@ -46,6 +46,9 @@ from .tactical import Snapshot, TacticalView
 from .tween import Tweens
 from .wheel import load_wheels
 from .widgets import UI
+
+if TYPE_CHECKING:
+    from ..crew.counsel import Plan
 
 
 class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
@@ -96,6 +99,8 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
         self.focus_k: float = 0.0           # tactical focus, eased 0..1
         self.focus_idle: float = 0.0        # seconds since the captain's last keystroke in the console
         self.wheel: object | None = None    # the open command wheel, if any
+        self.counsel_open: bool = False     # [E] the officers' plans over the map (O, `counsel`)
+        self.counsel_ran: dict[str, float] = {}   # steps run from the panel: line -> when, for a moment's tick
         self._wheel_t: float = 0.0
         self.completer: Completer = Completer()
         self._preview_key: object = None
@@ -204,6 +209,29 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
     def _help_context(self) -> HelpContext:
         return self.session.help_context()
 
+    def toggle_counsel(self, on: bool | None = None) -> None:
+        """Open or close the officers' counsel over the map."""
+        self.counsel_open = (not self.counsel_open) if on is None else on
+        if self.counsel_open:
+            if self.overlay == "help_brief":
+                self.overlay = None
+            self.session.counsel(force=True)
+
+    def follow_plan(self, i: int) -> bool:
+        """Keys 1 to 4 while the counsel is open: go all in on that officer's plan."""
+        plans = self.session.counsel()
+        if not self.counsel_open or not 0 <= i < len(plans):
+            return False
+        self._follow(plans[i], None)
+        return True
+
+    def _follow(self, plan: Plan, line: str | None) -> None:
+        lines = [line] if line is not None else plan.lines
+        now = time.monotonic()
+        for ln in lines:
+            self.counsel_ran[ln] = now
+        self.session.follow(plan, lines if line is not None else None)
+
     def toggle_overlay(self, name: str) -> None:
         self.overlay = None if self.overlay == name else name
 
@@ -299,6 +327,8 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
                 r = float(val)  # type: ignore[arg-type]
                 self.set_display_range(r)
                 self._log(f"Display range set to {r:,.0f} units.", theme.TEXT_DIM)
+        elif name == "counsel":
+            self.toggle_counsel(None if val is None else val == "on")
         elif name == "key":
             self._key_binding(val)  # type: ignore[arg-type]
         elif name == "manual":

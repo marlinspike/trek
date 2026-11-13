@@ -13,7 +13,7 @@ import pygame
 
 from ...console import reports
 from ...sim.ship import Kind
-from .. import comms_view, officer_view, order_marks, theme
+from .. import comms_view, counsel_view, officer_view, order_marks, theme
 from ..hud import TABS_MIN_HEIGHT, Panel, TargetPanel, WeaponsPanel, diagram_legend, hull_diagram
 from ...session.news import ALERT_TONE
 from .common import TONE_COLOR, CONTROLS, RED_ALERT_FLOOR, RED_ALERT_PERIOD, RED_ALERT_PULSE, RED_ALERT_SETTLE, SPEEDS, ratio
@@ -50,13 +50,25 @@ class RenderMixin(SceneState):
         self._draw_preview(surf)
         comms_view.draw_map(surf, self.cam, self.obs, self.player_id, self.comms, time.monotonic(),
                             self.map_rect)
+        mission = self.session.mission()
+        if mission is not None:
+            counsel_view.draw_marks(surf, self.cam, mission, self.now.ships, self.map_rect, time.monotonic())
         self._map_overlay_text(surf)
-        officer_view.draw_panel(surf, (self.map_rect.x + 14, self.map_rect.y + 36), acts, self.session.officer_name,
-                                obs.tick, obs.rules.ticks_per_cycle, self.subs.speaking)
+        counsel_box = None
+        if self.counsel_open and not obs.outcome.over:
+            counsel_box = counsel_view.draw_counsel(surf, counsel_view.counsel_rect(self.map_rect), self.session.counsel(), self.ui,
+                                      lambda plan: self._follow(plan, None), self._follow,
+                                      lambda: self.toggle_counsel(False), self.counsel_ran, time.monotonic(),
+                                      self.paused)
+        else:
+            officer_view.draw_panel(surf, (self.map_rect.x + 14, self.map_rect.y + 36), acts, self.session.officer_name,
+                                    obs.tick, obs.rules.ticks_per_cycle, self.subs.speaking)
         self._draw_printout(surf)
         self._draw_focus(surf)
         lift = self._proposal_height()
         area = self.map_rect.inflate(0, -lift).move(0, -lift // 2) if lift else self.map_rect
+        if counsel_box is not None:      # subtitles keep to the open part of the map
+            area = area.clip(pygame.Rect(counsel_box.right + 8, area.y, area.right - counsel_box.right - 8, area.height))
         self.subs.draw(surf, area, self._keep_clear(p))
         self._draw_proposal(surf)
         self._draw_wheel(surf)
@@ -176,6 +188,9 @@ class RenderMixin(SceneState):
             col = theme.mix(theme.TEXT_DIM, theme.GOOD, 0.4 + 0.6 * pulse)
             theme.text(surf, f"{names}  ·  ETA {eta:4.0f} cycles", (r.right - 14, y), col, 13, "mono", anchor="topright")
             y += 20
+        mission = self.session.mission()
+        if mission is not None:
+            y = counsel_view.draw_mission(surf, (r.right - 14, y + 4), mission, time.monotonic()).bottom + 4
         comms_view.draw_card(surf, (r.right - 14, y + 4), self.obs, self.player_id, self.comms, self.ui,
                              time.monotonic(), self._comms_button)
 

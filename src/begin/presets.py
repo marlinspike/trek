@@ -13,6 +13,7 @@ except ModuleNotFoundError:  # Python 3.10
 
 from .battle import BattleSetup, FleetSpec, ShipSpec
 from .sim.arrivals import Arrival
+from .sim.mission import MissionDef
 
 PRESETS_FILE = Path(__file__).resolve().parent / "content" / "data" / "presets.toml"
 
@@ -25,6 +26,7 @@ class Preset:
     seed: int
     fleets: tuple[dict, ...]  # type: ignore[type-arg]
     waves: tuple[dict, ...] = ()  # type: ignore[type-arg]
+    mission: dict | None = None  # type: ignore[type-arg]   # [E] a goal beyond holding the field (sim/mission.py)
 
     def setup(self, seed: int | None = None) -> BattleSetup:
         fleets = []
@@ -36,7 +38,8 @@ class Preset:
                 ships=[ShipSpec(cid) for cid in f["ships"]],
             ))
         return BattleSetup(fleets, seed=self.seed if seed is None else seed, title=self.title,
-                           description=self.description, arrivals=[wave_arrival(w) for w in self.waves])
+                           description=self.description, arrivals=[wave_arrival(w) for w in self.waves],
+                           mission=MissionDef.from_dict(self.mission) if self.mission else None)
 
 
 def wave_arrival(w: dict) -> Arrival:  # type: ignore[type-arg]
@@ -52,7 +55,8 @@ def wave_arrival(w: dict) -> Arrival:  # type: ignore[type-arg]
 def load_presets(path: Path = PRESETS_FILE) -> list[Preset]:
     with open(path, "rb") as fh:
         data = tomllib.load(fh)
-    return [Preset(p["id"], p["title"], p["description"], int(p["seed"]), tuple(p["fleets"]), tuple(p.get("waves", ())))
+    return [Preset(p["id"], p["title"], p["description"], int(p["seed"]), tuple(p["fleets"]), tuple(p.get("waves", ())),
+                   p.get("mission"))
             for p in data["preset"]]
 
 

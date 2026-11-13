@@ -147,6 +147,8 @@ class InputMixin(SceneState):
             return          # an officer's proposal: Y makes it so
         if k == pygame.K_n and self.belay_proposal():
             return
+        if self.counsel_open and pygame.K_1 <= k <= pygame.K_4 and self.follow_plan(k - pygame.K_1):
+            return          # counsel open: 1 to 4 go all in on that officer's plan
         scene_action = SCENE_KEYS.get(k)
         if scene_action is not None:
             scene_action(self, k, shift)
@@ -158,7 +160,9 @@ class InputMixin(SceneState):
 
     def _escape(self: BattleScene) -> None:
         """Esc closes the printout, then the overlay; with nothing open it brings up the battle menu."""
-        if self.overlay is None and self.printout is not None:
+        if self.overlay is None and self.counsel_open:
+            self.counsel_open = False
+        elif self.overlay is None and self.printout is not None:
             self.printout = None
             self.chart_auto = False
         elif self.overlay in (None, "help_brief"):
@@ -299,6 +303,7 @@ SCENE_KEYS: dict[int, SceneKey] = {
     pygame.K_F1: lambda s, k, shift: s.open_manual("controls"),
     pygame.K_h: lambda s, k, shift: s.open_manual(),
     pygame.K_i: lambda s, k, shift: s.toggle_overlay("damage"),
+    pygame.K_o: lambda s, k, shift: s.toggle_counsel(),
     pygame.K_q: _arcs,
     pygame.K_c: _follow,
     pygame.K_EQUALS: _zoom_in, pygame.K_PLUS: _zoom_in, pygame.K_KP_PLUS: _zoom_in,

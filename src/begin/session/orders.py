@@ -94,6 +94,28 @@ class OrdersMixin(SessionState):
             return None
         return parse(line, ParseContext(self.player_id, self.world.observe(self.side))).error
 
+    def dry_run(self: BattleSession, line: str) -> str | None:
+        """Why a console line would be refused right now, or None: parsed, and every order in it checked by the
+        simulation's own rules without being given (the counsel offers only lines that pass) [E]."""
+        from ..sim.commands import Rejected
+
+        why = self._would_run(line)
+        if why is not None:
+            return why
+        ship = self.player
+        if ship is None or (self.bridge is not None and self.bridge.addressed(line) is not None):
+            return None
+        res = parse(line, ParseContext(ship.id, self.world.observe(self.side)))
+        for cmd in res.commands:
+            held = self.world._held(cmd)
+            if held is not None:
+                return held
+            try:
+                cmd.validate(self.world, ship)
+            except Rejected as r:
+                return str(r)
+        return None
+
     def _translated(self: BattleSession, t: Translation) -> None:
         if t.say:
             self._log(f"Computer: {t.say}", "text")

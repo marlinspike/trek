@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from .allies import AllyStanding
     from .away import AwayOp
     from .collective import Insight, Mind, Survey
+    from .mission import Mission
     from .systems.disposition import Reading
     from .world import Outcome, PendingScan, World
 
@@ -113,6 +114,11 @@ class Observation:
 
     def holds(self, ship_id: int) -> dict[str, float]:
         return self._w.holds(ship_id)
+
+    def mission(self) -> Mission | None:
+        """Our mission in this battle, if there is one [E]: a side knows its own orders, not the other's."""
+        m = self._w.mission
+        return m if m is not None and m.side == self.side else None
 
     # ------------------------------------------------------------- contacts
 

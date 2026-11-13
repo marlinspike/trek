@@ -28,6 +28,7 @@ from ..content.schema import ContentDB
 from ..core.rng import Rng
 from . import collective
 from .arrivals import Arrival, update_arrivals, waves_pending
+from .mission import Mission, battle_over, update_mission
 from .away import AwayOp, update_away
 from .allies import MOVEMENT_ORDERS, WEAPON_ORDERS, AllyStanding
 from .commands import AllyOrder, Authority, Command, Rejected, fire_target, offensive_fire
@@ -114,6 +115,7 @@ class World:
     side_names: dict[int, str] = field(default_factory=dict)
     on_capture: Callable[[Ship], None] | None = None           # gives a captured ship to her new side's brains
     arrivals: list[Arrival] = field(default_factory=list)      # waves and reinforcements still to come [E]
+    mission: Mission | None = None                             # the battle's goal beyond holding the field [E]
     faith_broken: dict[int, set[int]] = field(default_factory=dict)   # side -> ships it fired on after a surrender or truce [E]
     on_arrival: Callable[[Ship], None] | None = None           # gives an arriving ship her captain and computer
     minds: dict[str, collective.Mind] = field(default_factory=dict)       # each hive's memory (sim/collective.py) [E]
@@ -380,6 +382,7 @@ class World:
                 del self.torpedo_pressure[k]
 
         self._escapes(dt)
+        update_mission(self, dt)
         self.tick += 1
         update_arrivals(self)
         self._check_outcome()
@@ -796,8 +799,10 @@ class World:
         r = self.rules
         alive = [e for e in self.ships.values() if e.alive]   # gathered once (this runs for every ship every tick);
         bases = [b for b in alive if b.cls.is_base]           # still checked below, as a ship may escape mid-loop
+        m = self.mission
+        chasing = m.side if m is not None and m.open and m.kind == "intercept" else None   # [E] the runner flees, not us
         for s in self.ships.values():
-            if not s.alive or s.cls.is_base or s.docked_to is not None or s.cls.craft:
+            if not s.alive or s.cls.is_base or s.docked_to is not None or s.cls.craft or s.ward or s.side == chasing:
                 s.escape_time = 0.0  # bases can't leave, a docked ship goes where its base goes, a shuttle is recalled
                 continue
             enemies = [e for e in alive if e.alive and e.side != s.side]
@@ -813,6 +818,11 @@ class World:
                                      f"{s.name} has left the battle area.", Tone.CAUTION)
             else:
                 s.escape_time = 0.0
+
+    def escape_ship(self, ship: Ship, text: str) -> None:
+        """A ship leaves the battle area of her own accord (a convoy that reached safety) [E]."""
+        if ship.alive:
+            self._set_status(ship, ShipStatus.ESCAPED, "escaped", None, text, Tone.GOOD)
 
     def _prize_open(self, alive_sides: set[int]) -> bool:
         """The last enemy is a derelict or has struck her colours: the victor has a while to board her [E]."""
@@ -830,8 +840,9 @@ class World:
         return fighting or self.time - self._prize_since < self.rules.prize_window
 
     def _check_outcome(self) -> None:
-        sides = {s.side for s in self.ships.values() if s.alive and not s.cls.craft}   # a shuttle holds no field [E]
-        all_sides = {s.side for s in self.ships.values() if not s.cls.craft}
+        # a shuttle holds no field, and nor does a mission's ward [E]
+        sides = {s.side for s in self.ships.values() if s.alive and not s.cls.craft and not s.ward}
+        all_sides = {s.side for s in self.ships.values() if not s.cls.craft and not s.ward}
         if len(all_sides) < 2 or len(sides) > 1:
             return
         if waves_pending(self) and self.player_side in sides:
@@ -848,6 +859,7 @@ class World:
             o.winner = None
             o.reason = "No combatants remain."
         self.emit(Message(self.tick, f"Battle over: {o.reason}", Tone.INFO))
+        battle_over(self)
 
     def end_simulation(self, reason: str = "Simulation ended by the captain.") -> None:
         """Begin's `quit`: stop at the end of the current cycle and go to the evaluation."""
@@ -859,6 +871,7 @@ class World:
         o.winner = None
         o.reason = reason
         self.emit(Message(self.tick, reason, Tone.INFO))
+        battle_over(self)
 
     # ------------------------------------------------------------ queries
 

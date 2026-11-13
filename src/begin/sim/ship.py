@@ -422,6 +422,8 @@ class Ship:
     surrender_time: float = 0.0
     mood: Mood = field(default_factory=Mood)   # an AI captain's state of mind toward the enemy [E]
     prisoners: int = 0                 # crew of a surrendered ship held aboard after she was taken [E]
+    ward: bool = False                 # a mission's ship to save: not a combatant, never holds the field (sim/mission.py) [E]
+    evacuees: int = 0                  # people a rescue brought aboard: they die with the ship (sim/mission.py) [E]
 
     # the Borg [E] (sim/collective.py, sim/away.py)
     phaser_freq: int = 0               # our phasers' modulation: every remodulation is a frequency the hive must learn
