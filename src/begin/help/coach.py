@@ -27,6 +27,7 @@ from ..sim.systems.ordnance import blast_radius, suggested_prox
 from ..sim.objectives import baitable
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import Ship
+from .lore import LORE_BLOCKS
 
 
 @dataclass
@@ -73,7 +74,8 @@ def weapon_colors(ctx: HelpContext) -> str:
 
     rows = ["| Nation | Phasers | Torpedoes and their blasts |", "|---|---|---|"]
     for f in ctx.content.factions.values():
-        style = "—— steady beam" if f.phaser_style == "beam" else "- - - string of bolts"
+        style = {"beam": "—— steady beam", "pulse": "- - - string of bolts",
+                 "cutter": "≈≈ cutting beam that drags across the hull"}.get(f.phaser_style, f.phaser_style)
         rows.append(f"| {f.name} | {{{hexa(f.phaser_color)} {style}}} | {{{hexa(f.torpedo_color)} ◆ torpedo, ○ blast}} |")
     rows.append("| Not yet identified | {#D7D7D7 —— white beam} | {#D7D7D7 ◆ white} |")
     return "\n".join(rows)
@@ -128,7 +130,7 @@ def my_weapons(ctx: HelpContext) -> str:
 
 def phaser_falloff(ctx: HelpContext) -> str:
     s = ctx.ship
-    cls = s.cls if s is not None else next(iter(ctx.content.classes.values()))
+    cls = s.cls if s is not None else (ctx.content.classes.get("federation.dn") or next(iter(ctx.content.classes.values())))
     rules = ctx.obs.rules if ctx.obs is not None else None
     mult = rules.phaser_dam_mult if rules else 45.0
     half = rules.phaser_half if rules else 0.5
@@ -542,6 +544,7 @@ BLOCKS: dict[str, Callable[[HelpContext], str]] = {
     "phaser_falloff": phaser_falloff,
     "coach": coach,
 }
+BLOCKS.update(LORE_BLOCKS)       # the manual's own: the crew, the powers, the battles, every order (help/lore.py)
 
 _PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
 

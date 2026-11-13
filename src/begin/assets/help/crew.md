@@ -6,7 +6,7 @@ aliases: crew, bridge, officers, delegate, dg, assume, takeback, station, statio
 summary: Hand a station to its officer, take it back, and hear what your crew thinks.
 see: conn, talking, llm, controls
 ---
-Four officers stand by on your bridge. Each one can run a **station** for you, so you can concentrate on the decisions that matter.
+Four officers run the stations on your bridge. Each one can run their **station** for you, so you can concentrate on the decisions that matter. Three more stand by: Sulu takes tactical when Worf is away, Chekov takes the helm when Spock covers science, and the Doctor runs sickbay. See [[your-crew|Your crew]].
 
 | Station | Officer | Runs |
 |---|---|---|

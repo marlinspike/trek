@@ -34,7 +34,7 @@ from ..console.vocab import VERBS, match_word
 
 BUNDLED_DIR = Path(__file__).resolve().parent.parent / "assets" / "help"
 
-CATEGORY_ORDER = ("Getting started", "Coach", "Helm", "Weapons", "Defense", "Sensors and status", "Ship systems",
+CATEGORY_ORDER = ("Getting started", "Captain's manual", "Coach", "Helm", "Weapons", "Defense", "Sensors and status", "Ship systems",
                   "Allies", "Crew", "Game")
 
 
