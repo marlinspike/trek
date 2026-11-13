@@ -154,7 +154,9 @@ class MenuScene:
             elif self.page == "main" and ev.key == pygame.K_v:
                 self.open_settings("voices")
             elif self.page == "main" and ev.key == pygame.K_k:
-                self.flybys.summon()               # a Klingon on demand, for anyone who wants to see one
+                self.flybys.summon("klingon")      # a Klingon on demand, for anyone who wants to see one
+            elif self.page == "main" and ev.key == pygame.K_b:
+                self.flybys.summon("borg")         # and a Borg cube
             elif self.page == "main" and ev.key in (pygame.K_c, pygame.K_h, pygame.K_F1):
                 self.open_manual("coach" if ev.key == pygame.K_c else "index" if ev.key == pygame.K_h else "controls")
 
