@@ -52,6 +52,7 @@ class LLMConfig:
     think: bool | str | None = None  # Ollama: True/False, a named level, or None for the model's default
     log_prompts: bool = False      # write every prompt and reply, with its tokens, to config/logs/llm-prompts.log
     log_tokens: bool = False       # keep per-game and all-time token totals in config/logs/llm-tokens.json
+    context: int | None = None     # Ollama: the context window (num_ctx); None sizes it to fit (llm/context.py)
 
 
 @dataclass(frozen=True)
@@ -101,7 +102,17 @@ def config_from_settings(llm: Mapping[str, object], env: Mapping[str, str] = os.
                      str(effort) if effort else None,
                      parse_think(env.get("BEGIN_LLM_THINK", llm.get("think"))),
                      parse_switch(env.get("BEGIN_LLM_LOG_PROMPTS", llm.get("log_prompts"))),
-                     parse_switch(env.get("BEGIN_LLM_LOG_TOKENS", llm.get("log_tokens"))))
+                     parse_switch(env.get("BEGIN_LLM_LOG_TOKENS", llm.get("log_tokens"))),
+                     parse_context(llm.get("context")))
+
+
+def parse_context(raw: object) -> int | None:
+    """Ollama's context window: a number of tokens (at least 2048), or None ("auto", unset, or unreadable)."""
+    try:
+        n = int(str(raw).strip()) if raw is not None and not isinstance(raw, bool) else 0
+    except ValueError:
+        return None
+    return n if n >= 2048 else None
 
 
 def parse_switch(raw: object) -> bool:

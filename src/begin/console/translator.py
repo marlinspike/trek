@@ -20,6 +20,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from ..llm.context import STABLE_END
 from ..llm.providers.base import Message
 from ..llm.reply import clean_command, first_object, spoken
 from ..llm.service import LLMService
@@ -205,7 +206,7 @@ def system_prompt(brief: str) -> str:
         '"fire all phasers"], "say": "", "clarify": ""} (with a ship name from the situation)',
         'attack him -> {"commands": [], "say": "", "clarify": "Which ship: <name> or <name>?"} when two enemies '
         "are in range",
-        "",
+        STABLE_END,
         "What the ship knows right now:",
         brief,
     ])

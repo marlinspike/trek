@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ..context import context_window, flatten
 from .base import Completion, LLMConfig, LLMError, Message, Usage, post_json
 
 _THINK_TAGS = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
@@ -24,8 +25,11 @@ class OllamaProvider:
 
     def body(self, system: str, messages: list[Message]) -> dict[str, Any]:
         body: dict[str, Any] = {"model": self.cfg.model, "stream": False,
-                                "messages": [{"role": "system", "content": system}, *messages],
-                                "options": {"num_predict": self.cfg.max_tokens}}
+                                "messages": [{"role": "system", "content": flatten(system)}, *messages],
+                                # a window set to fit: Ollama's own default may be smaller, and it cuts a prompt
+                                # that overflows from the front without a word, losing the instructions
+                                "options": {"num_predict": self.cfg.max_tokens,
+                                            "num_ctx": self.cfg.context or context_window(self.cfg.max_tokens)}}
         if self.cfg.think is not None:
             body["think"] = self.cfg.think
         return body

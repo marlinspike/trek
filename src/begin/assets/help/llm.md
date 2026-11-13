@@ -43,6 +43,7 @@ You can also edit the file by hand, or use environment variables. Keys are read 
 - `think` (Ollama) turns a local reasoning model's thinking on or off: `true` or `think`, `false` or `nothink`, or a level such as `low`, `medium` or `high` for models that offer levels. Leave it out to use the model's own default. Thinking makes answers slower but sometimes better; for chat during a battle, off is usually the better choice. The model's reasoning is never shown, only its answer. If a model cannot think, Ollama refuses `think: true`, and the officer's error message says so.
 - `console` decides what you type at the console goes to the model: `on` (the default: only lines the console doesn't recognise), `always`, or `off`. See [[plain-english]].
 - `timeout` is how many seconds to wait for an answer: 120 by default for Ollama, since a local model may need loading first, and 45 for the others. `max_tokens` caps the length of an answer.
+- `context` (Ollama) sets the model's context window in tokens. Left out, the game asks for one that fits its largest prompt and the answer (8,192 tokens with the default `max_tokens`), and keeps it the same all game so Ollama never has to reload the model. Ollama's own default can be smaller, and it cuts an overflowing prompt from the front without a word, losing the officer's instructions; that is why the game sets it. Set a number (`--llm context=16384`) only if you know your model needs more.
 - The environment variables `BEGIN_LLM_PROVIDER`, `BEGIN_LLM_MODEL`, `BEGIN_LLM_BASE_URL` and `BEGIN_LLM_THINK` override the file. Set `BEGIN_LLM_PROVIDER=off` to turn it off for one session.
 
 The console log says which provider the officers are using when a battle starts.
@@ -73,3 +74,15 @@ begin --llm-voice-test klingon
 ## What the model sees
 
 The officer's personality, their station, your rapport, the console command syntax, and a short factual summary of the battle: your ship's state, weapons, shields and power, the contacts on your sensors with their range and bearing, and the coach's notes. Never anything your side could not know.
+
+### Kept short, all battle long
+
+Nothing is resent from the start of the battle. Each request carries the battle as it is now, not a log of how it got there, and only a little of the conversation:
+
+- An officer remembers your last six exchanges with them. After a minute and a half without a word between you, the next thing you say starts a fresh conversation.
+- To vary their remarks, an officer is shown only their last five lines, each cut short.
+- The console remembers its last few lines, so it can follow up a question it asked you.
+- A hail, a remark in an officer's own words, a captain's log entry and a named order each go alone, with no history at all.
+- Under all of that, every request is trimmed to a fixed budget of about 3,500 tokens: the oldest turns go first, and your newest words are always kept.
+
+The rules and the command list come first in every prompt and never change, so a model can reuse them instead of reading them again: Anthropic's prompt cache keeps them, and Ollama keeps them in its context between requests. To see what each battle costs, turn on the token log with `begin --llm log_tokens=on`, then run `begin --llm-usage`: it shows every battle's calls and tokens, by who asked.

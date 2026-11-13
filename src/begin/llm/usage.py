@@ -34,6 +34,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .context import flatten
 from .providers.base import Completion, LLMConfig, Message, Provider, Usage
 
 PROMPT_LOG = "llm-prompts.log"
@@ -188,7 +189,7 @@ class MeteredProvider:
         except Exception as e:
             self._log(who, system, messages, None, str(e) or type(e).__name__, None, time.perf_counter() - t0)
             raise
-        usage = done.usage or estimate_usage(system, messages, done.text)
+        usage = done.usage or estimate_usage(flatten(system), messages, done.text)
         self._log(who, system, messages, done.text, None, usage, time.perf_counter() - t0)
         return Completion(done.text, usage)
 
@@ -196,7 +197,7 @@ class MeteredProvider:
              usage: Usage | None, seconds: float) -> None:
         if self.prompts is not None:
             self.prompts.write(game=self.game.id, who=who, model=f"{self.cfg.provider}/{self.cfg.model}",
-                               system=system, messages=messages, reply=reply, error=error, usage=usage,
+                               system=flatten(system), messages=messages, reply=reply, error=error, usage=usage,
                                seconds=seconds)
         if self.ledger is not None:
             self.ledger.record(self.game.record, who, usage, error is not None)

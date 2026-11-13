@@ -33,6 +33,7 @@ from ..console.plain import is_strike, plain_order, split_orders
 from ..console.reports import morale_words
 from ..console.vocab import DISABLE_WORDS, HAVE_WORDS
 from ..help.coach import HelpContext, tips
+from ..llm.context import STABLE_END
 from ..llm.providers.base import Message
 from ..llm.reply import NUDGE, parse_reply, spoken
 from ..llm.service import LLMService
@@ -56,6 +57,10 @@ from .utterance import RunCommand, Utterance
 LINE_TAG = "\0line:"         # an officer's remark being put in their own words
 VOICE_STALE = 6.0           # seconds after which a remark is no longer worth saying
 ADDRESS_TAG = "\0address"   # the model's verdict on the captain's speech, not an officer's answer
+HISTORY = 12                # messages of a conversation with an officer the model sees: the last six exchanges
+CONVERSATION_GAP = 90.0     # seconds of silence after which the captain starts a fresh conversation with an officer
+RECENT_LINES = 5            # of an officer's own recent remarks, shown to the model so it doesn't repeat them
+RECENT_CHARS = 120          # each, at most
 
 
 _STATION_HANDBACK = {"helm": "the helm is", "tactical": "the weapons station is", "engineering": "engineering is",
@@ -78,6 +83,7 @@ class Bridge(Chatter):
         self.recent: dict[str, deque[str]] = {}          # officer -> what they said lately, so the model varies it
         self._voicing: dict[int, tuple[str, int, str]] = {}   # request -> (officer, tick asked, the canned line)
         self.history: dict[str, list[Message]] = {}
+        self._talked: dict[str, int] = {}        # officer -> tick the captain last put words to their model
         self.suggested: dict[str, tuple[int, list[str]]] = {}   # officer -> (tick, commands)
         self.asking: dict[str, bool] = {}   # officer -> the pending LLM request is a question, not an order
         self._nudged: set[str] = set()      # officers whose empty answer has been asked for again
@@ -354,8 +360,15 @@ class Bridge(Chatter):
             return [self._say(officer, "One moment, Captain.", "dim")]
         system = self.system_prompt(officer, ctx)
         hist = self.history.setdefault(officer.id, [])
+        if ctx.obs is not None:
+            # a long silence ends the conversation: what was said minutes ago is about a different fight, and
+            # resending it every time would only grow the prompt
+            last = self._talked.get(officer.id)
+            if last is not None and ctx.obs.tick - last > CONVERSATION_GAP * ctx.obs.rules.ticks_per_cycle:
+                hist.clear()
+            self._talked[officer.id] = ctx.obs.tick
         hist.append({"role": "user", "content": text or "Report."})
-        del hist[:-16]
+        del hist[:-HISTORY]
         self.llm.submit(officer.id, system, hist)
         self.asking[officer.id] = is_question(said)
         return [self._say(officer, "…", "dim")]
@@ -624,10 +637,11 @@ class Bridge(Chatter):
         if o.traits:
             out += (f" Your character traits: {', '.join(o.traits)}. Let them colour how you speak and how you are "
                     "with the captain; they never change how well you do your job.")
-        said = list(self.recent.get(o.id, ()))
+        said = [s if len(s) <= RECENT_CHARS else s[:RECENT_CHARS] + "…"
+                for s in list(self.recent.get(o.id, ()))[-RECENT_LINES:]]
         if said:
             out += (" Things you have said lately (never repeat them or their wording; find a fresh way to say "
-                    "it): " + " | ".join(said[-8:]))
+                    "it): " + " | ".join(said))
         return out
 
     @staticmethod
@@ -645,11 +659,11 @@ class Bridge(Chatter):
         rel = self.relationships.get(o.id)
         s = obs.own(self.crew.ship_id)
         mood = f" The crew's morale is {morale_words(s.morale)}." if s is not None else ""
-        system = (self.character(o) + f" Your relationship with the captain: {rel.mood}.{mood} You are on the bridge in "
-                  "the middle of a starship battle. Say ONE short remark (at most 20 words) to the effect of the line "
-                  "below, in your own voice and words, keeping every name and number exactly. Reply with the "
-                  "remark only, no quotes, JSON or stage directions. Variation " + str(self.rng.randrange(10 ** 6))
-                  + ". " + self.style(o)).strip()
+        system = ("You are a starship officer on the bridge in the middle of a battle. Say ONE short remark (at most "
+                  "20 words) to the effect of the line below, in your own voice and words, keeping every name "
+                  "and number exactly. Reply with the remark only, no quotes, JSON or stage directions."
+                  + STABLE_END + self.character(o) + f" Your relationship with the captain: {rel.mood}.{mood} "
+                  "Variation " + str(self.rng.randrange(10 ** 6)) + ". " + self.style(o)).strip()
         rid = self.llm.submit(LINE_TAG + o.id, system, [{"role": "user", "content": canned}])
         self._voicing[rid] = (o.id, obs.tick, canned)
         return True
@@ -657,16 +671,12 @@ class Bridge(Chatter):
     def system_prompt(self, o: OfficerProfile, ctx: HelpContext) -> str:
         rel = self.relationships.get(o.id)
         stations = ", ".join(STATION_NAMES[s] for s in o.advises)
+        # the rules and the command list first, the same for every officer and every request, so a provider can
+        # reuse them (llm/context.py); then who this officer is and what the ship knows now
         return "\n".join([
-            self.character(o),
-            "",
-            "Setting: the captain is speaking to you on the bridge during a real-time battle in a 2D tactical "
+            "Setting: the captain is speaking to you, a bridge officer, during a real-time battle in a 2D tactical "
             "starship game. Courses are compass bearings (0 = up the map, 90 = right). Distances are in units; "
             "warp 1 = 100 units per second.",
-            ("The captain has given you command of the bridge: you run every station and may use any command "
-             "below, but the captain's orders come first. " if ctx.ship is not None and ctx.ship.conn == o.id else
-             f"You run the {STATION_NAMES[o.station]} station and advise on: {stations}. ")
-            + f"Your relationship with the captain: {rel.mood}.",
             "Answer with ONE JSON object and nothing else:",
             '{"say": "<what you say aloud, at most three short sentences>", "commands": ["<console command>", ...]}',
             "Always say something in reply. The captain may simply talk to you, about the battle or anything else: "
@@ -675,6 +685,12 @@ class Bridge(Chatter):
             "the list holds what you recommend, and the captain decides. Use only commands for your stations, "
             "written exactly in this console syntax:",
             COMMAND_SYNTAX,
+            STABLE_END,
+            self.character(o),
+            ("The captain has given you command of the bridge: you run every station and may use any command "
+             "above, but the captain's orders come first. " if ctx.ship is not None and ctx.ship.conn == o.id else
+             f"You run the {STATION_NAMES[o.station]} station and advise on: {stations}. ")
+            + f"Your relationship with the captain: {rel.mood}.",
             "",
             "What the ship knows right now:",
             situation(ctx),

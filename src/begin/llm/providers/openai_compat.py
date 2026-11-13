@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..context import flatten
 from .base import Completion, LLMConfig, LLMError, Message, Usage, post_json
 
 
@@ -22,7 +23,7 @@ class OpenAICompatProvider:
         return self.complete_full(system, messages).text
 
     def complete_full(self, system: str, messages: list[Message]) -> Completion:
-        body: dict[str, Any] = {"model": self.cfg.model, "messages": [{"role": "system", "content": system}, *messages]}
+        body: dict[str, Any] = {"model": self.cfg.model, "messages": [{"role": "system", "content": flatten(system)}, *messages]}
         data = post_json(self.url, body, self.headers, self.cfg.timeout)
         try:
             text = data["choices"][0]["message"]["content"]
