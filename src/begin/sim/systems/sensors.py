@@ -12,7 +12,7 @@ import random
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ..events import ContactChanged, Message, ScanCompleted, Tone
+from ..events import CloakFlash, ContactChanged, Message, ScanCompleted, Tone
 from ..ship import Kind, Ship
 
 if TYPE_CHECKING:
@@ -221,8 +221,6 @@ def fired_from(world: World, ship: Ship, cycles: float | None = None) -> None:
     if not (ship.cloaked and ship.cls.cloak_fire):
         ship.reveal_time = max(ship.reveal_time, reveal)
         return
-    from ..events import CloakFlash
-
     if ship.reveal_time <= 0:
         for side, intel in world.intel.items():
             if side == ship.side:

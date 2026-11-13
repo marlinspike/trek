@@ -18,7 +18,7 @@ from ..content.schema import ContentDB, ShipClass
 from .events import ContactChanged, Event, Message
 from .rules import Rules
 from .ship import Ship, ShipStatus
-from .systems.sensors import TRAIL_ERROR, Assessment, ScanRecord
+from .systems.sensors import PLASMA_LIFE, TRAIL_ERROR, Assessment, ScanRecord
 
 if TYPE_CHECKING:
     from .allies import AllyStanding
@@ -72,6 +72,7 @@ class OrdnanceView:
     fuse: float = 0.0           # own ordnance: cycles until the time fuse expires
     count: int = 1              # rounds flying together in this group (a salvo), which anyone can count
     faction: str = ""           # whose make it is: anyone can tell a race's torpedoes by their look [E]
+    follow: int | None = None   # own plasma-seekers [E]: the ship whose plasma trail it flies
 
 
 def _make(w: World, owner: int | None) -> str:
@@ -210,6 +211,7 @@ class Observation:
                     t.id, "torpedo", mine, t.owner if mine else None, t.x, t.y, t.course, t.velocity * upw,
                     t.armed, t.yield_ if mine else t.spec.damage, t.prox if mine else t.spec.max_prox,
                     t.target if mine else None, count=t.salvo, faction=_make(w, t.owner),
+                    follow=t.follow if mine else None,
                 ))
             for p in w.probes:
                 if p.detonate:
@@ -355,6 +357,15 @@ class Observation:
         from .systems import sensors
 
         return sensors.plasma_seen(self._w, self.side)
+
+    def plasma_fresh(self, born: int) -> float:
+        """How fresh a point of plasma trail laid at tick `born` still is: 1 just laid, 0 gone."""
+        return max(0.0, 1.0 - (self.tick - born) / (PLASMA_LIFE * self.rules.ticks_per_cycle))
+
+    def venting(self) -> dict[int, list[tuple[float, float, int]]]:
+        """[E] The plasma trails our own ships are leaving: what any enemy sensor in range can follow."""
+        return {sid: list(pts) for sid, pts in self._w.plasma.items()
+                if (s := self._w.ships.get(sid)) is not None and s.side == self.side}
 
     def leaking(self, ship_id: int) -> bool:
         """One of ours is venting warp plasma that anyone can follow (a damaged drive, at warp) [E]."""

@@ -341,7 +341,10 @@ class TargetPanel(Panel):
         if c.cls is not None:
             line = f"{c.cls.name} · " + line
         theme.text(surf, line, (rect.x + 12, y + 20), theme.TEXT_DIM, 12)
-        if not c.visible:
+        if c.exhaust:
+            theme.text(surf, theme.fit("Cloaked: placed by her plasma trail, give or take "
+                                       f"{c.uncertainty:,.0f}", 12, rect.width - 24), (rect.x + 12, y + 36), theme.EXHAUST, 12)
+        elif not c.visible:
             theme.text(surf, f"Contact lost {c.age:.0f} cycles ago — position estimated", (rect.x + 12, y + 36),
                        theme.CAUTION, 12)
         # their shield facing us
@@ -725,11 +728,13 @@ class ContactsPanel(Panel):
         for c in obs.contacts().values():
             d = c.distance_to(ship.x, ship.y)
             col = theme.HOSTILE if c.identified else theme.UNKNOWN
-            if not c.visible:
+            if c.exhaust:
+                col = theme.EXHAUST
+            elif not c.visible:
                 col = theme.dim(col, 0.55)
             what = c.cls.abbrev if c.cls else "?"
-            rows.append((d, c.label if c.identified else f"Contact #{c.id}", col, c.id,
-                         f"{what} · {('hazy' if c.haze > 0 else 'tracking') if c.visible else 'lost'}"))
+            state = ("hazy" if c.haze > 0 else "tracking") if c.visible else "exhaust" if c.exhaust else "lost"
+            rows.append((d, c.label if c.identified else f"Contact #{c.id}", col, c.id, f"{what} · {state}"))
         rows.sort()
         rh = 20
         for k, (d, name, col, sid, note) in enumerate(rows):

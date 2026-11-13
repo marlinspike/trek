@@ -18,7 +18,7 @@ import pygame
 from ..content.schema import Faction
 from ..core.angles import norm180
 from ..content.schema import HullDef, ShipClass
-from ..sim.events import Detonation, Event, HullHit, ShieldHit, ShipArrived, ShipStatusChanged
+from ..sim.events import CloakFlash, Detonation, Event, HullHit, ShieldHit, ShipArrived, ShipStatusChanged
 from ..sim.ship import SHIELD_FACINGS
 from ..sim.observation import ContactView, Observation, OrdnanceView
 from ..sim.ship import Ship
@@ -31,7 +31,7 @@ from .fleet_art import art_px, fleet_image, has_art
 from .showpiece import SPRITE_CENTRE_Y, SPRITE_PX, ship_image, ship_lights
 from .hulls import MIN_HULL_PX, draw_hull, hull_pixel_scale
 from .starfield import Starfield
-from . import gfx
+from . import gfx, stealth
 
 SHIELD_FLASH = 0.7        # seconds a shield hit shimmers
 TRAIL_POINT = 0.25        # cycles between the points of an engine trail
@@ -44,6 +44,7 @@ _LIT: dict[tuple[pygame.Surface, tuple[int, ...]], pygame.Surface] = {}
 SHOWPIECE = frozenset({"federation.hc"})     # the hand-built art (showpiece.py); the rest is fleet_art.py
 TORP_TRAIL = 1.4          # cycles of exhaust a torpedo leaves behind it
 TORP_TRAIL_POINT = 0.05   # cycles between the points of a torpedo trail
+SEEKER_TRAIL = 4.0        # × a torpedo's trail: a plasma-seeker's winding path lingers [E]
 LABEL_GROUP_PX = 40       # ships closer than this on screen share one name on the map
 LOCK_TIME = 0.35          # seconds the target brackets take to close in
 BLAST_MIN_PX = 12.0       # the fireball of the smallest ship on screen, pixels
@@ -164,6 +165,8 @@ class TacticalView:
     _warned: set[int] = field(default_factory=set)   # enemy rounds we've already heard coming
     _rng: random.Random = field(default_factory=lambda: random.Random(11))
     _last: dict[int, tuple[float, float, float, HullDef | None, str | None, bool]] = field(default_factory=dict)  # as last drawn
+    _flicker: dict[int, float] = field(default_factory=dict)        # our ship: when she last fired through her cloak
+    _cloak_flashes: list[tuple[float, float, float]] = field(default_factory=list)   # (x, y, when) another fired from one
 
     def ingest(self, events: list[Event], obs: Observation) -> None:
         visible = {s.id for s in obs.own_ships(alive_only=False)} | {c.id for c in obs.contacts().values() if c.visible}
@@ -192,6 +195,12 @@ class TacticalView:
                 if me is not None:
                     col = theme.FRIEND if me[5] else theme.HOSTILE
                     self.effects.warp_in(ev.origin[0], ev.origin[1], me[0], me[1], theme.mix(col, (255, 255, 255), 0.3))
+            elif isinstance(ev, CloakFlash):
+                if ev.ship_id in friendly:
+                    self._flicker[ev.ship_id] = self.clock
+                else:
+                    self._cloak_flashes.append((ev.x, ev.y, self.clock))
+                    self._sounds.append(("cloak", ev.x, ev.y))
             elif isinstance(ev, ShipStatusChanged) and ev.status == "destroyed":
                 w = self._wreck(ev.ship_id)
                 if w is not None:
@@ -357,6 +366,7 @@ class TacticalView:
         self._starfield(surf)
         self._grid(surf)
         self._trails(overlay, obs, pose)
+        self._plasma(overlay, obs, pose)
         if me is not None and me.exists:
             p = pose(me.id)
             if p:
@@ -372,7 +382,7 @@ class TacticalView:
             f = obs.content.factions.get(o.faction)
             if o.kind == "torpedo":
                 live.add(o.id)
-                self._torp_trail(overlay, o.id, p, obs.time, f)
+                self._torp_trail(overlay, o.id, p, obs.time, f, theme.EXHAUST if o.follow is not None else None)
                 if not o.friendly:
                     near = self._inbound(obs, p)
                     if near is not None:
@@ -499,28 +509,50 @@ class TacticalView:
                 if hi > lo and alpha > 3:
                     gfx.draw.lines(overlay, (*wake, alpha), False, path[lo:hi + 1], 2 if band == TRAIL_BANDS - 1 else 1)
 
-    def _torp_trail(self, overlay: pygame.Surface, oid: int, p: Pose, now: float, f: Faction | None) -> None:
-        """The exhaust a torpedo leaves: a short streak that fades out behind it."""
+    def _plasma(self, overlay: pygame.Surface, obs: Observation, pose: Callable[[int], Pose | None]) -> None:
+        """Warp plasma [E]: the trails our sensors can follow, ours that the enemy can, the seekers hunting along
+        them, and the shiver where a ship fired from her cloak."""
+        cam = self.cam
+        seen = obs.plasma()
+        for sid, pts in seen.items():
+            stealth.plasma_trail(overlay, cam, pts, obs.plasma_fresh, self.clock, sid)
+        for sid, pts in obs.venting().items():
+            stealth.plasma_trail(overlay, cam, pts, obs.plasma_fresh, self.clock, sid, own=True)
+        for o in obs.ordnance():
+            if o.follow is not None and (p := pose(o.id)) is not None:
+                stealth.scent(overlay, cam, seen.get(o.follow, []), (p[0], p[1]), self.clock)
+        self._cloak_flashes = [f for f in self._cloak_flashes if self.clock - f[2] < stealth.FLICKER]
+        for x, y, when in self._cloak_flashes:
+            if cam.visible(x, y, 100):
+                sx, sy = cam.to_screen(x, y)
+                stealth.fire_flash(overlay, sx, sy, max(14.0, 60 * _k(300.0, cam.zoom)), self.clock - when)
+
+    def _torp_trail(self, overlay: pygame.Surface, oid: int, p: Pose, now: float, f: Faction | None,
+                    seeker: theme.Color | None = None) -> None:
+        """The exhaust a torpedo leaves: a short streak that fades out behind it. A plasma-seeker's is longer and
+        takes the colour of the plasma it is following, so its winding path stays on the map a while."""
+        span = TORP_TRAIL * (SEEKER_TRAIL if seeker is not None else 1.0)
         pts = self.torp_trails.setdefault(oid, [])
         if pts and now < pts[-1][2]:
             pts.clear()
         if not pts or now - pts[-1][2] >= TORP_TRAIL_POINT:
             pts.append((p[0], p[1], now))
-        while pts and now - pts[0][2] > TORP_TRAIL:
+        while pts and now - pts[0][2] > span:
             pts.pop(0)
         cam = self.cam
         if len(pts) < 2 or not cam.visible(p[0], p[1], 300):
             return
-        col = f.torpedo_color if f is not None else theme.TORPEDO
+        col = seeker or (f.torpedo_color if f is not None else theme.TORPEDO)
         path = [cam.to_screen(x, y) for x, y, _ in pts] + [cam.to_screen(p[0], p[1])]
         n = len(path) - 1
         for i in range(n):                    # a faint thread, fainter the older it is
             k = (i + 1) / n
-            gfx.draw.aaline(overlay, (*col, int(70 * k * k)), path[i], path[i + 1], 0.75)   # a hair-thin thread
+            gfx.draw.aaline(overlay, (*col, int((110 if seeker else 70) * k * k)), path[i], path[i + 1],
+                            1.2 if seeker else 0.75)   # a hair-thin thread
         warm = theme.mix(col, (255, 255, 255), 0.35)
         for i, (x, y, born) in enumerate(pts):   # and a stream of sparks that drift apart and fade
             age = now - born
-            k = max(0.0, 1.0 - age / TORP_TRAIL)
+            k = max(0.0, 1.0 - age / span)
             if k <= 0.05:
                 continue
             q = path[i]
@@ -744,24 +776,31 @@ class TacticalView:
                     self._dashed(surf, theme.dim(theme.HOSTILE, bright * 0.8), a, cam.to_screen(pt[0], pt[1]), 3, 7)
 
     @staticmethod
-    def _sprite(surf: pygame.Surface, cls: ShipClass, sx: float, sy: float, course: float,
-                k: float) -> tuple[pygame.Surface, pygame.Rect] | None:
-        """Close in, a ship is drawn with her baked art; returns the art and where it went (None: no art)."""
+    def _placed(cls: ShipClass, sx: float, sy: float, course: float,
+                k: float) -> tuple[pygame.Surface, pygame.Rect, float, float] | None:
+        """A ship's baked art and where it goes on screen (with the centre it turns about), or None: no art."""
         cls_id = cls.hull.class_id                 # a class built on another's hull wears its art
         img = _art(cls_id, cls.hull.length, course, k)
         if img is None:
             return None
         if cls_id not in SHOWPIECE:                # fleet art is centred on the hull origin
-            rect = img.get_rect(center=(int(sx), int(sy)))
-            surf.blit(img, rect)
-            return img, rect
-        scale = round(k / SPRITE_PX, 2)
+            return img, img.get_rect(center=(int(sx), int(sy))), sx, sy
         a = math.radians(course)
         off = -SPRITE_CENTRE_Y * k                 # the sprite's centre sits a little aft of the hull origin
         cx, cy = sx - math.sin(a) * off, sy + math.cos(a) * off
-        rect = img.get_rect(center=(int(cx), int(cy)))
+        return img, img.get_rect(center=(int(cx), int(cy))), cx, cy
+
+    @staticmethod
+    def _sprite(surf: pygame.Surface, cls: ShipClass, sx: float, sy: float, course: float,
+                k: float) -> tuple[pygame.Surface, pygame.Rect] | None:
+        """Close in, a ship is drawn with her baked art; returns the art and where it went (None: no art)."""
+        placed = TacticalView._placed(cls, sx, sy, course, k)
+        if placed is None:
+            return None
+        img, rect, cx, cy = placed
         surf.blit(img, rect)
-        ship_lights(surf, cx, cy, round(course) % 360, scale, pygame.time.get_ticks() / 1000.0)
+        if cls.hull.class_id in SHOWPIECE:
+            ship_lights(surf, cx, cy, round(course) % 360, round(k / SPRITE_PX, 2), pygame.time.get_ticks() / 1000.0)
         return img, rect
 
     def _light_on(self, sx: float, sy: float, size: float) -> tuple[theme.Color, float] | None:
@@ -843,12 +882,15 @@ class TacticalView:
             L = 50 * k
             gfx.draw.line(surf, theme.dim(theme.CAUTION, 0.7), (sx, sy), (sx + math.sin(a) * L, sy - math.cos(a) * L), 1)
         light = self._light_on(sx, sy, 100 * k) if s.alive and not s.cloaked else None
-        drawn = self._sprite(surf, s.cls, sx, sy, p[2], k) if s.alive and not s.cloaked and k >= SPRITE_MIN_K else None
-        art = drawn is not None
-        if drawn is None:
-            drawn = draw_hull(surf, s.cls.hull, sx, sy, p[2], k, color)
-        if drawn is not None:
-            self._light_art(surf, drawn, light)
+        if s.alive and s.cloaked:
+            art = self._under_cloak(surf, overlay, s, sx, sy, p[2], k, color)
+        else:
+            drawn = self._sprite(surf, s.cls, sx, sy, p[2], k) if s.alive and k >= SPRITE_MIN_K else None
+            art = drawn is not None
+            if drawn is None:
+                drawn = draw_hull(surf, s.cls.hull, sx, sy, p[2], k, color)
+            if drawn is not None:
+                self._light_art(surf, drawn, light)
         strengths = [(sh.effective if not sh.destroyed else 0.0, sh.up and not sh.destroyed and sh.effective > 0.5)
                      for sh in s.shields]
         self._shield_ring(surf, s.id, sx, sy, p[2], 62 * k, strengths, overlay)
@@ -876,7 +918,13 @@ class TacticalView:
             room = int(cam.rect.right - 4 - lx)
             if is_player:
                 theme.text(surf, f"w{s.warp:.1f}", (lx, ly), theme.TEXT_DIM, 10, "mono")
+                if s.alive and s.cloaked:
+                    theme.text(surf, "CLOAKED", (lx + theme.text_width(f"w{s.warp:.1f}", 10, "mono") + 8, ly),
+                               theme.CLOAK, 10, weight="semibold")
                 ly += 12
+                if obs.leaking(s.id):
+                    theme.text(surf, theme.fit("venting plasma", 10, room), (lx, ly), theme.EXHAUST, 10)
+                    ly += 12
             elif s.alive:
                 st = obs.ally_order(s.id)
                 mission = st.summary(names or {}) if st is not None else ""
@@ -893,6 +941,21 @@ class TacticalView:
                 cx, cy = sx + dx * b, sy + dy * b
                 gfx.draw.line(surf, theme.ALLY, (cx, cy), (cx - dx * 7, cy), 1)
                 gfx.draw.line(surf, theme.ALLY, (cx, cy), (cx, cy - dy * 7), 1)
+
+    def _under_cloak(self, surf: pygame.Surface, overlay: pygame.Surface, s: Ship, sx: float, sy: float, course: float,
+                 k: float, color: theme.Color) -> bool:
+        """One of ours under her cloak [E]: her art faint and swaying, the field turning round her, and for a
+        moment after she fires through it, almost all of her. True when her art was drawn."""
+        since = self.clock - self._flicker.get(s.id, -1e9)
+        flicker = max(0.0, 1.0 - since / stealth.FLICKER) ** 2
+        rad = 62 * k
+        stealth.cloak_field(overlay, sx, sy, rad, self.clock, flicker)
+        placed = self._placed(s.cls, sx, sy, course, k) if k >= SPRITE_MIN_K else None
+        if placed is None:
+            draw_hull(surf, s.cls.hull, sx, sy, course, k, theme.mix(color, theme.CLOAK, 0.6), fill_alpha=0.08 + 0.3 * flicker)
+            return False
+        stealth.cloaked_art(surf, placed[0], placed[1], self.clock, flicker)
+        return True
 
     def _group_labels(self, ships: list[tuple[int, Pose]], keep: set[int | None]) -> None:
         """Ships flying in close formation share one name on the map ("Bismark (BC)  +2") instead of a pile of
@@ -939,7 +1002,7 @@ class TacticalView:
             drawn = (self._sprite(surf, c.cls, sx, sy, p[2], k) if c.visible and c.identified and k >= SPRITE_MIN_K
                      else None)
             art = drawn is not None
-            if drawn is None:
+            if drawn is None and not c.exhaust:        # placed only by her plasma: no outline, only the fix
                 drawn = draw_hull(surf, c.cls.hull, sx, sy, p[2], k, color, fill_alpha=0.22 if c.visible else 0.08)
             if drawn is not None:
                 self._light_art(surf, drawn, light)
@@ -955,14 +1018,17 @@ class TacticalView:
             pts = [(sx, sy - rad), (sx + rad, sy), (sx, sy + rad), (sx - rad, sy)]
             gfx.draw.polygon(surf, color, pts, 1)
             theme.text(surf, "?", (sx, sy), color, 12, anchor="center")
-        if not c.visible:
+        if c.exhaust and overlay is not None:
+            color = theme.EXHAUST
+            stealth.exhaust_fix(surf, overlay, sx, sy, max(rad + 10, min(180.0, c.uncertainty * cam.zoom)), self.clock, c.id)
+        elif not c.visible:
             self._dashed_circle(surf, theme.dim(color, 0.8), (sx, sy), rad + 6, seg=8)
         elif c.haze > 0:
             # beyond rated sensor range: the ring shows how far off the reported position may be
             ring = max(rad + 6, c.uncertainty * cam.zoom)
             self._dashed_circle(surf, theme.dim(color, 0.6), (sx, sy), int(ring), seg=12)
         label = c.label if c.identified else f"#{c.id}"
-        if c.visible and c.haze > 0:
+        if (c.visible and c.haze > 0) or c.exhaust:
             label = "~" + label
         if c.id in self._label_more:
             label += f"  +{self._label_more[c.id]}"
@@ -979,7 +1045,9 @@ class TacticalView:
             self._leader(surf, sx, sy, rad - 4, lx if lx > sx else lx + lw, top, color)
         if not quiet:
             theme.label(surf, label, (lx, top), color, 12)
-        if lost and place is not None:
+        if c.exhaust and place is not None:
+            theme.text(surf, "EXHAUST · rough fix", (lx, top + 14), theme.EXHAUST, 10, weight="semibold")
+        elif lost and place is not None:
             theme.text(surf, f"lost {c.age:.0f}s", (lx, top + 14), theme.TEXT_FAINT, 10)
         if targeted:
             if self._lock[0] != c.id:
