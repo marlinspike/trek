@@ -243,6 +243,8 @@ class CollectiveRules:
     floor: float = 0.12
     relearn: float = 0.6
     regen_hull: float = 0.004        # share of the structure grown back per cycle
+    regen_hurt: float = 0.25         # ... × this while under fire (hurt in the last `regen_quiet` cycles)
+    regen_quiet: float = 6.0
     assimilate: float = 0.65         # chance a defender beaten in a boarding round becomes a drone
     takeover: float = 0.18           # per cycle, × the drones' share of the bodies aboard: a system is seized
     party: int = 14                  # drones in one beam-over

@@ -113,7 +113,7 @@ temperament = {temper = 0.25, obstinacy = 0.25, deviation = 0.25}
 #   adapt         per weapon family, the damage that teaches the whole hive to shrug it off
 #   floor         share of a fully adapted weapon's damage that still gets through
 #   relearn       how much faster each new phaser frequency is learned than the last
-#   regen_hull    share of the structure grown back per cycle
+#   regen_hull    share of the structure grown back per cycle; × regen_hurt while hurt in the last regen_quiet cycles
 #   assimilate    chance a crewman beaten in a boarding round becomes a drone
 #   takeover      per cycle, × the drones' share of the bodies aboard: a system is seized
 #   party / beam_every   drones per beam-over, and cycles between them
@@ -139,4 +139,4 @@ colors = {phaser = "#9CFF8A", phaser_style = "cutter", torpedo = "#5DFF7A", torp
 morale = {start = 100, steadiness = 0.0}     # there is no one to frighten
 temperament = {temper = 0.0, obstinacy = 1.0, deviation = 0.0}
 random = false
-collective = {adapt = {phaser = 420.0, torpedo = 900.0, harmonic = 1500.0, probe = 500.0}, floor = 0.12, relearn = 0.6, regen_hull = 0.004, assimilate = 0.65, takeover = 0.18, party = 14, beam_every = 9.0, sleep_cycles = 50.0, chain = 0.3, tune_cut = 0.6, shift_after = 140.0, grace = 14}
+collective = {adapt = {phaser = 1300.0, torpedo = 2200.0, harmonic = 3000.0, probe = 900.0}, floor = 0.25, relearn = 0.35, regen_hull = 0.002, regen_hurt = 0.25, regen_quiet = 6.0, assimilate = 0.65, takeover = 0.18, party = 14, beam_every = 9.0, sleep_cycles = 50.0, chain = 0.25, tune_cut = 0.6, shift_after = 140.0, grace = 14}

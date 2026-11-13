@@ -32,7 +32,7 @@ from ..content.schema import ContentDB
 from ..core.rng import Rng
 from ..sim.allies import AllyStanding
 from ..sim.commands import (
-    Authority, Command, ConfigureAutoload, ControlProbe, DeflectorPulse, Dock, EndObjective, EngineBoost, Evasive, FireAtPoint, FirePhasers,
+    Authority, Command, ConfigureAutoload, Remodulate, SetDuty, ControlProbe, DeflectorPulse, Dock, EndObjective, EngineBoost, Evasive, FireAtPoint, FirePhasers,
     FireSpecialRound, FireTorpedoes, LaunchProbe, LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetObjective, SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, StartProject, TurnMounts,
     offensive_fire,
@@ -49,10 +49,10 @@ STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
     "helm": (SetHelm, Pursue, Evasive, Dock),
     "tactical": (SelectTarget, LockWeapons, TurnMounts, FirePhasers, SetPhaserSpread, SetBanks, FireTorpedoes, FireAtPoint,
                  ConfigureAutoload, LoadTubes, SetTubes, LaunchProbe, ControlProbe, SetFireMode, SetPointDefense,
-                 FireSpecialRound),
+                 FireSpecialRound, Remodulate),
     "engineering": (SetShields, ReinforceShield, SetRepairPriority, SetCloak, EngineBoost),
-    "science": (Scan, StartProject, DeflectorPulse, SetObjective, EndObjective),
-}
+    "science": (Scan, StartProject, DeflectorPulse, SetObjective, EndObjective, SetDuty),
+}   # (Countermeasure and AwayTeam stay the captain's: who goes across, and when to vent a section)
 
 OUTNUMBERED_RANGE = 15000.0   # hostile ships this close count against us when the officer judges the odds
 TEMPERED_AGGRESSION = 0.55
@@ -60,6 +60,8 @@ OUTNUMBERED_DOCK = 0.3        # damage at which an outnumbered officer takes her
 APPROACH_SLACK = 3000.0   # beyond the supporting range by more than this, the helm just closes
 EVASIVE_SETTLE = 2.0      # cycles clear of torpedoes before evasive manoeuvres return to the captain's course
 HULL_URGENT = 0.5         # below this share of the hull, patching it comes before spreading the work
+REMODULATE_AT = 0.55      # the hive's grip on our phaser frequency at which an officer changes it [E]
+HIVE_SCAN_CYCLES = 4.0    # between the science officer's harmonic scans [E]
 
 STATION_NAMES = {"helm": "Helm", "tactical": "Tactical", "engineering": "Engineering", "science": "Science"}
 
@@ -345,6 +347,7 @@ class Crew:
     roster: dict[str, OfficerProfile] = field(default_factory=dict)    # everyone aboard, by id (the bench too) [E]
     regulars: dict[str, OfficerProfile] = field(default_factory=dict)  # who runs each station when all are aboard
     covering: list[tuple[str, OfficerProfile, OfficerProfile | None]] = field(default_factory=list)
+    hive_at: int = -10 ** 9                 # tick of the last hive-duty action
     # ^ stand-ins who have just taken a station (station, who, for whom), for the bridge to announce
 
     def __post_init__(self) -> None:
@@ -414,6 +417,55 @@ class Crew:
             if station not in want:
                 self.brains.pop(station, None)
         self.officers = want
+
+    def _scanner(self, ship: Ship, commander: OfficerProfile | None) -> str:
+        """Who runs a routine scan: the officer with the conn, else the science officer (their skill counts
+        against the Borg)."""
+        if commander is not None and "science" in ship.delegated:
+            return commander.id
+        o = self.officers.get("science")
+        return o.id if o is not None else ""
+
+    def _hive_work(self, obs: Observation, ship: Ship) -> list[Command]:
+        """The Borg duties [E]: the science officer's survey and shield tuning, and remodulating the phasers before
+        the hive has learned them. A science officer running her own station takes the harmonic survey without
+        being asked (Seven, or Spock in her place); a delegated tactical officer remodulates on his own."""
+        hives = [c for c in obs.hostile_contacts() if c.visible and c.identified and obs.is_hive(c.id)]
+        if not hives:
+            return []
+        tpc = obs.rules.ticks_per_cycle
+        if obs.tick - self.hive_at < tpc:
+            return []
+        sci = self.officers.get("science")
+        out: list[Command] = []
+
+        def cmd(cls: type[Command], who: OfficerProfile | None, **kw: object) -> Command:
+            return cls(ship_id=ship.id, issuer=Authority.OFFICER, source=who.title if who else "Science", **kw)  # type: ignore[arg-type]
+
+        from ..sim.collective import CODE_AT
+
+        unsurveyed = [c for c in hives if (sv := obs.survey(c.id)) is None or sv.progress < CODE_AT]
+        if "science" in ship.delegated and sci is not None and sci.id in ("seven", "spock") and sci.id not in ship.away:
+            if not ship.duty and unsurveyed:
+                out.append(cmd(SetDuty, sci, duty="harmonics", by=sci.id))
+            elif ship.duty == "harmonics" and not unsurveyed and ship.shields:
+                out.append(cmd(SetDuty, sci, duty="shields", by=sci.id))   # harmonics done: tune the shields
+        if ship.duty == "harmonics" and unsurveyed and obs.tick - self.hive_at >= HIVE_SCAN_CYCLES * tpc:
+            reach = ship.sensor_range() * obs.rules.scan_range_fraction
+            near = [c for c in unsurveyed if c.distance_to(ship.x, ship.y) <= reach]
+            if near and obs.pending_scan(ship.id) is None:
+                c = min(near, key=lambda c: (c.id != ship.target, c.distance_to(ship.x, ship.y)))
+                out.append(cmd(Scan, self.find(ship.duty_by), target=c.id, by=ship.duty_by))
+        tac = self.officers.get("tactical")
+        watcher = (self.find(ship.duty_by) if ship.duty == "phasers" else
+                   tac if "tactical" in ship.delegated else None)
+        if watcher is not None and ship.remodulating <= 0 and ship.banks:
+            grip = max((obs.adaptation(c.id, ship.id).get("phaser", 0.0) for c in hives), default=0.0)
+            if grip >= REMODULATE_AT:
+                out.append(cmd(Remodulate, watcher, by=watcher.id))
+        if out:
+            self.hive_at = obs.tick
+        return out
 
     def find(self, name: str) -> OfficerProfile | None:
         """An officer by id, name, alias or station, or a unique prefix of one."""
@@ -567,7 +619,8 @@ class Crew:
         if ship is None or not ship.alive or ship.crew <= 0:
             return []
         self.cover(ship)
-        out = self._objectives(obs, ship) + self._repairs(obs, ship) + self._evasive(obs, ship)
+        out = (self._objectives(obs, ship) + self._repairs(obs, ship) + self._evasive(obs, ship)
+               + self._hive_work(obs, ship))
         if not ship.delegated:
             return out
         commander = self.find(ship.conn) if ship.conn else None
@@ -580,6 +633,7 @@ class Crew:
                 if station not in ship.delegated or station not in self.officers:
                     continue
                 routine.extend(c for c in self._brain(station, ship).think(obs) if station_of(c) == station)
+        routine = [replace(c, by=self._scanner(ship, commander)) if isinstance(c, Scan) else c for c in routine]
         if attacking(ship.objectives):
             # an objective decides targets and offensive fire; it steers only when it has to
             steering = any(isinstance(c, (SetHelm, Pursue)) for c in out)

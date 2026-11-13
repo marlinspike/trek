@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 FAMILIES = ("phaser", "torpedo", "harmonic", "probe")
 THRESHOLDS = (0.5, 0.85)                  # adaptation levels the officers call out
 SKILL = {"seven": 1.0, "spock": 0.75}     # how much an officer gets from the hive's tricks; anyone else 0.5
-SURVEY_STEP = 0.25                        # survey per scan, × skill × experience
+SURVEY_STEP = 0.2                         # survey per scan, × skill × experience
 WEAK_AT = 0.5                             # survey at which we know her weak point
 CODE_AT = 1.0                             # ... and hold her shield harmonics
 TUNE_CYCLES = 24.0                        # cycles for Seven to tune the shields from nothing to full
@@ -59,6 +59,10 @@ TUNE_BLOCKS_BEAMING = 0.5                 # tuning at which their transporters c
 SECURITY_CYCLES = 20.0
 SEAL_COOLDOWN = 40.0
 REMODULATE_CYCLES = 1.5
+CHAIN_FUSE = 5.0                          # cycles from a core going critical to the ship breaking up
+CHAIN_RADIUS = 1.2                        # × an ordinary blast's reach: a cube's core going is seen for light-years
+CHAIN_HULL = 0.5                          # awake, only a ship this badly hurt can go up from one lost core
+RELEARN_CAP = 3                           # frequencies learned before they learn new ones no faster
 DRONES_SETTLE = 4                         # drones aboard before they start seizing systems
 # drones go for the ship's eyes and hands first, her heart last
 SEIZE_ORDER = (Kind.TRANSPORTER, Kind.SENSORS, Kind.SHIELD, Kind.TUBE, Kind.PHASER, Kind.LAUNCHER, Kind.TRACTOR,
@@ -198,7 +202,7 @@ def learn(world: World, target: Ship, attacker: Ship | None, family: str, raw: f
         if family == "phaser":
             mastered = sum(1 for k, v in m.levels.items()
                            if k.startswith(f"phaser:{attacker.side}:") and k != key and v >= 0.5)
-            speed += rules.relearn * mastered * attacker.freq_pattern
+            speed += rules.relearn * min(mastered, RELEARN_CAP) * attacker.freq_pattern
         before = m.level(key)
         after = min(1.0, before + raw / teach * speed)
         m.levels[key] = after
@@ -308,15 +312,25 @@ def _hive_ship(world: World, ship: Ship, rules: CollectiveRules, dt: float) -> N
                     sv.code_told = sv.code_told and sv.progress >= CODE_AT
             world.emit(HiveEvent(world.tick, ship.id, "waking"))
     else:
-        ship.structure = min(ship.structure_max, ship.structure + rules.regen_hull * ship.structure_max * dt)
-    # a destroyed core can take the whole ship with it
+        m = world.minds.get(ship.faction)
+        hurt = max(m.last_hurt.values(), default=-10 ** 9) if m is not None else -10 ** 9
+        rate = rules.regen_hull * (rules.regen_hurt if (world.tick - hurt) * world.rules.dt < rules.regen_quiet else 1.0)
+        ship.structure = min(ship.structure_max, ship.structure + rate * ship.structure_max * dt)
+    # a destroyed core can take the whole ship with it: she goes critical, and breaks up a few seconds later
+    if ship.critical > 0:
+        ship.critical -= dt
+        if ship.critical <= 0:
+            chain_reaction(world, ship)
+            return
     cores = sum(1 for s in (*ship.drives, *ship.reactors) if s.destroyed)
     if cores > ship.cores_lost:
         fresh = cores - ship.cores_lost
         ship.cores_lost = cores
-        p = 1.0 if ship.dormant > 0 else rules.chain
-        if any(world.rng.unit() < p for _ in range(fresh)):
-            chain_reaction(world, ship)
+        hurt = ship.structure < ship.structure_max * CHAIN_HULL
+        p = 1.0 if ship.dormant > 0 else rules.chain if hurt else 0.0
+        if ship.critical <= 0 and any(world.rng.unit() < p for _ in range(fresh)):
+            ship.critical = CHAIN_FUSE
+            world.emit(HiveEvent(world.tick, ship.id, "critical", ship.last_attacker, f"{CHAIN_FUSE:.0f}"))
     elif cores < ship.cores_lost:
         ship.cores_lost = cores       # the drones repaired one
 
@@ -341,10 +355,14 @@ def chain_reaction(world: World, ship: Ship) -> None:
     rules = rules_of(world, ship)
     x, y = ship.x, ship.y
     world.emit(HiveEvent(world.tick, ship.id, "chain", ship.last_attacker))
-    world.destroy_ship(ship, "chain reaction", ship.last_attacker)
+    world.destroy_ship(ship, "chain reaction", ship.last_attacker, breakup=False)
     if rules is not None:
-        blast(world, x, y, ship.cls.destruct_energy * 1.5, "ship", ship.last_attacker, exclude=ship.id,
-              cause="chain reaction", radius_scale=1.6)
+        blast(world, x, y, chain_energy(ship), "ship", ship.last_attacker, exclude=ship.id,
+              cause="chain reaction", radius_scale=CHAIN_RADIUS)
+
+
+def chain_energy(ship: Ship) -> float:
+    return ship.cls.destruct_energy * 0.5
 
 
 def _our_ship(world: World, ship: Ship, dt: float) -> None:

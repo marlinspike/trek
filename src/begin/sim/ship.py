@@ -443,6 +443,7 @@ class Ship:
     seal_ready: float = 0.0            # cycles before another section can be sealed
     away: set[str] = field(default_factory=set)      # officers off the ship (on an away team) [E]
     wounded: set[str] = field(default_factory=set)   # officers back from an away team hurt: in sickbay [E]
+    critical: float = 0.0                             # cycles before a Borg ship's chain reaction takes her [E]
     mending: float = 0.0                              # cycles before the Doctor sends the wounded back to duty
 
     base_sophistication: float = 0.5

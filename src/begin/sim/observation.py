@@ -157,8 +157,11 @@ class Observation:
         w = self._w
         rules = w.rules
         out: list[tuple[int, float, float, float, float]] = []
+        from . import collective
+
         for s in w.ships.values():
-            if not s.exists or not 0.0 < s.self_destruct <= 5.0:
+            critical = 0.0 < s.critical <= 5.0      # [E] a Borg ship going up in a chain reaction
+            if not s.exists or not (0.0 < s.self_destruct <= 5.0 or critical):
                 continue
             if s.side == self.side:
                 x, y = s.x, s.y
@@ -169,6 +172,10 @@ class Observation:
                 x, y = c.x, c.y
             from .systems.power import warp_budget
 
+            if critical:
+                reach = collective.chain_energy(s) * rules.splash_mult * rules.splash_radius_per_damage
+                out.append((s.id, x, y, s.critical, reach * collective.CHAIN_RADIUS))
+                continue
             energy = warp_budget(s) / rules.destruct_divisor + s.cls.destruct
             out.append((s.id, x, y, s.self_destruct, energy * rules.splash_mult * rules.splash_radius_per_damage))
         return out
