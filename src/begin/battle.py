@@ -393,10 +393,13 @@ def patrol_battle(content: ContentDB, seed: int, player_faction: str = "federati
     elif sid == "runner":
         group = _fill(rng, theirs, mass * 1.1, rng.choice((3, 4)))
         lightest = min(range(len(group)), key=lambda i: content.classes[group[i]].mass)
-        group.insert(0, group.pop(lightest))       # the runner is the one sent with the news: the lightest
+        courier = group.pop(lightest)              # the runner is the one sent with the news: the lightest
+        side = rng.choice((-1.0, 1.0))
+        # she is out on the flank, already turning for home; the rest stand between us and her
+        fleets.append(FleetSpec(1, [ShipSpec(courier)], center=(side * 9000.0, 3000.0)))
         fleets.append(FleetSpec(1, [ShipSpec(c) for c in group], center=(0.0, 12000.0)))
-        mission = MissionDef("intercept", runner=0, heading=rng.uniform(-35.0, 35.0) % 360.0)
-        runner = content.classes[group[0]].name
+        mission = MissionDef("intercept", runner=0, heading=(90.0 * side + rng.uniform(-30.0, 10.0) * side) % 360.0)
+        runner = content.classes[courier].name
     return BattleSetup(fleets=fleets, seed=seed, arrivals=arrivals,
                        title=f"Patrol #{seed}: {title}",
                        description=_articles(brief.format(enemy=content.factions[enemy].name, ward=ward,

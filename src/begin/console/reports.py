@@ -53,6 +53,8 @@ def _pos(obs: Observation, sid: int | None) -> tuple[float, float] | None:
 def navcom(obs: Observation, ship: Ship) -> str:
     if ship.docked_to is not None:
         return f"Docked with {_name(obs, ship.docked_to)}"
+    if ship.helm_keep is not None and ship.helm_target is not None and ship.helm_mode != HelmMode.COURSE:
+        return f"Holding {_name(obs, ship.helm_target)} at {ship.helm_keep:,.0f}"
     if ship.helm_mode == HelmMode.PURSUE and ship.helm_target is not None:
         return f"Pursuing {_name(obs, ship.helm_target)}"
     if ship.helm_mode == HelmMode.ELUDE and ship.helm_target is not None:

@@ -225,6 +225,7 @@ class Pursue(Command):
     target: int
     warp: float | None = None
     elude: bool = False
+    keep: float | None = None   # [E] hold the target at this range: close when beyond it, open when inside, circle at it
     name: ClassVar[str] = "pursue"
 
     def channels(self) -> tuple[str, ...]:
@@ -239,6 +240,7 @@ class Pursue(Command):
         _end_evasive(world, ship, self)
         ship.helm_mode = HelmMode.ELUDE if self.elude else HelmMode.PURSUE
         ship.helm_target = self.target
+        ship.helm_keep = self.keep if self.keep is not None and self.keep > 0 else None
         if self.warp is not None:
             ship.desired_warp = max(world.rules.min_warp, min(self.warp, ship.cls.max_warp))
 
@@ -1162,6 +1164,10 @@ class SetObjective(Command):
             ship.spared.difference_update(self.targets)    # a new order about her: the officer may fire on her again
             ship.hold_fire = False      # a new order to attack lifts an earlier cease fire, or the officer never shoots
         ship.objectives.append(Objective(self.goal, self.group, tuple(self.targets), self.officer, world.tick))
+        if self.goal in ("disable", "capture") and self.issuer >= Authority.CAPTAIN:
+            # [E] the captain hands the weapons to the officer: her own earlier target and fire orders no longer pin them
+            for prefix in ("tactical", "phasers", "torpedoes"):
+                world.release_holds(ship.id, prefix)
 
     def describe(self) -> str:
         return f"{self.goal} {self.group} on {len(self.targets)} ship{'s' if len(self.targets) != 1 else ''}"
@@ -1241,7 +1247,8 @@ class EndObjective(Command):
     needs_crew: ClassVar[bool] = False
 
     def channels(self) -> tuple[str, ...]:
-        return ("objective",)
+        # [E] an officer reporting her objective met or impossible is a report, not a rival order: no hold stops it
+        return ("objective",) if self.outcome == "cancelled" else ()
 
     def validate(self, world: World, ship: Ship) -> None:
         if not ship.objectives:

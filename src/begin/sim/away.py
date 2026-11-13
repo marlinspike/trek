@@ -322,6 +322,7 @@ def _stow(world: World, sh: Ship, mother: Ship) -> None:
 def _fly(sh: Ship, to: Ship, warp: float) -> None:
     sh.helm_mode = HelmMode.PURSUE
     sh.helm_target = to.id
+    sh.helm_keep = None
     sh.desired_warp = warp
 
 

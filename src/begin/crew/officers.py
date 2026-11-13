@@ -533,7 +533,7 @@ class Crew:
             self.evasive_plan = HelmPlan(course, warp, "hold", 0, 0, 0.0, 0.0, obs.tick)
             if mode in (HelmMode.PURSUE, HelmMode.ELUDE) and chase is not None and (obs.contact(chase) or obs.own(chase)) is not None:
                 return [Pursue(ship_id=ship.id, target=chase, warp=warp, elude=mode == HelmMode.ELUDE,
-                               issuer=Authority.OFFICER, source="Helm")]
+                               keep=ship.helm_keep, issuer=Authority.OFFICER, source="Helm")]
             return [SetHelm(ship_id=ship.id, course=course, warp=warp, issuer=Authority.OFFICER, source="Helm")]
         if self.evasive_plan is None:
             course, warp = ship.evasive_resume[:2] if ship.evasive_resume else (ship.desired_course, ship.desired_warp)

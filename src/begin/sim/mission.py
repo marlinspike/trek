@@ -53,6 +53,7 @@ class MissionDef:
     to: tuple[float, float] = (0.0, 0.0)     # escort: her destination
     runner: int = 0                          # intercept: which enemy ship runs (index in the enemy list)
     heading: float = 0.0                     # intercept: the runner's course
+    runner_pace: float = 0.6                 # intercept: her best warp as a share of our fastest ship's (laden, nursing her drives)
     hunters: int = 1                         # rescue/escort: enemy ships that go for the ward
     flag: str = ""                           # a tour flag set when the mission succeeds
     calls: int = 0                           # on a tour: Starfleet reinforcement calls earned by success
@@ -71,7 +72,7 @@ class MissionDef:
         return MissionDef(
             kind=str(d["kind"]), title=str(d.get("title", "")), ward=str(d.get("ward", "federation.tn")),
             ward_name=str(d.get("ward_name", "")), at=pair("at"), people=int(d.get("people", 0)),
-            deadline=float(d.get("deadline", 0.0)), to=pair("to"), runner=int(d.get("runner", 0)),
+            deadline=float(d.get("deadline", 0.0)), to=pair("to"), runner=int(d.get("runner", 0)), runner_pace=float(d.get("runner_pace", 0.6)),
             heading=float(d.get("heading", 0.0)), hunters=int(d.get("hunters", 1)), flag=str(d.get("flag", "")),
             calls=int(d.get("calls", 0)), resupply=float(d.get("resupply", 0.0)))
 
@@ -108,6 +109,7 @@ class Mission:
     carriers: dict[int, int] = field(default_factory=dict)   # rescue: ship id -> people aboard her
     fraction: dict[int, float] = field(default_factory=dict)  # rescue: part-people carried between steps
     told: set[str] = field(default_factory=set)               # one-time messages already given
+    runner_warp: float | None = None         # intercept: the best warp the runner can make (she carries the news, not a fight)
 
     @property
     def kind(self) -> str:
@@ -174,6 +176,9 @@ def install(world: World, spec: MissionDef, side: int, enemy_ids: list[int]) -> 
                                                   issued=world.tick)
             runner = world.ships[rid]
             runner.desired_course = spec.heading % 360.0
+            ours = [s.cls.max_warp for s in world.ships.values() if s.side == side and s.alive and not s.cls.is_base]
+            if ours and spec.runner_pace > 0:
+                m.runner_warp = max(1.0, max(ours) * spec.runner_pace)
     world.mission = m
     return m
 
@@ -316,6 +321,9 @@ def _intercept(world: World, m: Mission) -> None:
     r = world.ships.get(m.runner_id) if m.runner_id is not None else None
     if r is None:
         return
+    if m.runner_warp is not None and r.alive and r.desired_warp > m.runner_warp:
+        r.desired_warp = m.runner_warp
+        r.warp = min(r.warp, m.runner_warp)
     if r.status == ShipStatus.ESCAPED:
         _finish(world, m, "failed", f"The {r.name} has escaped.", Tone.ALERT)
     elif r.status in (ShipStatus.DESTROYED, ShipStatus.DERELICT):

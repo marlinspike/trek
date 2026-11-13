@@ -321,7 +321,7 @@ def _goal_moves(s: Situation, g: Goal) -> Iterator[Move]:
                    "target")
         lo = (e.our_env[0] * 1.3) if e.our_env else 3500.0
         want = max(3500.0, lo)
-        line = f"pursue {e.handle}" if e.range > 7500 else (f"elude {e.handle}" if e.range < want else "")
+        line = f"pursue {e.handle} at 5500" if e.range > 7500 or e.range < want else ""
         if line:
             yield Move("goal-range", f"Hold the {e.name} at 3,500 to 7,500",
                        f"She is at {_rng(e.range)}. In that band our torpedoes are armed and her point defense has the "
@@ -359,7 +359,7 @@ def _survive(s: Situation) -> Iterator[Move]:
     if m is not None:
         yield Move("survive-run", f"Open the range from the {m.name}",
                    f"At warp {s.max_warp:g} we can outrun what she can follow. Distance is armour.",
-                   [Step(f"elude {m.handle} warp {s.max_warp:g}", "run")], 0.95, {"helm": 1.0}, "helm")
+                   [Step(f"elude {m.handle} warp {s.top_warp:g}", "run")], 0.95, {"helm": 1.0}, "helm")
     yield Move("survive-repair", "Repairs to the hull and shields",
                f"Hull at {_pct(s.hull)}. Every crew on the hull and shields until we are clear.",
                [Step("repair hull", "the hull first"), Step("repair auto", "La Forge directs")], 0.9,
@@ -478,6 +478,11 @@ def _sword(s: Situation) -> Iterator[Move]:
                        {**T, "science": 0.6, "helm": 0.3}, "target")
 
 
+def _round_range(r: float) -> float:
+    """A range the helm is told to hold, to the nearest 500."""
+    return max(500.0, round(r / 500.0) * 500.0)
+
+
 def _geometry(s: Situation) -> Iterator[Move]:
     H = {"helm": 1.0}
     m = s.main_threat
@@ -492,8 +497,8 @@ def _geometry(s: Situation) -> Iterator[Move]:
         our = m.our_env
         if our is not None and (hpr > s.phaser_range * 0.95 or m.style == "charge" or (m.cls and m.cls.banks > s.banks)):
             # she wants it close: keep her at torpedo range, outside her phasers
-            want = max(hpr * 2.0, our[0] * 1.5)
-            steps = [Step(f"elude {m.handle}", f"hold her off near {_rng(want)}")]
+            want = _round_range(min(max(hpr * 2.0, our[0] * 1.5), our[1] * SWEET))
+            steps = [Step(f"elude {m.handle} at {want:.0f}", f"hold her at {_rng(want)}")]
             if s.tubes_loaded >= 2 and _in_env(s, m):
                 steps.append(Step("fire all torpedoes", "torpedoes from range"))
             yield Move("standoff", f"Hold the {m.name} at torpedo range",
@@ -501,10 +506,11 @@ def _geometry(s: Situation) -> Iterator[Move]:
                        f"At {_rng(want)} to {_rng(min(our[1] * SWEET, want * 2.5))} we hit her and she cannot answer with "
                        "her banks." + (" She charges: let her come on to our salvo, then open the range again."
                                        if m.style == "charge" else ""),
-                       steps, 0.62 if m.range < want else 0.45, {**H, "engineering": 0.4}, "helm",
+                       steps, 0.62 if m.range < want * 0.85 else 0.45, {**H, "engineering": 0.4}, "helm",
                        voice={"helm": f"Fight the {m.name} at our range, not hers"})
         elif her_lo > 0:
-            steps = [Step(f"pursue {m.handle}", f"inside {_rng(her_lo)}")] + \
+            close = _round_range(max(1000.0, her_lo * 0.6))
+            steps = [Step(f"pursue {m.handle} at {close:.0f}", f"inside {_rng(her_lo)}")] + \
                 [x for x in _fire_now(s, m, False) if "phasers" in x.line]
             yield Move("inside", f"Get inside the {m.name}'s torpedo envelope",
                        f"Her {m.her_torpedo.name if m.her_torpedo else 'torpedoes'} need {_rng(her_lo)} to arm. Inside "
@@ -534,7 +540,7 @@ def _geometry(s: Situation) -> Iterator[Move]:
             yield Move("split", f"Draw them apart: the {fast.name} comes on alone",
                        f"The {fast.name} makes warp {fast.max_warp:g}, the {slow.name} only {slow.max_warp:g}. Run at warp "
                        f"{w:g} and the fast one reaches us well ahead of her friends; turn and fight her one on one.",
-                       [Step(f"elude {slow.handle} warp {w:g}", f"open from the {slow.name}"),
+                       [Step(f"elude {slow.handle} warp {w:g} at 15000", f"open from the {slow.name}"),
                         *[x for x in (_target(s, fast),) if x]], 0.5, {**H, "tactical": 0.3}, "helm")
     plasma = [e for e in live if e.her_torpedo is not None and e.her_torpedo.warhead_type == 2 and e.her_env is not None]
     if plasma and not any(e.hive for e in live):
@@ -544,7 +550,8 @@ def _geometry(s: Situation) -> Iterator[Move]:
                        "Romulan plasma loses its punch with every thousand it flies. "
                        + (f"At {_rng(e.range)} a hit is near full strength; double the distance and it is a fraction."
                           if e.range > 1500 else "Up close it hits at full strength; at range it is a fraction."),
-                       [Step(f"elude {e.handle} warp {s.max_warp:g}", "open the range")],
+                       [Step(f"elude {e.handle} warp {s.top_warp:g} at {_round_range(max(e.range * 2.0, 9000.0)):.0f}",
+                             "open the range")],
                        0.8 if s.inbound_plasma else 0.45, {**H, "engineering": 0.5}, "helm")
     # the mind: a captain close to giving way
     best_h: tuple[float, EnemyView, str] | None = None
@@ -749,7 +756,7 @@ def _mission_moves(s: Situation) -> Iterator[Move]:
                         Step("stop", "hold station")], 1.0, {"engineering": 1.0, "helm": 0.6, "science": 0.3}, "rescue,helm")
         elif not near:
             course = mv.ward_bearing
-            w = min(s.max_warp, 8.0 if mv.ward_range > 8000 else 4.0)
+            w = min(s.top_warp, 8.0 if mv.ward_range > 8000 else 4.0)
             yield Move("alongside", f"Bring us alongside the {mv.ward_name}",
                        f"Transporters reach {_rng(3000)}; she is {_rng(mv.ward_range)} away with {mv.aboard} aboard{left}.",
                        [Step(f"helm {course:.0f} warp {w:g}", f"toward the {mv.ward_name}")], 0.9,
@@ -780,7 +787,7 @@ def _mission_moves(s: Situation) -> Iterator[Move]:
                 yield Move("interpose", f"Put us between the {h.name} and the {mv.ward_name}",
                            f"Her torpedoes must pass us to reach the {mv.ward_name}. Point defense and a strong shield "
                            "take what's meant for her, and the hunter must deal with us first.",
-                           [Step(f"helm {course:.0f} warp {min(s.max_warp, 8.0):g}", "interpose")], 0.8,
+                           [Step(f"helm {course:.0f} warp {min(s.top_warp, 8.0):g}", "interpose")], 0.8,
                            {"helm": 1.0, "engineering": 0.4}, "helm")
                 if h.scanned:
                     yield Move("disable-hunter", f"Disable the {h.name}'s weapons",
@@ -790,25 +797,36 @@ def _mission_moves(s: Situation) -> Iterator[Move]:
         yield Move("convoy-close", f"Close up on the {mv.ward_name}",
                    f"She is {_rng(mv.ward_range)} from us and {_rng(mv.to_range)} from safety. The hunters will go for her, "
                    "not us: we fight best where she is.",
-                   [Step(f"helm {mv.ward_bearing:.0f} warp {min(s.max_warp, 8.0):g}", f"to the {mv.ward_name}")],
+                   [Step(f"helm {mv.ward_bearing:.0f} warp {min(s.top_warp, 8.0):g}", f"to the {mv.ward_name}")],
                    0.75 if any(e.hunter for e in s.enemies) else 0.5, {"helm": 1.0, "engineering": 0.6}, "helm")
     elif mv.kind == "escort" and mv.ward_id is not None and mv.ward_hull < 0.5:
         yield Move("convoy-guard", f"Escort the {mv.ward_name} close",
                    f"Her hull is at {_pct(mv.ward_hull)} and she is {_rng(mv.to_range)} from safety.",
-                   [Step(f"helm {mv.ward_bearing:.0f} warp {min(s.max_warp, 8.0):g}", f"to the {mv.ward_name}")], 0.7,
+                   [Step(f"helm {mv.ward_bearing:.0f} warp {min(s.top_warp, 8.0):g}", f"to the {mv.ward_name}")], 0.7,
                    {"helm": 0.8, "engineering": 0.8}, "helm")
     if mv.kind == "intercept" and mv.runner_id is not None:
         r = s.enemy(mv.runner_id)
         if r is not None and r.visible:
             esc = f" At her speed she is clear in about {mv.runner_escape:.0f} cycles." if mv.runner_escape else ""
-            steps = [x for x in (_target(s, r),) if x] + [Step(f"pursue {r.handle} warp {s.max_warp:g}", "run her down")]
+            reach = max(s.phaser_range, r.our_env[1] if r.our_env else 0.0)
+            # lock on only once she is in reach: a lock on a ship out of range keeps our weapons off the ones that are
+            aim = [x for x in (_target(s, r),) if x] if r.range <= reach * 1.1 else []
+            steps = aim + [Step(f"pursue {r.handle} warp {s.top_warp:g}", "run her down")]
             if s.heat > 0.4 and not s.boost:
                 steps.append(Step("boost", "keep the drives cool"))
             yield Move("run-down", f"Run down the {r.name}",
                        f"The {r.name} is {_rng(r.range)} off and making for the edge at warp {r.max_warp:g}; we make "
-                       f"{s.max_warp:g}.{esc} If she reaches her people, they learn everything she saw.",
+                       f"{s.top_warp:g}.{esc} If she reaches her people, they learn everything she saw.",
                        steps, 0.95, {"tactical": 1.0, "helm": 0.8}, "target",
                        voice={"helm": f"Cut the {r.name} off"})
+            if mv.runner_intercept is not None and mv.runner_meet is not None and r.range > 4000:
+                yield Move("intercept", f"Cut the {r.name} off",
+                           f"A stern chase gives her the lead she started with. Course {mv.runner_intercept:.0f} at warp "
+                           f"{s.top_warp:g} meets her in about {mv.runner_meet:.0f} cycles"
+                           + (", well before she is clear." if mv.runner_escape and mv.runner_meet < mv.runner_escape
+                              else "; it is close.") + " I will come round onto her when we are in range.",
+                           [Step(f"helm {mv.runner_intercept:.0f} warp {s.top_warp:g}", "intercept course")], 1.0,
+                           {"helm": 1.0, "engineering": 0.4}, "helm")
             if r.scanned:
                 yield Move("runner-engines", f"Take out the {r.name}'s engines",
                            "A ship that can't move can't run. I'll burst torpedoes at her drives and spare the rest of her.",
@@ -864,6 +882,7 @@ def plan_for(station: str, all_moves: list[Move], taken: set[str] | None = None)
 
 
 _HELM_VERBS = ("pursue ", "elude ", "helm ", "stop", "warp ")
+_OBJECTIVE_VERBS = ("disable ", "capture ")
 
 
 def _groups(m: Move) -> set[str]:
@@ -875,6 +894,10 @@ def _groups(m: Move) -> set[str]:
             out.add("target")
         if st.line.startswith(_HELM_VERBS):
             out.add("helm")
+        if st.line.startswith(("fire ", "volley")):
+            out.add("fire")
+        if st.line.startswith(_OBJECTIVE_VERBS):
+            out |= {"target", "fire"}      # an officer's objective works the weapons herself: no captain's fire beside it
     return out
 
 

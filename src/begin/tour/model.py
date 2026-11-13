@@ -133,6 +133,12 @@ class Stop:
                 (not w.unless_flag or w.unless_flag not in flags)]
 
 
+def _prose(text: str) -> str:
+    """A TOML block of text as prose: lines within a paragraph joined, blank lines kept as paragraph breaks."""
+    paras = [" ".join(ln.strip() for ln in p.splitlines() if ln.strip()) for p in text.strip().split("\n\n")]
+    return "\n\n".join(p for p in paras if p)
+
+
 @dataclass(frozen=True)
 class TourDef:
     id: str
@@ -180,7 +186,7 @@ def parse_tour(t: dict[str, Any], source: str = "shipped") -> TourDef:
         stops.append(Stop(
             id=str(s["id"]), title=str(s["title"]), system=str(s.get("system", s["title"])),
             chart=_pair(s.get("chart"), (0.1 + 0.8 * i / max(1, len(t.get("stop", [])) - 1), 0.5)),
-            briefing=str(s.get("briefing", "")).strip(), enemies=tuple(s.get("enemies", ())),
+            briefing=_prose(str(s.get("briefing", ""))), enemies=tuple(s.get("enemies", ())),
             officer=str(s.get("officer", "spock")), transit=float(s.get("transit", 150.0)), eta=float(s.get("eta", 120.0)),
             friends=tuple(s.get("friends", ())), enemy_center=_pair(s.get("enemy_center"), (0.0, 12000.0)),
             player_center=_pair(s.get("player_center"), (0.0, -11000.0)),

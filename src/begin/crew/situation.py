@@ -119,6 +119,8 @@ class MissionView:
     to_range: float = 0.0         # escort: the ward's distance from safety
     runner_id: int | None = None
     runner_escape: float | None = None      # intercept: cycles before the runner is clear at her speed
+    runner_intercept: float | None = None   # intercept: the course that meets her at our best warp (None: we can't)
+    runner_meet: float | None = None        # intercept: cycles to meet her on that course
     hunter_ids: tuple[int, ...] = ()
 
 
@@ -193,6 +195,11 @@ class Situation:
     def fighting(self) -> list[EnemyView]:
         """Enemies still in the fight that we can place."""
         return [e for e in self.enemies if not e.surrendered and (e.visible or e.cloaked_hint or e.exhaust)]
+
+    @property
+    def top_warp(self) -> float:
+        """The warp to order when speed matters: her rated best (power decides how much of it she gets)."""
+        return self.ship.cls.max_warp
 
     @property
     def main_threat(self) -> EnemyView | None:
@@ -339,9 +346,36 @@ def _mission(obs: Observation, s: Ship, shields: tuple[ShieldView, ...]) -> Miss
             gap = min((math.hypot(c.x - o.x, c.y - o.y) for o in ours), default=0.0)
             speed = max(1.0, math.hypot(c.vx, c.vy))
             esc = max(0.0, (obs.rules.escape_distance - gap) / speed) + obs.rules.escape_cycles
+            meet = _intercept(c.x - s.x, c.y - s.y, c.vx, c.vy, s.cls.max_warp * obs.rules.units_per_warp)
+            if meet is not None:
+                t, course = meet
+                return MissionView(**common, runner_id=m.runner_id, runner_escape=esc,  # type: ignore[arg-type]
+                                   runner_intercept=course, runner_meet=t)
         return MissionView(**common, runner_id=m.runner_id, runner_escape=esc)  # type: ignore[arg-type]
     return MissionView(**common, ward_name=ward_name, aboard=m.aboard, saved=m.saved,  # type: ignore[arg-type]
                        people=m.spec.people)
+
+
+def _intercept(dx: float, dy: float, vx: float, vy: float, speed: float) -> tuple[float, float] | None:
+    """(cycles, course) to meet a ship at (dx, dy) from us moving at (vx, vy) a cycle, flying at `speed`; None if
+    we can't catch her. Solves |d + v t| = speed t for the soonest t > 0."""
+    a = vx * vx + vy * vy - speed * speed
+    b = 2.0 * (dx * vx + dy * vy)
+    c = dx * dx + dy * dy
+    if abs(a) < 1e-9:
+        if b >= 0:
+            return None
+        t = -c / b
+    else:
+        disc = b * b - 4 * a * c
+        if disc < 0:
+            return None
+        r = math.sqrt(disc)
+        ts = [t for t in ((-b - r) / (2 * a), (-b + r) / (2 * a)) if t > 0]
+        if not ts:
+            return None
+        t = min(ts)
+    return t, bearing(dx + vx * t, dy + vy * t)
 
 
 def mission_view(obs: Observation, ship: Ship) -> MissionView | None:

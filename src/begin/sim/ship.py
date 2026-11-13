@@ -359,6 +359,7 @@ class Ship:
     desired_warp: float = 0.0
     helm_mode: HelmMode = HelmMode.COURSE
     helm_target: int | None = None
+    helm_keep: float | None = None       # [E] pursue/elude: hold the target at this range instead of closing or running
     max_attainable_warp: float = 0.0
 
     crew: int = 0

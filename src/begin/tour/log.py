@@ -90,7 +90,34 @@ def facts_of(run: TourRun, battle: Battle, fight: Fight, outcome: str, captured:
                       "kills": w.ships[i].stats.kills, "dealt": round(w.ships[i].stats.damage_dealt)}
                      for i in fight.ship_ids[1:] if i in w.ships],
     }
+    m = w.mission
+    if m is not None and m.side == side:
+        ward = w.ships.get(m.ward_id) if m.ward_id is not None else None
+        runner = w.ships.get(m.runner_id) if m.runner_id is not None else None
+        f["mission"] = {
+            "kind": m.kind, "title": m.spec.heading_title(ward.name if ward else "", runner.name if runner else ""),
+            "result": "done" if m.succeeded() else ("failed" if m.state == "failed" else "open"),
+            "reason": m.reason, "people": m.spec.people, "saved": m.saved, "dead": m.dead,
+            "ward": ward.name if ward else "", "runner": runner.name if runner else "",
+        }
     return f
+
+
+def _mission_line(f: dict[str, Any]) -> str:
+    """One plain sentence on the mission, for the log ("" without one)."""
+    m = f.get("mission")
+    if not m:
+        return ""
+    if m["result"] == "done":
+        if m["kind"] == "rescue":
+            return f"Mission accomplished: {m['saved']} of {m['people']} people taken off the {m['ward']} alive."
+        if m["kind"] == "escort":
+            return f"Mission accomplished: the {m['ward']} reached safety."
+        return f"Mission accomplished: the {m['runner']} did not get away."
+    if m["result"] == "failed":
+        why = f" {m['reason']}" if m["reason"] else ""
+        return f"Mission failed: {m['title'][0].lower()}{m['title'][1:]} was not achieved.{why}"
+    return f"The mission ({m['title'][0].lower()}{m['title'][1:]}) was left unfinished."
 
 
 NUMBERS = ("no", "a", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten")
@@ -139,6 +166,8 @@ def station_entries(f: dict[str, Any]) -> dict[str, str]:
             s += " Our magazine is empty; we must close to phaser range until we can rearm."
         elif f["torps_left"] <= 6:
             s += f" Only {f['torps_left']} torpedoes remain; I recommend we husband them."
+    if _mission_line(f):
+        s += " " + _mission_line(f)
     out["spock"] = s
     # Worf: the weapons record
     w = (f"Our phasers hit with {f['phasers']} shots. " if f["phasers"] != "none" else "Our phasers were not fired. ")
@@ -239,6 +268,16 @@ def captain_draft(f: dict[str, Any]) -> str:
     if f.get("fired_on_surrendered"):
         t += (f"We fired on {_list(f['fired_on_surrendered'])} after they had yielded. Their captains will remember "
               "it, and so will I. ")
+    m = f.get("mission")
+    if m and m["result"] == "done":
+        t += {"rescue": f"We brought {m['saved']} of the {m['ward']}'s people home. ",
+              "escort": f"The {m['ward']} is safe, which was the point of the exercise. ",
+              }.get(m["kind"], f"The {m['runner']} never reached her lines. ")
+    elif m and m["result"] != "done":
+        t += {"rescue": f"We could not save everyone aboard the {m['ward']}"
+                        + (f"; {m['dead']} did not make it. " if m["dead"] else ". "),
+              "escort": f"We failed to bring the {m['ward']} through. ",
+              }.get(m["kind"], f"The {m['runner']} got away with what she carried. ")
     if f["standout"]:
         t += f"{f['standout']} "
     t += f"The {f['flagship']} stands at {_pct(f['hull'])} hull with {f['torps_left']} torpedoes in the magazine."
