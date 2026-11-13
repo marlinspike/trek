@@ -34,19 +34,22 @@ if TYPE_CHECKING:
 FOCUS_SPEED = 0.25      # tactical focus eases the battle to this speed (or to a stop, with `hud focus pause`)
 FOCUS_EASE = 0.35       # seconds to ease in or out
 FOCUS_LAPSE = 8.0       # seconds without a keystroke before focus lets the battle run again
+COUNSEL_LAPSE = 20.0    # [E] seconds the counsel panel holds the battle back while you read it
 
 
 class BridgeMixin(SceneState):
     # ------------------------------------------------------------ tactical focus
 
     def _focus_target(self: BattleScene) -> float:
-        if (self.prefs.focus == "off" or not self.console_focus or self.paused or self.obs.outcome.over
-                or self.overlay is not None or self.focus_idle >= FOCUS_LAPSE):
+        if self.prefs.focus == "off" or self.paused or self.obs.outcome.over or self.overlay is not None:
             return 0.0
-        return 1.0
+        if self.console_focus and self.focus_idle < FOCUS_LAPSE:
+            return 1.0
+        # [E] reading the officers' counsel steps the battle back too, until a plan is run or the panel closes
+        return 1.0 if self.counsel_open and self.focus_idle < COUNSEL_LAPSE else 0.0
 
     def _focus_update(self: BattleScene, dt: float) -> None:
-        if self.console_focus:
+        if self.console_focus or self.counsel_open:
             self.focus_idle += dt
         want = self._focus_target()
         step = dt / FOCUS_EASE

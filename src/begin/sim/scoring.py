@@ -68,6 +68,7 @@ class SideResult:
 class Assessment:
     start_values: dict[int, float] = field(default_factory=dict)
     start_owner: dict[int, int] = field(default_factory=dict)  # ship id -> original side
+    start_crew: dict[int, int] = field(default_factory=dict)   # ship id -> crew aboard at the start [E]
 
     @staticmethod
     def begin(world: World) -> Assessment:
@@ -75,6 +76,7 @@ class Assessment:
         for s in world.ships.values():
             a.start_values[s.side] = a.start_values.get(s.side, 0.0) + design_value(s)
             a.start_owner[s.id] = s.side
+            a.start_crew[s.id] = s.crew
         return a
 
     def sides(self, world: World) -> dict[int, SideResult]:

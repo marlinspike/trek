@@ -21,6 +21,7 @@ from ..core.angles import bearing, norm360
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import Ship
 from ..sim.systems.disposition import Reading
+from ..help.coach import HelpContext, Tip, tips as coach_tips
 
 SHIELD_FACINGS = (0.0, 60.0, 300.0, 120.0, 240.0, 180.0)   # an enemy's shield sectors as scans number them
 NEAR = 8000.0                     # ordnance this close is "inbound"
@@ -181,6 +182,9 @@ class Situation:
     eta: float = 0.0              # and how long they take
     ours: float = 0.0             # our side's strength (Begin's score)
     theirs: float = 0.0           # theirs, as we see it
+    damaged: tuple[tuple[str, float], ...] = ()     # our systems below full health: (label, health 0..1)
+    tips: tuple[Tip, ...] = ()    # the tactical coach's reading of the same picture (help/coach.py)
+    focus: tuple[int, ...] = ()   # the ships a captain's goal is about: the officers plan around these first
     notes: dict[str, float] = field(default_factory=dict)
 
     # ------------------------------------------------------------- reading it
@@ -192,8 +196,10 @@ class Situation:
 
     @property
     def main_threat(self) -> EnemyView | None:
+        """The ship to plan around: the captain's goal first, else the most dangerous one within reach."""
         live = [e for e in self.fighting if e.visible]
-        return max(live, key=lambda e: e.threat / (1.0 + e.range / 20000.0), default=None)
+        goal = [e for e in live if e.id in self.focus]
+        return max(goal or live, key=lambda e: e.threat / (1.0 + e.range / 20000.0), default=None)
 
     def enemy(self, sid: int | None) -> EnemyView | None:
         return next((e for e in self.enemies if e.id == sid), None)
@@ -409,6 +415,8 @@ def build(obs: Observation, ship: Ship, calls_left: int = 0, eta: float = 0.0) -
         enemies=tuple(enemies), allies=tuple(sorted(allies, key=lambda a: a.range)), inbound=len(threats),
         inbound_plasma=inbound_plasma, trails=len(obs.plasma()), mission=_mission(obs, s, shields),
         calls_left=calls_left, eta=eta, ours=ours, theirs=theirs,
+        damaged=tuple((x.label, x.health) for x in s.subsystems() if x.health < 1.0),
+        tips=tuple(coach_tips(HelpContext(content, obs, s))),
     )
 
 

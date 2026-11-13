@@ -68,7 +68,7 @@ class InputMixin(SceneState):
                 self.cam.zoom_at(1.15 ** ev.y, *self.ui.mouse)
 
     def _mouse_down(self: BattleScene, ev: pygame.event.Event) -> None:
-        if self.overlay in ("debrief", "menu", "manual", "voice"):
+        if self.overlay in ("debrief", "debrief_details", "menu", "manual", "voice"):
             h = self.ui.hit(ev.pos)
             if h and ev.button == 1:
                 h.action()
@@ -136,7 +136,7 @@ class InputMixin(SceneState):
         if k == pygame.K_ESCAPE:
             self._escape()
             return
-        if self.overlay == "debrief":
+        if self.overlay in ("debrief", "debrief_details"):
             if k in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self.on_exit()
             return
@@ -167,7 +167,7 @@ class InputMixin(SceneState):
             self.chart_auto = False
         elif self.overlay in (None, "help_brief"):
             self.overlay = "menu"
-        elif self.overlay == "debrief":
+        elif self.overlay in ("debrief", "debrief_details"):
             self.on_exit()
         else:
             self.overlay = None

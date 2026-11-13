@@ -1158,9 +1158,12 @@ class Parser:
         res.actions.append(("manual", "coach"))
 
     def _v_counsel(self, tok: Tokens, res: ParseResult) -> None:
-        """`counsel [on|off]`: the officers' plans from here, over the map (the O key) [E]."""
-        words = tok.rest()
-        res.actions.append(("counsel", words[0] if words and words[0] in ("on", "off") else None))
+        """`counsel [on|off|<goal>]`: the officers' plans from here, over the map (the O key); with a goal, each
+        officer's way to it: `counsel destroy the gr'oth`, `counsel kill all the cubes`, `counsel disable all their
+        engines`, `counsel capture the mugger`, `counsel survive`, `counsel mission` [E]."""
+        words = " ".join(tok.raw.split()[1:]).strip()
+        res.actions.append(("counsel", words or None))
+        tok.rest()
 
     def _v_quit(self, tok: Tokens, res: ParseResult) -> None:
         res.actions.append(("quit", None))

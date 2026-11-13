@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from ..core.angles import bearing, norm360
 from .situation import EnemyView, ShieldView, Situation
@@ -156,12 +156,235 @@ def odds(s: Situation, e: EnemyView, intent: str, persuasion: float = 1.25) -> f
 
 # ------------------------------------------------------------------ the moves
 
-def moves(s: Situation) -> list[Move]:
-    """Every move worth considering now, each scored for the situation."""
+def moves(s: Situation, goal: Goal | None = None) -> list[Move]:
+    """Every move worth considering now, each scored for the situation (and the captain's goal, if one is set)."""
+    if goal is not None and goal.targets:
+        s = replace(s, focus=goal.live(s))
     out: list[Move] = []
-    for gen in (_sword, _geometry, _keep, _knowledge, _mission_moves):
+    for gen in (_sword, _geometry, _keep, _knowledge, _mission_moves, _coach):
         out.extend(m for m in gen(s) if m.steps and m.score > 0.0)
+    if goal is not None and not goal.achieved(s):
+        for m in out:
+            m.score *= GOAL_KEEP.get(m.key, 0.55)       # the goal comes first; survival still counts
+        out.extend(m for m in _goal_moves(s, goal) if m.steps)
     return out
+
+
+# ------------------------------------------------------------------ the captain's goal
+
+GOAL_KEEP = {"evasive": 1.0, "fresh-shield": 0.9, "power": 0.9, "reinforce": 0.8, "brace": 0.7, "repairs": 0.75,
+             "hunt": 0.9, "scan": 0.8, "plasma": 0.8, "focus": 0.9, "meet-charge": 0.9, "bait": 0.9, "ring": 0.85,
+             "standoff": 0.85, "inside": 0.85, "strike": 1.0, "dormant": 1.0, "relay": 0.9, "learn": 0.85,
+             "tune": 0.8, "remodulate": 0.85, "starfleet": 0.8}
+SYSTEMS = ("shields", "phasers", "torpedoes", "weapons", "engines", "sensors", "cloak")
+_SYSTEM_WORDS = {"engine": "engines", "engines": "engines", "drive": "engines", "drives": "engines",
+                 "warp": "engines", "propulsion": "engines", "shield": "shields", "shields": "shields",
+                 "weapon": "weapons", "weapons": "weapons", "guns": "weapons", "phaser": "phasers",
+                 "phasers": "phasers", "disruptors": "phasers", "torpedo": "torpedoes", "torpedoes": "torpedoes",
+                 "tubes": "torpedoes", "sensor": "sensors", "sensors": "sensors", "cloak": "cloak"}
+_KIND_WORDS = {"destroy": "destroy", "kill": "destroy", "sink": "destroy", "eliminate": "destroy", "finish": "destroy",
+               "disable": "disable", "cripple": "disable", "knock": "disable", "disarm": "disable",
+               "capture": "capture", "take": "capture", "board": "capture", "seize": "capture",
+               "survive": "survive", "escape": "survive", "save": "mission", "rescue": "mission",
+               "protect": "mission", "mission": "mission", "win": "mission"}
+
+
+@dataclass(frozen=True)
+class Goal:
+    """What the captain asked the officers to plan for: `counsel destroy the Gr'oth`, `counsel kill all the cubes`,
+    `counsel disable all their engines`, `counsel capture the Mugger`, `counsel survive`."""
+
+    kind: str                          # destroy | disable | capture | survive | mission
+    targets: tuple[int, ...] = ()
+    system: str = ""                   # disable: what to knock out
+    text: str = ""                     # the goal in words, for the panel
+
+    def live(self, s: Situation) -> tuple[int, ...]:
+        return tuple(t for t in self.targets if (e := s.enemy(t)) is not None and not e.surrendered)
+
+    def achieved(self, s: Situation) -> bool:
+        if self.kind in ("destroy", "capture"):
+            return bool(self.targets) and not self.live(s)
+        return False
+
+
+def parse_goal(text: str, s: Situation) -> Goal | str:
+    """A goal from the captain's words, or why it can't be read."""
+    words = [w.strip(".,!?;:'\"").lower() for w in text.split()]
+    words = [w.removesuffix("'s") for w in words if w]
+    if not words:
+        return "Counsel toward what? e.g. 'counsel destroy the Gr'oth' or 'counsel disable all their engines'."
+    kind = next((_KIND_WORDS[w] for w in words if w in _KIND_WORDS), None)
+    system = next((_SYSTEM_WORDS[w] for w in words if w in _SYSTEM_WORDS), "")
+    if kind is None:
+        kind = "disable" if system else "destroy"
+    if kind in ("survive", "mission"):
+        what = "Keep the ship alive" if kind == "survive" else "Accomplish the mission"
+        return Goal(kind, text=what)
+    if kind == "disable" and not system:
+        system = "weapons"
+    enemies = [e for e in s.enemies if not e.surrendered]
+    every = any(w in ("all", "every", "each", "them", "their", "everyone", "everything") for w in words)
+    picked: list[int] = []
+    for e in enemies:
+        name = e.name.lower()
+        cls = e.cls.name.lower() if e.cls else ""
+        fac = e.faction.lower()
+        for w in words:
+            if len(w) < 3 or w in _KIND_WORDS or w in _SYSTEM_WORDS or w in ("all", "the", "their", "every"):
+                continue
+            base = w.rstrip("s") if len(w) > 4 else w
+            if name.startswith(w) or (cls and (cls.startswith(base) or base in cls.split())) or \
+                    (fac and fac.startswith(base)):
+                picked.append(e.id)
+                break
+    if not picked and every:
+        picked = [e.id for e in enemies]
+    if not picked:
+        return f"No enemy ship matches '{text}'. Name her, or say 'all'."
+    names = [s.enemy(i).name for i in picked]  # type: ignore[union-attr]
+    who = f"the {names[0]}" if len(names) == 1 else f"all {len(names)} of them"
+    if kind == "disable":
+        return Goal(kind, tuple(picked), system, f"Disable {who}'s {system}" if len(names) == 1 else
+                    f"Disable {system} on {who}")
+    return Goal(kind, tuple(picked), "", f"{kind.capitalize()} {who}")
+
+
+def _goal_moves(s: Situation, g: Goal) -> Iterator[Move]:
+    """Each perspective's way to the captain's goal."""
+    targets = [e for e in s.fighting if e.id in g.live(s)]
+    if g.kind == "survive":
+        yield from _survive(s)
+        return
+    if g.kind == "mission":
+        for m in _mission_moves(s):
+            m.score = min(1.0, m.score * 1.2)
+            yield m
+        return
+    if not targets:
+        return
+    seen = [e for e in targets if e.visible]
+    lost = [e for e in targets if not e.visible]
+    e = min(seen, key=lambda x: x.range) if seen else None
+    if lost and not seen:
+        x = min(lost, key=lambda x: x.range)
+        yield Move("goal-find", f"Find the {x.name} first", f"{g.text}: but we have lost her. Nothing else helps until "
+                   "we know where she is.", [Step(f"hunt {x.handle}", "find her")], 1.0,
+                   {"science": 1.0, "tactical": 0.8, "helm": 0.8}, "hunt")
+        return
+    assert e is not None
+    many = len(targets) > 1
+    order = sorted(seen, key=lambda x: (x.hull if x.hull is not None else 1.0) * x.threat)
+    if g.kind == "destroy":
+        weakest = order[0]
+        steps = [x for x in (_target(s, weakest),) if x] + (_fire_now(s, weakest) or
+                                                              [Step(f"pursue {weakest.handle}", "close on her")])
+        why = (f"{g.text}. Take them one at a time, weakest first: the {weakest.name} "
+               f"({_pct(weakest.hull)} hull) falls fastest and takes her guns out of the fight." if many else
+               f"{g.text}. Everything on her, every time a bank charges or a tube loads.")
+        yield Move("goal-kill", f"{g.text}: {'one at a time' if many else 'all weapons'}", why, steps, 1.0,
+                   {"tactical": 1.0, "helm": 0.4}, "target")
+        if e.shields and e.weakest is not None and e.shields[e.weakest] < 60:
+            yield Move("goal-weak-face", f"Turn into the {e.name}'s weak shield",
+                       f"Her shield {e.weakest + 1} is at {max(0.0, e.shields[e.weakest]):.0f}%. Come round to it and "
+                       "every hit goes straight to her hull.",
+                       [Step(f"pursue {e.handle}", "work round her")], 0.85, {"helm": 1.0}, "helm")
+        else:
+            yield from (m for m in _geometry(replace(s, focus=(e.id,))) if m.key in ("standoff", "inside", "split"))
+        if not e.scanned:
+            yield Move("goal-scan", f"Scan the {e.name}", "To destroy her quickly we need her shields and damage.",
+                       [Step(f"scan {e.handle}", "full scan")], 0.95, {"science": 1.0}, "scan")
+        else:
+            yield Move("goal-hole", f"Open a hole in the {e.name}'s shields",
+                       "I will burst torpedoes where her point defense won't react until one of her shields is gone for "
+                       "good. Then every weapon we have goes through.", [Step(f"disable {e.handle} shields", "her shields")],
+                       0.85, {"science": 1.0}, "objective")
+        yield Move("goal-arm", "Power to the weapons and the shield toward her",
+                   f"A fight to the finish is long. I'll keep the crews on the tubes and banks and reinforce the shield "
+                   f"facing the {e.name}.", [Step("repair tubes", "tubes first"), *(
+                       [Step(f"reenforce {s.facing.index + 1}", "the shield toward her")] if s.facing and s.facing.up else [])],
+                   0.8, {"engineering": 1.0}, "repairs")
+        return
+    if g.kind == "disable":
+        system = g.system
+        aim = {"engines": "propulsion", "weapons": "weapons", "phasers": "phasers", "torpedoes": "torpedoes",
+               "shields": "shields", "sensors": "sensors", "cloak": "cloak"}[system]
+        handles = "all" if many and len(targets) == len([x for x in s.fighting if not x.hive]) else e.handle
+        yield Move("goal-disable", g.text,
+                   f"I'll burst torpedoes where their point defense won't react, at their {system} only, and spare the rest "
+                   f"of {'them' if many else 'her'}. Keep {'each' if many else 'her'} at 3,500 to 7,500 from us.",
+                   [Step(f"disable {handles} {system}", f"their {system}")], 1.0, {"science": 1.0, "tactical": 0.3},
+                   "objective")
+        yield Move("goal-aim", f"Aimed fire at the {e.name}'s {system}",
+                   f"Lock every weapon on her {system}: phasers at that system wear it down without breaking her apart.",
+                   [x for x in (_target(s, e, aim),) if x] + _fire_now(s, e, False), 0.95, {"tactical": 1.0},
+                   "target")
+        lo = (e.our_env[0] * 1.3) if e.our_env else 3500.0
+        want = max(3500.0, lo)
+        line = f"pursue {e.handle}" if e.range > 7500 else (f"elude {e.handle}" if e.range < want else "")
+        if line:
+            yield Move("goal-range", f"Hold the {e.name} at 3,500 to 7,500",
+                       f"She is at {_rng(e.range)}. In that band our torpedoes are armed and her point defense has the "
+                       "least time to react.", [Step(line, "hold the range")], 0.95, {"helm": 1.0}, "helm")
+        else:
+            yield Move("goal-hold", f"Keep the {e.name} where she is",
+                       f"She is at {_rng(e.range)}, inside the band where our torpedoes arm and burst cleanly. Evasive "
+                       "keeps us there while dodging.", [Step("evasive", "hold and dodge")], 0.8, {"helm": 1.0}, "dodge")
+        yield Move("goal-tubes", "Keep the tubes loaded and close in",
+                   "Seven's work is torpedoes. I'll keep the crews on the tubes so every salvo is ready when she wants it.",
+                   [Step("repair tubes", "tubes first")], 0.75, {"engineering": 1.0}, "repairs")
+        return
+    if g.kind == "capture":
+        yield Move("goal-capture", f"Take the {e.name}",
+                   "Open one of her shields, thin her crew through the gap with phasers, and board her with our security "
+                   "teams.", [Step(f"capture {e.handle}", "board and keep her")], 1.0, {"tactical": 1.0, "science": 0.4},
+                   "objective")
+        if e.reading is not None:
+            p = odds(s, e, "surrender")
+            yield Move("goal-yield", f"Ask the {e.name} to yield",
+                       f"A ship that strikes her colours can be boarded without a fight. About {p * 100:.0f}% likely now; "
+                       "it rises as her hull falls.",
+                       [Step(f"hail {e.handle} Lower your shields and surrender. Your crew will be treated well.",
+                             "demand her surrender")], 0.9, {"helm": 1.0}, "hail")
+        yield Move("goal-engines", f"Stop the {e.name} running",
+                   "A prize that can run is not a prize. Her drives first, then her shields.",
+                   [Step(f"disable {e.handle} engines", "her engines")], 0.9, {"science": 1.0}, "objective")
+        yield Move("goal-transporters", "Transporters and security ready",
+                   "Boarding takes people and working transporters. I'll keep the transporter rooms repaired.",
+                   [Step("repair transporters", "transporters first")], 0.7, {"engineering": 1.0}, "repairs")
+
+
+def _survive(s: Situation) -> Iterator[Move]:
+    m = s.main_threat
+    if m is not None:
+        yield Move("survive-run", f"Open the range from the {m.name}",
+                   f"At warp {s.max_warp:g} we can outrun what she can follow. Distance is armour.",
+                   [Step(f"elude {m.handle} warp {s.max_warp:g}", "run")], 0.95, {"helm": 1.0}, "helm")
+    yield Move("survive-repair", "Repairs to the hull and shields",
+               f"Hull at {_pct(s.hull)}. Every crew on the hull and shields until we are clear.",
+               [Step("repair hull", "the hull first"), Step("repair auto", "La Forge directs")], 0.9,
+               {"engineering": 1.0}, "repairs")
+    if s.can_cloak and not s.cloaked:
+        yield Move("survive-cloak", "Cloak", "Under the cloak they cannot lock on us.", [Step("cloak on", "cloak")], 0.9,
+                   {"science": 1.0, "engineering": 0.5}, "cloak")
+    if m is not None and m.reading is not None:
+        yield Move("survive-hail", f"Offer the {m.name} a way out",
+                   "A captain who withdraws stops shooting.",
+                   [Step(f"hail {m.handle} Captain, withdraw now and no one else needs to die.", "open a channel")],
+                   0.6 + odds(s, m, "withdraw"), {"tactical": 0.6, "science": 0.8}, "hail")
+
+
+def _coach(s: Situation) -> Iterator[Move]:
+    """The tactical coach's own reading (help/coach.py), so the officers know everything it knows."""
+    station = {"tactical": "tactical", "helm": "helm", "engineering": "engineering", "science": "science"}
+    for t in s.tips:
+        if not t.commands:
+            continue
+        st = station.get(t.station, "tactical")
+        score = {0: 0.85, 1: 0.7, 2: 0.55, 3: 0.42, 4: 0.32}.get(t.priority, 0.25)
+        text = t.text.replace("**", "")
+        yield Move(f"coach:{t.title}", t.title, text, [Step(c, t.title.lower()) for c in t.commands[:2]], score,
+                   {st: 0.8}, "coach:" + t.title)
 
 
 def _sword(s: Situation) -> Iterator[Move]:
@@ -640,16 +863,29 @@ def plan_for(station: str, all_moves: list[Move], taken: set[str] | None = None)
     return lead, chosen[1:]
 
 
+_HELM_VERBS = ("pursue ", "elude ", "helm ", "stop", "warp ")
+
+
 def _groups(m: Move) -> set[str]:
-    return {g for g in m.group.split(",") if g}
+    """What a move claims: its own groups, plus the target and the helm if its steps set them (a plan that
+    targets two ships or steers two ways at once is no plan)."""
+    out = {g for g in m.group.split(",") if g}
+    for st in m.steps:
+        if st.line.startswith("target "):
+            out.add("target")
+        if st.line.startswith(_HELM_VERBS):
+            out.add("helm")
+    return out
 
 
-def counsel(s: Situation, officers: Mapping[str, object], check: Check | None = None) -> list[Plan]:
+def counsel(s: Situation, officers: Mapping[str, object], check: Check | None = None,
+            goal: Goal | None = None) -> list[Plan]:
     """Each officer's plan, in station order. `officers` maps station -> officer profile (with `id` and `name`);
-    `check(line)` is the console's dry run: a step it would refuse is never offered."""
+    `check(line)` is the console's dry run: a step it would refuse is never offered. With a `goal`, each plan is
+    that officer's way to it."""
     if not s.ship.alive:
         return []
-    all_moves = moves(s)
+    all_moves = moves(s, goal)
     if check is not None:
         kept = []
         for m in all_moves:
@@ -680,4 +916,4 @@ def counsel(s: Situation, officers: Mapping[str, object], check: Check | None = 
     return out
 
 
-__all__ = ["MAX_STEPS", "Move", "PERSPECTIVE", "Plan", "STATIONS", "Step", "counsel", "moves", "odds", "plan_for"]
+__all__ = ["Goal", "MAX_STEPS", "Move", "parse_goal", "PERSPECTIVE", "Plan", "STATIONS", "Step", "counsel", "moves", "odds", "plan_for"]

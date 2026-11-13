@@ -212,6 +212,7 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
     def toggle_counsel(self, on: bool | None = None) -> None:
         """Open or close the officers' counsel over the map."""
         self.counsel_open = (not self.counsel_open) if on is None else on
+        self.focus_idle = 0.0
         if self.counsel_open:
             if self.overlay == "help_brief":
                 self.overlay = None
@@ -231,6 +232,8 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
         for ln in lines:
             self.counsel_ran[ln] = now
         self.session.follow(plan, lines if line is not None else None)
+        if line is None:
+            self.counsel_open = False      # all in: the orders are given, the battle runs on at your speed
 
     def toggle_overlay(self, name: str) -> None:
         self.overlay = None if self.overlay == name else name

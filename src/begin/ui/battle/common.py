@@ -38,6 +38,7 @@ CONTROLS = [
     ("F2-F8, F10-F12, Ctrl+key", "Run a 'key' macro you defined in the console"),
     ("Wheel over the log", "Scroll the console log"),
     ("I", "Damage assessment (inspect own ship)"),
+    ("O, then 1-4", "Counsel: each officer's plan from here; 1-4 go all in ('counsel <goal>' aims it)"),
     ("M", "Sound on / off"),
     ("F1 or H", "This reference"),
     ("Esc", "Close overlay / battle menu"),

@@ -42,10 +42,11 @@ def counsel_rect(map_rect: pygame.Rect) -> pygame.Rect:
 
 def draw_counsel(surf: pygame.Surface, area: pygame.Rect, plans: list[Plan], ui: UI,
                  run_plan: Callable[[Plan], None], run_step: Callable[[Plan, str], None],
-                 close: Callable[[], None], ran: dict[str, float], now: float, paused: bool) -> pygame.Rect:
+                 close: Callable[[], None], ran: dict[str, float], now: float, paused: bool, goal: str = "",
+                 clear_goal: Callable[[], None] | None = None) -> pygame.Rect:
     """Draw the panel inside `area` (it takes only the height it needs). Returns the rect it covers."""
     inner = area.width - 28
-    head_h, foot_h = 34, 26
+    head_h, foot_h = (58 if goal else 34), 26
     most = 4
     while True:          # as many lines of each reason as the map has room for
         blocks = _blocks(plans, inner, most)
@@ -57,7 +58,17 @@ def draw_counsel(surf: pygame.Surface, area: pygame.Rect, plans: list[Plan], ui:
     if not blocks:
         h = head_h + 44 + foot_h
     box = pygame.Rect(area.x, area.y, area.width, min(area.height, h))
-    return _draw(surf, box, blocks, heights, ui, run_plan, run_step, close, ran, now, paused, head_h, foot_h)
+    box = _draw(surf, box, blocks, heights, ui, run_plan, run_step, close, ran, now, paused, head_h, foot_h)
+    if goal:
+        g = pygame.Rect(box.x + 14, box.y + 32, box.width - 28, 20)
+        gfx.draw.rect(surf, theme.mix(theme.BG_INPUT, theme.CREW, 0.18), g, border_radius=10)
+        theme.text(surf, theme.fit(f"GOAL  ·  {goal}", 11, g.width - 40, weight="semibold"), (g.x + 10, g.y + 3),
+                   theme.CREW, 11, weight="semibold")
+        if clear_goal is not None:
+            x = pygame.Rect(g.right - 22, g.y, 20, 20)
+            theme.text(surf, "×", x.center, theme.TEXT_DIM, 13, anchor="center")
+            ui.add(x, clear_goal, "Clear the goal: counsel for the whole fight")
+    return box
 
 
 def _blocks(plans: list[Plan], inner: int, most: int) -> list[tuple[Plan, list[str], list[list[tuple[str, int]]]]]:
@@ -141,7 +152,7 @@ def _draw(surf: pygame.Surface, box: pygame.Rect, blocks: list[tuple[Plan, list[
                 x += w + 6
             ry += 26
         y += bh + 8
-    foot = "O closes  ·  1–4 all in  ·  click a step to run only that one"
+    foot = "O closes  ·  1–4 all in  ·  click a step to run it  ·  'counsel <goal>' aims it"
     theme.text(surf, theme.fit(foot, 11, inner), (box.x + pad, box.bottom - 20), theme.TEXT_FAINT, 11)
     surf.set_clip(old_clip)
     return box
