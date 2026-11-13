@@ -22,7 +22,13 @@
 
 **Shorter orders.** Shortened words now settle by the rest of the line, so `pu tal` pursues the Talon rather than asking whether you meant pulse.
 
-**Everything fits.** Every line of text now stays inside its panel and on the screen, on small windows as well as large ones. On short windows, the battle moves the Weapons and Target panels into the tabs at the bottom so nothing runs off the screen.
+**Everyday words, no model needed.** About sixty things a captain actually says now work with no language model: "red alert", "come about", "hard to port", "punch it", "attack the Gorkon", "get us out of here", "target the nearest enemy", "damage report", "zoom in", and "make it so" (or "aye") to take an officer's proposal, "not now" to turn it down. "Her", "them" and "the target" mean the ship you have targeted, or the nearest enemy. The manual's Orders in plain English page lists them under "Without a model".
+
+**A Borg cube on the title screen.** Every few passes, the Enterprise on the main menu now meets a Borg cube that comes out of a green transwarp conduit, cuts at her shields, adapts to her phasers and breaks up under a heavier spread, taking turns with the Klingon who decloaks. Press **B** (or **K**) on the menu to call one for her next pass.
+
+**Lean, steady model requests.** However long a battle runs, each request to the language model now stays the same small size: only the last few exchanges go, the oldest are dropped to fit a fixed budget, and the unchanging rules come first so Anthropic's prompt cache and Ollama can reuse them. On Ollama the game sets the context window itself (8,192 tokens unless you set `--llm context=`), so an overflowing prompt is never cut silently.
+
+**Everything fits.** Every line of text now stays inside its panel and on the screen, on small windows as well as large ones. On short windows, the battle moves the Weapons and Target panels into the tabs at the bottom so nothing runs off the screen. The Ready Room fits a 1024×640 window too, and the counsel no longer sits under an officer's proposal on a small screen.
 
 ## What's new in 1.2
 
