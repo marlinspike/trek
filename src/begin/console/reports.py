@@ -13,6 +13,7 @@ import math
 from ..content.schema import ContentDB, ProbeDef, ShipClass, TorpedoDef
 from ..core.angles import bearing, norm360
 from ..sim.allies import AllyStanding
+from ..sim.away import TASKS
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import HelmMode, Ship
 from ..sim.systems.sensors import ScanRecord
@@ -526,8 +527,30 @@ def library_lines(content: ContentDB, words: list[str]) -> list[str]:
     return [f"The library has no subject '{words[0]}'. Subjects: ships, torpedoes, probes."]
 
 
+def away_lines(obs: Observation, me: Ship | None) -> list[str]:
+    """The away teams out from our ship [E]: who, in what, where, doing what, and how long it has left."""
+    ops = [op for op in obs.away_ops() if me is None or op.mother == me.id]
+    if not ops:
+        return ["AWAY  No away team is out. 'away <Borg ship> <task>' sends one."]
+    out = []
+    for op in ops:
+        craft = obs.own(op.shuttle).name if op.shuttle is not None and obs.own(op.shuttle) is not None else "transporter"
+        where = obs.contact(op.target)
+        name = where.label.split(" (")[0] if where is not None and where.identified else f"#{op.target}"
+        team = ", ".join(m.title() for m in op.members)
+        state = {"outbound": f"crossing to {name}", "aboard": f"aboard {name}: {op.label}",
+                 "return": "coming home"}.get(op.phase, op.phase)
+        out.append(f"AWAY  {team} · {craft} · {state}")
+        if op.phase == "aboard":
+            total = TASKS[op.task][0]
+            out.append(f"      {bar(1.0 - op.work / total)}  {op.work:.0f} cycles to go"
+                       + ("  ·  THE HIVE HAS NOTICED THEM" if op.noticed else ""))
+    out.append("      'hail galileo come back' calls them home; 'hail galileo <task>' gives them a new one.")
+    return out
+
+
 __all__ = [
-    "banks_lines", "chart_lines", "damage_lines", "fleet_lines", "group_lines", "launchers_lines", "library_lines",
+    "away_lines", "banks_lines", "chart_lines", "damage_lines", "fleet_lines", "group_lines", "launchers_lines", "library_lines",
     "probes_lines", "report_lines", "scan_lines", "shields_lines", "tubes_lines",
 ]
 

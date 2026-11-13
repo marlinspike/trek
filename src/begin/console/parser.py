@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from ..sim.allies import ORDER_WORDS, SHIP_ORDERS, AllyStanding
+from ..sim.away import SHUTTLE_NAMES, TASKS, task_from_words
 from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
@@ -1220,8 +1221,6 @@ class Parser:
         """`away <ship> <task> [with seven]` [E]: Worf (and Seven) take a shuttle across to a Borg ship, or beam
         over to a dormant one. Tasks: relay, harmonics, weapons, charges, survey, rescue. `away recall` (or
         `recall`) calls them home; `away <task>` gives the team out there a new one."""
-        from ..sim.away import TASKS, task_from_words
-
         rest = " ".join(tok.toks[tok.i:])
         if self._away_op() is not None:
             tok.rest()
@@ -1236,9 +1235,9 @@ class Parser:
                                               if hives else None)
         if target is None:
             raise ParseError("Away to which ship? 'away <Borg ship> <task>'.")
-        task = next((t for t in TASKS if re.search(rf"\b{t}\b", words)), None) or task_from_words(words)
-        if task is None:
-            raise ParseError(f"To do what? Tasks: {', '.join(TASKS)}.")
+        # no task named: put out her relay if Seven has found it, else look round inside for it
+        task = (next((t for t in TASKS if re.search(rf"\b{t}\b", words)), None) or task_from_words(words)
+                or ("relay" if self.obs.weak_point(target) else "survey"))
         members = self._away_members(words, task)
         dormant = self.obs.dormant(target) > 0
         beam = "beam" in words or "transport" in words or (dormant and "shuttle" not in words)
@@ -1284,8 +1283,6 @@ class Parser:
 
     def _hail_away(self, words: str, res: ParseResult) -> None:
         """The captain on the comm to the away team: come home, a new task, or (no words) how it is going."""
-        from ..sim.away import TASKS, task_from_words
-
         low = words.lower()
         if re.search(r"\b(recall|come (back|home)|return|get out|abort|back to the ship|home|withdraw|break off|"
                      r"pull out|beam out)\b", low):
@@ -1313,10 +1310,13 @@ class Parser:
         if sub.peek() in _HAIL_ALL:
             sub.next()
             everyone = True
-        elif sub.peek() in ("shuttle", "away", "team", "galileo", "copernicus", "columbus", "shenandoah", "kepler",
-                            "cochrane", "worf", "seven", "sulu") and self._away_op() is not None:
+        elif sub.peek() in AWAY_CALLS and self._away_op() is not None:
+            sub.next()                                       # the shuttle's name, or Worf's: the words follow it
             self._hail_away(" ".join(_after_tokens(rest, sub.i).split()), res)
             return
+        elif sub.peek() in SHUTTLE_CALLS:
+            raise ParseError(f"The {sub.peek().title()} is in the shuttle bay, Captain: no away team is out. "
+                             "'away <Borg ship> <task>' sends one.")
         else:
             try:
                 sid = self.resolve_ship(sub, allow_none=True)
@@ -1680,6 +1680,10 @@ def _after_tokens(raw: str, n: int) -> str:
     """The text of `raw` from its n-th token on (tokens as `Tokens` splits them), untouched."""
     spans = list(re.finditer(r"[^\s,°]+", raw))
     return raw[spans[n].start():] if n < len(spans) else ""
+
+
+SHUTTLE_CALLS = tuple(n.lower() for n in SHUTTLE_NAMES)
+AWAY_CALLS = ("shuttle", "away", "team", "worf", "seven", "sulu", *SHUTTLE_CALLS)   # who a hail to the away team names [E]
 
 
 def parse(text: str, ctx: ParseContext) -> ParseResult:

@@ -192,6 +192,10 @@ class Bridge(Chatter):
         said_now = self._bridge_order(officer, low, ctx, run)
         if said_now is None and not asked:
             said_now = self._hunt_order(officer, low, run)
+        if said_now is None and not asked and not FIRING.match(low):
+            early = collaborations.matching(officer.id, low, first=True)    # "doctor, inoculate the crew" [E]
+            if early is not None:
+                return self.collaborate(officer, early, run)
         if said_now is None and not asked:
             said_now = self._combat_order(officer, low, run)
         if said_now is None and asked:
