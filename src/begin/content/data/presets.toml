@@ -89,3 +89,34 @@ waves = [
   {side = 1, ships = ["klingon.bc", "klingon.bc", "klingon.bc"], after_clear = 60, at = 420, center = [6000, 17000], message = "Three Klingon battle cruisers are dropping out of warp!"},
   {side = 1, ships = ["klingon.dr", "klingon.dr", "klingon.bc", "klingon.bc", "klingon.fr"], after_clear = 75, at = 900, center = [-6000, 17000], message = "Two Klingon dreadnoughts inbound with an escort: the main force is here."},
 ]
+
+# The Borg [E] (sim/collective.py; help page "Fighting the Borg"). Learn them first, then strike hard.
+[[preset]]
+id = "borg-probe"
+title = "First Contact: a Borg Probe"
+description = "A lone Borg probe is surveying the sector. Small, but it learns: watch its adaptation, remodulate, and let Seven scan it."
+seed = 7001
+fleets = [
+  {side = 0, player = true, center = [0, -10000], ships = ["federation.dn"]},
+  {side = 1, center = [0, 9000], ships = ["borg.pr", "borg.pr"]},
+]
+
+[[preset]]
+id = "borg-sphere"
+title = "The Sphere"
+description = "A Borg sphere and its probe. Tune the shields before the drones come, find the vinculum relay, and put her to sleep."
+seed = 7002
+fleets = [
+  {side = 0, player = true, center = [0, -11000], ships = ["federation.dn", "federation.hc"]},
+  {side = 1, center = [0, 10000], ships = ["borg.sp", "borg.pr"]},
+]
+
+[[preset]]
+id = "borg-cube"
+title = "Wolf at the Door: the Cube"
+description = "A cube, with a task force to stop it. Power alone will cost you dearly: survey her, send Worf across, and strike while she sleeps."
+seed = 7003
+fleets = [
+  {side = 0, player = true, center = [0, -13000], ships = ["federation.dn", "federation.dn", "federation.hc", "federation.hc", "federation.de"]},
+  {side = 1, center = [0, 12000], ships = ["borg.cu"]},
+]
