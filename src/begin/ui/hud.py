@@ -144,7 +144,10 @@ def _morale_tag(surf: pygame.Surface, hud: BattleScene, ship: Ship, at: tuple[in
     m = ship.morale
     shown = hud.tweens.get(f"morale{ship.id}", m, 2.0)
     col = hud.tweens.colour(f"morale{ship.id}", theme.health_color(m / 100.0))
-    theme.text(surf, f"{morale_words(m)} {shown:.0f}", at, col, 11)
+    tag = f"{morale_words(m)} {shown:.0f}"
+    if theme.text_width(tag, 11) > hover.right - at[0]:
+        tag = f"{shown:.0f}"            # a narrow panel: the number, the word in the tooltip
+    theme.text(surf, tag, at, col, 11)
     f = ship.morale_factor
     r = hud.obs.rules
     effect = ("no effect on the crew's work" if abs(f) < 0.05 else
@@ -154,20 +157,21 @@ def _morale_tag(surf: pygame.Surface, hud: BattleScene, ship: Ship, at: tuple[in
                                     "hits, kills, repairs and 'address crew' raise it.")
 
 
-def diagram_legend(surf: pygame.Surface, x: int, y: int) -> None:
-    """What the damage diagram's marks mean."""
+def diagram_legend(surf: pygame.Surface, x: int, y: int, width: int = 380) -> None:
+    """What the damage diagram's marks mean, kept within `width` pixels (the diagram's own width)."""
     items: list[tuple[str, theme.Color, str]] = [
         ("dot", theme.health_color(1.0), "intact system"), ("dot", theme.health_color(0.6), "damaged"),
         ("dot", theme.health_color(0.2), "badly damaged"), ("dot", theme.health_color(0.0, True), "destroyed"),
         ("ring", theme.REPAIR, "under repair (thick: the priority)"), ("arc", theme.SHIELD, "shields, with strength"),
     ]
-    theme.text(surf, "Each dot is a system where it sits in the hull. Big dots: reactors and warp drives;",
-               (x, y), theme.TEXT_DIM, 11)
-    theme.text(surf, "small ones: batteries, phasers, tubes, launchers, sensors and the rest. Hover for names.",
-               (x, y + 15), theme.TEXT_DIM, 11)
-    y += 36
+    y = theme.para(surf, "Each dot is a system where it sits in the hull. Big dots: reactors and warp drives; small ones: "
+                         "batteries, phasers, tubes, launchers, sensors and the rest. Hover for names.",
+                   (x, y), width, theme.TEXT_DIM, 11, 15) + 6
     xx = x
     for kind, col, label in items:
+        if xx > x and xx + 15 + theme.text_width(label, 11) > x + width:   # the next one on a new row
+            xx = x
+            y += 18
         if kind == "dot":
             gfx.draw.circle(surf, col, (xx + 5, y + 7), 4)
         elif kind == "ring":
@@ -176,9 +180,6 @@ def diagram_legend(surf: pygame.Surface, x: int, y: int) -> None:
             gfx.draw.arc(surf, col, pygame.Rect(xx - 2, y, 14, 14), 0.4, 2.7, 3)
         theme.text(surf, label, (xx + 15, y), theme.TEXT_DIM, 11)
         xx += 15 + theme.text_width(label, 11) + 16
-        if xx > x + 360:
-            xx = x
-            y += 18
 
 
 # ------------------------------------------------------------------ own ship
@@ -225,8 +226,10 @@ class OwnShipPanel(Panel):
         tw = hud.tweens
         crew_n = tw.get(f"crew{ship.id}", ship.crew, 1.0)
         crew_col = tw.colour(f"crew{ship.id}", theme.health_color(ship.crew / max(1, ship.cls.crew)))
-        _kv(surf, x, yy, "Crew", f"{crew_n:.0f} / {ship.cls.crew}" if detail else f"{crew_n:.0f}", crew_col)
-        _morale_tag(surf, hud, ship, (x + 92 + 92, yy + 1), pygame.Rect(x, yy, rect.right - x - 8, 16))
+        crew_txt = f"{crew_n:.0f} / {ship.cls.crew}" if detail else f"{crew_n:.0f}"
+        _kv(surf, x, yy, "Crew", crew_txt, crew_col)
+        tag_x = x + 92 + max(92, theme.text_width(crew_txt, 12, "mono") + 16) if detail else x + 92 + 56
+        _morale_tag(surf, hud, ship, (tag_x, yy + 1), pygame.Rect(x, yy, rect.right - x - 8, 16))
         yy += 18
         hf = max(0.0, ship.structure) / ship.structure_max
         hull = tw.get(f"hull{ship.id}", hf * 100, 0.5)

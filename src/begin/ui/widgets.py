@@ -45,7 +45,9 @@ class UI:
 
     def button(self, surf: pygame.Surface, rect: pygame.Rect, label: str, action: Callable[[], object],
                tooltip: str = "", active: bool = False, enabled: bool = True, accent: theme.Color = theme.FRIEND,
-               size: int = 12, right: Callable[[], object] | None = None, face: str | None = None) -> None:
+               size: int = 12, right: Callable[[], object] | None = None, face: str | None = None,
+               key: str | None = None) -> None:
+        """A button; `key` is the keyboard shortcut that does the same, shown faintly at its right end."""
         hover = rect.collidepoint(self.mouse) and enabled
         bg = theme.BG_PANEL_HI if hover else theme.BG_INPUT
         if active:
@@ -59,6 +61,10 @@ class UI:
         weight = "medium" if face == "ui" else "regular"
         theme.frame(surf, rect)
         room = rect.width - 8
+        if key:
+            kw = theme.text_width(key, 11, "mono")
+            theme.text(surf, key, (rect.right - 12, rect.centery - 7), theme.TEXT_FAINT, 11, "mono", anchor="topright")
+            room = rect.width - 2 * (kw + 20)     # the label stays centred, clear of the key on both sides
         floor = max(9, size - 2)
         while size > floor and theme.text_width(label, size, face, weight) > room:   # a tight button: smaller words,
             size -= 1                                                                  # and only then cut short

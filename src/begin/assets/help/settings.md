@@ -6,7 +6,7 @@ aliases: settings, options, preferences, config, configuration, setup, set up, m
 summary: Change the game's settings from the main menu: display, sound, battle, the bridge, speaking orders, language models and your officers.
 see: display, sound, bridge, voice-orders, llm, crew
 ---
-Choose **Settings** on the main menu (or press **S** there). The sections are down the left; click one, or move through them with **↑** and **↓**. **Esc** or **Back** returns to the menu.
+Choose **Settings** on the main menu (or press **S** there). The sections are down the left, numbered; click one, press its number (**1** to **9**), or move through them with **↑** and **↓**. **Esc** or **Back** returns to the menu.
 
 Every change is saved the moment you make it, to the same plain text files the game has always read, so you can still edit them by hand: `config/settings.json` for everything except the officers, and `config/officers.toml` for them. A box you type in (a model's name, a server's address) keeps what you typed when you press **Enter**, **Tab** or click elsewhere; **Esc** puts back what was there. **Ctrl+V** (or **⌘V**) pastes.
 

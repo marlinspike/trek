@@ -176,6 +176,10 @@ class SettingsHub:
         if ev.key == pygame.K_ESCAPE:
             self.close()
             return True
+        digit = getattr(ev, "unicode", "")
+        if isinstance(digit, str) and len(digit) == 1 and "1" <= digit <= str(min(9, len(keys))):
+            self.go(keys[int(digit) - 1])          # the number shown beside each section
+            return True
         return False
 
     def update(self, dt: float) -> None:
@@ -220,21 +224,25 @@ class SettingsHub:
         self._sliders = []
         # the rail of sections
         y = top
-        for s in self.sections:
-            r = pygame.Rect(x, y, RAIL_W, 40)
+        # a short window closes the rail up, so Back stays on the screen
+        pitch = max(32, min(44, (h - top - 70) // max(1, len(self.sections))))
+        for i, s in enumerate(self.sections):
+            r = pygame.Rect(x, y, RAIL_W, pitch - 4)
             on = s.key == self.section
             hover = r.collidepoint(ui.mouse)
             if on or hover:
                 gfx.draw.rect(surf, theme.BG_PANEL_HI if on else theme.BG_PANEL, r, border_radius=3)
             if on:
                 gfx.draw.rect(surf, theme.FRIEND, pygame.Rect(r.x, r.y + 8, 3, r.height - 16), border_radius=1)
-            theme.text(surf, s.title.upper(), (r.x + 18, r.y + 12), theme.TEXT if on else theme.TEXT_DIM, 14, "display")
-            if s.hotkey:
-                theme.text(surf, s.hotkey, (r.right - 14, r.y + 13), theme.TEXT_FAINT, 12, "mono", anchor="topright")
-            ui.add(r, partial(self.go, s.key), s.blurb)
-            y += 44
-        ui.button(surf, pygame.Rect(x, y + 18, 140, 36), "Back", self._back, "Back to the main menu (Esc)", size=13)
-        theme.text(surf, "↑ ↓ move between sections", (x, y + 66), theme.TEXT_FAINT, 12)
+            ty = r.y + (r.height - 16) // 2
+            theme.text(surf, s.title.upper(), (r.x + 18, ty), theme.TEXT if on else theme.TEXT_DIM, 14, "display")
+            if i < 9:                       # every section has its number key
+                theme.text(surf, str(i + 1), (r.right - 14, ty + 1), theme.TEXT_FAINT, 12, "mono", anchor="topright")
+            ui.add(r, partial(self.go, s.key), s.blurb + (f" ({i + 1})" if i < 9 else ""))
+            y += pitch
+        ui.button(surf, pygame.Rect(x, y + 14, 140, 34), "Back", self._back, "Back to the main menu (Esc)", size=13)
+        if y + 76 <= h:
+            theme.text(surf, "↑ ↓ or 1–9 move between sections", (x, y + 58), theme.TEXT_FAINT, 12)
 
         # the section, on a card
         px = x + RAIL_W + 28

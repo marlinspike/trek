@@ -95,6 +95,8 @@ The panels show what matters at a glance: warp, course, crew, hull, morale, and 
 | **S** | Settings (**D** opens Display, **V** Character voices) |
 | **K** | The Enterprise's next pass meets a Klingon battle cruiser, which decloaks and fights her |
 | **B** | Her next pass meets a Borg cube, which comes out of a transwarp conduit, trades a few salvos with her, adapts to her phasers and is destroyed |
-| **Esc** | Quit |
+| **Esc** | Quit: press it twice, so one Esc too many never ends the game (the **Quit** button needs only one click) |
+
+Each button shows its key at its right end.
 
 Left alone, the menu shows a pass that meets an enemy every few passes: the Borg cube first, a few seconds after the menu opens, then the Klingon and the Borg taking turns.

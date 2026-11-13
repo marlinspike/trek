@@ -100,7 +100,7 @@ def test_spock_reports_damage_and_directs_the_crews_when_asked(scene) -> None:  
     for _ in range(10):
         sc.update(0.05)
     said = [ln for ln in sc.log if ln.text.startswith("Spock: Captain,")]
-    assert said and "need repairs" in said[-1].text and "hull at 55%" in said[-1].text
+    assert said and "% damaged" in said[-1].text and "the hull is at 55%" in said[-1].text
     sc.run_console("spock, manage repairs")
     assert me.repairs_by == "spock"
     for _ in range(40):

@@ -12,6 +12,7 @@ voice (push-to-talk) and render (drawing). `ui/battle/state.py` declares the sta
 
 from __future__ import annotations
 
+import math
 import time
 from typing import TYPE_CHECKING, Callable
 
@@ -46,6 +47,9 @@ from .tactical import Snapshot, TacticalView
 from .tween import Tweens
 from .wheel import load_wheels
 from .widgets import UI
+
+FRAME_MARGIN = 3000.0       # world units round the farthest ship when the map frames the battle at the start
+FRAME_FARTHEST = 32000.0    # world units: the start never zooms out further than this from the centre to the edge
 
 if TYPE_CHECKING:
     from ..crew.counsel import Plan
@@ -134,16 +138,23 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
         self.bottom_rect = pygame.Rect(8, h - bottom, w - col - 24, bottom - 8)
 
     def _frame_all(self) -> None:
-        """Zoom so every ship we know about is on screen."""
-        pts = list(self.now.ships.values())
-        if not pts:
+        """At the start the map shows our ship and at least the nearest enemy: it opens at its usual scale and only
+        steps back as far as that enemy needs (never so far that the ships shrink to specks; the contacts list has
+        anyone beyond)."""
+        here = self.now.ships.get(self.cam.follow) if self.cam.follow is not None else None
+        if here is None:
             return
-        xs = [p[0] for p in pts]
-        ys = [p[1] for p in pts]
-        span_x = max(xs) - min(xs) + 6000
-        span_y = max(ys) - min(ys) + 6000
+        foes = [self.now.ships[c.id] for c in self.obs.contacts().values()
+                if c.id in self.now.ships and not (c.side is not None and c.side == self.obs.side)]
+        if not foes:
+            return
+        near = min(foes, key=lambda p: math.hypot(p[0] - here[0], p[1] - here[1]))
+        half_x = abs(near[0] - here[0]) + FRAME_MARGIN
+        half_y = abs(near[1] - here[1]) + FRAME_MARGIN
         r = self.map_rect
-        self.cam.zoom = max(self.cam.min_zoom, min(0.08, r.width / span_x, r.height / span_y))
+        need = min((r.width / 2 - 60) / half_x, (r.height / 2 - 60) / half_y)    # clear of the banners at the top
+        floor = min(r.width, r.height) / 2 / FRAME_FARTHEST
+        self.cam.zoom = max(self.cam.min_zoom, floor, min(self.cam.zoom, need))
 
     def display_range(self) -> float:
         """World units from the map centre to its nearer edge (Begin's display 'range')."""

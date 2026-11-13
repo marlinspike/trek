@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import math
 import time
-from functools import partial
+from functools import lru_cache, partial
 from typing import TYPE_CHECKING
 
 import pygame
@@ -16,12 +16,31 @@ from ...sim.ship import Kind
 from .. import comms_view, counsel_view, officer_view, order_marks, theme
 from ..hud import TABS_MIN_HEIGHT, Panel, TargetPanel, WeaponsPanel, diagram_legend, hull_diagram
 from ...session.news import ALERT_TONE
-from .common import TONE_COLOR, CONTROLS, RED_ALERT_FLOOR, RED_ALERT_PERIOD, RED_ALERT_PULSE, RED_ALERT_SETTLE, SPEEDS, ratio
+from .common import (TONE_COLOR, CONTROLS, RED_ALERT_FLOOR, RED_ALERT_PERIOD, RED_ALERT_PULSE, RED_ALERT_SETTLE, SPEEDS,
+                     LogLine, ratio)
 from .state import SceneState
 from .. import gfx
 
 if TYPE_CHECKING:
     from ..battle_scene import BattleScene
+
+LOG_SIZE = 12        # the log's lettering
+LOG_ROW = 16         # pixels from one row of the log to the next
+LOG_INDENT = 14      # a wrapped line's later rows sit this far in, so each line reads as one
+
+
+@lru_cache(maxsize=1024)
+def _log_rows(text: str, family: str, width: int) -> tuple[str, ...]:
+    """A log line broken into rows that fit `width`, the later rows `LOG_INDENT` narrower (cached: the log is
+    drawn every frame and its lines don't change). A line that fits is kept exactly as written."""
+    if theme.text_width(text, LOG_SIZE, family) <= width:
+        return (text,)
+    first = theme.wrap(text, LOG_SIZE, width, family)[0]
+    used = 0                                   # how much of `text` the first row took, spacing as written
+    for word in first.split(" "):
+        used = text.index(word, used) + len(word)
+    rest = theme.wrap(text[used:].strip(), LOG_SIZE, max(40, width - LOG_INDENT), family)
+    return (first, *(r for r in rest if r))
 
 
 class RenderMixin(SceneState):
@@ -172,16 +191,29 @@ class RenderMixin(SceneState):
         if theme.border() != theme.BORDER:      # after the speed or PAUSED, never on top of it
             theme.text(surf, "RED ALERT", (x, r.y + 12), theme.mix(theme.TEXT_DIM, theme.ALERT, 0.8), 11,
                        weight="semibold")
+            x += theme.text_width("RED ALERT", 11, weight="semibold") + 16
+        banner_top = r.y + 10
         if self.paused and not self.obs.outcome.over:
             # hard to miss: nothing moves, charges or reloads while paused
             msg = "PAUSED  ·  press Space to run"
             b = pygame.Rect(0, 0, theme.text_width(msg, 14, weight="semibold") + 32, 30)
-            b.midtop = (r.centerx, r.y + 10)
+            b.midtop = (r.centerx, banner_top)
+            if b.left < x:                  # a narrow map: below the status line rather than over it
+                banner_top = b.top = r.y + 34
+            if self.counsel_open:           # beside the counsel, or at the foot of the map if there's no room
+                c = counsel_view.counsel_rect(r)
+                if b.colliderect(c):
+                    b.left = c.right + 12
+                    if b.right > r.right - 8:
+                        b.midbottom = (r.centerx + c.width // 2, r.bottom - 34)
+                        b.left = max(b.left, c.right + 12)
+                        if b.right > r.right - 8:
+                            b.midbottom = (r.centerx, r.bottom - 34)
             theme.shadow(surf, b)
             gfx.draw.rect(surf, theme.BG_PANEL_HI, b, border_radius=4)
             gfx.draw.rect(surf, theme.CAUTION, b, 1, border_radius=4)
             theme.text(surf, msg, b.center, theme.CAUTION, 14, weight="semibold", anchor="center")
-        self._draw_conn_banner(surf, r.y + (46 if self.paused and not self.obs.outcome.over else 10))
+        self._draw_conn_banner(surf, banner_top + (36 if self.paused and not self.obs.outcome.over else 0))
         theme.text(surf, self.session.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
         theme.text(surf, f"range {self.display_range():,.0f}  ·  F1 controls", (r.right - 14, r.y + 28), theme.TEXT_FAINT,
                    11, anchor="topright")
@@ -314,16 +346,22 @@ class RenderMixin(SceneState):
         self._draw_completions(surf)
         self._draw_mic(surf)
 
-    def _log_column(self: BattleScene, surf: pygame.Surface, area: pygame.Rect, lines: list) -> None:
-        n = area.height // 16
-        end = len(lines) - self.log_scroll
-        for i, line in enumerate(lines[max(0, end - n):max(0, end)]):
-            size = 12
-            text = line.text[:160]
+    def _log_column(self: BattleScene, surf: pygame.Surface, area: pygame.Rect, lines: list[LogLine]) -> None:
+        """The newest lines that fit, each wrapped whole under a small indent rather than cut short: a briefing
+        or a long report reads to its end. Scrolling moves a line at a time."""
+        n = area.height // LOG_ROW
+        end = max(0, len(lines) - self.log_scroll)
+        rows: list[tuple[str, LogLine, int]] = []
+        for line in reversed(lines[:end]):
+            if len(rows) >= n:
+                break
             family = "mono" if line.mono else "ui"
-            while len(text) > 8 and theme.text_width(text, size, family) > area.width:
-                text = text[:-4] + "…"
-            theme.text(surf, text, (area.x, area.y + i * 16), line.color, size, family)
+            parts = _log_rows(line.text, family, area.width)
+            rows[:0] = [(t, line, 0 if i == 0 else LOG_INDENT) for i, t in enumerate(parts)]
+        rows = rows[-n:] if n > 0 else []          # the oldest line shown may lose its first rows, never the newest
+        for i, (text, line, indent) in enumerate(rows):
+            theme.text(surf, text, (area.x + indent, area.y + i * LOG_ROW), line.color, LOG_SIZE,
+                       "mono" if line.mono else "ui")
 
     def _column(self: BattleScene, surf: pygame.Surface) -> None:
         r = self.col_rect
