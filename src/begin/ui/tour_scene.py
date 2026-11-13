@@ -613,7 +613,7 @@ class TourScene:
             col = theme.TEXT_FAINT if rec.lost else theme.FRIEND
             theme.text(surf, title, (tx, box.y + 6), col, 15, "display", weight="medium")
             sub = f"{cls.name}{'  ·  ' + role if role else ''}{'  ·  ' + rec.captain if rec.captain else ''}"
-            theme.text(surf, sub, (tx, box.y + 26), theme.TEXT_DIM, 12)
+            theme.text(surf, theme.fit(sub, 12, box.right - 126 - tx), (tx, box.y + 26), theme.TEXT_DIM, 12)
             if rec.lost:
                 theme.text(surf, "Lost" + (f" at {self._stop_title(run, rec.lost_at)}" if rec.lost_at else ""),
                            (tx, box.y + 44), theme.ALERT, 12)
@@ -628,7 +628,7 @@ class TourScene:
             stats = f"crew {p.crew_now(self.content)}/{cls.crew}  ·  torps {p.torps_now(self.content)}/{cls.torps_carried}"
             stats += f"  ·  {dmg} system{'s' if dmg != 1 else ''} damaged" if dmg else "  ·  systems sound"
             if box.height > 70:
-                theme.text(surf, stats, (tx, box.y + 62), theme.TEXT_DIM, 12)
+                theme.text(surf, theme.fit(stats, 12, box.right - 10 - tx), (tx, box.y + 62), theme.TEXT_DIM, 12)
             if rec.role != "flagship":
                 label = "Recall" if rec.reserve else "Keep at base"
                 self.ui.button(surf, pygame.Rect(box.right - 116, box.y + 8, 106, 26), label,

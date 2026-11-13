@@ -865,22 +865,28 @@ class TacticalView:
         lw = theme.text_width(label, 12, weight="medium")
         if lx + lw > cam.rect.right - 6:                    # no room on the right: her name goes on the left
             lx = sx - (62 * k + 12 if art else 34 * k + 6) - lw
-        top = self._free_label_y(lx, sy - 8, lw, 14)
-        if art:
-            self._leader(surf, sx, sy, 62 * k, lx if lx > sx else lx + lw, top, color)
-        theme.label(surf, label, (lx, top), color, 12)
-        ly = top + 14
-        if is_player:
-            theme.text(surf, f"w{s.warp:.1f}", (lx, ly), theme.TEXT_DIM, 10, "mono")
-            ly += 12
-        elif s.alive:
-            st = obs.ally_order(s.id)
-            mission = st.summary(names or {}) if st is not None else ""
-            if mission:
-                theme.text(surf, mission, (lx, ly), theme.TEXT_FAINT if not selected else theme.TEXT_DIM, 10)
+        place = self._label_x(sx, sy, lx, lw)
+        if place is not None:
+            lx = place
+            top = self._free_label_y(lx, sy - 8, lw, 14)
+            if art:
+                self._leader(surf, sx, sy, 62 * k, lx if lx > sx else lx + lw, top, color)
+            theme.label(surf, label, (lx, top), color, 12)
+            ly = top + 14
+            room = int(cam.rect.right - 4 - lx)
+            if is_player:
+                theme.text(surf, f"w{s.warp:.1f}", (lx, ly), theme.TEXT_DIM, 10, "mono")
                 ly += 12
-        if s.alive and s.boarders > 0 and s.boarder_side != s.side:
-            theme.text(surf, f"boarders aboard: {s.boarders}", (lx, ly), theme.ALERT, 10, weight="medium")
+            elif s.alive:
+                st = obs.ally_order(s.id)
+                mission = st.summary(names or {}) if st is not None else ""
+                if mission:
+                    theme.text(surf, theme.fit(mission, 10, room), (lx, ly),
+                               theme.TEXT_FAINT if not selected else theme.TEXT_DIM, 10)
+                    ly += 12
+            if s.alive and s.boarders > 0 and s.boarder_side != s.side:
+                theme.text(surf, theme.fit(f"boarders aboard: {s.boarders}", 10, room, weight="medium"), (lx, ly),
+                           theme.ALERT, 10, weight="medium")
         if selected:
             b = 62 * k + 8
             for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
@@ -965,13 +971,15 @@ class TacticalView:
         lx = max(sx, self._label_reach.get(c.id, sx)) + rad + 8
         if lx + lw > cam.rect.right - 6:                    # no room on the right: the name goes on the left
             lx = sx - rad - 8 - lw
-        quiet = c.id in self._label_quiet
+        place = self._label_x(sx, sy, lx, lw)
+        quiet = c.id in self._label_quiet or place is None
+        lx = place if place is not None else lx
         top = sy - 8 if quiet else self._free_label_y(lx, sy - 8, lw, 26 if lost else 14)
         if art and not quiet:
             self._leader(surf, sx, sy, rad - 4, lx if lx > sx else lx + lw, top, color)
         if not quiet:
             theme.label(surf, label, (lx, top), color, 12)
-        if lost:
+        if lost and place is not None:
             theme.text(surf, f"lost {c.age:.0f}s", (lx, top + 14), theme.TEXT_FAINT, 10)
         if targeted:
             if self._lock[0] != c.id:
@@ -1011,8 +1019,10 @@ class TacticalView:
             size = round_size(o.yield_, cam.zoom)
             if overlay is not None:
                 draw_round(surf, overlay, sx, sy, p[2], col, style, size, self.clock, o.id, o.armed)
-            if o.count > 1:
-                theme.text(surf, f"×{o.count}", (sx + size * 2 + 4, sy - 6), theme.dim(col, 0.9), 10, "mono")
+            tag = f"×{o.count}"
+            if o.count > 1 and cam.rect.contains(pygame.Rect(int(sx + size * 2 + 4), int(sy - 6),
+                                                             theme.text_width(tag, 10, "mono"), 14)):
+                theme.text(surf, tag, (sx + size * 2 + 4, sy - 6), theme.dim(col, 0.9), 10, "mono")
         else:
             col = f.torpedo_color if f is not None else theme.PROBE
             gfx.draw.circle(surf, col, (int(sx), int(sy)), 4, 1)
@@ -1040,6 +1050,14 @@ class TacticalView:
             e = min(L, d + on)
             gfx.draw.line(surf, col, (a[0] + ux * d, a[1] + uy * d), (a[0] + ux * e, a[1] + uy * e))
             d = e + off
+
+    def _label_x(self, sx: float, sy: float, lx: float, lw: int) -> float | None:
+        """Where a ship's name goes across: kept whole inside the map when she is on it, and left out when she
+        is off it (half a name cut by the map's edge is never drawn)."""
+        area = self.cam.rect
+        if not area.collidepoint(sx, sy):
+            return None
+        return max(area.left + 4, min(lx, area.right - 4 - lw))
 
     def _free_label_y(self, x: float, y: float, w: int, h: int) -> float:
         """Push a label down until it clears the labels already drawn this frame, so close ships stay legible."""

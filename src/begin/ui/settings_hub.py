@@ -97,6 +97,7 @@ class SettingsHub:
         self.scroll = 0
         self._height = 0                         # how tall the section drew last frame (for scrolling)
         self._view = pygame.Rect(0, 0, 0, 0)     # where the section is drawn
+        self._right = 0                          # the card's inner right edge: nothing is drawn past it
         self.fields: dict[str, TextField] = {}
         self._drag: Callable[[int], None] | None = None
         self._sliders: list[tuple[pygame.Rect, Callable[[int], None]]] = []
@@ -237,7 +238,8 @@ class SettingsHub:
 
         # the section, on a card
         px = x + RAIL_W + 28
-        card = pygame.Rect(px, top, max(560, min(900, w - px - 60)), max(300, h - top - 40))
+        card = pygame.Rect(px, top, max(480, min(900, w - px - (60 if w >= 1280 else 28))), max(300, h - top - 40))
+        self._right = card.right - 28
         sec = next(s for s in self.sections if s.key == self.section)
         theme.panel(surf, card)
         theme.text(surf, sec.title, (card.x + 28, card.y + 20), theme.TEXT, 22, "display")
@@ -264,14 +266,21 @@ class SettingsHub:
         where = "config/officers.toml" if self.section == "officers" else "config/settings.json"
         if self.section == "files":
             where = str(config_dir())
-        theme.text(surf, f"Saved as you change it, in {where}", (card.x + 28, foot + 6), theme.TEXT_FAINT, 12)
+        note_w = theme.text_width(self.note, 12) + 24 if self.note else 0
+        theme.text(surf, theme.fit(f"Saved as you change it, in {where}", 12, card.width - 56 - note_w),
+                   (card.x + 28, foot + 6), theme.TEXT_FAINT, 12)
         if self.note:
-            theme.text(surf, self.note, (card.right - 28, foot + 6), theme.GOOD if self.note_ok else theme.CAUTION, 12,
-                       anchor="topright")
+            theme.text(surf, theme.fit(self.note, 12, card.width - 56), (card.right - 28, foot + 6),
+                       theme.GOOD if self.note_ok else theme.CAUTION, 12, anchor="topright")
 
     def _back(self) -> None:
         self._unfocus()
         self.close()
+
+    def _choice(self, surf: pygame.Surface, at: tuple[int, int], *args: Any, **kw: Any) -> int:
+        """A row of choices that stays inside the card (the buttons tighten up on a narrow window)."""
+        kw["room"] = self._right - at[0]
+        return self.ui.choice(surf, at, *args, **kw)
 
     def _label(self, surf: pygame.Surface, x: int, y: int, label: str) -> int:
         theme.text(surf, label, (x, y + 9), theme.TEXT_DIM, 15)
@@ -302,12 +311,16 @@ class SettingsHub:
     def _level(self, surf: pygame.Surface, x: int, y: int, value: float, set_: Callable[[float], None],
                enabled: bool = True) -> None:
         """A 0 to 100% slider with its value beside it; click or drag."""
-        r = pygame.Rect(x + 10, y + 8, 260, 18)
+        r = pygame.Rect(x + 10, y + 8, max(120, min(260, self._right - x - 190)), 18)
         hit = self.ui.slider(surf, r, value, enabled)
         theme.text(surf, f"{round(value * 100)}%", (r.right + 22, y + 8), theme.TEXT if enabled else theme.TEXT_FAINT,
                    14, "mono")
         if enabled:
             self._sliders.append((hit, lambda px: set_(round(max(0.0, min(1.0, (px - r.x) / r.width)) * 20) / 20)))
+
+    def _hear_x(self, cx: int) -> int:
+        """Where a "Hear it" button goes after a `_level` row: after the percentage, inside the card."""
+        return min(cx + 360, self._right - 72)
 
     # ------------------------------------------------------------ Display
 
@@ -322,7 +335,7 @@ class SettingsHub:
             self._save()
 
         cx = self._label(surf, x, y, "Renderer")
-        self.ui.choice(surf, (cx, y), [(r, RENDERER_INFO[r][0], RENDERER_INFO[r][1]) for r in RENDERERS], choice, pick)
+        self._choice(surf, (cx, y), [(r, RENDERER_INFO[r][0], RENDERER_INFO[r][1]) for r in RENDERERS], choice, pick)
         y = self._hint(surf, cx, y + 44, RENDERER_INFO[choice][1], width - LABEL_W) + 14
         gpu = pr.name == "gpu"
         cx = self._label(surf, x, y, "Light and glow")
@@ -383,19 +396,19 @@ class SettingsHub:
         y += ROW
         cx = self._label(surf, x, y, "Volume")
         self._level(surf, cx, y, float(st.volume), volume, not st.muted)
-        self.ui.button(surf, pygame.Rect(cx + 360, y + 2, 72, 30), "Hear it", partial(self._hear, "blast", 1.0),
+        self.ui.button(surf, pygame.Rect(self._hear_x(cx), y + 2, 72, 30), "Hear it", partial(self._hear, "blast", 1.0),
                        "A torpedo blast at this volume", enabled=not st.muted, size=12)
         y += ROW
         cx = self._label(surf, x, y, "Engine hum")
         self._level(surf, cx, y, float(st.hum), hum, not st.muted)
-        self.ui.button(surf, pygame.Rect(cx + 360, y + 2, 72, 30), "Hear it", partial(self._hear, "hum", -1.0),
+        self.ui.button(surf, pygame.Rect(self._hear_x(cx), y + 2, 72, 30), "Hear it", partial(self._hear, "hum", -1.0),
                        "The ship's hum under a battle, at this level (0: none)", enabled=not st.muted, size=12)
         y += ROW + 8
         y = self._heading(surf, x, y, "Which version", width)
         for name, label, sound in (("phaser", "Phaser", "phaser"), ("torpedo", "Torpedo launch", "launch")):
             cx = self._label(surf, x, y, label)
             current = str(st.sounds.get(name, "d"))
-            self.ui.choice(surf, (cx, y), [(v, v.upper(), f"Version {v.upper()}: click to hear it")
+            self._choice(surf, (cx, y), [(v, v.upper(), f"Version {v.upper()}: click to hear it")
                                           for v in "abcd"], current, partial(self._pick_sound, name, sound),
                            enabled=not st.muted, min_width=48)
             y += ROW
@@ -435,7 +448,7 @@ class SettingsHub:
 
         cx = self._label(surf, x, y, "Starting speed")
         now = float(st.speed) if float(st.speed) in SPEEDS else 1.0
-        self.ui.choice(surf, (cx, y), [(str(s), f"{s:g}x", "How fast battle time runs; + and - change it in battle")
+        self._choice(surf, (cx, y), [(str(s), f"{s:g}x", "How fast battle time runs; + and - change it in battle")
                                       for s in SPEEDS], str(now), speed, min_width=56)
         y = self._hint(surf, cx, y + 44, "The speed a battle starts at. A battle you leave keeps the speed you left "
                        "it at for the next one.", width - LABEL_W) + 10
@@ -473,7 +486,7 @@ class SettingsHub:
                          "nobody proposes anything unless asked",
                 "classic": "The console as Begin had it: acknowledged lines, no subtitles, wheel or proposals"}
         cx = self._label(surf, x, y, "Style")
-        self.ui.choice(surf, (cx, y), [(m, m.title(), tips[m]) for m in BRIDGE_STYLES], p.mode, style, min_width=96)
+        self._choice(surf, (cx, y), [(m, m.title(), tips[m]) for m in BRIDGE_STYLES], p.mode, style, min_width=96)
         adjusted = any(getattr(p, k) != v for k, v in BRIDGE_PRESETS[p.mode].items())
         y = self._hint(surf, cx, y + 44, tips[p.mode] + "." + (" You've adjusted it below; pick the style again to "
                                                                 "put it back." if adjusted else ""), width - LABEL_W) + 8
@@ -488,7 +501,7 @@ class SettingsHub:
                    ("proposals", "Proposals", PROPOSALS, "How often an officer proposes an order (Y makes it so)"))
         for key, label, options, tip in choices:
             cx = self._label(surf, x, y, label)
-            self.ui.choice(surf, (cx, y), [(o, o.title(), tip) for o in options], str(getattr(p, key)),
+            self._choice(surf, (cx, y), [(o, o.title(), tip) for o in options], str(getattr(p, key)),
                            partial(part, key), min_width=84)
             y += ROW
         for key, label, tip in switches:
@@ -537,20 +550,22 @@ class SettingsHub:
             theme.text(surf, ENGINE_TITLES[eng], (cx + 36, y + 8), theme.TEXT if on else theme.TEXT_DIM, 14,
                        weight="medium" if on else "regular")
             state = "Ready" if why is None else why
-            theme.text(surf, state, (cx + 250, y + 9), theme.GOOD if why is None else theme.TEXT_FAINT, 12)
+            below = theme.para(surf, state, (cx + 250, y + 9), self._right - cx - 250,     # a long reason wraps
+                               theme.GOOD if why is None else theme.TEXT_FAINT, 12, 17)
+            r.height = max(r.height, below - y + 4)
             if v.enabled:
                 self.ui.add(pygame.Rect(cx + 36, y, 200, 34), partial(store, engine=eng), f"Use {ENGINE_TITLES[eng]}")
             y = r.bottom + 2
         y += 10
         cx = self._label(surf, x, y, "Push to talk")
-        self.ui.choice(surf, (cx, y), [(k, k.title(), f"Hold {k.title()} to speak" + (" (Option on a Mac)"
+        self._choice(surf, (cx, y), [(k, k.title(), f"Hold {k.title()} to speak" + (" (Option on a Mac)"
                                                                                        if k == "right alt" else ""))
                                       for k in PTT_KEYS], v.key, lambda k: store(key=k), enabled=v.enabled, size=12,
                        min_width=52)
         y += ROW
         if v.engine == "whisper-local":
             cx = self._label(surf, x, y, "Whisper model")
-            ex = self.ui.choice(surf, (cx, y), [(m, m.removesuffix(".en"), "tiny is quickest, medium the most accurate")
+            ex = self._choice(surf, (cx, y), [(m, m.removesuffix(".en"), "tiny is quickest, medium the most accurate")
                                                for m in WHISPER_MODELS], v.model, lambda m: store(model=m),
                                 enabled=v.enabled, size=12, min_width=60)
             self.ui.button(surf, pygame.Rect(ex + 8, y, 110, 34), "Download", self._download,
@@ -622,7 +637,7 @@ class SettingsHub:
                      .get(p, f"{PROVIDER_TITLES[p]}'s cloud: the key comes from {models.KEY_ENV.get(p, '')}"))
                     for p in names]
         cx = self._label(surf, x, y, "Provider")
-        self.ui.choice(surf, (cx, y), options, provider, lambda p: self._llm_set("provider", p, character),
+        self._choice(surf, (cx, y), options, provider, lambda p: self._llm_set("provider", p, character),
                        size=12, min_width=60)
         y += ROW
         on = provider != "off"
@@ -684,7 +699,7 @@ class SettingsHub:
         think = llm.get("think")
         current = "default" if think is None else "on" if think is True else "off" if think is False else str(think)
         cx = self._label(surf, x, y, "Thinking")
-        self.ui.choice(surf, (cx, y), [("default", "Model's own", "Whatever the model does by default"),
+        self._choice(surf, (cx, y), [("default", "Model's own", "Whatever the model does by default"),
                                        ("on", "On", "Let a thinking model think first: better, slower"),
                                        ("off", "Off", "Answer at once: quicker, best for small local models")],
                        current if current in ("default", "on", "off") else "default",
@@ -693,7 +708,7 @@ class SettingsHub:
         y += ROW
         cx = self._label(surf, x, y, "Plain English")
         mode = str(llm.get("console") or "fallback")
-        self.ui.choice(surf, (cx, y), [("off", "Off", "The console takes only console commands"),
+        self._choice(surf, (cx, y), [("off", "Off", "The console takes only console commands"),
                                        ("fallback", "When needed", "The model reads only lines the console doesn't "
                                                                    "understand"),
                                        ("always", "Always", "Every line goes through the model")],
@@ -872,8 +887,7 @@ class SettingsHub:
                        theme.TEXT_DIM, 14, "mono")
             theme.text(surf, "yours" if yours else "not yet", (x + 170, y + 3), theme.GOOD if yours else theme.TEXT_FAINT,
                        12, "display")
-            theme.text(surf, what, (x + 260, y + 3), theme.TEXT_DIM, 13)
-            y += 34
+            y = max(y + 34, theme.para(surf, what, (x + 260, y + 3), width - 260, theme.TEXT_DIM, 13, 19) + 12)
         y += 10
         self.ui.button(surf, pygame.Rect(x, y, 220, 36), "Open config folder", self._open_folder,
                        "Show the folder in Finder, Explorer or your file manager", accent=theme.GOOD, size=13)
@@ -883,8 +897,7 @@ class SettingsHub:
             y = self._heading(surf, x, y, "Key macros", width)
             for k, line in sorted(keys.items()):
                 theme.text(surf, k, (x, y), theme.TEXT, 13, "mono")
-                theme.text(surf, line, (x + 80, y), theme.TEXT_DIM, 13, "mono")
-                y += 22
+                y = theme.para(surf, line, (x + 80, y), width - 80, theme.TEXT_DIM, 13, 20, "mono") + 2
         return self._hint(surf, x, y + 8, "Copy an .example file to start your own. API keys never go in this folder: "
                           "they come only from the environment.", width)
 

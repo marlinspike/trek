@@ -14,7 +14,7 @@ import pygame
 from ...console import reports
 from ...sim.ship import Kind
 from .. import comms_view, officer_view, order_marks, theme
-from ..hud import diagram_legend, hull_diagram
+from ..hud import TABS_MIN_HEIGHT, Panel, TargetPanel, WeaponsPanel, diagram_legend, hull_diagram
 from ...session.news import ALERT_TONE
 from .common import TONE_COLOR, CONTROLS, RED_ALERT_FLOOR, RED_ALERT_PERIOD, RED_ALERT_PULSE, RED_ALERT_SETTLE, SPEEDS, ratio
 from .state import SceneState
@@ -213,10 +213,11 @@ class RenderMixin(SceneState):
         """The latest Begin text display, in the map's lower-left corner."""
         if not self.printout:
             return
-        lines = self.printout[:30]
         size = 12
         lh = 15
+        lines = self.printout[:max(1, min(30, (self.map_rect.height - 54) // lh))]
         w = min(self.map_rect.width - 24, max(theme.text_width(t, size, "mono") for t in lines) + 24)
+        lines = [theme.fit(t, size, w - 24, "mono") for t in lines]       # a narrow map: long lines are cut, not run on
         h = lh * len(lines) + 30
         r = pygame.Rect(self.map_rect.x + 12, self.map_rect.bottom - h - 12, w, h)
         theme.shadow(surf, r)
@@ -233,6 +234,7 @@ class RenderMixin(SceneState):
 
     def _bottom(self: BattleScene, surf: pygame.Surface) -> None:
         r = self.bottom_rect
+        theme.frame(surf, r)
         gfx.draw.rect(surf, theme.BG_PANEL, r, border_radius=4)
         gfx.draw.rect(surf, theme.border(), r, 1, border_radius=4)
         # time controls
@@ -300,15 +302,36 @@ class RenderMixin(SceneState):
 
     def _column(self: BattleScene, surf: pygame.Surface) -> None:
         r = self.col_rect
-        fixed = sum(p.min_height for p in self.panels if p.weight == 0)
         gap = 8
-        free = r.height - fixed - gap * (len(self.panels) - 1)
-        wsum = sum(p.weight for p in self.panels) or 1.0
+        panels = self.column_panels(r.height, gap)
+        fixed = sum(p.min_height for p in panels if p.weight == 0)
+        free = r.height - fixed - gap * (len(panels) - 1)
+        wsum = sum(p.weight for p in panels) or 1.0
         y = r.y
-        for p in self.panels:
+        for p in panels:
             h = p.min_height if p.weight == 0 else max(p.min_height, int(free * p.weight / wsum))
             p.draw(surf, pygame.Rect(r.x, y, r.width, h), self)
             y += h + gap
+
+    def column_panels(self: BattleScene, height: int, gap: int = 8) -> list[Panel]:
+        """The panels down the right-hand column. A window too short for all of them moves Weapons, then Target,
+        into the tabs at the bottom, so every panel keeps the height its contents need."""
+        shown = list(self.panels)
+        folded: list[Panel] = []
+
+        def need() -> int:
+            tabs_h = max([TABS_MIN_HEIGHT] + [p.min_height for p in folded])
+            return sum(p.min_height if p is not self.side_tabs else tabs_h for p in shown) + gap * (len(shown) - 1)
+
+        for cls in (WeaponsPanel, TargetPanel):
+            if need() <= height:
+                break
+            p = next((q for q in shown if isinstance(q, cls)), None)
+            if p is not None:
+                shown.remove(p)
+                folded.insert(0, p)
+        self.side_tabs.fold(folded)
+        return shown
 
     def _modal(self: BattleScene, surf: pygame.Surface, w: int, h: int, title: str, accent: theme.Color = theme.FRIEND) -> pygame.Rect:
         shade = gfx.Surface(surf.get_size(), pygame.SRCALPHA)
