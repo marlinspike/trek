@@ -289,6 +289,10 @@ Start a line with an officer's name and talk:
 
 They answer from what your sensors know, never more. Now and then an officer at a station you are running proposes an order ("Torpedoes inbound, Captain. Evasive manoeuvres?"). **Y** makes it so and **N** belays it. With a language model connected ([Officers and language models](#topic-llm)), they answer in their own words and never repeat a line. Without one, they use lines written for them. Either way, `crew chatter off` quiets them, though an officer working a job still says what they are doing.
 
+### Counsel
+
+Press **O** (or type `counsel`) and all four lay out a way forward at once, each from their own station: Worf the sword, Spock geometry and the mind, La Forge keeping the ship alive to win, Seven knowing before striking. Each plan is two to four console lines built from the live fight, and the panel is rebuilt as the fight changes. Go all in on one (**1** to **4**) or click single steps from several; both can win. Name a goal (`counsel disable all their engines`) and each plans toward it. The battle slows while you read; press **Space** first to stop it entirely. See [Counsel from the bridge](#topic-counsel).
+
 ### Trust and rapport
 
 They remember. Thanks and taking their advice build **rapport**, and insults wear it down. Rapport colours how they speak to you. **Trust** grows as you fight together: for each proposal you accept, each battle won at their post, and each time they stand out in the debrief. Trusted officers propose even while you type. Veterans act on an urgent proposal themselves if you leave it unanswered. See [Command styles and trust](#topic-styles).
@@ -623,7 +627,7 @@ The side that chooses the range usually wins. Look at your weapons and at hers, 
 - **Torpedo-heavy ships** want to stand off inside their torpedo envelope and outside her phasers.
 - **Phaser-heavy ships** want to close fast and stay close, where every hit is strongest.
 
-Use `pursue <ship> warp <w>` to hold a chase and `elude <ship>` to keep away. The [Coach](#topic-coach) tells you which side of each envelope you are on. Remember that her motion moves the envelope: a ship charging at you shrinks your minimum range, and a ship running away stretches it.
+Use `pursue <ship> warp <w>` to hold a chase, `elude <ship>` to keep away, and `pursue <ship> at 9000` (or `elude <ship> at 9000`) to hold her at a chosen range: the helm closes when she is beyond it, opens when she is inside, and circles her in between. The [Coach](#topic-coach) tells you which side of each envelope you are on. Remember that her motion moves the envelope: a ship charging at you shrinks your minimum range, and a ship running away stretches it.
 
 #### Fight with your shields
 
@@ -672,6 +676,8 @@ You can't watch everything, and you don't have to:
 - Hand the helm to Spock while you fight the guns.
 - Hand Seven a job: disable their shields, take out her torpedoes, find that cloaked ship.
 - When the battle is too big, give an officer the conn and step in only where it matters.
+
+When you aren't sure, ask the whole bridge at once: **O** opens the [Counsel from the bridge](#topic-counsel), four plans from four perspectives, each a few console lines you can run whole or a step at a time.
 
 Your orders always come first. See [Your crew](#topic-your-crew).
 
@@ -744,6 +750,14 @@ Allies follow standing orders until you change them:
 - A crippled ally can be towed to a starbase with `tow`. Docked, she can't be hit and repairs twice as fast.
 
 See [Ally orders](#topic-tell).
+
+#### Missions
+
+A mission changes what winning means ([Missions](#topic-missions)):
+
+- **Rescue.** The hunter goes for the stricken ship first, so kill or draw her off, then close to 3,000 and lower only the shield that faces the wreck. Keep the armoured side to the enemy, or have a wingman screen you.
+- **Escort.** Get between the hunters and the freighter early; once she is under fire it is already late. Disabling a hunter's drives works as well as killing her.
+- **Intercept.** Don't chase her stern. Lay a course that meets her (Spock's "Cut her off" works one out), and leave her escorts for later unless they stand in the way. Disabling her engines ends it as surely as destroying her.
 
 ### More than one way to win
 
@@ -956,12 +970,14 @@ Begin's commands all work as written. On top of them:
 - [Named tactical orders](#topic-orders): a battle plan written before the fight or recorded during it, run with one word.
 - [Patrols](#topic-patrol) and [tours of duty](#topic-tour): a fresh mission each time, or battles linked into a campaign.
 - [Hailing enemy captains](#topic-hailing), who can be talked into surrendering or leaving.
+- [Missions](#topic-missions) with a goal beyond holding the field: rescue a stricken ship's people, get a convoy through, stop a runner.
+- [Counsel from the bridge](#topic-counsel): press **O** and each officer lays out a plan from the live fight, or toward a goal you name.
 - [Sharp drawing on Retina and 4K screens](#topic-display), with weapon light on the hulls.
 - [Orders in plain English](#topic-plain-english) with a language model; exact commands and short forms like `tor al` always run at once.
 - [Language models](#topic-llm), including an optional second model for character voices: richer Klingon, Romulan and other alien speech.
 - [Hull repairs](#topic-repair) and an engineer who can direct the crews, [crew morale](#topic-morale) and `address crew`, and [evasive manoeuvres](#topic-helm).
 - [Sound](#topic-sound) with a choice of phaser and torpedo sounds, or your own WAV files.
-- [The battle assessment](#topic-after-battle), with the officer who did the most.
+- [Starfleet's assessment](#topic-after-battle): the mission, lives, conduct and cost, a commendation when one is earned, and a line from each officer.
 - The [Coach](#topic-coach), which also runs a training session from the main menu before your first battle.
 
 #### Using this manual
@@ -1029,6 +1045,8 @@ The page format is described in [Writing help pages](#topic-writing-help).
 | **1**–**8** with the wheel open | Pick a slice |
 | **Y** / **N** | Make an officer's proposal so, or belay it |
 | **Ctrl+Y** while typing | Accept the urgent proposal shown above the console |
+| **O** | Open or close the counsel: each officer's plan from here. See [Counsel from the bridge](#topic-counsel). |
+| **1**–**4** with the counsel open | Go all in on that officer's plan |
 | **Tab** while typing | Finish a command, ship, officer or order name |
 | Hold **Right Alt** (Option on a Mac) | Speak an order; let go to send it. See [Speaking orders](#topic-voice-orders). |
 
@@ -1053,7 +1071,7 @@ The page format is described in [Writing help pages](#topic-writing-help).
 | **H** | Open this manual |
 | **F1** | Open this page |
 | **F2–F8, F10–F12**, **Ctrl+letter** | Run a key macro. See [Key macros](#topic-keys). |
-| **Esc** | Close the open window or text display, or open the battle menu |
+| **Esc** | Close the counsel, the open window or text display, or open the battle menu |
 
 #### How much the panels show
 
@@ -3548,10 +3566,10 @@ When the battle ends, **Starfleet's assessment** opens over the map: the battle 
 
 - **The headline** answers the mission when there was one ("Everyone aboard the Aldren is safe."), else who holds the field. Under it, how the battle went in the field.
 - **Mission**: how it ended, with the people saved on a rescue.
-- **Lives**: people rescued, our crew lost, and the enemy's crew spared (surrendered, taken prisoner, allowed to withdraw on terms) and lost.
+- **Lives**: people rescued, our crew lost (or "no one of ours lost"), and the enemy's crews spared (surrendered, taken prisoner, allowed to withdraw on terms) and lost.
 - **Conduct**: surrenders accepted, prisoners taken, truces kept, and any fire on a ship that had struck her colours.
 - **Cost**: the flagship's hull, torpedoes left, systems down, ships lost.
-- **Commendation**: at most one, and only for something specific. The **Karagite Order of Heroism** for bringing everyone off a stricken ship under fire; the **Palm Leaf of Axanar Peace Mission** for winning while sparing those who yielded; the **Grankite Order of Tactics** for a decisive victory against several ships that left your ship sound.
+- **Commendation**: at most one, and only for something specific. The **Karagite Order of Heroism** for bringing every soul off a stricken ship, most of them beamed across while the enemy was still fighting (people taken off after the battle don't count toward it); the **Palm Leaf of Axanar Peace Mission** for winning while sparing those who yielded; the **Grankite Order of Tactics** for a decisive victory against several ships that left your ship sound.
 - **The bridge**: a line from each officer whose work showed, in their own manner.
 - **What follows**: who escaped and what they will report, what the enemy will remember of your conduct, and on a tour, what the mission's result changes.
 
@@ -3569,7 +3587,7 @@ Then each side's losses, and a line for every ship: damage dealt and taken, phas
 
 The panel borders pulse red while your ship is at **red alert**: hit in the last few cycles, or with an enemy within 12,000. A two-tone whoop sounds three times when it starts. The borders pulse for a few seconds, then settle to a steady red edge for the rest of the fight. A ship below half hull sheds sparks: always yours, and an enemy's only once a scan has shown the damage, so the map never gives away what your sensors don't know.
 
-See also: [Bridge officers](#topic-crew), [Crew morale](#topic-morale), [Time, pause and quitting](#topic-time).
+See also: [Missions](#topic-missions), [Counsel from the bridge](#topic-counsel), [Bridge officers](#topic-crew), [Crew morale](#topic-morale), [Time, pause and quitting](#topic-time).
 
 <a id="topic-styles"></a>
 
@@ -3684,6 +3702,7 @@ Before the tour you choose the escorts that sail with the flagship. Each class c
 Between stops you are in the Ready Room, over the patrol chart.
 
 - **The briefing.** The officer who knows the threat best tells you what to expect, and what the enemy has learned about you so far. Fight with aimed fire and boarding parties and their captains grow wary; run your magazines low and they close in.
+- **Your officers' view.** Worf, Spock, La Forge and Seven each give two sentences on the next stop: the force to beat and where to strike, how that navy likes to fight and the geometry of any mission, how the squadron will arrive and whether a refit or a call to Starfleet is worth it, and what the sensors can and can't tell us yet. See [Counsel from the bridge](#topic-counsel).
 - **Your decision.** Some stops ask you to choose, for example whether to put in for a refit. A refit makes every ship good, but the enemy uses the time too.
 - **The squadron.** Each ship as Geordi expects her to arrive. On the way, crews repair systems and patch hulls (to 75% at most; a starbase does the rest), and a supply ship tops up the magazines. **Keep at base** leaves a ship behind to be refitted; she misses the next fight.
 - **Request reinforcements.** Starfleet sends a ship. Called from the Ready Room, she meets you at the stop, or partway into the fight if the trip is short. Each tour allows only a few calls.

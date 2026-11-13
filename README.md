@@ -12,7 +12,7 @@ You command a starship from a top-down tactical map and a Begin-style command co
 - aimed fire at a ship's systems, and boarding parties that take and keep enemy ships;
 - enemy captains you can hail, who are cowed or enraged by what you do to their allies, and who can be talked into surrendering or leaving;
 - a campaign: tours of duty that link battle after battle, with a squadron that carries its scars;
-- patrols: a random mission each time, from an ambush on two sides to a flagship behind her screen;
+- patrols: a random mission each time, from an ambush on two sides to a flagship behind her screen, a distress call, a convoy or a runner;
 - officers you shape yourself in a config file, from a new name to a Worf who cooks for the crew, and whose trust in you grows across battles;
 - an optional second language model just for the characters, for richer Klingon, Romulan and other alien speech;
 - crew morale and hull repairs;
@@ -29,7 +29,7 @@ Between stops you sit in the Ready Room over the patrol chart. The officer who k
 
 And the tour writes itself down. After each stop your bridge officers report on their stations, each captain in the squadron reports on their own ship, and your own entry is drafted for you to keep or rewrite. With a language model configured, the officers write in their own voices. The whole log is kept as Markdown you can edit, so a tour ends as a story of the patrol you actually flew. More on how it plays is under [Tours of duty](#tours-of-duty) below.
 
-![The Ready Room: Spock's briefing, the squadron as it will arrive, and the patrol chart behind](docs/screenshots/tour-ready.png)
+![The Ready Room: Worf's briefing, each officer's view of the next stop, and the squadron as Geordi expects it to arrive](docs/screenshots/tour-ready.png)
 
 ## Download and play
 
@@ -236,11 +236,19 @@ Nothing is required. If OpenGL 3.3 isn't there (an old driver, a remote desktop,
 
 The game synthesises all of its sound when it starts. You only hear what you can see, panned to where it happens on the map. **M** mutes, `sound 40` sets the volume, and `sound phaser a` or `sound torpedo b` picks one of four versions of each (rays and buzzes, pulses and thumps). To use your own, drop `phaser.wav` or `torpedo.wav` into `config/sounds/` and it replaces the game's.
 
+### Missions and counsel
+
+Some battles carry a mission beyond holding the field. On a **rescue** a crippled ship of ours drifts with people aboard and a failing reactor: close to transporter range and lower the one shield that faces her, while a hunter goes for her and the rest come for you. On an **escort** a freighter sails for a point and cannot fight. On an **intercept** a runner makes for the edge of the sector with her report, already out on the flank, and a stern chase loses her. The mission card on the map shows how it stands, and a failed mission changes what happens later in a tour.
+
+Press **O** for counsel and your four officers each lay out a way forward from the live fight, from their own station: Worf the sword, Spock geometry and the mind, La Forge keeping the ship alive to win, Seven knowing before striking. Every plan is a few console lines, rebuilt as the battle changes. Go all in on one with **1** to **4**, or click single steps from several; in testing over 210 battles both ways won. Aim it at a goal (`counsel disable all their engines`, `counsel kill all the borg cubes`) and each officer plans toward that instead. The battle slows while the panel is open, and **Space** stops it. Officers who want a ship fought at a range now say so with a hold-range order, `pursue gorkon at 9000`, which keeps her there instead of running off the map.
+
+![Counsel during a rescue: four officers' plans on the left, the mission card at the top](docs/screenshots/counsel.png)
+
 ### After the battle
 
-The assessment shows the score, your ship's record, every ship's damage and hits, and the officer who did the most for you.
+**Starfleet's assessment** reads the battle as Command will: the mission, the lives saved and lost on both sides, how you treated those who yielded, what it cost, a commendation when one is earned (the Karagite Order of Heroism, the Palm Leaf of Axanar Peace Mission, the Grankite Order of Tactics), and a line from each officer whose work showed. **Details** opens the full record: the score, your ship's record, every ship's damage and hits, and the officer who did the most for you.
 
-![The battle assessment](docs/screenshots/debrief.png)
+![Starfleet's assessment after a rescue: everyone safe, a decisive victory and the Grankite Order of Tactics](docs/screenshots/assessment.png)
 
 ### Patrols
 
@@ -250,7 +258,7 @@ The assessment shows the score, your ship's record, every ship's damage and hits
 
 ### Tours of duty
 
-**Tour of duty** on the main menu (or **T**) strings battles into a patrol. Pick your escorts within the tour's fleet budget, then fly stop after stop: every ship keeps her damage, casualties, empty torpedo racks and morale from one fight to the next, prizes you board join the squadron, and a ship you lose stays lost. Between stops you are in the Ready Room, over the patrol chart: an officer briefs you on the next stop (and on what the enemy has learned about how you fight), you make the stop's decision, such as a refit that costs time, and Geordi shows how each ship will arrive after the crews patch her up on the way. You can call Starfleet for reinforcements there or in battle with `request reinforcements`; the ship drops out of warp after a delay, with her ETA on the map. Starbase stops come in waves, with a lull between them for docking.
+**Tour of duty** on the main menu (or **T**) strings battles into a patrol. Pick your escorts within the tour's fleet budget, then fly stop after stop: every ship keeps her damage, casualties, empty torpedo racks and morale from one fight to the next, prizes you board join the squadron, and a ship you lose stays lost. Between stops you are in the Ready Room, over the patrol chart: an officer briefs you on the next stop (and on what the enemy has learned about how you fight), each officer gives their view of it in two sentences, you make the stop's decision, such as a refit that costs time, and Geordi shows how each ship will arrive after the crews patch her up on the way. You can call Starfleet for reinforcements there or in battle with `request reinforcements`; the ship drops out of warp after a delay, with her ETA on the map. Starbase stops come in waves, with a lull between them for docking.
 
 After each stop your officers write up their stations, each captain reports on their ship, and your own entry is drafted for you to rewrite. With a language model configured, the officers rewrite theirs in their own voices. The log is kept as Markdown in `config/tours/`, and you can edit your entries there too. Four tours ship with the game, and your own go in `config/tours/*.toml` (see [docs/EXTENDING.md](docs/EXTENDING.md#a-tour-of-duty)).
 

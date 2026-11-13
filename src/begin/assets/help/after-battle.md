@@ -4,16 +4,16 @@ category: Game
 order: 4
 aliases: after the battle, assessment, starfleet's assessment, commendation, commendations, debrief, battle assessment, score, standout, standout officer, review the field, red alert
 summary: Starfleet's assessment of the battle (mission, lives, conduct, cost, a commendation), and the full record behind it.
-see: crew, morale, time
+see: missions, counsel, crew, morale, time
 ---
 When the battle ends, **Starfleet's assessment** opens over the map: the battle as Starfleet Command will read it.
 
 - **The headline** answers the mission when there was one ("Everyone aboard the Aldren is safe."), else who holds the field. Under it, how the battle went in the field.
 - **Mission**: how it ended, with the people saved on a rescue.
-- **Lives**: people rescued, our crew lost, and the enemy's crew spared (surrendered, taken prisoner, allowed to withdraw on terms) and lost.
+- **Lives**: people rescued, our crew lost (or "no one of ours lost"), and the enemy's crews spared (surrendered, taken prisoner, allowed to withdraw on terms) and lost.
 - **Conduct**: surrenders accepted, prisoners taken, truces kept, and any fire on a ship that had struck her colours.
 - **Cost**: the flagship's hull, torpedoes left, systems down, ships lost.
-- **Commendation**: at most one, and only for something specific. The **Karagite Order of Heroism** for bringing everyone off a stricken ship under fire; the **Palm Leaf of Axanar Peace Mission** for winning while sparing those who yielded; the **Grankite Order of Tactics** for a decisive victory against several ships that left your ship sound.
+- **Commendation**: at most one, and only for something specific. The **Karagite Order of Heroism** for bringing every soul off a stricken ship, most of them beamed across while the enemy was still fighting (people taken off after the battle don't count toward it); the **Palm Leaf of Axanar Peace Mission** for winning while sparing those who yielded; the **Grankite Order of Tactics** for a decisive victory against several ships that left your ship sound.
 - **The bridge**: a line from each officer whose work showed, in their own manner.
 - **What follows**: who escaped and what they will report, what the enemy will remember of your conduct, and on a tour, what the mission's result changes.
 

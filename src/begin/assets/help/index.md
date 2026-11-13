@@ -29,12 +29,14 @@ Begin's commands all work as written. On top of them:
 - [[orders|Named tactical orders]]: a battle plan written before the fight or recorded during it, run with one word.
 - [[patrol|Patrols]] and [[tour|tours of duty]]: a fresh mission each time, or battles linked into a campaign.
 - [[hailing|Hailing enemy captains]], who can be talked into surrendering or leaving.
+- [[missions|Missions]] with a goal beyond holding the field: rescue a stricken ship's people, get a convoy through, stop a runner.
+- [[counsel|Counsel from the bridge]]: press **O** and each officer lays out a plan from the live fight, or toward a goal you name.
 - [[display|Sharp drawing on Retina and 4K screens]], with weapon light on the hulls.
 - [[plain-english|Orders in plain English]] with a language model; exact commands and short forms like `tor al` always run at once.
 - [[llm|Language models]], including an optional second model for character voices: richer Klingon, Romulan and other alien speech.
 - [[repair|Hull repairs]] and an engineer who can direct the crews, [[morale|crew morale]] and `address crew`, and [[helm|evasive manoeuvres]].
 - [[sound|Sound]] with a choice of phaser and torpedo sounds, or your own WAV files.
-- [[after-battle|The battle assessment]], with the officer who did the most.
+- [[after-battle|Starfleet's assessment]]: the mission, lives, conduct and cost, a commendation when one is earned, and a line from each officer.
 - The [[coach]], which also runs a training session from the main menu before your first battle.
 
 ## Using this manual
