@@ -64,6 +64,7 @@ class RenderMixin(SceneState):
         else:
             officer_view.draw_panel(surf, (self.map_rect.x + 14, self.map_rect.y + 36), acts, self.session.officer_name,
                                     obs.tick, obs.rules.ticks_per_cycle, self.subs.speaking)
+        self.counsel_box = counsel_box
         self._draw_printout(surf)
         self._draw_focus(surf)
         lift = self._proposal_height()
@@ -488,8 +489,11 @@ class RenderMixin(SceneState):
         lives = []
         if a.mission_kind == "rescue" and a.people:
             lives.append(f"{a.rescued} of {a.people} rescued")
-        lives.append(f"our crew lost {a.crew_lost}")
-        lives.append(f"enemy crew spared {a.enemy_spared}, lost {a.enemy_lost}")
+        lives.append(f"{a.crew_lost} of our crew lost" if a.crew_lost else "no one of ours lost")
+        theirs = [x for x in (f"{a.enemy_spared} spared" if a.enemy_spared else "",
+                              f"{a.enemy_lost} lost" if a.enemy_lost else "") if x]
+        if theirs:
+            lives.append("their crews: " + ", ".join(theirs))
         rows.append(("LIVES", "  ·  ".join(lives), theme.TEXT))
         rows.append(("CONDUCT", a.conduct, theme.ALERT if a.treachery else theme.TEXT))
         cost = [f"hull {a.hull:.0%}"]

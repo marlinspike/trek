@@ -268,8 +268,11 @@ class BridgeMixin(SceneState):
             theme.text(surf, keys, (r.right - 10, r.y + 5), theme.CAUTION, 11, weight="semibold", anchor="topright")
             return
         r = self.map_rect
+        cb = self.counsel_box if self.counsel_open else None
+        if cb is not None and r.right - cb.right > 300:        # the open part of the map, beside the counsel
+            r = pygame.Rect(cb.right + 8, r.y, r.right - cb.right - 8, r.height)
         text_w = theme.text_width(p.text, 15) + theme.text_width(p.name.upper(), 11, weight="semibold")
-        w = max(420, min(int(r.width * 0.86), text_w + 76))
+        w = min(r.width - 16, max(420, min(int(r.width * 0.86), text_w + 76)))
         box = pygame.Rect(0, 0, w, 56)
         box.midbottom = (r.centerx, r.bottom - 18)
         theme.shadow(surf, box, 6)
@@ -279,8 +282,8 @@ class BridgeMixin(SceneState):
         gfx.draw.rect(surf, theme.CAUTION if p.urgent else col, box, 1, border_radius=6)
         station_mark(surf, p.station, (box.x + 18, box.y + 18), 6, col)
         theme.text(surf, p.name.upper(), (box.x + 32, box.y + 11), col, 11, weight="semibold")
-        theme.text(surf, p.text, (box.x + 32 + theme.text_width(p.name.upper(), 11, weight="semibold") + 12, box.y + 8),
-                   theme.TEXT, 15)
+        tx = box.x + 32 + theme.text_width(p.name.upper(), 11, weight="semibold") + 12
+        theme.text(surf, theme.fit(p.text, 15, box.right - tx - 10), (tx, box.y + 8), theme.TEXT, 15)
         choices = [("Y", "make it so"), ("N", "belay")]
         x = box.x + 32
         for k, label in choices:

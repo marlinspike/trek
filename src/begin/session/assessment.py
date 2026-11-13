@@ -22,7 +22,7 @@ from ..sim.world import World
 GONE = (ShipStatus.DESTROYED, ShipStatus.DERELICT)
 
 KARAGITE = ("The Karagite Order of Heroism",
-            "for bringing every one of the {people} people off the {ward} under enemy fire.")
+            "for bringing the {people} people of the {ward} home, most of them beamed across under enemy fire.")
 AXANAR = ("The Palm Leaf of Axanar Peace Mission",
           "for carrying the field while sparing the {spared} enemy crew who yielded.")
 GRANKITE = ("The Grankite Order of Tactics",
@@ -76,7 +76,12 @@ class StarfleetAssessment:
             bits.append(f"{_n(self.withdrew, 'ship')} allowed to withdraw on terms")
         if not bits:
             return "No ship yielded; none was offered terms she accepted."
-        return "; ".join(bits).capitalize() + ". Every truce was kept."
+        return _cap("; ".join(bits)) + ". Every truce was kept."
+
+
+def _cap(text: str) -> str:
+    """First letter up, the rest as written (str.capitalize would turn "the Gr'oth" into "The gr'oth")."""
+    return text[:1].upper() + text[1:]
 
 
 def _n(k: int, word: str) -> str:
@@ -161,8 +166,9 @@ def build(world: World, side: int, flagship: int | None, start: Assessment, deed
         headline = "The engagement was broken off."
     # one commendation at most, for something specific
     comm = None
+    under_fire = m.rescued - m.after_battle if m is not None else 0
     if m is not None and m.kind == "rescue" and m.state == "done" and people and rescued >= people and \
-            any(h for h in m.hunter_ids) and outcome != "lost":
+            under_fire * 2 >= people and any(h for h in m.hunter_ids) and outcome != "lost":
         ward = w.ships.get(m.ward_id).name if m.ward_id in w.ships else "stricken ship"  # type: ignore[union-attr]
         comm = Commendation(KARAGITE[0], KARAGITE[1].format(people=people, ward=ward))
     elif outcome == "won" and not broken and (len(surrendered) + len(withdrew)) >= 1 and spared >= 20:
@@ -216,7 +222,7 @@ def _bridge(w: World, side: int, me: Ship | None, names: dict[str, str], deeds: 
         elif st.kills or st.torpedo_hits:
             hits = f"{st.torpedo_hits} of {st.torpedoes_fired} torpedoes found their mark" if st.torpedoes_fired else \
                 f"{st.phaser_hits} phaser hits"
-            out.append((t, f"{_n(st.kills, 'kill').capitalize() if st.kills else 'No kills'}, and {hits}. "
+            out.append((t, f"{_cap(_n(st.kills, 'kill')) if st.kills else 'No kills'}, and {hits}. "
                            + ("A good day." if won else "It was not enough.")))
     h = names.get("helm")
     took = [x for x in hails if x.ship_id == me.id and x.outcome in ("surrender", "withdraw")]
@@ -247,7 +253,7 @@ def _bridge(w: World, side: int, me: Ship | None, names: dict[str, str], deeds: 
             what.append(f"{_n(len(done), 'objective')} achieved")
         if built:
             what.append(f"{_n(len(built), 'device')} built in the field")
-        out.append((s, f"{' and '.join(what).capitalize()}. Precision is its own reward."))
+        out.append((s, f"{_cap(' and '.join(what))}. Precision is its own reward."))
     if crew_lost and len(out) < 4:
         out.append(("The Doctor", f"{crew_lost} of our crew will not come home. I would like it noted."))
     return out
@@ -256,7 +262,7 @@ def _bridge(w: World, side: int, me: Ship | None, names: dict[str, str], deeds: 
 def _follows(escaped: list[str], broken: list[str], yielded: int, m: object, tour: bool, enemy: str) -> list[str]:
     out = []
     if escaped:
-        out.append(f"{_list(escaped).capitalize()} got away. {enemy[0].upper() + enemy[1:]} will hear what we can do.")
+        out.append(f"{_cap(_list(escaped))} got away. {enemy[0].upper() + enemy[1:]} will hear what we can do.")
     if broken:
         out.append("Their captains will remember that we fired on a ship that had yielded: expect fewer to yield again.")
     elif yielded:

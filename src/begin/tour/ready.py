@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..content.schema import ShipClass
-from .log import _force
+from .log import NUMBERS, _force
 from .run import TourRun
 
 READY_ORDER = ("worf", "spock", "geordi", "seven")
@@ -24,6 +24,10 @@ class ReadyView:
     officer: str                 # spock | worf | geordi | seven
     station: str                 # tactical | helm | engineering | science
     text: str                    # two sentences, in their manner
+
+
+def _count(n: int) -> str:
+    return NUMBERS[n] if n < len(NUMBERS) else str(n)
 
 
 def _weight(cls: ShipClass) -> float:
@@ -53,9 +57,11 @@ def ready_counsel(run: TourRun) -> list[ReadyView]:
     ranked = sorted(foes, key=_weight, reverse=True)
     biggest = ranked[0] if ranked else None
     second = _weight(ranked[1]) if len(ranked) > 1 else 0.0
+    one_navy = len(navy) == 1 and len(factions) == 1 and len(foes) > 1
     kinds: dict[str, int] = {}
     for c in foes:
-        k = f"{navy[c.faction].name} {c.name.lower()}" if c.faction in navy else c.name.lower()
+        k = (c.name.lower() if one_navy or c.faction not in navy
+             else f"{navy[c.faction].name} {c.name.lower()}")
         kinds[k] = kinds.get(k, 0) + 1
     m = stop.mission
     out: list[ReadyView] = []
@@ -129,15 +135,23 @@ def ready_counsel(run: TourRun) -> list[ReadyView]:
             g = f"We should arrive at about {round(flag.hull * 100)}% hull."
         full = content.classes[flag.class_id].torps_carried
         torps = flag.torps_now(content)
-        refit = next((c for c in stop.choices if c.refit), None)
-        if refit is not None and (flag.hull < 0.85 or (0 < full < 1000 and torps < full * 0.5)):
+        refit = next((c for c in stop.choices if c.refit and not c.flagship), None)   # repairs, not a story refit
+        lean = [r for r in squadron if r is not flag and 0 < content.classes[r.class_id].torps_carried < 1000]
+        short = min(lean, key=lambda r: r.torps_now(content), default=None)
+        worn = flag.hull < 0.85 or (0 < full < 1000 and torps < full * 0.5) or any(r.hull < 0.6 for r in squadron)
+        if refit is not None and worn:
             g += f" If '{refit.label}' is on the table, I'd take it."
+        elif refit is not None:
+            g += f" We don't need '{refit.label}': I'd keep the time rather than spend it in dock."
         elif 0 < full < 1000 and torps < full * 0.35:
             g += f" We are down to {torps} torpedoes; make every one count."
         elif run.state.calls_left > 0 and odds >= 1.3:
             late = max(0.0, stop.eta - run.transit_cycles())
             g += (" Call Starfleet now and their ship meets us there"
                   + (f", about {late:.0f} cycles in." if late > 0 else ".") )
+        elif short is not None:
+            g += (f" The {short.name} carries only {short.torps_now(content)} torpedoes; she will run dry long before "
+                  "we do, so her salvos are for finishing a ship, not long shots.")
         else:
             g += " Engineering is ready for whatever you need."
     out.append(ReadyView("geordi", "engineering", g))
@@ -152,7 +166,8 @@ def ready_counsel(run: TourRun) -> list[ReadyView]:
     elif waves:
         v = "Long-range sensors show more ships behind the first group. Their number is not yet clear."
     elif foes:
-        v = f"Sensors read {_force(kinds)} at the rendezvous."
+        v = (f"Sensors read {_count(len(foes))} {next(iter(navy.values())).name} ships at the rendezvous: "
+             f"{_force(kinds)}." if one_navy else f"Sensors read {_force(kinds)} at the rendezvous.")
     else:
         v = "Sensors read nothing at the rendezvous."
     if borg:

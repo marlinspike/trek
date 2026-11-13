@@ -331,7 +331,7 @@ def _goal_moves(s: Situation, g: Goal) -> Iterator[Move]:
                        f"She is at {_rng(e.range)}, inside the band where our torpedoes arm and burst cleanly. Evasive "
                        "keeps us there while dodging.", [Step("evasive", "hold and dodge")], 0.8, {"helm": 1.0}, "dodge")
         yield Move("goal-tubes", "Keep the tubes loaded and close in",
-                   "Seven's work is torpedoes. I'll keep the crews on the tubes so every salvo is ready when she wants it.",
+                   "Disabling shots are torpedoes. I'll keep the crews on the tubes so every salvo is ready when Seven calls for it.",
                    [Step("repair tubes", "tubes first")], 0.75, {"engineering": 1.0}, "repairs")
         return
     if g.kind == "capture":
@@ -862,6 +862,13 @@ def plan_for(station: str, all_moves: list[Move], taken: set[str] | None = None)
         lead = next((m for m in open_ if not taken or m.key not in taken), open_[0] if open_ else None)
     if lead is None:
         return None, []
+    return lead, follow_on(station, lead, ranked)
+
+
+def follow_on(station: str, lead: Move, all_moves: list[Move]) -> list[Move]:
+    """The moves that follow a lead in one station's plan: the best of the rest that claim nothing the lead (or an
+    earlier follow-on) already claims, up to MAX_STEPS steps."""
+    ranked = sorted(all_moves, key=lambda m: -m.value(station))
     chosen = [lead]
     groups = _groups(lead)
     n = len(lead.steps)
@@ -878,7 +885,7 @@ def plan_for(station: str, all_moves: list[Move], taken: set[str] | None = None)
         chosen.append(m)
         n += len(m.steps)
         groups |= _groups(m)
-    return lead, chosen[1:]
+    return chosen[1:]
 
 
 _HELM_VERBS = ("pursue ", "elude ", "helm ", "stop", "warp ")
@@ -918,19 +925,45 @@ def counsel(s: Situation, officers: Mapping[str, object], check: Check | None = 
         all_moves = kept
     out: list[Plan] = []
     taken: set[str] = set()
+    leads: dict[str, Move] = {}
+    for station in STATIONS:              # first each officer's own lead, four different ways forward
+        if officers.get(station) is None:
+            continue
+        lead, _ = plan_for(station, all_moves, taken)
+        if lead is not None:
+            leads[station] = lead
+            taken.add(lead.key)
+    # what follows each lead, leaving another officer's lead to that officer, and a move two plans would both follow
+    # with to the officer whose own perspective it is: four plans, not one plan four times
+    lead_lines = {st: {x.line for x in m.steps} for st, m in leads.items()}
+    lead_keys = {m.key for m in leads.values()}
+
+    def free(station: str) -> list[Move]:
+        theirs = set().union(*(v for st, v in lead_lines.items() if st != station))
+        return [m for m in all_moves if m.key not in lead_keys and not any(x.line in theirs for x in m.steps)]
+
+    first = {st: follow_on(st, lead, free(st)) for st, lead in leads.items()}
+    owner: dict[str, str] = {}
+    for st, rest in first.items():
+        for m in rest:
+            cur = owner.get(m.key)
+            if cur is None or m.leans.get(st, 0.0) > next(x for x in first[cur] if x.key == m.key).leans.get(cur, 0.0):
+                owner[m.key] = st
     for station in STATIONS:
         o = officers.get(station)
-        if o is None:
+        lead = leads.get(station)
+        if o is None or lead is None:
             continue
-        lead, rest = plan_for(station, all_moves, taken)
-        if lead is None:
-            continue
-        taken.add(lead.key)
+        mine = [m for m in free(station) if owner.get(m.key, station) == station]
+        rest = follow_on(station, lead, mine)
+        claimed = {x.line for st, r in first.items() if st != station for m in r if owner.get(m.key) == st
+                   for x in m.steps}
+        rest = [m for m in rest if not any(x.line in claimed for x in m.steps)]
         steps: list[Step] = []
         for m in (lead, *rest):
-            for st in m.steps:
-                if len(steps) < MAX_STEPS and st.line not in {x.line for x in steps}:
-                    steps.append(st)
+            for step in m.steps:
+                if len(steps) < MAX_STEPS and step.line not in {x.line for x in steps}:
+                    steps.append(step)
         reason = lead.reason
         if rest:
             reason += " Then: " + "; ".join(m.title[0].lower() + m.title[1:] for m in rest[:2]) + "."

@@ -562,7 +562,7 @@ class TourScene:
         sq = pygame.Rect(w - min(560, int(w * 0.36)) - 40, 100, min(560, int(w * 0.36)), h - 200)
         self._squadron_panel(surf, run, sq)
         # between them, each officer's view of the stop
-        mid = pygame.Rect(br.right + 16, 100, sq.x - br.right - 32, h - 200)
+        mid = pygame.Rect(br.right + 16, 100, min(560, sq.x - br.right - 32), h - 200)   # lines a reader can follow
         if mid.width >= 250:
             self._officers_view(surf, run, mid)
         # the buttons along the bottom
@@ -670,7 +670,9 @@ class TourScene:
             theme.text(surf, f"hull {rec.hull:.0%}" + (f" → {p.hull:.0%}" if abs(p.hull - rec.hull) > 0.005 else ""),
                        (tx + bw + 8, box.y + 44), theme.TEXT, 12, "mono")
             dmg = len(p.damage)
-            stats = f"crew {p.crew_now(self.content)}/{cls.crew}  ·  torps {p.torps_now(self.content)}/{cls.torps_carried}"
+            torps = (f"torps {p.torps_now(self.content)}/{cls.torps_carried}" if cls.torps_carried < 1000
+                     else "torps unlimited")
+            stats = f"crew {p.crew_now(self.content)}/{cls.crew}  ·  {torps}"
             stats += f"  ·  {dmg} system{'s' if dmg != 1 else ''} damaged" if dmg else "  ·  systems sound"
             if box.height > 70:
                 theme.text(surf, theme.fit(stats, 12, box.right - 10 - tx), (tx, box.y + 62), theme.TEXT_DIM, 12)

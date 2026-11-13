@@ -101,6 +101,7 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
         self.wheel: object | None = None    # the open command wheel, if any
         self.counsel_open: bool = False     # [E] the officers' plans over the map (O, `counsel`)
         self.counsel_ran: dict[str, float] = {}   # steps run from the panel: line -> when, for a moment's tick
+        self.counsel_box: pygame.Rect | None = None   # where the panel was last drawn: other cards keep clear of it
         self._wheel_t: float = 0.0
         self.completer: Completer = Completer()
         self._preview_key: object = None

@@ -52,9 +52,9 @@ def draw_counsel(surf: pygame.Surface, area: pygame.Rect, plans: list[Plan], ui:
         blocks = _blocks(plans, inner, most)
         heights = [22 + 20 + len(r) * 17 + 6 + len(rows) * 26 + 10 for _, r, rows in blocks]
         h = head_h + sum(heights) + max(0, len(blocks) - 1) * 8 + foot_h
-        if h <= area.height or most <= 1:
+        if h <= area.height or most <= 0:
             break
-        most -= 1
+        most -= 1                 # at 0 the reasons go to each title's tooltip: all four plans stay in view
     if not blocks:
         h = head_h + 44 + foot_h
     box = pygame.Rect(area.x, area.y, area.width, min(area.height, h))
@@ -131,6 +131,8 @@ def _draw(surf: pygame.Surface, box: pygame.Rect, blocks: list[tuple[Plan, list[
                   size=11)
         theme.text(surf, theme.fit(p.title, 15, inner - 20, weight="medium"), (card.x + 12, card.y + 24), theme.TEXT,
                    15, weight="medium")
+        if len(reason) == 0 or (reason and reason[-1].endswith("…")):
+            ui.add(pygame.Rect(card.x + 8, card.y + 22, card.width - 100, 22), lambda: None, p.reason)
         ry = card.y + 46
         for ln in reason:
             theme.text(surf, ln, (card.x + 12, ry), theme.TEXT_DIM, 12)
@@ -184,7 +186,7 @@ def mission_lines(m: MissionView) -> tuple[str, str, theme.Color, float | None]:
         elif m.ward_id is None:
             hint, col = "", theme.TEXT_DIM
         else:
-            hint, col = f"Get within 3,000 of her ({m.ward_range:,.0f} now) and lower the shield facing her.", theme.TEXT_DIM
+            hint, col = f"Close to 3,000 of her ({m.ward_range:,.0f} now), then lower the shield facing her.", theme.TEXT_DIM
         if m.time_left is not None and m.time_left < 30:
             col = theme.ALERT
         return stand, hint, col, m.saved / m.people if m.people else None
@@ -208,7 +210,8 @@ def draw_mission(surf: pygame.Surface, top_right: tuple[int, int], m: MissionVie
     pad = 12
     inner = MISSION_W - 2 * pad
     stand, hint, col, frac = mission_lines(m)
-    h = 24 + 22 + 18 + (12 if frac is not None else 0) + (18 if hint else 0) + 8
+    hint_lines = theme.clip_lines(theme.wrap(hint, 12, inner), 2, 12, inner) if hint else []
+    h = 24 + 22 + 18 + (12 if frac is not None else 0) + 17 * len(hint_lines) + 8
     box = pygame.Rect(top_right[0] - MISSION_W, top_right[1], MISSION_W, h)
     theme.shadow(surf, box, 6)
     gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=6)
@@ -228,8 +231,9 @@ def draw_mission(surf: pygame.Surface, top_right: tuple[int, int], m: MissionVie
     if frac is not None:
         _bar(surf, pygame.Rect(box.x + pad, y, inner, 6), frac, theme.GOOD if m.state != "failed" else theme.ALERT)
         y += 12
-    if hint:
-        theme.text(surf, theme.fit(hint, 12, inner), (box.x + pad, y), col, 12)
+    for ln in hint_lines:
+        theme.text(surf, ln, (box.x + pad, y), col, 12)
+        y += 17
     return box
 
 
@@ -249,7 +253,9 @@ def draw_marks(surf: pygame.Surface, cam: Camera, m: MissionView, poses: dict[in
         x, y = cam.to_screen(poses[sid][0], poses[sid][1])
         r = 17 + 2 * math.sin(now * math.tau / 2.0)
         gfx.draw.circle(surf, theme.dim(col, 0.8), (int(x), int(y)), int(r), 1)
-        theme.text(surf, word, (x, y - r - 14), col, 10, weight="semibold", anchor="midtop")
+        half = theme.text_width(word, 10, weight="semibold") / 2 + 4
+        lx = min(max(x, clip.left + half), clip.right - half)       # the word stays readable at the map's edge
+        theme.text(surf, word, (lx, max(clip.top + 2, y - r - 14)), col, 10, weight="semibold", anchor="midtop")
     if m.kind == "escort" and m.ward_id is not None:
         tx, ty = cam.to_screen(*m.to)
         if clip.collidepoint(tx, ty):

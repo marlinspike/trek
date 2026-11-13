@@ -109,6 +109,7 @@ class Mission:
     carriers: dict[int, int] = field(default_factory=dict)   # rescue: ship id -> people aboard her
     fraction: dict[int, float] = field(default_factory=dict)  # rescue: part-people carried between steps
     told: set[str] = field(default_factory=set)               # one-time messages already given
+    after_battle: int = 0                    # rescue: people taken off once the enemy was gone (not under fire)
     runner_warp: float | None = None         # intercept: the best warp the runner can make (she carries the news, not a fight)
 
     @property
@@ -356,6 +357,7 @@ def battle_over(world: World) -> None:
             n = m.aboard
             m.aboard = 0
             m.rescued += n
+            m.after_battle = n
             _close_rescue(world, m, f"With the enemy gone, the last {n} were taken off.")
         elif m.aboard > 0:
             m.lost += m.aboard
