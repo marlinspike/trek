@@ -1101,7 +1101,7 @@ The panels show what matters at a glance: warp, course, crew, hull, morale, and 
 | **B** | Her next pass meets a Borg cube, which comes out of a transwarp conduit, trades a few salvos with her, adapts to her phasers and is destroyed |
 | **Esc** | Quit |
 
-Left alone, the menu shows a pass that meets an enemy every few passes, the Klingon and the Borg taking turns.
+Left alone, the menu shows a pass that meets an enemy every few passes: the Borg cube first, a few seconds after the menu opens, then the Klingon and the Borg taking turns.
 
 See also: [The command console](#topic-console), [Key macros](#topic-keys).
 

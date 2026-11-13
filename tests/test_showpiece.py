@@ -118,6 +118,7 @@ def test_a_klingon_decloaks_and_is_destroyed_on_a_distant_pass() -> None:
     surf = _display()
     f = Flybys(seed=4)
     f.encounter_odds = 1.0
+    f.next_foe = "klingon"
     seen, boomed, scale = False, False, 1.0
     absorbed, wide, beams = False, False, False
     for _ in range(20 * 400):
@@ -138,7 +139,7 @@ def test_a_klingon_decloaks_and_is_destroyed_on_a_distant_pass() -> None:
     assert scale <= 0.42 * 0.9 + 1e-9                          # only ever on a distant pass
 
 
-def test_the_first_klingon_comes_early_and_k_summons_another() -> None:
+def test_the_first_enemy_comes_early_and_k_summons_another() -> None:
     surf = _display()
     f = Flybys()
     t, first = 0.0, None
@@ -150,7 +151,7 @@ def test_the_first_klingon_comes_early_and_k_summons_another() -> None:
     assert first is not None and first < 20                     # seen within seconds of the menu opening
     while f.encounter is not None:
         f.update(0.05, surf.get_size())
-    f.summon()                                                   # her next pass meets another
+    f.summon()                                                   # K: her next pass meets a Klingon
     t = 0.0
     while t < 90 and f.encounter is None:
         f.update(0.05, surf.get_size())
@@ -212,7 +213,7 @@ def test_a_borg_cube_comes_out_trades_salvos_and_is_destroyed() -> None:
     assert {"hive", "cutter", "phaser", "launch", "collapse", "breakup"} <= set(played)
 
 
-def test_the_klingon_and_the_borg_take_turns() -> None:
+def test_the_borg_come_first_then_take_turns_with_the_klingon() -> None:
     from begin.ui.cube_battle import CubeBattle
 
     surf = _display()
@@ -226,7 +227,7 @@ def test_the_klingon_and_the_borg_take_turns() -> None:
         if f.encounter is not None and f.encounter is not last:
             last = f.encounter
             seen.append("borg" if isinstance(f.encounter, CubeBattle) else "klingon")
-    assert seen == ["klingon", "borg", "klingon"]
+    assert seen == ["borg", "klingon", "borg"]                 # the cube first, then turn about
 
 
 def test_the_cube_fits_a_small_window() -> None:
