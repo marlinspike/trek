@@ -3,7 +3,9 @@
 # Runs only when a version tag such as v0.2.0 is pushed, or when started by hand
 # (Actions > Build downloads > Run workflow, giving a version): the builds are attached
 # to a GitHub Release of that name, and a hand-started run creates the tag on the commit
-# it built. Running it again for a release that already exists replaces its downloads.
+# it built. Running it again for a release that already exists replaces its downloads;
+# starting it by hand with "replace" ticked instead deletes that release and its tag once
+# the new builds are ready, and publishes it fresh from the commit it built.
 # It never runs on pull requests or pushes to main, and it doesn't run the test suite
 # (tests are run locally before pushing).
 name: Build downloads
@@ -16,6 +18,10 @@ on:
       version:
         description: "Release version, such as v0.2.0"
         required: true
+      replace:
+        description: "Delete this version's existing release and tag, and publish it fresh from this commit"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -105,7 +111,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+          REPLACE: ${{ github.event_name == 'workflow_dispatch' && inputs.replace || false }}
         run: |
+          if [ "$REPLACE" = "true" ] && gh release view "$VERSION" >/dev/null 2>&1; then
+            # only now, with every new download built, take the old release and its tag away
+            gh release delete "$VERSION" --cleanup-tag --yes
+            git push origin --delete "refs/tags/$VERSION" 2>/dev/null || true
+          fi
           if gh release view "$VERSION" >/dev/null 2>&1; then
             # rebuilding a release that already exists: replace its downloads and notes
             gh release upload "$VERSION" out/* --clobber
