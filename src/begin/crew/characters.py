@@ -47,6 +47,7 @@ import tomllib
 from ..content.loader import DATA_DIR, _read
 
 STATIONS = ("helm", "tactical", "engineering", "science")
+POSTS = STATIONS + ("sickbay",)     # sickbay: the Doctor runs no bridge station, but he is aboard [E]
 
 
 @dataclass(frozen=True, eq=False)  # compared and hashed by identity: one profile per officer
@@ -66,6 +67,7 @@ class OfficerProfile:
     background: str = ""           # who they are beyond the station, for the language model [E]
     interests: tuple[str, ...] = ()   # what they care about off duty; shows in quiet moments [E]
     quirks: tuple[str, ...] = ()      # habits of speech or manner [E]
+    covers: tuple[str, ...] = ()      # stations they take over when the officer who runs it is away [E]
 
     def brief(self) -> str:
         """Who they are, for a language model: the persona and whatever the player added to it."""
@@ -177,7 +179,7 @@ def load_officers(data_dir: Path = DATA_DIR, traits_file: Path | None = None) ->
     out: dict[str, OfficerProfile] = {}
     for o in raw:
         station = o["station"]
-        if station not in STATIONS:
+        if station not in POSTS:
             raise ValueError(f"Officer {o['id']}: unknown station '{station}'.")
         m = mine.get(o["id"], {})
         name = m.get("name") or o["name"]
@@ -199,6 +201,7 @@ def load_officers(data_dir: Path = DATA_DIR, traits_file: Path | None = None) ->
             background=m.get("background", _text(o.get("background", ""))),
             interests=m.get("interests", _words(o.get("interests", []))),
             quirks=m.get("quirks", _words(o.get("quirks", []))),
+            covers=tuple(c for c in o.get("covers", []) if c in STATIONS),
         )
     return out
 
@@ -254,6 +257,6 @@ class Relationships:
 
 
 __all__ = [
-    "OfficerProfile", "Relationship", "Relationships", "STATIONS", "load_officers", "read_characters", "read_response_styles",
+    "OfficerProfile", "POSTS", "Relationship", "Relationships", "STATIONS", "load_officers", "read_characters", "read_response_styles",
     "read_traits",
 ]

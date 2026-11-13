@@ -780,12 +780,13 @@ class SettingsHub:
         crew = [(oid, short) for oid, short, _ in self._crew()]
         cx = self._label(surf, x, y, "Only this model")
         bx = cx
+        bw = max(60, min(96, (x + width - cx - 4 * (len(crew) - 1)) // max(1, len(crew))))
         for oid, short in crew:
-            self.ui.button(surf, pygame.Rect(bx, y, 96, 32), short, partial(flip, "only", oid, [o for o, _ in crew]),
+            self.ui.button(surf, pygame.Rect(bx, y, bw, 32), short, partial(flip, "only", oid, [o for o, _ in crew]),
                            "Everything this officer says goes to the second model, whatever is picked above; if it "
                            "fails they answer offline, never through the main model", active=oid in only, enabled=on,
                            size=12)
-            bx += 100
+            bx += bw + 4
         y += ROW
         return self._hint(surf, x, y + 4, "Takes effect in the next battle. Notes for a race or an officer (a line "
                           "added to their prompt) are set with begin --llm character.notes.<who>=...", width)
@@ -801,7 +802,7 @@ class SettingsHub:
                 profiles = load_officers(traits_file=self._officer_path())
             except Exception:  # noqa: BLE001 - a broken officers file must not break the menu
                 profiles = load_officers()
-            self._crew_cache = [(o.id, o.name if len(o.name) <= 10 else o.name.split()[0], o) for o in profiles.values()]
+            self._crew_cache = [(o.id, _short_name(o.name), o) for o in profiles.values()]
         return self._crew_cache
 
     @staticmethod
@@ -817,10 +818,11 @@ class SettingsHub:
         if self.officer not in [o for o, _, _ in crew]:
             self.officer = crew[0][0]
         bx = x
+        bw = max(70, min(120, (width - 6 * (len(crew) - 1)) // max(1, len(crew))))
         for oid, short, _ in crew:
-            self.ui.button(surf, pygame.Rect(bx, y, 120, 36), short, partial(self._pick_officer, oid),
+            self.ui.button(surf, pygame.Rect(bx, y, bw, 36), short, partial(self._pick_officer, oid),
                            f"{short}'s settings", active=oid == self.officer, size=14)
-            bx += 126
+            bx += bw + 6
         y += 56
         if self._shipped is None:
             self._shipped = load_officers()
@@ -905,5 +907,12 @@ class SettingsHub:
         ok = open_folder(config_dir())
         self.note, self.note_ok = ("Opened the config folder.", True) if ok else (f"It's at {config_dir()}", False)
 
+
+
+def _short_name(name: str) -> str:
+    """An officer's name for a button: "La Forge", "Seven", "Doctor"."""
+    name = name[4:] if name.lower().startswith("the ") else name
+    name = name[:1].upper() + name[1:]
+    return name if len(name) <= 10 else name.split()[0]
 
 __all__ = ["SECTIONS", "Section", "SettingsHub"]

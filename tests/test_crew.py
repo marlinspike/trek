@@ -14,7 +14,7 @@ from begin.crew.characters import (
 )
 from begin.crew.station_reports import situation
 from begin.llm.reply import parse_reply
-from begin.crew.officers import STATION_COMMANDS, station_of
+from begin.crew.officers import default_crew, STATION_COMMANDS, station_of
 from begin.help.coach import HelpContext
 from begin.llm.providers.base import LLMConfig, LLMError, config_from_settings, make_provider
 from begin.llm.service import LLMService
@@ -28,7 +28,9 @@ def _battle(content, preset: int = 0):  # type: ignore[no-untyped-def]
 
 def test_officer_roster() -> None:
     officers = load_officers()
-    assert {o.station for o in officers.values()} == {"helm", "tactical", "engineering", "science"}
+    assert {o.station for o in officers.values()} == {"helm", "tactical", "engineering", "science", "sickbay"}
+    assert set(default_crew(officers)) == {"helm", "tactical", "engineering", "science"}   # the Doctor runs no station
+    assert [o.id for o in default_crew(officers).values()] == ["spock", "worf", "geordi", "seven"]
     for o in officers.values():
         assert o.persona and o.lines.get("ack") and o.lines.get("unknown")
         assert o.traits                  # every officer ships with a few words on how they come across

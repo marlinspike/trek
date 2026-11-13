@@ -12,8 +12,8 @@ wrecking her weapons, planting charges, a survey from inside (her shield harmoni
 dormant ship, bringing a drone home (the Doctor learns from them). The captain can hail the shuttle at any time
 to change the task or call the team back (`ShuttleOrder`).
 
-A team that is found out, or still aboard when the drones wake, never dies: they beam out, hurt, and are off duty
-for the rest of the battle. The officers they leave behind are covered by stand-ins (crew/officers.py).
+A team that is found out, or still aboard when the drones wake, never dies: they beam out, hurt, and spend a while in
+sickbay until the Doctor sends them back (`MEND_CYCLES`). Stand-ins cover their stations (crew/officers.py).
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ TASK_WORDS = {
     "weapons": ("weapons", "guns", "cutting beams", "disarm", "phasers", "disable weapons"),
     "charges": ("charges", "bomb", "bombs", "explosives", "blow", "self-destruct", "destroy"),
     "survey": ("survey", "scan", "study", "look around"),
-    "rescue": ("rescue", "drone", "bring one", "hugh", "prisoner", "abduct"),
+    "rescue": ("rescue", "drone", "bring one", "prisoner", "abduct"),
 }
 LATCH_RANGE = 1300.0          # the shuttle latches on this close
 HOME_RANGE = 1100.0           # ... and is taken back aboard this close to her ship
@@ -54,6 +54,8 @@ NOTICE_QUIET = 0.07           # per cycle, while the decoy is quiet or cloaked
 NOTICE_BASE = 0.006           # per cycle, while the decoy keeps them busy
 NOTICE_REPEAT = 0.018         # per cycle, × earlier crossings this battle: they start watching small craft
 CHARGE_FUSE = 8.0             # cycles from the team leaving to the charges going off
+MEND_CYCLES = 75.0            # cycles the Doctor keeps a hurt away team in sickbay
+SHUTTLE_NAMES = ("Galileo", "Copernicus", "Columbus", "Shenandoah", "Kepler", "Cochrane")
 
 
 @dataclass
@@ -105,7 +107,9 @@ def launch(world: World, mother: Ship, target: Ship, members: tuple[str, ...], t
         brg = bearing(target.x - mother.x, target.y - mother.y)
         r = math.radians(brg)
         sx, sy = mother.x + math.sin(r) * 260.0, mother.y + math.cos(r) * 260.0
-        sh = world.add_ship("federation.sh", mother.side, sx, sy, course=brg, warp=0.0)
+        used = sum(1 for o in world.away_ops if o.shuttle is not None)
+        sh = world.add_ship("federation.sh", mother.side, sx, sy, course=brg, warp=0.0,
+                            name=SHUTTLE_NAMES[used % len(SHUTTLE_NAMES)])
         sh.crew = len(members) + 2
         op.shuttle = sh.id
         _fly(sh, target, sh.cls.max_warp)
@@ -268,6 +272,7 @@ def _caught(world: World, op: AwayOp, why: str) -> None:
     op.result = f"caught: {why}"
     if mother is not None:
         mother.wounded |= set(op.members)
+        mother.mending = MEND_CYCLES
         world.emit(HiveEvent(world.tick, op.target, "caught", mother.id, why))
         world.say(mother, f"The away team is in trouble: {why}. We beamed them out, hurt. "
                           f"{_names(op.members)} are in sickbay.", "alert", speaker="Transporter room")
@@ -326,7 +331,8 @@ def _lead(op: AwayOp) -> str:
 
 
 def _names(members: tuple[str, ...]) -> str:
-    names = [{"worf": "Worf", "seven": "Seven", "spock": "Spock", "laforge": "Geordi", "doctor": "the Doctor"}
+    names = [{"worf": "Worf", "seven": "Seven", "spock": "Spock", "geordi": "Geordi", "doctor": "the Doctor",
+              "sulu": "Sulu", "chekov": "Chekov"}
              .get(m, m.title()) for m in members]
     return " and ".join(names) if len(names) <= 2 else ", ".join(names[:-1]) + " and " + names[-1]
 

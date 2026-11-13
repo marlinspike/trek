@@ -41,6 +41,8 @@ class Aim:
 
 
 def subsystems_for(ship: Ship, selector: str) -> list[Subsystem]:
+    if selector == "relay":
+        selector = ship.weak_point or "relay"     # [E] the system the hive hid its relay in
     kinds = TARGETABLE_GROUPS.get(selector)
     if kinds is not None:
         return [s for s in ship.subsystems() if s.kind in kinds and not s.destroyed]

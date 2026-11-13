@@ -209,7 +209,8 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
             world.add_controller(cap)
     crew = None
     if player_ship is not None:
-        crew = Crew(player_ship, setup.player_side, content, default_crew(load_officers(traits_file=config_dir() / "officers.toml")), world.rng.derive("crew"),
+        roster = load_officers(traits_file=config_dir() / "officers.toml")
+        crew = Crew(player_ship, setup.player_side, content, default_crew(roster), world.rng.derive("crew"), roster=roster,
                     phase=1)
         world.add_controller(crew)
     battle = Battle(world, setup, player_ship, captains, computers, crew)

@@ -185,8 +185,6 @@ def learn(world: World, target: Ship, attacker: Ship | None, family: str, raw: f
             ins.harmonics -= 1
             if ins.harmonics == 0:
                 world.emit(HiveEvent(world.tick, target.id, "noticed", attacker.id))
-                _tell(world, attacker.side, "They've noticed. The Collective is rotating its shield harmonics: "
-                                             "they will adapt to us again.", Tone.CAUTION, "Seven of Nine")
             return
         if target.dormant > 0:
             return                                   # asleep: nothing is learned
@@ -219,9 +217,7 @@ def learn(world: World, target: Ship, attacker: Ship | None, family: str, raw: f
             for s in world.ships.values():
                 if s.side == target.side and s.tuning > 0:
                     s.tuning *= 0.35
-            world.emit(HiveEvent(world.tick, attacker.id, "shift", target.id))
-            _tell(world, target.side, "They've shifted their beam frequency. Our shield harmonics are out of tune.",
-                  Tone.CAUTION, "Seven of Nine" if target.duty_by == "seven" else "Tactical")
+            world.emit(HiveEvent(world.tick, attacker.id, "shift", target.id, target.duty_by))
 
 
 # ------------------------------------------------------------------ scans
@@ -235,23 +231,15 @@ def on_scan(world: World, ship: Ship, target: Ship, by: str) -> None:
     if sv.progress >= CODE_AT:
         return
     sv.progress = min(CODE_AT, sv.progress + SURVEY_STEP * skill(by) * ins.experience)
-    who = "Seven of Nine" if by == "seven" else "Mr. Spock" if by == "spock" else "Science"
     found = ""
     if sv.progress >= WEAK_AT and not sv.weak_told and target.weak_point:
         sv.weak_told = True
         found = "weak"
-        sub = target.subsystem(target.weak_point)
-        what = sub.label.lower() if sub is not None else "a minor system"
-        _tell(world, ship.side, f"{target.name}'s vinculum relay is routed through {what}. It is lightly defended. "
-                                f"Destroy it and her drones will go dormant.", Tone.GOOD, who)
     if sv.progress >= CODE_AT and not sv.code_told:
         sv.code_told = True
         found = "code"
-        _tell(world, ship.side, f"I have {target.name}'s shield harmonics. Harmonic torpedoes will pass straight "
-                                f"through her shields: say 'design harmonic torpedoes'.", Tone.GOOD, who)
-    elif not found:
-        _tell(world, ship.side, f"Harmonics of {target.name}: {sv.progress / CODE_AT:.0%} resolved.", Tone.INFO, who)
-    world.emit(HiveEvent(world.tick, target.id, "surveyed", ship.id, found or f"{sv.progress:.2f}"))
+    # the bridge says what was found (crew/borg_talk.py): `detail` is "<found or progress>|<who scanned>"
+    world.emit(HiveEvent(world.tick, target.id, "surveyed", ship.id, f"{found or f'{sv.progress:.2f}'}|{by}"))
 
 
 # ------------------------------------------------------------------ setup and each tick
@@ -299,9 +287,7 @@ def _hive_ship(world: World, ship: Ship, rules: CollectiveRules, dt: float) -> N
     weak = ship.subsystem(ship.weak_point) if ship.weak_point else None
     if ship.dormant <= 0 and weak is not None and weak.destroyed:
         ship.dormant = rules.sleep_cycles
-        world.emit(HiveEvent(world.tick, ship.id, "dormant", ship.last_attacker))
-        _tell_all(world, ship, f"{ship.name}'s drones have gone dormant. She is dark: shields down, weapons cold, "
-                               f"for about {rules.sleep_cycles:.0f} seconds.", Tone.GOOD)
+        world.emit(HiveEvent(world.tick, ship.id, "dormant", ship.last_attacker, f"{rules.sleep_cycles:.0f}"))
     if ship.dormant > 0:
         _dark(ship)
         ship.dormant -= dt
@@ -321,8 +307,6 @@ def _hive_ship(world: World, ship: Ship, rules: CollectiveRules, dt: float) -> N
                     sv.weak_told = False
                     sv.code_told = sv.code_told and sv.progress >= CODE_AT
             world.emit(HiveEvent(world.tick, ship.id, "waking"))
-            _tell_all(world, ship, f"{ship.name} is waking. They have rerouted the vinculum relay: we will have to "
-                                   f"find it again.", Tone.CAUTION)
     else:
         ship.structure = min(ship.structure_max, ship.structure + rules.regen_hull * ship.structure_max * dt)
     # a destroyed core can take the whole ship with it
@@ -364,6 +348,13 @@ def chain_reaction(world: World, ship: Ship) -> None:
 
 
 def _our_ship(world: World, ship: Ship, dt: float) -> None:
+    if ship.wounded and ship.mending > 0:
+        ship.mending -= dt
+        if ship.mending <= 0:      # the Doctor sends them back to duty, against his better judgement
+            ship.mending = 0.0
+            back = ",".join(sorted(ship.wounded))
+            ship.wounded = set()
+            world.emit(HiveEvent(world.tick, ship.id, "mended", None, back))
     ship.remodulating = max(0.0, ship.remodulating - dt)
     ship.security = max(0.0, ship.security - dt)
     ship.seal_ready = max(0.0, ship.seal_ready - dt)
@@ -482,18 +473,6 @@ def seal_section(world: World, ship: Ship) -> tuple[int, int]:
 
 
 # ------------------------------------------------------------------ words
-
-def _tell(world: World, side: int, text: str, tone: Tone, speaker: str) -> None:
-    flag = next((s for s in world.ships.values() if s.side == side and s.alive), None)
-    world.emit(Message(world.tick, text, tone, speaker=speaker, ship_id=flag.id if flag else None,
-                       visible_to=frozenset({side})))
-
-
-def _tell_all(world: World, hive: Ship, text: str, tone: Tone) -> None:
-    for side in {s.side for s in world.ships.values() if s.side != hive.side}:
-        _tell(world, side, text, tone, "Seven of Nine" if any(
-            s.side == side and s.duty_by == "seven" for s in world.ships.values()) else "Science")
-
 
 def survey_of(world: World, side: int, ship_id: int) -> Survey | None:
     ins = world.insight.get(side)

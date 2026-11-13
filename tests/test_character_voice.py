@@ -188,7 +188,7 @@ def test_the_character_voices_page_toggles_and_saves(tmp_path, monkeypatch) -> N
     next(h for h in menu.ui.hotspots if h.tooltip.startswith("Off keeps")).action()   # back on
     menu.draw(surf)               # one button per officer for "only this model"
     pin = [h for h in menu.ui.hotspots if h.tooltip.startswith("Everything this officer says")]
-    assert len(pin) == 4
+    assert len(pin) == 7
     pin[1].action()
     assert Settings.load().llm["character"]["only"] == ["worf"]
     menu.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE, mod=0, unicode=""))

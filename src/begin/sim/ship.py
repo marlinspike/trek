@@ -79,6 +79,7 @@ TARGETABLE_GROUPS: dict[str, tuple[Kind, ...]] = {
     "sensors": (Kind.SENSORS, Kind.COMPUTER),
     "cloak": (Kind.CLOAK,),
     "crew": (),          # life support and the crew decks: aimed hits kill crew, not machinery [E]
+    "relay": (),         # a Borg ship's vinculum relay: whichever system carries it (sim/collective.py) [E]
 }
 CREW_DECKS = "crew"
 
@@ -441,7 +442,8 @@ class Ship:
     security: float = 0.0              # cycles of security teams sweeping the decks
     seal_ready: float = 0.0            # cycles before another section can be sealed
     away: set[str] = field(default_factory=set)      # officers off the ship (on an away team) [E]
-    wounded: set[str] = field(default_factory=set)   # officers back from an away team hurt: off duty this battle
+    wounded: set[str] = field(default_factory=set)   # officers back from an away team hurt: in sickbay [E]
+    mending: float = 0.0                              # cycles before the Doctor sends the wounded back to duty
 
     base_sophistication: float = 0.5
     pd_doctrine: PDDoctrine = PDDoctrine.BALANCED

@@ -263,6 +263,10 @@ class SelectTarget(Command):
             _require_target(world, ship, self.target)
         if self.subsystem is not None and self.subsystem not in TARGETABLE_GROUPS:
             raise Rejected(f"Unknown subsystem group '{self.subsystem}'.")
+        if self.subsystem == "relay" and self.target is not None:
+            ins = world.insight.get(ship.side)
+            if ins is None or not ins.knows_weak(self.target):
+                raise Rejected("We haven't found her relay yet: keep scanning her.")
 
     def apply(self, world: World, ship: Ship) -> None:
         ship.target = self.target
@@ -1767,7 +1771,7 @@ class SetDuty(Command):
     officer can't do the others while on it."""
 
     duty: str
-    by: str = "seven"
+    by: str = ""            # "" the science officer: Seven, or Spock when she is away
     name: ClassVar[str] = "duty"
 
     def channels(self) -> tuple[str, ...]:
@@ -1776,6 +1780,10 @@ class SetDuty(Command):
     def validate(self, world: World, ship: Ship) -> None:
         if self.duty and self.duty not in DUTIES:
             raise Rejected(f"No duty called '{self.duty}'. Known: {', '.join(DUTIES)}.")
+        if not self.by and self.duty:
+            if not _science_officer(ship):
+                raise Rejected("Seven and Spock are both off the ship.")
+            return
         if self.by in ship.away:
             raise Rejected("They're on the away team.")
         if self.by in ship.wounded:
@@ -1786,10 +1794,16 @@ class SetDuty(Command):
     def apply(self, world: World, ship: Ship) -> None:
         if self.duty != "shields" and ship.duty == "shields":
             pass        # the tuning holds where it is; it just stops improving
-        ship.duty, ship.duty_by = self.duty, self.by if self.duty else ""
+        ship.duty, ship.duty_by = self.duty, (self.by or _science_officer(ship)) if self.duty else ""
 
     def describe(self) -> str:
         return f"duty {self.duty or 'off'}"
+
+
+def _science_officer(ship: Ship) -> str:
+    """Who takes hive work when the captain names nobody: Seven, or Spock while she is away or hurt."""
+    gone = ship.away | ship.wounded
+    return next((o for o in ("seven", "spock") if o not in gone), "")
 
 
 COUNTERMEASURES = ("security", "seal")

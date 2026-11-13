@@ -342,16 +342,85 @@ class Crew:
     evasive_plan: HelmPlan | None = None    # the helm's last move under evasive manoeuvres, for the HUD
     evasive_seen: frozenset[int] = frozenset()
     evasive_at: int = -10**9                # tick of the last dodge
+    roster: dict[str, OfficerProfile] = field(default_factory=dict)    # everyone aboard, by id (the bench too) [E]
+    regulars: dict[str, OfficerProfile] = field(default_factory=dict)  # who runs each station when all are aboard
+    covering: list[tuple[str, OfficerProfile, OfficerProfile | None]] = field(default_factory=list)
+    # ^ stand-ins who have just taken a station (station, who, for whom), for the bridge to announce
+
+    def __post_init__(self) -> None:
+        for o in self.officers.values():
+            self.roster.setdefault(o.id, o)
+        self.regulars = dict(self.officers)
 
     def officer(self, station: str) -> OfficerProfile | None:
         return self.officers.get(station)
+
+    def everyone(self) -> list[OfficerProfile]:
+        """The station officers first, then the rest of the roster (Sulu, Chekov, the Doctor)."""
+        return list(dict.fromkeys([*self.officers.values(), *self.roster.values()]))
+
+    def present(self, ship: Ship | None) -> list[OfficerProfile]:
+        """Who is aboard and fit for duty: not on an away team, not in sickbay."""
+        out = self.everyone()
+        if ship is None:
+            return out
+        gone = ship.away | ship.wounded
+        return [o for o in out if o.id not in gone]
+
+    def absent(self, ship: Ship | None, o: OfficerProfile) -> str:
+        """Why an officer can't answer: "away" (on an away team), "sickbay" (hurt), or "" (here)."""
+        if ship is None:
+            return ""
+        return "away" if o.id in ship.away else "sickbay" if o.id in ship.wounded else ""
+
+    def cover(self, ship: Ship) -> None:
+        """Fill each station whose officer is away or hurt with whoever covers it [E]: Spock takes science for Seven,
+        Chekov the helm Spock leaves, Sulu tactical for Worf. Back aboard, the regulars take their stations again."""
+        gone = ship.away | ship.wounded
+        want = {st: o for st, o in self.regulars.items() if o.id not in gone}
+        busy = {o.id for o in want.values()}
+
+        def free(station: str) -> OfficerProfile | None:
+            return next((o for o in self.roster.values() if station in o.covers and o.id not in gone
+                         and o.id not in busy), None)
+
+        for station in STATIONS:
+            if station in want or station not in self.regulars:
+                continue
+            sub = free(station)
+            if sub is None:
+                # a regular who covers it (Spock) moves across, if someone (Chekov) can take his own station
+                for st, o in list(want.items()):
+                    if station in o.covers and self.regulars.get(st) is o:
+                        busy.discard(o.id)
+                        back = free(st)
+                        busy.add(o.id)
+                        if back is not None:
+                            want[st] = back
+                            busy.add(back.id)
+                            sub = o
+                            break
+            if sub is not None:
+                want[station] = sub
+                busy.add(sub.id)
+        want = {st: want[st] for st in STATIONS if st in want}
+        if want == self.officers:
+            return
+        for station, o in want.items():
+            if self.officers.get(station) is not o:
+                self.covering.append((station, o, self.regulars.get(station)))
+                self.brains.pop(station, None)
+        for station in list(self.officers):
+            if station not in want:
+                self.brains.pop(station, None)
+        self.officers = want
 
     def find(self, name: str) -> OfficerProfile | None:
         """An officer by id, name, alias or station, or a unique prefix of one."""
         q = name.lower().strip(" ,:")
         if not q:
             return None
-        everyone = list(dict.fromkeys(self.officers.values()))
+        everyone = self.everyone()
         for o in everyone:
             if q in (o.id, o.name.lower(), o.station, *o.aliases):
                 return o
@@ -497,6 +566,7 @@ class Crew:
         ship = obs.own(self.ship_id)
         if ship is None or not ship.alive or ship.crew <= 0:
             return []
+        self.cover(ship)
         out = self._objectives(obs, ship) + self._repairs(obs, ship) + self._evasive(obs, ship)
         if not ship.delegated:
             return out
@@ -522,10 +592,11 @@ class Crew:
 
 
 def default_crew(officers: dict[str, OfficerProfile]) -> dict[str, OfficerProfile]:
-    """Station -> officer: the first officer listed for each station."""
+    """Station -> officer: the first officer listed for each bridge station (the rest stand by)."""
     out: dict[str, OfficerProfile] = {}
     for o in officers.values():
-        out.setdefault(o.station, o)
+        if o.station in STATIONS:
+            out.setdefault(o.station, o)
     return out
 
 

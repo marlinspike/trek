@@ -30,6 +30,7 @@ from ..sim.commands import (
     AllyOrder, Command, ConfigureAutoload, ControlProbe, DelegateStation, Dock, FirePhasers, FireTorpedoes, LaunchProbe,
     LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SelfDestruct, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetPhaserSpread, SetPointDefense, SetRepairPriority, ManageRepairs, Evasive, AddressCrew, SetShields, SetTubes, Surrender,
+    AwayTeam, Countermeasure, Remodulate, SetDuty, ShuttleOrder,
     CeaseFire, OpenFire, StandDown, DeflectorPulse, EndObjective, EngineBoost, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
 )
 from ..sim.observation import Observation
@@ -85,6 +86,12 @@ NOTHING_LOST = "Every enemy we know of is on sensors: there's nothing to find. N
 # words that don't name the ship to find: "find the cloaked ship", "hunt for her", "locate that ship" [E]
 _HUNT_FILLER = frozenset(("for", "down", "the", "a", "her", "him", "it", "them", "that", "this", "ship", "vessel",
                           "where", "is", "she", "he", "out", "again", "please", "now"))
+
+# words for the science officer's hive duties [E]
+DUTY_WORDS = {"shields": ("shields", "shield", "harmonics-shields", "deflectors"),
+              "harmonics": ("harmonics", "harmonic", "survey", "scan", "scans", "scanning", "weakness"),
+              "phasers": ("phasers", "phaser", "frequency", "frequencies", "remodulate")}
+
 
 class Parser:
     def __init__(self, ctx: ParseContext) -> None:
@@ -895,7 +902,7 @@ class Parser:
             return
         c = self.obs.contact(target)
         if c is not None and c.scan is not None:
-            res.display.extend(reports.scan_lines(self.obs, c))
+            res.display.extend(reports.scan_lines(self.obs, c, self.ship))
         res.commands.append(self._cmd(Scan, target=target))
 
     def _v_computer(self, tok: Tokens, res: ParseResult) -> None:
@@ -1177,6 +1184,101 @@ class Parser:
         tok.rest()
         res.actions.append(("reinforcements", None))
 
+    # the Borg [E] --------------------------------------------------------------
+    def _v_remodulate(self, tok: Tokens, res: ParseResult) -> None:
+        """`remodulate`: the phasers on a new frequency, which the hive must learn from nothing."""
+        tok.rest()
+        res.commands.append(self._cmd(Remodulate, by=""))
+
+    def _v_duty(self, tok: Tokens, res: ParseResult) -> None:
+        """`tune shields` / `duty harmonics` / `duty phasers` / `duty off`: the science officer's hive work.
+        Shields: tune our shield harmonics against their beams (and their transporters). Harmonics: keep scanning
+        their ships for the weak point and their shield harmonics. Phasers: remodulate before they learn them."""
+        words = [w.strip(".,!?") for w in tok.rest()]
+        duty = next((d for w in words for d, keys in DUTY_WORDS.items() if w in keys), None)
+        if duty is None:
+            if any(w in ("off", "stop", "none", "nothing", "belay") for w in words):
+                duty = ""
+            elif not words:
+                duty = "shields"         # bare "tune": the shields, the thing a captain most often wants tuned
+            else:
+                raise ParseError("Which duty? 'tune shields', 'duty harmonics', 'duty phasers' or 'duty off'.")
+        who = next((w for w in words if w in ("seven", "spock")), "")
+        res.commands.append(self._cmd(SetDuty, duty=duty, by=who))
+
+    def _v_repel(self, tok: Tokens, res: ParseResult) -> None:
+        """`repel security` (security teams to the decks the drones hold) or `repel seal` (seal and vent them)."""
+        first = tok.toks[tok.i - 1] if tok.i > 0 else ""
+        words = [w.strip(".,!?") for w in tok.rest()]
+        if first.startswith(("seal", "vent")) or any(w.startswith(("seal", "vent")) for w in words):
+            kind = "seal"
+        else:
+            kind = "security"
+        res.commands.append(self._cmd(Countermeasure, kind=kind))
+
+    def _v_away(self, tok: Tokens, res: ParseResult) -> None:
+        """`away <ship> <task> [with seven]` [E]: Worf (and Seven) take a shuttle across to a Borg ship, or beam
+        over to a dormant one. Tasks: relay, harmonics, weapons, charges, survey, rescue. `away recall` (or
+        `recall`) calls them home; `away <task>` gives the team out there a new one."""
+        from ..sim.away import TASKS, task_from_words
+
+        rest = " ".join(tok.toks[tok.i:])
+        if self._away_op() is not None:
+            tok.rest()
+            self._hail_away(rest, res)
+            return
+        target = self.resolve_ship(tok, allow_none=True)
+        words = " ".join(w.strip(".,!?") for w in tok.rest())
+        if target is None:
+            hives = [c for c in self.obs.hostile_contacts() if c.visible and self.obs.is_hive(c.id)]
+            t = self.ship.target if self.ship.target is not None and self.obs.is_hive(self.ship.target) else None
+            target = t if t is not None else (min(hives, key=lambda c: c.distance_to(self.ship.x, self.ship.y)).id
+                                              if hives else None)
+        if target is None:
+            raise ParseError("Away to which ship? 'away <Borg ship> <task>'.")
+        task = next((t for t in TASKS if re.search(rf"\b{t}\b", words)), None) or task_from_words(words)
+        if task is None:
+            raise ParseError(f"To do what? Tasks: {', '.join(TASKS)}.")
+        members = self._away_members(words, task)
+        dormant = self.obs.dormant(target) > 0
+        beam = "beam" in words or "transport" in words or (dormant and "shuttle" not in words)
+        res.commands.append(self._cmd(AwayTeam, target=target, task=task, members=members, by_shuttle=not beam))
+
+    def _away_members(self, words: str, task: str) -> tuple[str, ...]:
+        gone = self.ship.away | self.ship.wounded
+        named = [n for n in ("worf", "seven", "sulu", "spock") if re.search(rf"\b{n}\b", words) and n not in gone]
+        lead = next((n for n in ("worf", "sulu") if n in named), None) or \
+            next((n for n in ("worf", "sulu") if n not in gone), "worf")
+        team = [lead] + [n for n in named if n != lead]
+        if task == "harmonics" and "seven" not in team:
+            team.append("seven")          # only Seven knows how the Collective keeps them
+        return tuple(dict.fromkeys(team))
+
+    def _v_recall(self, tok: Tokens, res: ParseResult) -> None:
+        tok.rest()
+        res.commands.append(self._cmd(ShuttleOrder, order="recall"))
+
+    def _away_op(self) -> object | None:
+        return next(iter(self.obs.away_ops()), None) if self.ship is not None else None
+
+    def _hail_away(self, words: str, res: ParseResult) -> None:
+        """The captain on the comm to the away team: come home, a new task, or (no words) how it is going."""
+        from ..sim.away import TASKS, task_from_words
+
+        low = words.lower()
+        if re.search(r"\b(recall|come (back|home)|return|get out|abort|back to the ship|home|withdraw|break off|"
+                     r"pull out|beam out)\b", low):
+            res.commands.append(self._cmd(ShuttleOrder, order="recall"))
+            return
+        task = next((t for t in TASKS if re.search(rf"\b{t}\b", low)), None) or task_from_words(low)
+        if task is not None:
+            res.commands.append(self._cmd(ShuttleOrder, order="task", task=task))
+            return
+        if low.strip():
+            raise ParseError("The away team can come home ('recall') or take a new task: "
+                             f"{', '.join(TASKS)}.")
+        res.display.extend(reports.away_lines(self.obs, self.ship))
+
     def _v_hail(self, tok: Tokens, res: ParseResult) -> None:
         """`hail [<ship>|all] [words]` [E]: speak to an enemy captain; with no ship named, the current target."""
         rest_raw = _after_tokens(tok.raw, tok.i)            # the captain's own words, commas and all
@@ -1190,12 +1292,20 @@ class Parser:
         if sub.peek() in _HAIL_ALL:
             sub.next()
             everyone = True
+        elif sub.peek() in ("shuttle", "away", "team", "galileo", "copernicus", "columbus", "shenandoah", "kepler",
+                            "cochrane", "worf", "seven", "sulu") and self._away_op() is not None:
+            self._hail_away(" ".join(_after_tokens(rest, sub.i).split()), res)
+            return
         else:
             try:
                 sid = self.resolve_ship(sub, allow_none=True)
             except ParseError:
                 sid = None
-            if sid is not None and self.obs.own(sid) is not None and self.obs.contact(sid) is None:
+            own = self.obs.own(sid) if sid is not None else None
+            if own is not None and own.cls.craft and self._away_op() is not None:
+                self._hail_away(" ".join(_after_tokens(rest, sub.i).split()), res)
+                return
+            if sid is not None and own is not None and self.obs.contact(sid) is None:
                 raise ParseError(f"{self._ship_name(sid)} is one of ours: use 'tell' to give her orders.")
             if sid is None:
                 self._hail_misnamed(sub)

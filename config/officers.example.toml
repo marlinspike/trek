@@ -17,7 +17,8 @@
 #
 # With a language model set up, the officers' lines are written fresh in their own voice from all of this.
 #
-# Officers: spock, worf, geordi, seven
+# Officers: spock, worf, geordi, seven, and the bench: sulu (tactical when Worf is away), chekov (the helm when
+# Spock moves to science) and doctor (sickbay; he is aboard every battle)
 
 [spock]
 traits = ["precise and emphatic", "dry wit", "unflappable"]
@@ -42,3 +43,15 @@ response_style = "upbeat and technically fluent, plain about what the ship can t
 [seven]
 traits = ["highly effective", "efficient", "coolly confident", "ex-Borg precision"]
 response_style = "factual, crisp, coolly confident"
+
+[sulu]
+traits = ["unflappable", "quietly confident", "a duellist's patience"]
+response_style = "calm and confident, a little wry; short sentences, never rattled"
+
+[chekov]
+traits = ["eager", "quick", "proud of where he comes from", "young and brave"]
+response_style = "eager and quick, a little breathless; short, bright answers"
+
+[doctor]
+traits = ["acerbic", "brilliant", "put-upon", "secretly devoted to his patients"]
+response_style = "acerbic and theatrical but precise about medicine; short when it matters"
