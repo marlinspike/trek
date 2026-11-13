@@ -1,3 +1,29 @@
+## What's new in 1.3
+
+**The Borg.** A new enemy that can't be beaten by trading shots. Every weapon that lands teaches the whole hive, so phasers soon stop biting until you remodulate. Their hulls regrow and their drones beam aboard to take your crew. Scans find a cube's vinculum relay, then her shield harmonics, and torpedoes tuned to those harmonics pass straight through her shields. Destroy the relay and she falls asleep; hit her core then and she goes up in a chain reaction. Seven of Nine takes one duty at a time (tuning your shields against their transporters, surveying for harmonics, or watching your phasers), and away teams can take the Galileo across to a sleeping ship. There are three new battles (probe, sphere and cube) and a new tour, **The Collective**, where the hive remembers your weapons from one stop to the next.
+
+**Guile, then power.** Once you have her harmonics, or a shield facing is down, an aimed salvo at one system (shields, warp, life support) wrecks it, wrecked systems mend slowly, and a broken drive or reactor can set off her core. Fired from cloak, it is how a single ship brings down a cube.
+
+**The cloak refit and the plasma hunt.** On The Collective, the Enterprise can take a cloak. Under it she is a shimmering ghost who can fire and vanish again, and the enemy sees only the flash. A ship with a damaged warp drive leaves a rose-coloured plasma trail that any sensor can follow. `sweep` follows the trails, and Seven or Spock can program a torpedo that flies down one.
+
+**Sweep and strike.** One order runs the whole hunt: `strike talon shields`, or just "Seven, sweep and strike the Talon's weapons". Seven tracks the trail, closes in and fires a seeker. When it hits, you have a six-second firing solution: the ship shows, cloak or no cloak, and every torpedo and phaser that bears goes into the system you named, again and again until it is out.
+
+**Missions with real goals.** Battles can now ask more of you than winning: beam the crew off a crippled ship before her reactor fails, get a convoy to the shipping lane, or catch a runner before she escapes with her report. The enemy goes for whoever you are protecting. Border Patrol is rebuilt around three such missions, and Patrols can deal you one too.
+
+**Counsel from your officers.** Press **O** in battle and Worf, Spock, Geordi and Seven each offer a plan for the fight in front of you, with live numbers and two to four orders you can see. Press 1 to 4 to follow one officer all the way, or click single steps to mix their advice. Aim them at a goal with `counsel disable the talon's engines` or "counsel kill all the Borg cubes". The plans change as the battle does, and none of this needs the AI model.
+
+**Starfleet's assessment.** After each battle, a page tells you how it went: the mission, lives saved and lost, your conduct, the cost, a commendation when you earned one, and a word from each officer whose work showed. Before each stop of a tour, the Ready Room gives every officer's view of what lies ahead.
+
+**All she's got.** Ask Geordi to "give me all she's got" (or type `boost`) and an engineering team keeps the warp drives from overheating for a while, so they run 40% longer at full warp. The cost is that other repairs go at half speed until the team is back. When the drives run hot, Geordi will offer it himself.
+
+**Finding cloaked ships.** Torpedoes fired at a ship you can't see now get a report: a hit, a near miss, or no sign of her. A hit shows her long enough to aim. When an enemy cloaks, your science officer gives her last position, and "Seven, find the Talon" (or `hunt talon`) works the detectors until she shows, then makes her your target.
+
+**The Captain's Manual.** A full manual, nine chapters on command, tactics and the crew, plus every help page and live tables of ships, torpedoes and orders. It is in the game under H, and as one book in `docs/MANUAL.md`.
+
+**Shorter orders.** Shortened words now settle by the rest of the line, so `pu tal` pursues the Talon rather than asking whether you meant pulse.
+
+**Everything fits.** Every line of text now stays inside its panel and on the screen, on small windows as well as large ones. On short windows, the battle moves the Weapons and Target panels into the tabs at the bottom so nothing runs off the screen.
+
 ## What's new in 1.2
 
 **Begin : Trek.** The title screen now carries the remake's own name; Begin is the original game it remakes.
