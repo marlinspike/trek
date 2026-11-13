@@ -17,7 +17,7 @@ tell agena attack gorkon
 
 ## Shortening words
 
-Any word can be cut to a unique prefix, as in Begin. These all fire every torpedo tube:
+Any word can be cut to a unique prefix, as in Begin. When a prefix fits several commands, the rest of the line settles it: `pu tal` pursues the Talon (a pulse takes no ship), while `pu` alone fires the deflector pulse. A prefix that still fits more than one is answered with the choices. These all fire every torpedo tube:
 
 ```console
 fire all torpedoes

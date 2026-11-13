@@ -7,7 +7,8 @@ dispersion of 45", "tell the agena to attack the derango"), as do terse
 forms ("fir tor al", "fp 1 2 s 10", "al tor al mk7 1200") and the remake's
 additions (autoload, fire modes, point defense, bank roles, time control).
 
-As in Begin, any word can be shortened to a unique prefix ("fir tor 1,2,3"),
+As in Begin, any word can be shortened to a unique prefix ("fir tor 1,2,3"); a verb prefix several
+commands share is settled by the words after it ("pu tal" = pursue the Talon),
 and words like "the", "to", "at", "on" and "with" are ignored. Mount lists
 accept "all"/"al", "1 2 3", "1,2,3", "1 2 and 3" and ranges "1-3". Ships are
 named by any unique prefix of their name, or "#<id>" for an unidentified
@@ -22,6 +23,7 @@ from __future__ import annotations
 import difflib
 import re
 from dataclasses import dataclass, field
+from typing import Callable
 
 from ..sim.allies import ORDER_WORDS, SHIP_ORDERS, AllyStanding
 from ..sim.commands import (
@@ -208,9 +210,38 @@ class Parser:
         if verb is None:
             cands = candidates(first, VERBS) if len(first) >= 2 else []
             if len(cands) > 1:
-                raise ParseError(f"'{first}' is ambiguous: {', '.join(cands)}.")
-            raise ParseError(f"Unknown command '{first}'. Type 'help' for the list.")
+                verb = self._settle(first, cands, tok)
+            else:
+                raise ParseError(f"Unknown command '{first}'. Type 'help' for the list.")
         getattr(self, f"_v_{verb}")(tok, res)
+
+    def _settle(self, first: str, cands: list[str], tok: Tokens,
+                run: Callable[[str, Tokens, ParseResult], None] | None = None) -> str:
+        """A verb prefix shared by several commands ("pu" = pursue or pulse) is settled by the words after it:
+        the one command that makes sense of the whole line wins ("pu tal" pursues the Talon). When the words name
+        a ship, a command aimed at her beats one that reads her name as something else ("de tal" destroys the
+        Talon rather than detonating a probe coded 'tal'); a command that merely ignores the words yields to one
+        that reads them. `run` reads the rest of the line for one candidate (by default, the verb's handler)."""
+        if run is None:
+            run = lambda verb, t, r: getattr(self, f"_v_{verb}")(t, r)  # noqa: E731
+        named = self.resolve_ship(Tokens(" ".join(tok.toks[tok.i:])), allow_none=True) if not tok.done() else None
+        fits: list[tuple[str, bool, bool]] = []
+        for verb in cands:
+            trial = Tokens(tok.raw)
+            trial.toks, trial.i, trial.max_mount = tok.toks, tok.i, tok.max_mount
+            out = ParseResult()
+            try:
+                run(verb, trial, out)
+                trial.skip_filler()
+            except ParseError:
+                continue
+            if trial.done():
+                fits.append((verb, named is not None and named in _ships_in(out), trial.swallowed))
+        best = [v for v, aimed, _ in fits if aimed] or [v for v, _, swallowed in fits if not swallowed] \
+            or [v for v, _, _ in fits]
+        if len(best) == 1:
+            return best[0]
+        raise ParseError(f"'{first}' is ambiguous: {', '.join(best or cands)}.")
 
     # helm ------------------------------------------------------------
     def _v_helm(self, tok: Tokens, res: ParseResult) -> None:
@@ -1022,10 +1053,15 @@ class Parser:
             order = match_word(word, ORDER_WORDS) or ""
             if not order:
                 cands = candidates(word, ORDER_WORDS)
-                raise ParseError(f"'{word}' is ambiguous: {', '.join(cands)}." if len(cands) > 1
-                                 else f"Unknown order '{word}'. Try 'help'.")
+                if len(cands) <= 1:
+                    raise ParseError(f"Unknown order '{word}'. Try 'help'.")
+                order = self._settle(word, cands, tok, lambda o, t, r: self._tell_order(allies, o, t, r))
             if order in ("hold", "open"):
                 tok.take_word("fire")
+        self._tell_order(allies, order, tok, res)
+
+    def _tell_order(self, allies: list[int], order: str, tok: Tokens, res: ParseResult) -> None:
+        """The rest of `tell <ally> <order> ...`: the order's ship, range or destination."""
         target = None
         value = None
         dest = None
@@ -1420,6 +1456,23 @@ class Parser:
         text = parts[2].strip() if len(parts) > 2 else ""
         tok.rest()
         res.actions.append(("key", (name, text)))
+
+
+def _ships_in(res: ParseResult) -> set[int]:
+    """The ships a parsed order is aimed at: its commands' targets and the ship a hail is for."""
+    out: set[int] = set()
+    for c in res.commands:
+        for name in ("target", "ally", "destination"):
+            v = getattr(c, name, None)
+            if isinstance(v, int):
+                out.add(v)
+        targets = getattr(c, "targets", None)
+        if isinstance(targets, tuple):
+            out.update(t for t in targets if isinstance(t, int))
+    for name, arg in res.actions:
+        if name == "hail" and isinstance(arg, tuple) and isinstance(arg[0], int):
+            out.add(arg[0])
+    return out
 
 
 def _stations(tok: "Tokens") -> list[str]:
