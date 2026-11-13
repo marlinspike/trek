@@ -534,7 +534,8 @@ def away_lines(obs: Observation, me: Ship | None) -> list[str]:
         return ["AWAY  No away team is out. 'away <Borg ship> <task>' sends one."]
     out = []
     for op in ops:
-        craft = obs.own(op.shuttle).name if op.shuttle is not None and obs.own(op.shuttle) is not None else "transporter"
+        shuttle = obs.own(op.shuttle) if op.shuttle is not None else None
+        craft = shuttle.name if shuttle is not None else "transporter"
         where = obs.contact(op.target)
         name = where.label.split(" (")[0] if where is not None and where.identified else f"#{op.target}"
         team = ", ".join(m.title() for m in op.members)

@@ -1246,7 +1246,7 @@ class Parser:
     def _away_members(self, words: str, task: str) -> tuple[str, ...]:
         gone = self.ship.away | self.ship.wounded
         named = [n for n in ("worf", "seven", "sulu", "spock") if re.search(rf"\b{n}\b", words) and n not in gone]
-        lead = next((n for n in ("worf", "sulu") if n in named), None) or \
+        lead: str = next((n for n in ("worf", "sulu") if n in named), None) or \
             next((n for n in ("worf", "sulu") if n not in gone), "worf")
         team = [lead] + [n for n in named if n != lead]
         if task == "harmonics" and "seven" not in team:
@@ -1314,8 +1314,8 @@ class Parser:
             sub.next()                                       # the shuttle's name, or Worf's: the words follow it
             self._hail_away(" ".join(_after_tokens(rest, sub.i).split()), res)
             return
-        elif sub.peek() in SHUTTLE_CALLS:
-            raise ParseError(f"The {sub.peek().title()} is in the shuttle bay, Captain: no away team is out. "
+        elif (craft := sub.peek()) is not None and craft in SHUTTLE_CALLS:
+            raise ParseError(f"The {craft.title()} is in the shuttle bay, Captain: no away team is out. "
                              "'away <Borg ship> <task>' sends one.")
         else:
             try:
