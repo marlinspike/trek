@@ -272,6 +272,8 @@ class ConsoleMixin(SessionState):
             self.record(val)  # type: ignore[arg-type]
         elif name == "style":
             self.choose_style(val)  # type: ignore[arg-type]
+        elif name == "counsel":
+            self.counsel_order(val)  # type: ignore[arg-type]
         else:
             # display range, the manual, sound, the HUD and Bridge settings, key macros, voice orders: the
             # presentation's business, not the game's

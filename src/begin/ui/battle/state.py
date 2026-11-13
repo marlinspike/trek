@@ -112,6 +112,9 @@ class SceneState:
     focus_k: float
     focus_idle: float
     wheel: object | None
+    counsel_open: bool
+    counsel_ran: dict[str, float]
+    counsel_box: pygame.Rect | None
     _wheel_t: float
     completer: Completer
     _preview_key: object

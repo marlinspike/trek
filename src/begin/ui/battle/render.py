@@ -13,7 +13,7 @@ import pygame
 
 from ...console import reports
 from ...sim.ship import Kind
-from .. import comms_view, officer_view, order_marks, theme
+from .. import comms_view, counsel_view, officer_view, order_marks, theme
 from ..hud import TABS_MIN_HEIGHT, Panel, TargetPanel, WeaponsPanel, diagram_legend, hull_diagram
 from ...session.news import ALERT_TONE
 from .common import TONE_COLOR, CONTROLS, RED_ALERT_FLOOR, RED_ALERT_PERIOD, RED_ALERT_PULSE, RED_ALERT_SETTLE, SPEEDS, ratio
@@ -50,13 +50,27 @@ class RenderMixin(SceneState):
         self._draw_preview(surf)
         comms_view.draw_map(surf, self.cam, self.obs, self.player_id, self.comms, time.monotonic(),
                             self.map_rect)
+        mission = self.session.mission()
+        if mission is not None:
+            counsel_view.draw_marks(surf, self.cam, mission, self.now.ships, self.map_rect, time.monotonic())
         self._map_overlay_text(surf)
-        officer_view.draw_panel(surf, (self.map_rect.x + 14, self.map_rect.y + 36), acts, self.session.officer_name,
-                                obs.tick, obs.rules.ticks_per_cycle, self.subs.speaking)
+        counsel_box = None
+        if self.counsel_open and not obs.outcome.over:
+            counsel_box = counsel_view.draw_counsel(surf, counsel_view.counsel_rect(self.map_rect), self.session.counsel(), self.ui,
+                                      lambda plan: self._follow(plan, None), self._follow,
+                                      lambda: self.toggle_counsel(False), self.counsel_ran, time.monotonic(),
+                                      self.paused, self.session.counsel_goal.text if self.session.counsel_goal else "",
+                                      lambda: self.session.counsel_order("general"))
+        else:
+            officer_view.draw_panel(surf, (self.map_rect.x + 14, self.map_rect.y + 36), acts, self.session.officer_name,
+                                    obs.tick, obs.rules.ticks_per_cycle, self.subs.speaking)
+        self.counsel_box = counsel_box
         self._draw_printout(surf)
         self._draw_focus(surf)
         lift = self._proposal_height()
         area = self.map_rect.inflate(0, -lift).move(0, -lift // 2) if lift else self.map_rect
+        if counsel_box is not None:      # subtitles keep to the open part of the map
+            area = area.clip(pygame.Rect(counsel_box.right + 8, area.y, area.right - counsel_box.right - 8, area.height))
         self.subs.draw(surf, area, self._keep_clear(p))
         self._draw_proposal(surf)
         self._draw_wheel(surf)
@@ -176,6 +190,9 @@ class RenderMixin(SceneState):
             col = theme.mix(theme.TEXT_DIM, theme.GOOD, 0.4 + 0.6 * pulse)
             theme.text(surf, f"{names}  ·  ETA {eta:4.0f} cycles", (r.right - 14, y), col, 13, "mono", anchor="topright")
             y += 20
+        mission = self.session.mission()
+        if mission is not None:
+            y = counsel_view.draw_mission(surf, (r.right - 14, y + 4), mission, time.monotonic()).bottom + 4
         comms_view.draw_card(surf, (r.right - 14, y + 4), self.obs, self.player_id, self.comms, self.ui,
                              time.monotonic(), self._comms_button)
 
@@ -383,6 +400,8 @@ class RenderMixin(SceneState):
         elif o == "scan":
             self._scan_view(surf)
         elif o == "debrief":
+            self._starfleet(surf)
+        elif o == "debrief_details":
             self._debrief(surf)
         elif o == "voice":
             self._voice_page(surf)
@@ -457,6 +476,88 @@ class RenderMixin(SceneState):
             theme.text(surf, f"{sid}: {d}%", (r.x + 20 + (i % 3) * 220, y + (i // 3) * 18),
                        theme.health_color(1 - d / 100, d >= 100), 12, "mono")
 
+    def _starfleet(self: BattleScene, surf: pygame.Surface) -> None:
+        """Starfleet's assessment [E]: the story of the battle. The table of numbers is one click behind it."""
+        a = self.session.starfleet()
+        W = min(860, surf.get_width() - 80)
+        inner = W - 48
+        # what goes on the page, to size it
+        rows: list[tuple[str, str, theme.Color]] = []
+        if a.mission:
+            col = theme.GOOD if a.mission_state == "done" else theme.ALERT if a.mission_state == "failed" else theme.TEXT
+            rows.append(("MISSION", a.mission, col))
+        lives = []
+        if a.mission_kind == "rescue" and a.people:
+            lives.append(f"{a.rescued} of {a.people} rescued")
+        lives.append(f"{a.crew_lost} of our crew lost" if a.crew_lost else "no one of ours lost")
+        theirs = [x for x in (f"{a.enemy_spared} spared" if a.enemy_spared else "",
+                              f"{a.enemy_lost} lost" if a.enemy_lost else "") if x]
+        if theirs:
+            lives.append("their crews: " + ", ".join(theirs))
+        rows.append(("LIVES", "  ·  ".join(lives), theme.TEXT))
+        rows.append(("CONDUCT", a.conduct, theme.ALERT if a.treachery else theme.TEXT))
+        cost = [f"hull {a.hull:.0%}"]
+        if 0 < a.torps_full < 1000:          # a Dreadnought's magazine is as good as bottomless
+            cost.append(f"torpedoes {a.torps_left} of {a.torps_full}")
+        if a.systems_down:
+            cost.append("down: " + ", ".join(a.systems_down[:4]) + ("…" if len(a.systems_down) > 4 else ""))
+        if a.ships_lost:
+            cost.append("lost: " + ", ".join(a.ships_lost))
+        rows.append(("COST", "  ·  ".join(cost), theme.TEXT))
+        wrapped = [(k, theme.clip_lines(theme.wrap(v, 13, inner - 110), 2, 13, inner - 110), c) for k, v, c in rows]
+        bridge = [(who, theme.clip_lines(theme.wrap(line, 13, inner - 130), 2, 13, inner - 130))
+                  for who, line in a.bridge]
+        follows = [theme.clip_lines(theme.wrap(f, 12, inner - 16), 2, 12, inner - 16) for f in a.follows]
+        h = (110 + sum(10 + 19 * len(ls) for _, ls, _ in wrapped) + (64 if a.commendation else 0)
+             + (30 + sum(8 + 19 * len(ls) for _, ls in bridge) if bridge else 0)
+             + (30 + sum(4 + 17 * len(ls) for ls in follows) if follows else 0) + 70)
+        h = min(h, surf.get_height() - 40)
+        accent = {"won": theme.GOOD, "lost": theme.ALERT}.get(a.outcome, theme.CAUTION)
+        r = self._modal(surf, W, h, "Starfleet's assessment", accent)
+        theme.text(surf, theme.fit(a.headline, 22, inner, "display", "semibold"), (r.x + 24, r.y + 38), theme.TEXT, 22,
+                   "display", weight="semibold")
+        d = self.session.debrief()
+        verdict = f"In the field: {d.verdict[0].lower() + d.verdict[1:]}" if a.mission else d.verdict
+        theme.text(surf, theme.fit(verdict, 13, inner), (r.x + 24, r.y + 72), accent, 13)
+        y = r.y + 104
+        for key, lines, col in wrapped:
+            theme.text(surf, key, (r.x + 24, y + 2), theme.TEXT_FAINT, 10, "display", weight="medium")
+            for ln in lines:
+                theme.text(surf, ln, (r.x + 130, y), col, 13)
+                y += 19
+            y += 10
+        if a.commendation is not None:
+            c = pygame.Rect(r.x + 16, y, r.width - 32, 54)
+            gfx.draw.rect(surf, theme.mix(theme.BG_PANEL_HI, theme.CAUTION, 0.10), c, border_radius=5)
+            gfx.draw.rect(surf, theme.dim(theme.CAUTION, 0.7), c, 1, border_radius=5)
+            theme.text(surf, "COMMENDATION", (c.x + 12, c.y + 8), theme.CAUTION, 10, "display", weight="medium")
+            theme.text(surf, theme.fit(a.commendation.name, 15, c.width - 140, weight="medium"), (c.x + 120, c.y + 6),
+                       theme.CAUTION, 15, weight="medium")
+            theme.text(surf, theme.fit(a.commendation.citation, 12, c.width - 140), (c.x + 120, c.y + 30), theme.TEXT, 12)
+            y = c.bottom + 10
+        if bridge:
+            theme.text(surf, "THE BRIDGE", (r.x + 24, y + 4), theme.TEXT_DIM, 11, "display", weight="medium")
+            y += 26
+            for who, lines in bridge:
+                theme.text(surf, theme.fit(who, 13, 120, weight="medium"), (r.x + 24, y), theme.CREW, 13, weight="medium")
+                for ln in lines:
+                    theme.text(surf, ln, (r.x + 150, y), theme.TEXT, 13)
+                    y += 19
+                y += 8
+        if follows:
+            theme.text(surf, "WHAT FOLLOWS", (r.x + 24, y + 4), theme.TEXT_DIM, 11, "display", weight="medium")
+            y += 26
+            for lines in follows:
+                for ln in lines:
+                    theme.text(surf, ln, (r.x + 24, y), theme.TEXT_DIM, 12)
+                    y += 17
+                y += 4
+        self.ui.button(surf, pygame.Rect(r.right - 224, r.bottom - 46, 200, 30), self.exit_label, self.on_exit, size=13)
+        self.ui.button(surf, pygame.Rect(r.right - 392, r.bottom - 46, 160, 30), "Details",
+                       lambda: setattr(self, "overlay", "debrief_details"), size=13)
+        self.ui.button(surf, pygame.Rect(r.right - 560, r.bottom - 46, 160, 30), "Review the field",
+                       lambda: setattr(self, "overlay", None), size=13)
+
     def _debrief(self: BattleScene, surf: pygame.Surface) -> None:
         """The end of the battle: how it went, your ship's record, the officer who stood out, every ship's tally."""
         d = self.session.debrief()
@@ -475,7 +576,7 @@ class RenderMixin(SceneState):
             hull = max(0.0, me.structure / me.structure_max)
             stats = [("hull", f"{hull:.0%}", theme.health_color(hull)),
                      ("crew", f"{me.crew}/{me.cls.crew}", theme.TEXT),
-                     ("morale", f"{reports.morale_words(me.morale)} {me.morale:.0f}", theme.health_color(me.morale / 100)),
+                     ("morale", f"{me.morale:.0f}", theme.health_color(me.morale / 100)),
                      ("phasers", ratio(st.phaser_hits, st.phaser_shots), theme.TEXT),
                      ("torpedoes", ratio(st.torpedo_hits, st.torpedoes_fired), theme.TEXT),
                      ("dealt", f"{st.damage_dealt:,.0f}", theme.GOOD),
@@ -484,8 +585,10 @@ class RenderMixin(SceneState):
             col_w = (card.width - 24) / len(stats)
             for k, (label, val, colr) in enumerate(stats):
                 x = card.x + 12 + k * col_w
-                theme.text(surf, label, (x, card.y + 32), theme.TEXT_FAINT, 10)
-                theme.text(surf, val, (x, card.y + 46), colr, 13, "mono")
+                theme.text(surf, label if label != "morale" else theme.fit(f"morale · {reports.morale_words(me.morale)}",
+                                                                           10, int(col_w) - 6), (x, card.y + 32),
+                           theme.TEXT_FAINT, 10)
+                theme.text(surf, theme.fit(val, 13, int(col_w) - 6, "mono"), (x, card.y + 46), colr, 13, "mono")
             y = card.bottom + 14
         if d.standout is not None:
             theme.text(surf, "STANDOUT OFFICER", (r.x + 24, y - 2), theme.TEXT_DIM, 11, "display", weight="medium")
@@ -515,8 +618,8 @@ class RenderMixin(SceneState):
                              f"intercepts {st.ordnance_intercepted}", (r.x + 200, y), theme.TEXT_DIM, 11, "mono")
             y += 18
         self.ui.button(surf, pygame.Rect(r.right - 224, r.bottom - 46, 200, 30), self.exit_label, self.on_exit, size=13)
-        self.ui.button(surf, pygame.Rect(r.right - 392, r.bottom - 46, 160, 30), "Review the field",
-                       lambda: setattr(self, "overlay", None), size=13)
+        self.ui.button(surf, pygame.Rect(r.right - 392, r.bottom - 46, 160, 30), "Starfleet's assessment",
+                       lambda: setattr(self, "overlay", "debrief"), size=13)
 
 
 __all__ = ["RenderMixin"]

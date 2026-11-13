@@ -2,13 +2,24 @@
 title: After the battle
 category: Game
 order: 4
-aliases: after the battle, assessment, debrief, battle assessment, score, standout, standout officer, review the field, red alert
-summary: The battle assessment: the result, your ship's record, every ship's damage, and the officer who did the most.
-see: crew, morale, time
+aliases: after the battle, assessment, starfleet's assessment, commendation, commendations, debrief, battle assessment, score, standout, standout officer, review the field, red alert
+summary: Starfleet's assessment of the battle (mission, lives, conduct, cost, a commendation), and the full record behind it.
+see: missions, counsel, crew, morale, time
 ---
-When the battle ends, the assessment opens over the map.
+When the battle ends, **Starfleet's assessment** opens over the map: the battle as Starfleet Command will read it.
 
-At the top is the result and how decisive it was, the score and how many cycles it took. Below that is your ship's record: hull, crew, morale, phaser hits, torpedoes that hit, damage dealt and taken, and kills.
+- **The headline** answers the mission when there was one ("Everyone aboard the Aldren is safe."), else who holds the field. Under it, how the battle went in the field.
+- **Mission**: how it ended, with the people saved on a rescue.
+- **Lives**: people rescued, our crew lost (or "no one of ours lost"), and the enemy's crews spared (surrendered, taken prisoner, allowed to withdraw on terms) and lost.
+- **Conduct**: surrenders accepted, prisoners taken, truces kept, and any fire on a ship that had struck her colours.
+- **Cost**: the flagship's hull, torpedoes left, systems down, ships lost.
+- **Commendation**: at most one, and only for something specific. The **Karagite Order of Heroism** for bringing every soul off a stricken ship, most of them beamed across while the enemy was still fighting (people taken off after the battle don't count toward it); the **Palm Leaf of Axanar Peace Mission** for winning while sparing those who yielded; the **Grankite Order of Tactics** for a decisive victory against several ships that left your ship sound.
+- **The bridge**: a line from each officer whose work showed, in their own manner.
+- **What follows**: who escaped and what they will report, what the enemy will remember of your conduct, and on a tour, what the mission's result changes.
+
+**Details** opens the full record.
+
+At the top of the details is the result and how decisive it was, the score and how many cycles it took. Below that is your ship's record: hull, crew, morale, phaser hits, torpedoes that hit, damage dealt and taken, and kills.
 
 **Standout officer** names the officer who did the most for the ship, from the ship's own records: the orders they gave that were carried out, the objectives they saw through (Seven's `disable` and `destroy` work), and the projects their station finished. It says nothing about how well you did as captain; the score does that.
 

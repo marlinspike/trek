@@ -53,6 +53,8 @@ def _pos(obs: Observation, sid: int | None) -> tuple[float, float] | None:
 def navcom(obs: Observation, ship: Ship) -> str:
     if ship.docked_to is not None:
         return f"Docked with {_name(obs, ship.docked_to)}"
+    if ship.helm_keep is not None and ship.helm_target is not None and ship.helm_mode != HelmMode.COURSE:
+        return f"Holding {_name(obs, ship.helm_target)} at {ship.helm_keep:,.0f}"
     if ship.helm_mode == HelmMode.PURSUE and ship.helm_target is not None:
         return f"Pursuing {_name(obs, ship.helm_target)}"
     if ship.helm_mode == HelmMode.ELUDE and ship.helm_target is not None:
@@ -447,7 +449,7 @@ def _class_lines(c: ShipClass, content: ContentDB) -> list[str]:
         f"  Crew {c.crew}   Mass {c.mass:,.0f}   Max warp {c.max_warp:g}   Turn at warp 1: {c.w1turn:g}°/cycle",
         f"  Reactors {c.reactors} x {c.reactor_output:g}   Batteries {c.batteries} x {c.battery_capacity:g}",
         f"  Phaser banks {c.banks}: charge {c.banks_charge:g} over {c.banks_rate:g} cycles, range {c.banks_range:,.0f}",
-        f"  Torpedo tubes {c.tubes} ({c.torpedo or '-'}, {c.torps_carried} carried)   "
+        f"  Torpedo tubes {c.tubes} ({c.torpedo or '-'}, {c.torps_carried if c.torps_carried < 1000 else 'unlimited'} carried)   "
         f"Probe launchers {c.launchers} ({c.probe or '-'}, {c.probes_carried} carried)",
         f"  Shields {c.shields} x {c.shield_strength:g}   Warp drives {c.drives}   Sensor range {c.scanner_range:,.0f}",
         f"  Transporters {c.transporters}   Tractor {'yes' if c.has_tractor else 'no'}   "

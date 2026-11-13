@@ -12,6 +12,9 @@ if TYPE_CHECKING:
     from ..world import World
 
 
+KEEP_BAND = 0.15     # [E] pursue/elude "at" a range: the share either side of it the helm lets the range drift
+
+
 def update_helm(world: World, ship: Ship, dt: float) -> None:
     rules = world.rules
     cls = ship.cls
@@ -24,7 +27,20 @@ def update_helm(world: World, ship: Ship, dt: float) -> None:
             ship.helm_target = None
         else:
             b = bearing(pos[0] - ship.x, pos[1] - ship.y)
-            ship.desired_course = b if ship.helm_mode == HelmMode.PURSUE else norm360(b + 180.0)
+            keep = ship.helm_keep
+            if keep is not None:
+                # [E] hold the range: close when beyond the band, open when inside it, and circle her within it
+                d = math.hypot(pos[0] - ship.x, pos[1] - ship.y)
+                if d > keep * (1.0 + KEEP_BAND):
+                    ship.desired_course = b
+                elif d < keep * (1.0 - KEEP_BAND):
+                    ship.desired_course = norm360(b + 180.0)
+                else:
+                    left, right = norm360(b - 90.0), norm360(b + 90.0)
+                    ship.desired_course = left if abs(turn_delta(ship.course, left)) <= abs(turn_delta(ship.course, right)) \
+                        else right
+            else:
+                ship.desired_course = b if ship.helm_mode == HelmMode.PURSUE else norm360(b + 180.0)
 
     # desired warp clamp [R]: [-1, max attainable]
     maxw = ship.max_attainable_warp

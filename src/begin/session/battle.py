@@ -30,6 +30,8 @@ from ..console.translator import Translator
 from ..crew.career import Career
 from ..crew.characters import OfficerProfile
 from ..crew.conversation import Bridge
+from ..crew.counsel import Goal, Plan, counsel as build_counsel, parse_goal
+from ..crew.situation import MissionView, Situation, build as build_situation, mission_view
 from ..crew.review import standout
 from ..crew.hails import Comms, load_lines
 from ..crew.proposals import Proposal, Proposer
@@ -37,7 +39,7 @@ from ..help.coach import HelpContext
 from ..paths import config_dir
 from ..sim.allies import AllyStanding
 from ..sim.commands import AllyOrder, Command, FirePhasers, FireTorpedoes, LaunchProbe, SetBanks
-from ..sim.events import CommandRejected, Event, Message, ObjectiveEnded, ProjectCompleted, ScanCompleted
+from ..sim.events import CommandRejected, Event, HailAnswered, Message, ObjectiveEnded, ProjectCompleted, ScanCompleted
 from ..sim.observation import Observation
 from ..sim.scoring import Assessment
 from ..sim.ship import BankRole, Ship
@@ -49,10 +51,11 @@ from .command import CommandMixin, Recording, load_alerts, load_phrasebook
 from .comms import CommsMixin
 from .common import CHART, EVENT_TONE, TourLink
 from .console import ConsoleMixin
+from .assessment import StarfleetAssessment, build as build_assessment
 from .debrief import Debrief, SideTally
 from .hit_report import HitReport
 from .interface import Session
-from .news import Commanding, Cue, Line, News, Notice, Show, Ticked
+from .news import Commanding, Cue, Line, News, Notice, Request, Show, Ticked
 from .orders import OrdersMixin
 from .prefs import BridgePrefs
 from .voices import VoicesMixin
@@ -89,6 +92,9 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
         self.chart_all = False
         self.chart_origin: int | None = None
         self.proposer = Proposer()
+        self._counsel: list[Plan] = []        # [E] the officers' plans, rebuilt about once a cycle (crew/counsel.py)
+        self._counsel_tick = -10**9
+        self.counsel_goal: Goal | None = None  # [E] what the captain asked the officers to plan for
         self.proposal: Proposal | None = None
         self._propose_t = 0.0
         self.career = Career(career)
@@ -103,7 +109,8 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
         self.ever_delegated: set[str] = set()
         self.trust_news: list[str] = []
         self.phrasebook = load_phrasebook()
-        self.deeds: list[Event] = []          # objectives and projects finished: the officers' record for the debrief
+        self.deeds: list[Event] = []
+        self.hails_answered: list[HailAnswered] = []   # [E] for Starfleet's assessment          # objectives and projects finished: the officers' record for the debrief
         self.hidden = hidden if hidden is not None else {}
         self.bridge: Bridge | None = None
         self.translator: Translator | None = None
@@ -348,6 +355,81 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
                   f"{max(0.0, p.structure) / p.structure_max * 100:.0f}%, torps {p.torps_remaining}, probes {p.probes_remaining}",
                   "text")
 
+    # ------------------------------------------------------------ counsel [E]
+
+    def situation(self) -> Situation | None:
+        """The fight as the bridge officers see it now (crew/situation.py)."""
+        p = self.player
+        if p is None or not p.alive:
+            return None
+        calls, eta = 0, 0.0
+        run = self.tour
+        if isinstance(run, TourRun) and not run.over:
+            calls = run.state.calls_left
+            stop = run.stop
+            eta = stop.eta if stop is not None else 0.0
+        return build_situation(self.obs, p, calls, eta)
+
+    def mission(self) -> MissionView | None:
+        """Our mission, for the mission card: the goal, the ward or the runner, people aboard, time left."""
+        p = self.player
+        if p is None:
+            return None
+        return mission_view(self.obs, p)
+
+    def counsel(self, force: bool = False) -> list[Plan]:
+        """Each officer's way forward from here: rebuilt from the live situation about once a cycle, and only
+        with lines the console would accept now."""
+        if self.bridge is None or self.world.outcome.over:
+            return []
+        tick = self.world.tick
+        if force or tick - self._counsel_tick >= self.world.rules.ticks_per_cycle or tick < self._counsel_tick:
+            s = self.situation()
+            if self.counsel_goal is not None and s is not None and self.counsel_goal.achieved(s):
+                self._log(f"Counsel: {self.counsel_goal.text}: done. The officers plan for the whole fight again.", "good")
+                self.counsel_goal = None
+            self._counsel = build_counsel(s, self.officers(), self.dry_run, self.counsel_goal) if s is not None else []
+            self._counsel_tick = tick
+        return self._counsel
+
+    def counsel_order(self, words: str | None) -> None:
+        """`counsel`, `counsel on|off`, or `counsel <goal>`: open the officers' counsel, aimed at a goal if one is
+        given ('counsel destroy the gr'oth', 'counsel disable all their engines'; 'counsel general' clears it)."""
+        low = (words or "").strip().lower()
+        if low in ("", "on", "off"):
+            if low == "off":
+                self.counsel_goal = None
+            self._emit(Request("counsel", low or None))
+            return
+        if low in ("general", "clear", "any", "overall", "none", "reset"):
+            self.counsel_goal = None
+            self._log("Counsel: the officers plan for the whole fight.", "dim")
+        else:
+            s = self.situation()
+            if s is None:
+                self._log("No ship under command to counsel.", "caution")
+                return
+            goal = parse_goal(words or "", s)
+            if isinstance(goal, str):
+                self._log(goal, "caution")
+                self._notice(goal, "caution", 3.0)
+                return
+            self.counsel_goal = goal
+            self._log(f"Counsel: {goal.text}. Each officer gives their way to it.", "dim")
+        self._counsel_tick = -10**9
+        self._emit(Request("counsel", "on"))
+
+    def follow(self, plan: Plan, lines: list[str] | None = None) -> None:
+        """Run an officer's plan, or some of its steps, as if the captain typed them."""
+        run = lines if lines is not None else plan.lines
+        if not run:
+            return
+        whole = lines is None or len(run) == len(plan.steps)
+        self._log(f"{plan.name}'s counsel{'' if whole else ' (in part)'}: {plan.title}.", "dim")
+        for line in run:
+            self.say(line)
+        self._counsel_tick = -10**9          # the next look reads the new situation
+
     def _reinforcements(self) -> None:
         if self.tour is None:
             self._log("Starfleet sends reinforcements only on a tour of duty (main menu, Tour of duty).", "caution")
@@ -364,6 +446,7 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
         events = self.world.take_events()
         self.obs = self.world.observe(self.side)
         self.deeds.extend(ev for ev in events if isinstance(ev, (ObjectiveEnded, ProjectCompleted)))
+        self.hails_answered.extend(ev for ev in events if isinstance(ev, HailAnswered))
         self._emit(Ticked(tuple(events), stepped))
         self._crew_react(events)
         if any(isinstance(ev, CommandRejected) and ev.ship_id == self.player_id and ev.issuer == "captain"
@@ -473,6 +556,14 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
         return Debrief(w.outcome.reason or "The engagement is over.", self.assessment.verdict(score), score, w.time,
                        self.side, me, best.line() if best is not None else None, crew is not None, honours, sides,
                        list(w.ships.values())[:rows])
+
+    def starfleet(self) -> StarfleetAssessment:
+        """Starfleet's assessment of the battle: the mission, lives, conduct, cost, a commendation if earned, and a
+        line from each officer whose work showed (session/assessment.py)."""
+        crew = self.battle.crew
+        names = {st: o.name for st, o in crew.officers.items()} if crew is not None else {}
+        return build_assessment(self.world, self.side, self.player_id, self.assessment, self.deeds,
+                                self.hails_answered, names, tour=self.tour is not None)
 
     def in_battle(self) -> bool:
         """Our ship is in a fight: hit lately, or an enemy close by (the red alert)."""

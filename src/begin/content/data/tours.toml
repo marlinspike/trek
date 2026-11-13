@@ -26,12 +26,23 @@ eta = 90
 officer = "seven"
 seed = 11
 briefing = """
-Three Orion vessels are preying on shipping near Tau Ceti: two Anarchists and a Raider. They are fast and lightly
-built, and they will scatter rather than stand and fight. Destroy them or drive them off before they reach the
-shipping lanes. It is also a chance to see how the squadron works together before the border.
+The freighter Tamar Kessel is carrying torpedoes and spares for the border squadrons, and three Orion vessels mean
+to take her before she reaches the Tau Ceti shipping lane: two Anarchists and a Raider. Two of them will go straight
+for her. She can't fight and she can't outrun them. Get her to the lane, and her cargo is ours to share.
 """
 enemies = ["orion.an", "orion.an", "orion.ra"]
-enemy_center = [5000, 10000]
+enemy_center = [-4000, 15000]
+
+[tour.stop.mission]
+kind = "escort"
+title = "Get the Tamar Kessel to the shipping lane"
+ward = "federation.tn"
+ward_name = "Tamar Kessel"
+at = [2000, -8000]
+to = [26000, -8000]
+hunters = 2
+flag = "kessel-safe"
+resupply = 0.5
 
 [[tour.stop]]
 id = "border"
@@ -59,11 +70,19 @@ eta = 170
 officer = "spock"
 seed = 37
 briefing = """
-Three Klingon frigates are holding the Kessik relay station. They are no match for us one at a time; the logical
-course is to separate them. Their reports will reach the Klingon fleet whatever happens here, so it would be
-best if none of them escaped to make one.
+Three Klingon frigates are holding the Kessik relay station. One of them, the lightest, will run for the border the
+moment we arrive, carrying everything they have learned of our squadron. If she reaches the Klingon fleet, they will
+send one more ship against Starbase 12. Stop her: destroy her, cripple her drives, or take her. The other two will try
+to buy her the time.
 """
 enemies = ["klingon.fr", "klingon.fr", "klingon.fr"]
+
+[tour.stop.mission]
+kind = "intercept"
+title = "Stop the frigate carrying their report"
+runner = 0
+heading = 20
+flag = "report-stopped"
 
 [[tour.stop]]
 id = "ambush"
@@ -75,12 +94,25 @@ eta = 200
 officer = "spock"
 seed = 41
 briefing = """
-A distress call from Galorndon Core. Sensors show nothing there, which is in itself suspicious: the Romulans
-have used this system for ambushes before. Expect three Birds of Prey under cloak and plasma torpedoes at close
-range. Keep our weakest shields away from where they are likely to decloak.
+A distress call from Galorndon Core, and it is real: the survey ship Aldren is crippled with 120 people aboard and her
+reactor failing. Sensors show nothing else there, which is in itself suspicious. The Romulans are using her as bait:
+expect three Birds of Prey under cloak and plasma torpedoes at close range. Our transporters reach 3,000, and the
+shield facing her must be down to beam. Whoever we save, Starfleet will remember.
 """
 enemies = ["romulan.bp", "romulan.bp", "romulan.bp"]
-enemy_center = [-4000, 7000]
+enemy_center = [-4000, 9000]
+
+[tour.stop.mission]
+kind = "rescue"
+title = "Rescue the crew of the Aldren"
+ward = "federation.de"
+ward_name = "Aldren"
+at = [-1500, -3500]
+people = 120
+deadline = 200
+hunters = 1
+flag = "survey-team-saved"
+calls = 1
 
 [[tour.stop.choice]]
 label = "Refit at Starbase 12"
@@ -132,6 +164,8 @@ bays are at our disposal. If the starbase falls, the tour has failed.
 enemies = ["klingon.fr", "klingon.fr", "klingon.fr"]
 [tour.stop.add]
 refit = ["klingon.bc"]
+[tour.stop.drop]
+report-stopped = ["klingon.fr"]
 
 [[tour.stop.wave]]
 ships = ["klingon.bc", "klingon.bc"]

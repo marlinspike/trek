@@ -27,6 +27,7 @@ from ..content.schema import ContentDB
 from ..paths import config_dir
 from ..tour.log import OFFICER_ORDER, OFFICER_TITLES, read_markdown_edits, voice_request, write_markdown
 from ..tour.model import TourDef, check_tour, load_tours
+from ..tour.ready import ReadyView, ready_counsel
 from ..tour.run import TourRun
 from ..tour.state import ShipRecord, TourState, fleet_cost
 from . import theme
@@ -38,6 +39,7 @@ from . import gfx
 if TYPE_CHECKING:
     from ..llm.service import LLMService
 
+READY_NAMES = {"spock": "Spock", "worf": "Worf", "geordi": "Geordi", "seven": "Seven"}
 TURN_RATE = 7.0           # degrees a second the squadron's ships turn on their stands
 MAX_ESCORTS = 5
 OUTCOME_WORDS = {"victory": "Victory", "withdrew": "Withdrew", "lost": "Flagship lost", "base lost": "Starbase lost",
@@ -73,6 +75,8 @@ class TourScene:
         self.confirm_new = False
         self.voices: LLMService | None = None   # the officers' language model, once they have written
         self._asked: dict[int, tuple[int, str]] = {}
+        self._ready_key: tuple[object, ...] | None = None   # what the officers' view was last worked out for
+        self._ready_cache: list[ReadyView] = []
         self.refresh()
 
     # ------------------------------------------------------------ tours and saving
@@ -555,14 +559,21 @@ class TourScene:
             for k, ln in enumerate(wrap(self.note, 13, bw)):
                 theme.text(surf, ln, (42, y + 18 * k), theme.GOOD, 13)
         # the squadron, as Geordi expects it to arrive
-        self._squadron_panel(surf, run, pygame.Rect(w - min(560, int(w * 0.36)) - 40, 100, min(560, int(w * 0.36)), h - 200))
+        sq = pygame.Rect(w - min(560, int(w * 0.36)) - 40, 100, min(560, int(w * 0.36)), h - 200)
+        self._squadron_panel(surf, run, sq)
+        # between them, each officer's view of the stop
+        mid = pygame.Rect(br.right + 16, 100, min(560, sq.x - br.right - 32), h - 200)   # lines a reader can follow
+        if mid.width >= 250:
+            self._officers_view(surf, run, mid)
         # the buttons along the bottom
         by = h - 76
         launch_tip = "Make your decision first" if run.needs_choice() else f"{run.transit_cycles():.0f} cycles to {stop.system}"
         self.ui.button(surf, pygame.Rect(w - 340, by, 300, 46), f"Set course for {stop.system}", self._launch, launch_tip,
                        enabled=not run.needs_choice(), size=15, accent=theme.GOOD, face="ui")
         calls = st.calls_left
-        self.ui.button(surf, pygame.Rect(w - 640, by, 280, 46),
+        pw = 250 if w >= 1400 else 220                       # the prisoners button, narrower on a small window
+        rx = max(w - 640, 472 + pw + 16)
+        self.ui.button(surf, pygame.Rect(rx, by, w - 360 - rx, 46),
                        f"Request reinforcements ({calls})", self._reinforce,
                        f"Starfleet's ships take {stop.eta:.0f} cycles to reach {stop.system}. You can also call from the "
                        f"battle: 'request reinforcements'.", enabled=calls > 0, size=14, face="ui")
@@ -570,11 +581,44 @@ class TourScene:
                        "Every stop's page, and your entries", enabled=bool(st.log), size=14)
         self.ui.button(surf, pygame.Rect(256, by, 200, 46), "Save and leave", self.close, "Esc", size=14)
         held = st.prisoners
-        self.ui.button(surf, pygame.Rect(472, by, 250, 46), f"Hand over prisoners ({held})", self._prisoners,
+        self.ui.button(surf, pygame.Rect(472, by, pw, 46), f"Hand over prisoners ({held})", self._prisoners,
                        "A Starfleet transport takes the prisoners of war in our brig to a detention facility. It "
                        "leaves torpedoes and probes, and every 40 prisoners earns another reinforcement call. "
                        "Or keep them: in battle you can offer them back for a ship's withdrawal over a hail.",
                        enabled=held > 0, size=14, face="ui")
+
+    def _ready_views(self, run: TourRun) -> list[ReadyView]:
+        st = run.state
+        key = (run.tour.id, st.stop, st.choice, st.calls_left, len(st.pending), len(st.squadron))
+        if self._ready_key != key:
+            self._ready_key = key
+            self._ready_cache = ready_counsel(run)
+        return self._ready_cache
+
+    def _officers_view(self, surf: pygame.Surface, run: TourRun, r: pygame.Rect) -> None:
+        """Each officer's two sentences on the stop, from their own station (tour/ready.py)."""
+        views = self._ready_views(run)
+        if not views:
+            return
+        pic, size = (44, 13) if r.width >= 340 else (34, 12)
+        blocks = [(v, wrap(v.text, size, r.width - pic - 40)) for v in views]
+        need = 44 + sum(max(pic + 22, 20 + 18 * len(lines)) + 10 for _, lines in blocks)
+        if need > r.height:
+            size = 12
+            blocks = [(v, wrap(v.text, size, r.width - pic - 40)) for v in views]
+            need = 44 + sum(max(pic + 22, 20 + 18 * len(lines)) + 10 for _, lines in blocks)
+        box = pygame.Rect(r.x, r.y, r.width, min(r.height, need))
+        y = glass(surf, box, "Your officers' view", theme.CREW)
+        for v, lines in blocks:
+            row = max(pic + 22, 20 + 18 * len(lines))
+            if y + row > box.bottom:
+                break
+            surf.blit(portrait(v.officer, pic), (box.x + 12, y + 2))
+            name = READY_NAMES.get(v.officer, v.officer.title())
+            theme.text(surf, f"{name}, {v.station}", (box.x + pic + 24, y), theme.CREW, 12, weight="medium")
+            for k, ln in enumerate(lines):
+                theme.text(surf, ln, (box.x + pic + 24, y + 18 + 18 * k), theme.TEXT, size)
+            y += row + 10
 
     def _enemy_words(self, run: TourRun) -> str:
         stop = run.stop
@@ -626,7 +670,9 @@ class TourScene:
             theme.text(surf, f"hull {rec.hull:.0%}" + (f" → {p.hull:.0%}" if abs(p.hull - rec.hull) > 0.005 else ""),
                        (tx + bw + 8, box.y + 44), theme.TEXT, 12, "mono")
             dmg = len(p.damage)
-            stats = f"crew {p.crew_now(self.content)}/{cls.crew}  ·  torps {p.torps_now(self.content)}/{cls.torps_carried}"
+            torps = (f"torps {p.torps_now(self.content)}/{cls.torps_carried}" if cls.torps_carried < 1000
+                     else "torps unlimited")
+            stats = f"crew {p.crew_now(self.content)}/{cls.crew}  ·  {torps}"
             stats += f"  ·  {dmg} system{'s' if dmg != 1 else ''} damaged" if dmg else "  ·  systems sound"
             if box.height > 70:
                 theme.text(surf, theme.fit(stats, 12, box.right - 10 - tx), (tx, box.y + 62), theme.TEXT_DIM, 12)

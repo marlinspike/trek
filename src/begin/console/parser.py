@@ -94,6 +94,9 @@ DUTY_WORDS = {"shields": ("shields", "shield", "harmonics-shields", "deflectors"
               "phasers": ("phasers", "phaser", "frequency", "frequencies", "remodulate")}
 
 
+KEEP_MIN = 100.0     # [E] a bare number after pursue/elude above this is a range to hold, not a warp
+
+
 class Parser:
     def __init__(self, ctx: ParseContext) -> None:
         self.ctx = ctx
@@ -334,11 +337,25 @@ class Parser:
 
     def _pursue(self, tok: Tokens, res: ParseResult, elude: bool) -> None:
         target = self.resolve_ship(tok)
-        if tok.take_word("warp", "w"):
-            warp: float | None = tok.number("warp")
-        else:
-            warp = tok.opt_number()
-        res.commands.append(self._cmd(Pursue, target=target, warp=warp, elude=elude))
+        warp: float | None = None
+        keep: float | None = None
+        while not tok.done():
+            ranged = tok.peek() == "at"          # 'at' is filler elsewhere; here it names the range to hold
+            if ranged:
+                tok.i += 1
+            if tok.take_word("warp", "w"):
+                warp = tok.number("warp")
+            elif tok.take_word("range", "keep"):
+                keep = tok.number("range")       # [E] 'elude talon range 9000': hold her at 9,000
+            else:
+                n = tok.opt_number()
+                if n is None:
+                    break
+                if ranged or n > KEEP_MIN:       # [E] 'elude talon at 9000', or a number no warp could be
+                    keep = n
+                else:
+                    warp = n
+        res.commands.append(self._cmd(Pursue, target=target, warp=warp, elude=elude, keep=keep))
 
     def _v_pursue(self, tok: Tokens, res: ParseResult) -> None:
         self._pursue(tok, res, False)
@@ -1156,6 +1173,14 @@ class Parser:
     def _v_coach(self, tok: Tokens, res: ParseResult) -> None:
         tok.rest()
         res.actions.append(("manual", "coach"))
+
+    def _v_counsel(self, tok: Tokens, res: ParseResult) -> None:
+        """`counsel [on|off|<goal>]`: the officers' plans from here, over the map (the O key); with a goal, each
+        officer's way to it: `counsel destroy the gr'oth`, `counsel kill all the cubes`, `counsel disable all their
+        engines`, `counsel capture the mugger`, `counsel survive`, `counsel mission` [E]."""
+        words = " ".join(tok.raw.split()[1:]).strip()
+        res.actions.append(("counsel", words or None))
+        tok.rest()
 
     def _v_quit(self, tok: Tokens, res: ParseResult) -> None:
         res.actions.append(("quit", None))

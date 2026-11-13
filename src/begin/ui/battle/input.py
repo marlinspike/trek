@@ -68,7 +68,7 @@ class InputMixin(SceneState):
                 self.cam.zoom_at(1.15 ** ev.y, *self.ui.mouse)
 
     def _mouse_down(self: BattleScene, ev: pygame.event.Event) -> None:
-        if self.overlay in ("debrief", "menu", "manual", "voice"):
+        if self.overlay in ("debrief", "debrief_details", "menu", "manual", "voice"):
             h = self.ui.hit(ev.pos)
             if h and ev.button == 1:
                 h.action()
@@ -136,7 +136,7 @@ class InputMixin(SceneState):
         if k == pygame.K_ESCAPE:
             self._escape()
             return
-        if self.overlay == "debrief":
+        if self.overlay in ("debrief", "debrief_details"):
             if k in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self.on_exit()
             return
@@ -147,6 +147,8 @@ class InputMixin(SceneState):
             return          # an officer's proposal: Y makes it so
         if k == pygame.K_n and self.belay_proposal():
             return
+        if self.counsel_open and pygame.K_1 <= k <= pygame.K_4 and self.follow_plan(k - pygame.K_1):
+            return          # counsel open: 1 to 4 go all in on that officer's plan
         scene_action = SCENE_KEYS.get(k)
         if scene_action is not None:
             scene_action(self, k, shift)
@@ -158,12 +160,14 @@ class InputMixin(SceneState):
 
     def _escape(self: BattleScene) -> None:
         """Esc closes the printout, then the overlay; with nothing open it brings up the battle menu."""
-        if self.overlay is None and self.printout is not None:
+        if self.overlay is None and self.counsel_open:
+            self.counsel_open = False
+        elif self.overlay is None and self.printout is not None:
             self.printout = None
             self.chart_auto = False
         elif self.overlay in (None, "help_brief"):
             self.overlay = "menu"
-        elif self.overlay == "debrief":
+        elif self.overlay in ("debrief", "debrief_details"):
             self.on_exit()
         else:
             self.overlay = None
@@ -299,6 +303,7 @@ SCENE_KEYS: dict[int, SceneKey] = {
     pygame.K_F1: lambda s, k, shift: s.open_manual("controls"),
     pygame.K_h: lambda s, k, shift: s.open_manual(),
     pygame.K_i: lambda s, k, shift: s.toggle_overlay("damage"),
+    pygame.K_o: lambda s, k, shift: s.toggle_counsel(),
     pygame.K_q: _arcs,
     pygame.K_c: _follow,
     pygame.K_EQUALS: _zoom_in, pygame.K_PLUS: _zoom_in, pygame.K_KP_PLUS: _zoom_in,

@@ -43,6 +43,8 @@ see: console, keys
 | **1**–**8** with the wheel open | Pick a slice |
 | **Y** / **N** | Make an officer's proposal so, or belay it |
 | **Ctrl+Y** while typing | Accept the urgent proposal shown above the console |
+| **O** | Open or close the counsel: each officer's plan from here. See [[counsel]]. |
+| **1**–**4** with the counsel open | Go all in on that officer's plan |
 | **Tab** while typing | Finish a command, ship, officer or order name |
 | Hold **Right Alt** (Option on a Mac) | Speak an order; let go to send it. See [[voice-orders]]. |
 
@@ -67,7 +69,7 @@ see: console, keys
 | **H** | Open this manual |
 | **F1** | Open this page |
 | **F2–F8, F10–F12**, **Ctrl+letter** | Run a key macro. See [[keys]]. |
-| **Esc** | Close the open window or text display, or open the battle menu |
+| **Esc** | Close the counsel, the open window or text display, or open the battle menu |
 
 ## How much the panels show
 

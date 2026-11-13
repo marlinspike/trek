@@ -2,7 +2,7 @@
 title: Tours of duty
 category: Game
 order: 5
-aliases: tour, tours, tour of duty, request, request reinforcements, reinforcements, ready room, squadron, captain's log, log, waves
+aliases: tour, tours, tour of duty, officers' view, request, request reinforcements, reinforcements, ready room, squadron, captain's log, log, waves
 summary: Linked battles with a squadron you choose: damage, crews, torpedoes and prizes carry from one stop to the next.
 see: after-battle, crew, dock, fleet
 ---
@@ -19,6 +19,7 @@ Before the tour you choose the escorts that sail with the flagship. Each class c
 Between stops you are in the Ready Room, over the patrol chart.
 
 - **The briefing.** The officer who knows the threat best tells you what to expect, and what the enemy has learned about you so far. Fight with aimed fire and boarding parties and their captains grow wary; run your magazines low and they close in.
+- **Your officers' view.** Worf, Spock, La Forge and Seven each give two sentences on the next stop: the force to beat and where to strike, how that navy likes to fight and the geometry of any mission, how the squadron will arrive and whether a refit or a call to Starfleet is worth it, and what the sensors can and can't tell us yet. See [[counsel]].
 - **Your decision.** Some stops ask you to choose, for example whether to put in for a refit. A refit makes every ship good, but the enemy uses the time too.
 - **The squadron.** Each ship as Geordi expects her to arrive. On the way, crews repair systems and patch hulls (to 75% at most; a starbase does the rest), and a supply ship tops up the magazines. **Keep at base** leaves a ship behind to be refitted; she misses the next fight.
 - **Request reinforcements.** Starfleet sends a ship. Called from the Ready Room, she meets you at the stop, or partway into the fight if the trip is short. Each tour allows only a few calls.

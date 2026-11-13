@@ -17,7 +17,7 @@ The side that chooses the range usually wins. Look at your weapons and at hers, 
 - **Torpedo-heavy ships** want to stand off inside their torpedo envelope and outside her phasers.
 - **Phaser-heavy ships** want to close fast and stay close, where every hit is strongest.
 
-Use `pursue <ship> warp <w>` to hold a chase and `elude <ship>` to keep away. The [[coach]] tells you which side of each envelope you are on. Remember that her motion moves the envelope: a ship charging at you shrinks your minimum range, and a ship running away stretches it.
+Use `pursue <ship> warp <w>` to hold a chase, `elude <ship>` to keep away, and `pursue <ship> at 9000` (or `elude <ship> at 9000`) to hold her at a chosen range: the helm closes when she is beyond it, opens when she is inside, and circles her in between. The [[coach]] tells you which side of each envelope you are on. Remember that her motion moves the envelope: a ship charging at you shrinks your minimum range, and a ship running away stretches it.
 
 ### Fight with your shields
 
@@ -66,6 +66,8 @@ You can't watch everything, and you don't have to:
 - Hand the helm to Spock while you fight the guns.
 - Hand Seven a job: disable their shields, take out her torpedoes, find that cloaked ship.
 - When the battle is too big, give an officer the conn and step in only where it matters.
+
+When you aren't sure, ask the whole bridge at once: **O** opens the [[counsel]], four plans from four perspectives, each a few console lines you can run whole or a step at a time.
 
 Your orders always come first. See [[your-crew|Your crew]].
 
@@ -138,6 +140,14 @@ Allies follow standing orders until you change them:
 - A crippled ally can be towed to a starbase with `tow`. Docked, she can't be hit and repairs twice as fast.
 
 See [[tell]].
+
+### Missions
+
+A mission changes what winning means ([[missions]]):
+
+- **Rescue.** The hunter goes for the stricken ship first, so kill or draw her off, then close to 3,000 and lower only the shield that faces the wreck. Keep the armoured side to the enemy, or have a wingman screen you.
+- **Escort.** Get between the hunters and the freighter early; once she is under fire it is already late. Disabling a hunter's drives works as well as killing her.
+- **Intercept.** Don't chase her stern. Lay a course that meets her (Spock's "Cut her off" works one out), and leave her escorts for later unless they stand in the way. Disabling her engines ends it as surely as destroying her.
 
 ## More than one way to win
 

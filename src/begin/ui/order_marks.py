@@ -78,7 +78,9 @@ def draw_orders(surf: pygame.Surface, cam: Camera, obs: Observation, ship: Ship 
             them = cam.to_screen(*other)
             col = theme.dim(HELM, 0.75)
             _dashed(surf, col, me, them, 6, 6)
-            if ship.helm_mode == HelmMode.PURSUE:
+            if ship.helm_keep is not None:
+                word = f"holding at {ship.helm_keep:,.0f}"
+            elif ship.helm_mode == HelmMode.PURSUE:
                 _chevrons(surf, HELM, me, them, 2)
                 word = "pursuing"
             else:

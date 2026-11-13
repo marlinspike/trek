@@ -64,6 +64,10 @@ Start a line with an officer's name and talk:
 
 They answer from what your sensors know, never more. Now and then an officer at a station you are running proposes an order ("Torpedoes inbound, Captain. Evasive manoeuvres?"). **Y** makes it so and **N** belays it. With a language model connected ([[llm]]), they answer in their own words and never repeat a line. Without one, they use lines written for them. Either way, `crew chatter off` quiets them, though an officer working a job still says what they are doing.
 
+## Counsel
+
+Press **O** (or type `counsel`) and all four lay out a way forward at once, each from their own station: Worf the sword, Spock geometry and the mind, La Forge keeping the ship alive to win, Seven knowing before striking. Each plan is two to four console lines built from the live fight, and the panel is rebuilt as the fight changes. Go all in on one (**1** to **4**) or click single steps from several; both can win. Name a goal (`counsel disable all their engines`) and each plans toward it. The battle slows while you read; press **Space** first to stop it entirely. See [[counsel]].
+
 ## Trust and rapport
 
 They remember. Thanks and taking their advice build **rapport**, and insults wear it down. Rapport colours how they speak to you. **Trust** grows as you fight together: for each proposal you accept, each battle won at their post, and each time they stand out in the debrief. Trusted officers propose even while you type. Veterans act on an urgent proposal themselves if you leave it unanswered. See [[styles|Command styles and trust]].
