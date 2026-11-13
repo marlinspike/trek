@@ -25,7 +25,7 @@ stop
 
 Every warp factor is 100 units of distance per cycle. Your top speed is limited by your class, by damage to your drives and by the power you have left over for shields and weapons. If you ask for more than you can reach, the helm tells you and uses the most it can.
 
-Warp heats your drives. A drive that overheats burns out, so watch the temperature gauges on the engineering panel when you run at high warp. The [[coach]] warns you before that happens.
+Warp heats your drives. A drive that overheats burns out, so watch the temperature gauges on the engineering panel when you run at high warp. The [[coach]] warns you before that happens. When you need to run hard for a while, ask Geordi for all she's got: a team keeps the drives cooler for 30 cycles, at the cost of slower repairs. See [[boost]].
 
 ## Evasive manoeuvres
 

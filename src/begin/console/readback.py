@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import Callable
 
 from ..sim.commands import (
-    AllyOrder, CeaseFire, Command, ConfigureAutoload, DelegateStation, DeflectorPulse, Dock, EndObjective, Evasive,
+    AllyOrder, CeaseFire, Command, ConfigureAutoload, DelegateStation, DeflectorPulse, Dock, EngineBoost, EndObjective, Evasive,
     FireBait, FirePhasers, FireTorpedoes, LaunchProbe, LoadTubes, LockWeapons, ManageRepairs, OpenFire, Pursue,
     ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak, SetHelm, SetObjective, SetPhaserSpread, SetPointDefense,
     SetRepairPriority, SetShields, StandDown, StartProject, TakeConn, Tractor, Transport, TurnMounts,
@@ -151,6 +151,9 @@ def readback(cmd: Command, name_of: NameOf) -> str:
         return f"Starting work on the {cmd.project}."
     if isinstance(cmd, DeflectorPulse):
         return "Pulsing the deflector."
+    if isinstance(cmd, EngineBoost):
+        return ("A team to the engines. Other repairs slow while they work." if cmd.on else
+                "Engine team back to repairs.")
     if isinstance(cmd, CeaseFire):
         return "Ceasing fire. Point defense stays on."
     if isinstance(cmd, OpenFire):

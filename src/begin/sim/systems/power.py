@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..events import Message, Tone
+from ..events import EngineBoostEnded, Message, Tone
 from ..ship import LoadedTorpedo, Ship, ShipStatus
 from .sensors import assess
 
@@ -174,15 +174,46 @@ def update_power(world: World, ship: Ship, dt: float) -> None:
 def _drive_heat(world: World, ship: Ship, warp_ratio: float, dt: float) -> None:
     rules = world.rules
     eff = ship.cls.warp_efficiency
+    boosted = ship.engine_boost > 0.0
     for d in ship.drives:
         before = d.temp
         if d.destroyed:
             d.temp = max(0.0, d.temp - eff * rules.temp_rate * dt)
         else:
-            d.temp = max(rules.temp_floor, d.temp + (warp_ratio - d.health * eff) * rules.temp_rate * dt)
+            rise = (warp_ratio - d.health * eff) * rules.temp_rate * dt
+            if boosted and rise > 0.0:
+                rise /= rules.boost_endurance   # the engineering team keeps her cooler: she runs hot for longer [E]
+            d.temp = max(rules.temp_floor, d.temp + rise)
             if d.temp > rules.temp_limit:
                 world.destroy_subsystem(ship, d, "overheated")
         d.temp_rate = (d.temp - before) / dt
+    if boosted:
+        _count_down_boost(world, ship, dt)
+
+
+def boost_possible(ship: Ship) -> str | None:
+    """Why an engineering team can't nurse the drives now, or None when it can [E]."""
+    if not any(not d.destroyed for d in ship.drives):
+        return "There's no warp drive left to nurse, Captain."
+    if ship.crew <= 0:
+        return "There's no one left to send."
+    return None
+
+
+def _count_down_boost(world: World, ship: Ship, dt: float) -> None:
+    """The team works until its time is up, or until there is no drive left to work on; then it goes back to
+    the repairs."""
+    ship.engine_boost = max(0.0, ship.engine_boost - dt)
+    lost = boost_possible(ship) is not None
+    if ship.engine_boost > 0.0 and not lost:
+        return
+    ship.engine_boost = 0.0
+    world.emit(EngineBoostEnded(world.tick, ship.id, lost))
+    if ship.side == world.player_side:
+        text = ("The drives are gone. I'm sending the engine team back to repairs." if lost else
+                "That's all I can give you on the engines, Captain. The team's back on repairs.")
+        world.emit(Message(world.tick, text, Tone.INFO, speaker="Engineering", ship_id=ship.id,
+                           visible_to=frozenset({ship.side})))
 
 
 def _charge_weapons(world: World, ship: Ship, pool: float, dt: float) -> tuple[float, float]:

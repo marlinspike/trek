@@ -396,7 +396,8 @@ def _ship_tips(s: Ship, obs: Observation, tip: AddTip) -> None:
     temp = max((dv.temp for dv in live), default=0.0)
     if temp > obs.rules.temp_limit * 0.8:
         tip(1, "Engines running hot", f"Warp drive temperature {temp:.0f} of {obs.rules.temp_limit:.0f}. "
-            "Above the limit a drive burns out; drop to cruise speed for a few cycles.", f"warp {s.cls.cruise_warp:g}")
+            "Above the limit a drive burns out; drop to cruise speed for a few cycles"
+            + (", or ask Geordi for all she's got ('boost') to run hot for longer." if s.engine_boost <= 0.0 else "."), f"warp {s.cls.cruise_warp:g}")
     cap = s.battery_capacity()
     if cap > 0 and s.battery_charge() < cap * 0.2 and s.power.net < 0:
         tip(1, "Power is running out", "Batteries are below 20% and draining. Lower shields facing away from the "
@@ -450,7 +451,8 @@ fire all phasers
 Six shields each cover 60°. When the one facing the enemy weakens, turn to bring a fresh one round. See [[shields]].
 
 ### 6. Mind the engines and the power
-Above cruise warp the drives heat up, and past the limit they take damage. Firing and shields drain the batteries.
+Above cruise warp the drives heat up, and past the limit they take damage. For a long run, ask Geordi for all she's \
+got and a team keeps them cooler for a while (see [[boost]]). Firing and shields drain the batteries.
 
 ### 7. Dodge, and fan your shots
 A Federation helm can jink out of the way of incoming torpedoes and then carry on with your course. Against a fast \

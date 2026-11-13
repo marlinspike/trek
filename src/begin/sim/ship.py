@@ -411,6 +411,7 @@ class Ship:
     spared: set[int] = field(default_factory=set)   # ships disabled on the captain's order: officers and the computer hold fire on them [E]
     deflector_ready: bool = False      # the dish is set up for tachyon pulses [E]
     deflector_cooldown: float = 0.0    # cycles until the next pulse
+    engine_boost: float = 0.0          # cycles left of an engineering team nursing the drives (sim/systems/power.py) [E]
     objectives: list = field(default_factory=list)  # sim.objectives.Objective: standing orders to officers [E]
     conn: str = ""                     # officer id in command of the whole bridge; "" = the captain [E]
     conn_saved: set[str] = field(default_factory=set)  # stations delegated before the officer took the bridge

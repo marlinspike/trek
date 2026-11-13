@@ -247,15 +247,7 @@ class OwnShipPanel(Panel):
         theme.bar(surf, pygame.Rect(x + 92, yy + 4, rect.right - x - 104, 8), p.stored / cap,
                   theme.GOOD if p.stored / cap > 0.35 else theme.CAUTION)
         yy += 17
-        theme.text(surf, "Drives", (x, yy), theme.TEXT_DIM, 12)
-        n = max(1, len(ship.drives))
-        w = (rect.right - x - 104 - 4 * (n - 1)) // n
-        for i, d in enumerate(ship.drives):
-            frac = (d.temp - 12.0) / 28.0
-            col = theme.GOOD if frac < 0.5 else theme.CAUTION if frac < 0.8 else theme.ALERT
-            if d.destroyed:
-                col = (70, 74, 86)
-            theme.bar(surf, pygame.Rect(x + 92 + i * (w + 4), yy + 4, w, 8), frac, col)
+        _drives_row(surf, hud, ship, x, yy, rect.right - x - 104)
         yy += 19
         if detail:
             _kv(surf, x, yy, "Magazine", f"{ship.torps_remaining} torp · {ship.probes_remaining} probe")
@@ -265,13 +257,20 @@ class OwnShipPanel(Panel):
         rp = repair_words(ship.repair_priority)
         who = hud.session.repair_officer(ship)
         n = len(fixing) + (1 if hull_fixing else 0)
+        boosting = ship.engine_boost > 0.0
         if n == 0:
             rp = "nothing to repair"
+        elif boosting:   # the engine boost took a team off them [E]
+            room = rect.right - x - 92 - 8
+            rp = next((t for t in (f"{n} · slowed · team on engines", f"{n} · slowed · engines", f"{n} · slowed")
+                       if theme.text_width(t, 12, "mono") <= room), f"{n} · slowed")
         else:
             rp = f"{n} · {rp}" + (f" · {who.name.split()[0]}" if who is not None else "")
-        _kv(surf, x, yy, "Repairs", rp, theme.REPAIR if n else theme.TEXT_DIM)
+        _kv(surf, x, yy, "Repairs", rp, (theme.dim(theme.REPAIR, 0.7) if boosting else theme.REPAIR) if n else theme.TEXT_DIM)
+        team = (f"An engineering team is on the engines, so the other repairs run at "
+                f"{hud.obs.rules.boost_repair_share * 100:.0f}% speed ('boost off' sends them back). ") if boosting else ""
         hud.ui.add(pygame.Rect(x, yy, rect.right - x - 8, 16), lambda: hud.toggle_overlay("damage"),
-                   f"{n} under repair{' including the hull' if hull_fixing else ''}; priority: "
+                   team + f"{n} under repair{' including the hull' if hull_fixing else ''}; priority: "
                    f"{repair_words(ship.repair_priority, 'none')}; "
                    + (f"{who.name} directs the crews ('repair manual' to take them back)" if who is not None
                       else "'repair auto' lets an officer direct the crews"))
@@ -286,6 +285,33 @@ class OwnShipPanel(Panel):
                       lambda: hud.issue(SetPointDefense(ship_id=ship.id, doctrine=nxt)),
                       "Point defense doctrine (V cycles). Reserve banks with right-click on a bank.",
                       active=pd != PDDoctrine.OFF, accent=theme.GOOD)
+
+
+def _drives_row(surf: pygame.Surface, hud: BattleScene, ship: Ship, x: int, y: int, width: int) -> None:
+    """Each drive's heat as a bar. While an engineering team nurses the drives (the engine boost) the label turns
+    the repair crews' colour and a hairline under the bars runs down with the time the team has left [E]."""
+    rules = hud.obs.rules
+    left = ship.engine_boost
+    boosting = left > 0.0
+    theme.text(surf, "Drives", (x, y), theme.REPAIR if boosting else theme.TEXT_DIM, 12)
+    n = max(1, len(ship.drives))
+    w = (width - 4 * (n - 1)) // n
+    for i, d in enumerate(ship.drives):
+        frac = (d.temp - rules.temp_floor) / (rules.temp_limit - rules.temp_floor)
+        col = theme.GOOD if frac < 0.5 else theme.CAUTION if frac < 0.8 else theme.ALERT
+        if d.destroyed:
+            col = (70, 74, 86)
+        theme.bar(surf, pygame.Rect(x + 92 + i * (w + 4), y + 4, w, 8), frac, col)
+    span = pygame.Rect(x + 92, y + 14, width, 2)
+    if boosting:
+        theme.bar(surf, span, left / max(1e-6, rules.boost_cycles), theme.REPAIR, bg=theme.dim(theme.REPAIR, 0.18))
+        tip = (f"Engine boost: a team keeps the drives cooler, so they run {(rules.boost_endurance - 1) * 100:.0f}% "
+               f"longer before they overheat. {left:.0f} cycles left; other repairs are slower till it ends "
+               "('boost off' to end it now).")
+    else:
+        tip = ("Drive heat. Above cruise warp they heat up, and past the limit one burns out. "
+               "Ask engineering for all she's got ('boost') and a team keeps them cooler for a while.")
+    hud.ui.add(pygame.Rect(x, y, width + 92, 17), lambda: None, tip)
 
 
 # ------------------------------------------------------------------ target

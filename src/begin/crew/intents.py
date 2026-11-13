@@ -82,6 +82,24 @@ REPAIRS_TAKE = re.compile(r"\b(manage|handle|run|direct|see to|take (care of|ove
 REPAIRS_RELEASE = re.compile(r"\b(i'?ll|i will|let me) (manage|handle|direct|run|do) (the )?repairs?\b|"
                               r"\brepairs? (are|is) mine\b|\b(stop|quit) (managing|directing) (the )?repairs?\b")
 
+# "geordi, give me all she's got" / "boost the engines" / "squeeze more out of the drives": a team nurses the
+# drives so they run hot for longer, and the other repairs slow while they're away [E]
+_Q = r"['’]"
+_ENGINES = r"(?:the |her |our |your )?(?:engines?|drives?|warp(?: drive| core)?|nacelles?)"
+BOOST = re.compile(
+    r"\b(?:(?:all|everything) (?:she|you|we)(?:" + _Q + r"?s| has| have|" + _Q + r"?ve)? got|"
+    r"(?:boost|nurse|baby|overdrive) " + _ENGINES + r"|" + _ENGINES + r" (?:boost|overdrive)|"
+    r"(?:squeeze|eke|eek|eeek|wring|coax|get) (?:some |a (?:little|bit) |\d+ ?(?:%|percent) )?(?:more|extra) (?:out )?of " + _ENGINES + r"|"
+    r"(?:push|run|drive|redline) " + _ENGINES + r" (?:hard|harder|to the limit)|"
+    r"keep " + _ENGINES + r" (?:cool|from overheating)|(?:a |the )?team (?:on|to) " + _ENGINES + r"|"
+    r"(?:i|we) need (?:more|everything) (?:from|out of) " + _ENGINES + r"|^\s*boost\b)")
+
+# "end the boost" / "geordi, back to repairs" / "that's enough on the engines": the team goes back early [E]
+BOOST_OFF = re.compile(
+    r"\b(?:(?:end|stop|cancel|drop|kill|belay|call off|abort) (?:the |that |your )?(?:engine |drive )?boost|"
+    r"boost off|(?:team |them |everyone |people )?back (?:to|on) (?:the )?repairs?|"
+    r"enough (?:on|with) " + _ENGINES + r")\b")
+
 STATUS = re.compile(r"\b(status|report|sitrep|situation|how are|how's|condition)\b")
 
 ADVICE = re.compile(r"\b(advice|advise|recommend|suggest|what (should|do you|now|next)|ideas?|options?|thoughts?|opinion)\b")
@@ -109,4 +127,4 @@ def is_question(low: str) -> bool:
         r"(what|why|how|which|where|when|who|should|can|could|would|is|are|do|does|did)\b", low))
 
 
-__all__ = ["ADVICE", "BRIDGE_RELEASE", "BRIDGE_TAKE", "CAPTURE", "CEASE", "DISABLE_ORDER", "FIRING", "GREET", "HAVE_STATION", "HONORIFIC", "HONORIFIC_WORDS", "HUNT", "KILL_VERBS", "POLITE", "PRAISE", "RELEASE", "REPAIRS_RELEASE", "REPAIRS_TAKE", "RUDE", "SOFT_ORDER", "STAND_DOWN", "STATUS", "TAKE", "TARGET_ORDER", "WEAPONS_STATE", "WHERE", "WHOLE_BRIDGE", "could_be_officer", "is_question", "whole_bridge_stand_down"]
+__all__ = ["ADVICE", "BOOST", "BOOST_OFF", "BRIDGE_RELEASE", "BRIDGE_TAKE", "CAPTURE", "CEASE", "DISABLE_ORDER", "FIRING", "GREET", "HAVE_STATION", "HONORIFIC", "HONORIFIC_WORDS", "HUNT", "KILL_VERBS", "POLITE", "PRAISE", "RELEASE", "REPAIRS_RELEASE", "REPAIRS_TAKE", "RUDE", "SOFT_ORDER", "STAND_DOWN", "STATUS", "TAKE", "TARGET_ORDER", "WEAPONS_STATE", "WHERE", "WHOLE_BRIDGE", "could_be_officer", "is_question", "whole_bridge_stand_down"]

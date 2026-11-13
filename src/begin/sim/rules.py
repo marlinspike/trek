@@ -34,6 +34,10 @@ class Rules:
     temp_floor: float = 12.0
     temp_limit: float = 40.0
     temp_rate: float = 4.0
+    # engine boost [E]: the chief engineer puts a team on the drives ("give me all she's got")
+    boost_endurance: float = 1.4      # × how long the drives run before they overheat (they heat 1/1.4 as fast)
+    boost_cycles: float = 30.0        # how long the team keeps it up
+    boost_repair_share: float = 0.5   # × the speed of every other repair (systems and hull) while the team is away
 
     # shields [R]
     shield_regen_min: float = 0.1

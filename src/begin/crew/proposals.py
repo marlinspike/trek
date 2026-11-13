@@ -37,6 +37,7 @@ BELAY_MEMORY = 120.0        # cycles a belayed line is not proposed again
 SHIELD_CLOSE = 15000.0      # an enemy this close with our shields down is worth a word
 TORPEDO_REACH = 9000.0      # proposing torpedoes only inside this
 SCAN_REACH = 20000.0
+HOT_SHARE = 0.7             # drives this close to their limit (and still heating) are worth a team [E]
 
 
 @dataclass
@@ -90,6 +91,13 @@ def candidates(obs: Observation, ship: Ship, officers: dict[str, OfficerProfile]
         sh = ship.shields[k]
         if sh.up and sh.strength < 30 and max(s.strength for s in ship.shields) > 70:
             say("engineering", f"Shield {k + 1} is at {sh.strength:.0f}% and facing them. Reinforce it?", f"reinforce {k + 1}")
+    # engineering: the drives are heating towards their limit; a team on them buys time [E]
+    live = [d for d in ship.drives if not d.destroyed]
+    if live and ship.engine_boost <= 0.0 and ship.crew > 0:
+        hot = max(live, key=lambda d: d.temp)
+        if hot.temp > obs.rules.temp_limit * HOT_SHARE and hot.temp_rate > 0.0:
+            say("engineering", "The drives are running hot, Captain. Want me to put a team on them? "
+                               "Other repairs will slow.", "boost")
     tgt = obs.contact(ship.target) if ship.target is not None else None
     if tgt is not None and (not tgt.visible or tgt.id in obs.gone()):
         tgt = None
