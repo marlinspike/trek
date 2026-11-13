@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..context import split
 from .base import Completion, LLMConfig, LLMError, Message, Usage
 
 
@@ -34,7 +35,8 @@ class AnthropicProvider:
             kw["output_config"] = {"effort": self.cfg.effort}
         sdk = self._sdk
         try:
-            resp = self.client.messages.create(model=self.cfg.model, max_tokens=self.cfg.max_tokens, system=system,
+            resp = self.client.messages.create(model=self.cfg.model, max_tokens=self.cfg.max_tokens,
+                                               system=system_blocks(system),
                                                messages=messages, **kw)  # type: ignore[arg-type]
         except sdk.AuthenticationError as e:
             raise LLMError("Anthropic rejected the API key (ANTHROPIC_API_KEY).") from e
@@ -56,6 +58,19 @@ class AnthropicProvider:
         if not text.strip():
             raise LLMError("The model returned no text.")
         return Completion(text, usage_of(getattr(resp, "usage", None)))
+
+
+def system_blocks(system: str) -> list[dict[str, Any]]:
+    """The system prompt as text blocks: its unchanging part (rules, reply format, command reference) marked for
+    Anthropic's prompt cache, so repeated requests read it from the cache at a fraction of the cost. A part shorter
+    than the model's minimum for caching is simply not cached; nothing fails."""
+    stable, rest = split(system)
+    blocks: list[dict[str, Any]] = []
+    if stable:
+        blocks.append({"type": "text", "text": stable, "cache_control": {"type": "ephemeral"}})
+    if rest or not blocks:
+        blocks.append({"type": "text", "text": rest})
+    return blocks
 
 
 def usage_of(usage: Any) -> Usage | None:

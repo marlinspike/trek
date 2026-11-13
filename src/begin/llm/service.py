@@ -7,6 +7,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Callable
 
+from .context import fit
 from .providers.base import LLMError, Message, Provider
 
 
@@ -27,7 +28,8 @@ class LLMService:
 
     def submit(self, tag: str, system: str, messages: list[Message]) -> int:
         rid = next(self._ids)
-        self._pending[rid] = (tag, self._pool.submit(self._complete, tag, system, list(messages)))
+        # every request fits the prompt budget, however long a conversation a caller keeps (llm/context.py)
+        self._pending[rid] = (tag, self._pool.submit(self._complete, tag, system, fit(system, list(messages))))
         return rid
 
     def _complete(self, tag: str, system: str, messages: list[Message]) -> str:
