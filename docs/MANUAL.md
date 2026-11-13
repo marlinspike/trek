@@ -1251,7 +1251,16 @@ The bridge's everyday words work with no language model at all. The console turn
 | "manage repairs" | an officer directs the repair crews |
 | "launch a probe", "send an away team" | `fire probes`, `away` |
 | "zoom in", "zoom out" | halves or doubles the range shown |
+| "more power to the engines", "divert power to engines" | `boost`, Geordi's engine boost |
+| "more power to the forward shields", "reinforce the aft shields" | reinforces that shield; with no side named, the one facing the target |
+| "give me warp 8", "ahead full" | `warp 8`, or her best warp |
+| "lay in a course for the Gorkon" | pursue her |
+| "can you get the warp drive back?", "repair the phasers first" | sends the repair crews there |
+| "all ships, attack the Gorkon", "fleet, form up on me", "squadron, hold fire" | `tell all ...`: the order goes to every ally |
+| "Yorktown, defend me", "Excalibur, fall back" | `tell yorktown defend me`, `tell excalibur run` |
 | "make it so", "aye", "do it" | takes the officer's proposal on the screen, like **Y**; "no" or "not now" turns it down, like **N** |
+
+An ally's name at the start of a line speaks to that ship, as **tell** does. Allies understand "escort me", "form up on me", "cover me", "attack the Gorkon", "attack my target", "fall back", "hold fire", "open fire", "defend the Yorktown", "report" and "stop". For the whole fleet, start with "all ships", "fleet", "squadron", "wingmen" or "task force".
 
 "The target", "her", "them" and "that ship" mean the ship you have targeted, or the nearest enemy if you have none. A ship whose name really is one of those words still answers to it.
 
@@ -2229,6 +2238,8 @@ lower 4 5 6
 raise shields 1 2 3
 shields
 reinforce 1
+reinforce aft
+reinforce
 reinforce off
 ```
 
@@ -2242,7 +2253,7 @@ A shield that is up costs energy every cycle, and it recharges when it has been 
 
 #### Reinforcing
 
-`reinforce <n>` makes one shield lose strength at half the rate when it is hit, at four times the energy cost. Only one shield can be reinforced at a time. Reinforce the one facing the enemy, then turn to keep it there. `reinforce off` ends it.
+`reinforce <n>` makes one shield lose strength at half the rate when it is hit, at four times the energy cost. Only one shield can be reinforced at a time. Reinforce the one facing the enemy, then turn to keep it there. `reinforce off` ends it. You can name the side instead of the number (`reinforce forward`, `aft`, `port` or `starboard`), or a ship (`reinforce gorkon`) to reinforce the shield facing her. Plain `reinforce` picks the shield facing your target, or the nearest enemy.
 
 #### When shields must come down
 
@@ -2806,10 +2817,13 @@ tell excalibur attack gorkon
 tell excalibur escort enterprise at 2000
 tell excalibur defend me
 tell 1 attack gorkon
+tell all escort me
 tell excalibur hold fire
 tell excalibur run
 tell excalibur report
 ```
+
+`tell all <order>` gives the order to every ally at once; `fleet`, `squadron` and `wingmen` mean the same as `all`. You can also just say the ship's name first, as on the bridge: `yorktown, attack gorkon`, or `all ships, form up on me`. The everyday words work with no language model: "escort me", "form up on me", "attack my target", "fall back", "hold fire", "open fire", "defend me", "report" and "stop".
 
 An ally carries several orders at once: one **movement** order, a **target**, **hold fire** or **open fire**, a **weapon** preference and a **group**. A new movement order replaces the old one, but leaves the target alone, and so on.
 

@@ -34,10 +34,11 @@ from ..sim.commands import (
     AwayTeam, Countermeasure, FireSeeker, Remodulate, SetDuty, ShuttleOrder, Sweep,
     CeaseFire, OpenFire, StandDown, DeflectorPulse, EndObjective, EngineBoost, FireBait, FireSpecialRound, SetObjective, StartProject, Tractor, Transport, TurnMounts,
 )
+from ..core.angles import bearing
 from ..sim.observation import Observation
 from ..sim.ship import BankRole, FireMode, PDDoctrine
 from . import reports
-from .plain import STOP_ALL, STOP_FIRE, plain_order, split_orders
+from .plain import STOP_ALL, STOP_FIRE, ally_words, plain_order, split_orders
 from .tokens import ParseError, Tokens, aim_ahead, take_aim
 from .vocab import (
     AIM_FIRST, AIM_HELP, DISABLE_WORDS, FILLER, HAVE_WORDS, REPAIR_KINDS, STATION_WORDS, VERBS, WEAPONS, candidates, is_num, match_word,
@@ -55,6 +56,12 @@ BRIDGE_SWITCHES: dict[str, tuple[str, tuple[str, ...]]] = {
     "readbacks": ("readbacks", ("voiced", "log", "off")),
     "preview": ("preview", ("on", "off")),
 }
+
+# `tell all ...`: every ship of ours under command [E]
+FLEET_WORDS = ("all", "fleet", "everyone", "everybody", "squadron", "wingmen", "allies")
+# `reinforce forward`: a shield by the side of the ship it covers, as a bearing off the bow [E]
+SHIELD_SIDES = {"forward": 0.0, "front": 0.0, "fore": 0.0, "bow": 0.0, "starboard": 90.0, "right": 90.0,
+                "aft": 180.0, "rear": 180.0, "stern": 180.0, "port": 270.0, "left": 270.0}
 
 _HAIL_ALL = ("all", "everyone", "everybody", "enemies", "them", "fleet")
 # a hail of one word that is still something a captain would say, not a misheard ship's name
@@ -211,7 +218,7 @@ class Parser:
     # entry -------------------------------------------------------------
     def parse(self, text: str) -> ParseResult:
         """One line; several orders in it ("cease fire and take evasive action") are carried out in turn."""
-        plain = plain_order(text)
+        plain = self._to_ally(text) or plain_order(text)
         pieces = split_orders(plain)
         if len(pieces) > 1:
             parts = [self._parse_one(p, p) for p in pieces]
@@ -224,6 +231,23 @@ class Parser:
                     res.display.extend(p.display)
                 return res
         return self._parse_one(plain, text)
+
+    def _to_ally(self, text: str) -> str | None:
+        """'Yorktown, attack the Wraith': a line that opens with one of our ships' names is an order to her, as
+        `tell yorktown attack wraith` [E]. A name that is also a command word needs the comma ('Target, ...')."""
+        low = text.strip().lower()
+        for s in self.obs.own_ships():
+            if s.id == self.ship.id or not s.alive:
+                continue
+            name = s.name.lower()
+            m = re.match(r"(?:the\s+|uss\s+)?" + re.escape(name) + r"(\s*[,:]\s*|\s+)(.+)$", low)
+            if m is None:
+                continue
+            first = name.split()[0]
+            if "," not in m.group(1) and ":" not in m.group(1) and (match_word(first, VERBS) or first in FLEET_WORDS):
+                continue
+            return f"tell {name} {ally_words(m.group(2))}"
+        return None
 
     def _parse_one(self, text: str, said: str) -> ParseResult:
         res = ParseResult(echo=said.strip())
@@ -879,9 +903,31 @@ class Parser:
         res.commands.append(self._cmd(SetShields, sectors=self._shield_list(tok), up=False))
 
     def _v_reinforce(self, tok: Tokens, res: ParseResult) -> None:
+        """`reinforce <n>`, `reinforce off`; also `reinforce forward|aft|port|starboard` and `reinforce [toward] <ship>`
+        (bare `reinforce`: the shield facing our target, or the nearest enemy) [E]."""
         tok.take_word("shield")
         if tok.take_word("off", "none", "clear"):
             res.commands.append(self._cmd(ReinforceShield, sector=None))
+            return
+        if not self.ship.shields:
+            raise ParseError(f"The {self.ship.cls.name} has no shields.")
+        side = tok.peek()
+        if side is not None and side in SHIELD_SIDES:
+            tok.next()
+            tok.take_word("shield", "shields")
+            sh = self.ship.shield_for_bearing(SHIELD_SIDES[side])
+            res.commands.append(self._cmd(ReinforceShield, sector=sh.index if sh is not None else 0))
+            return
+        if tok.done() or not is_num(tok.peek() or ""):
+            tok.take_word("toward", "towards", "facing", "against", "the")
+            sid = self.resolve_ship(tok) if not tok.done() else (self.ship.target or self._nearest_enemy())
+            c = self.obs.contact(sid) if sid is not None else None
+            if c is None:
+                raise ParseError("Reinforce which shield? There is no enemy to face: give its number, 1 to "
+                                 f"{len(self.ship.shields)}.")
+            rel = (bearing(c.x - self.ship.x, c.y - self.ship.y) - self.ship.course) % 360.0
+            sh = self.ship.shield_for_bearing(rel)
+            res.commands.append(self._cmd(ReinforceShield, sector=sh.index if sh is not None else 0))
             return
         n = int(tok.number("shield"))
         if not 1 <= n <= max(1, len(self.ship.shields)):
@@ -1165,6 +1211,13 @@ class Parser:
     def _ally_targets(self, tok: Tokens) -> list[int]:
         tok.skip_filler()
         t = tok.peek()
+        if t in FLEET_WORDS and not any(n == t for n, _ in self._ship_table()):
+            tok.next()                       # `tell all attack wraith`: every ship of ours under command [E]
+            tok.take_word("ships", "of", "our", "us", "units", "hands")
+            members = [s.id for s in self.obs.own_ships() if s.id != self.ship.id and s.alive]
+            if not members:
+                raise ParseError("We have no other ships to give orders to.")
+            return members
         if t is not None and t.isdigit():
             g = int(t)
             members = [s.id for s in self.obs.own_ships()
@@ -1183,6 +1236,10 @@ class Parser:
 
     def _v_tell(self, tok: Tokens, res: ParseResult) -> None:
         allies = self._ally_targets(tok)
+        said = " ".join(tok.toks[tok.i:])
+        meant = ally_words(said)             # "tell the Yorktown to fall back": run [E]
+        if meant != said:
+            tok.toks, tok.i = Tokens(meant).toks, 0
         tok.skip_filler()
         word = tok.next()
         if word is None:
