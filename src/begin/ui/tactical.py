@@ -18,7 +18,7 @@ import pygame
 from ..content.schema import Faction
 from ..core.angles import norm180
 from ..content.schema import HullDef, ShipClass
-from ..sim.events import CloakFlash, Detonation, Event, HullHit, ShieldHit, ShipArrived, ShipStatusChanged
+from ..sim.events import CloakFlash, Detonation, Event, HullHit, SeekerLock, ShieldHit, ShipArrived, ShipStatusChanged
 from ..sim.ship import SHIELD_FACINGS
 from ..sim.observation import ContactView, Observation, OrdnanceView
 from ..sim.ship import Ship
@@ -172,6 +172,7 @@ class TacticalView:
     _last: dict[int, tuple[float, float, float, HullDef | None, str | None, bool]] = field(default_factory=dict)  # as last drawn
     _flicker: dict[int, float] = field(default_factory=dict)        # our ship: when she last fired through her cloak
     _cloak_flashes: list[tuple[float, float, float]] = field(default_factory=list)   # (x, y, when) another fired from one
+    _solutions: dict[int, tuple[float, float]] = field(default_factory=dict)  # [E] seeker hit her: (when, how long)
 
     def ingest(self, events: list[Event], obs: Observation) -> None:
         visible = {s.id for s in obs.own_ships(alive_only=False)} | {c.id for c in obs.contacts().values() if c.visible}
@@ -200,6 +201,12 @@ class TacticalView:
                 if me is not None:
                     col = theme.FRIEND if me[5] else theme.HOSTILE
                     self.effects.warp_in(ev.origin[0], ev.origin[1], me[0], me[1], theme.mix(col, (255, 255, 255), 0.3))
+            elif isinstance(ev, SeekerLock):
+                if ev.ship_id in friendly:                  # our seeker hit her: the firing window opens
+                    self._solutions[ev.target] = (self.clock, ev.cycles)
+                    me = self._seen(obs, ev.target)
+                    if me is not None:
+                        self._sounds.append(("lock", me[0], me[1]))
             elif isinstance(ev, CloakFlash):
                 if ev.ship_id in friendly:
                     self._flicker[ev.ship_id] = self.clock
@@ -1040,6 +1047,10 @@ class TacticalView:
                 dormant_veil(overlay, sx, sy, rad, hive.dormant, self.clock)
             else:
                 adaptation_rings(overlay, sx, sy, rad, hive, self.clock)
+        if c.solution > 0 and overlay is not None:
+            when, total = self._solutions.get(c.id, (-10.0, c.solution))
+            stealth.firing_solution(surf, overlay, sx, sy, rad, c.solution, max(total, c.solution),
+                                    self.clock - when, self.clock)
         if c.exhaust and overlay is not None:
             color = theme.EXHAUST
             stealth.exhaust_fix(surf, overlay, sx, sy, max(rad + 10, min(180.0, c.uncertainty * cam.zoom)), self.clock, c.id)
@@ -1056,18 +1067,21 @@ class TacticalView:
             label += f"  +{self._label_more[c.id]}"
         lost = not c.visible
         lw = theme.text_width(label, 12, weight="medium")
-        lx = max(sx, self._label_reach.get(c.id, sx)) + rad + 8
+        lx = max(sx, self._label_reach.get(c.id, sx)) + rad + (20 if c.solution > 0 else 8)   # clear of its brackets
         if lx + lw > cam.rect.right - 6:                    # no room on the right: the name goes on the left
             lx = sx - rad - 8 - lw
         place = self._label_x(sx, sy, lx, lw)
         quiet = c.id in self._label_quiet or place is None
         lx = place if place is not None else lx
-        top = sy - 8 if quiet else self._free_label_y(lx, sy - 8, lw, 26 if lost else 14)
+        top = sy - 8 if quiet else self._free_label_y(lx, sy - 8, lw, 26 if lost or c.solution > 0 else 14)
         if art and not quiet:
             self._leader(surf, sx, sy, rad - 4, lx if lx > sx else lx + lw, top, color)
         if not quiet:
             theme.label(surf, label, (lx, top), color, 12)
-        if c.exhaust and place is not None:
+        if c.solution > 0 and place is not None:
+            theme.text(surf, f"FIRING SOLUTION · {c.solution:.0f}s", (lx, top + 14),
+                       theme.mix(theme.EXHAUST, (255, 255, 255), 0.45), 10, weight="semibold")
+        elif c.exhaust and place is not None:
             theme.text(surf, "EXHAUST · rough fix", (lx, top + 14), theme.EXHAUST, 10, weight="semibold")
         elif hive is not None and c.visible and place is not None and not quiet:
             note = self._hive_note(hive, targeted)

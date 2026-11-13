@@ -26,11 +26,12 @@ if TYPE_CHECKING:
 
 
 # steps worth saying aloud as they start, how long each must last first (seconds), and the gap between callouts
-CALLOUT_KINDS = ("evade", "close", "open", "fight", "bait", "salvo", "between", "phasers", "hunt")
-CALLOUT_SETTLE = {"evade": 0.0, "bait": 0.0, "salvo": 0.0, "between": 0.0, "close": 2.0, "open": 2.0, "fight": 2.0}
+CALLOUT_KINDS = ("evade", "close", "open", "fight", "bait", "salvo", "between", "phasers", "hunt", "seeker", "strike")
+CALLOUT_SETTLE = {"evade": 0.0, "bait": 0.0, "salvo": 0.0, "between": 0.0, "close": 2.0, "open": 2.0, "fight": 2.0,
+                  "seeker": 0.0, "strike": 0.0}
 CALLOUT_GAP = 4.0
 CALLOUT_REPEAT = {"bait": 20.0, "salvo": 20.0, "between": 20.0, "phasers": 30.0, "close": 10.0, "open": 10.0,
-                  "fight": 15.0, "hunt": 20.0, "evade": 5.0}   # seconds before the same kind of step is said again
+                  "fight": 15.0, "hunt": 20.0, "evade": 5.0, "seeker": 10.0, "strike": 3.0}   # seconds before the same kind of step is said again
 CLOAK_REPEAT = 30.0         # seconds before a ship that cloaks again (after firing) is called again [E]
 MORALE_GAP = 20.0           # seconds between remarks on the crew's spirits
 REPAIR_REPORT_DAMAGE = 25   # % damage before a system is worth reporting
@@ -102,7 +103,8 @@ class Chatter:
         """An officer's remark on one event, if it is worth one."""
         if isinstance(ev, ProjectCompleted) and ev.ship_id == s.id:
             collab = collaborations.for_project(ev.project)
-            if collab is not None and (ev.tube is not None or "{tube}" not in str(collab.done)):
+            striking = ev.project == "seeker" and any(o.goal == "strike" for o in s.objectives)   # she fires it herself
+            if collab is not None and not striking and (ev.tube is not None or "{tube}" not in str(collab.done)):
                 out.extend(self._chorus(collab.done, tube=(ev.tube or 0) + 1))
                 self._last_any = obs.tick
         elif isinstance(ev, (TorpedoLaunched, PhaserFired)) and ev.ship_id == s.id and s.objectives:
@@ -325,7 +327,7 @@ class Chatter:
             if ev.outcome == "done" and ev.goal == "capture":
                 out.append(self._line(o, "objective_captured", targets=names)
                            or self._say(o, f"{names} is ours, Captain. The boarding parties hold her."))
-            elif ev.outcome == "done" and ev.goal == "destroy":
+            elif ev.outcome == "done" and (ev.goal == "destroy" or ev.goal == "strike" and ev.group == "hull"):
                 out.append(self._line(o, "objective_destroyed", targets=names)
                            or self._say(o, f"{names}: destroyed, Captain."))
             elif ev.outcome == "done":

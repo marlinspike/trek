@@ -158,7 +158,7 @@ class ConsoleMixin(SessionState):
                     continue      # the model judges how it lands; the morale follows when it answers
             if isinstance(cmd, SetObjective) and not cmd.officer and self.bridge is not None:
                 # "disable their shields" said to nobody in particular: the weapons officer focuses fire on them
-                o = self.bridge.crew.officers.get("science" if cmd.goal == "hunt" else "tactical")
+                o = self.bridge.crew.officers.get("science" if cmd.goal in ("hunt", "strike") else "tactical")
                 if o is not None and cmd.goal != "capture":     # finding a lost ship is the science officer's job
                     cmd.officer = o.id
             reason = self.issue(cmd)

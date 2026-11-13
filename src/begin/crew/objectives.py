@@ -38,8 +38,8 @@ from typing import TYPE_CHECKING
 
 from ..core.angles import bearing, norm360
 from ..sim.commands import (
-    Authority, Command, DeflectorPulse, EndObjective, FireAtPoint, FireBait, FirePhasers, FireSpecialRound, Pursue, Scan,
-    SelectTarget, SetHelm, SetShields, Transport,
+    Authority, Command, DeflectorPulse, EndObjective, FireAtPoint, FireBait, FirePhasers, FireSeeker, FireSpecialRound,
+    Pursue, Scan, SelectTarget, SetHelm, SetShields, StartProject, Sweep, Transport,
 )
 from ..sim.factory import SHIELD_FACINGS
 from ..sim.objectives import Objective, baitable
@@ -63,6 +63,10 @@ CAPTURE_TORPEDO_HULL = 0.5   # torpedoes only while more than this share of her 
 DISABLE_TORPEDO_HULL = 0.5   # and the same when disabling: below it, aimed phasers only [E]
 GAP_STANDOFF = 0.55       # × phaser range: where the helm holds us, off her open shield
 BEAM_SPACING = 1.0        # cycles between boarding parties
+# sweep and strike [E]
+STRIKE_STANDOFF = 5000.0  # where the helm holds us off her trail: torpedo range, outside most disruptors' reach
+STRIKE_PATIENCE = 45.0    # cycles with no trail and no sight of her before the strike is called off
+STRIKE_SPACING = 2.0      # cycles between strike salvos while the window is open
 
 
 def group_state(c: ContactView | None, group: str) -> tuple[int, int] | None:
@@ -92,12 +96,13 @@ class Planner:
     last_party: int = -10 ** 9      # when the last boarding party went across
     # what the officer is doing, for the activity panel, the map and her callouts
     step: str = ""                 # "Salvo of 6 on a ring around the Wraith"
-    step_kind: str = ""            # scan | phasers | bait | salvo | between | load | range | hunt | confirm
+    step_kind: str = ""            # scan | phasers | bait | salvo | between | load | range | hunt | confirm | seeker | strike
     step_tick: int = 0
     aim: tuple[float, float, float, int] | None = None   # where the last salvo was sent: x, y, spread, tick
     tally: dict[str, int] = field(default_factory=dict)  # baits, salvos, rounds, phasers, scans for this objective
     tally_for: tuple[object, ...] = ()
     tally_since: int = 0
+    scent: int = -10 ** 9          # sweep and strike [E]: when we last had her trail or her in sight
 
     def note(self, obs: Observation, kind: str, text: str) -> None:
         if kind != self.step_kind or text != self.step:
@@ -240,6 +245,9 @@ def progress(obs: Observation, o: Objective, names: dict[int, str] | None = None
         if o.goal == "hunt":
             parts.append(f"{name} {'in sight' if c is not None and c.visible else 'not on sensors'}")
             continue
+        if o.goal == "strike":
+            parts.append(_strike_progress(obs, o, c, name))
+            continue
         if c is None or c.scan is None:
             parts.append(f"{name} not scanned yet")
             continue
@@ -269,6 +277,24 @@ def progress(obs: Observation, o: Objective, names: dict[int, str] | None = None
     return "; ".join(parts)
 
 
+def _strike_progress(obs: Observation, o: Objective, c: ContactView | None, name: str) -> str:
+    """Sweep and strike [E]: the firing window when it is open, else how the hunt for her trail stands."""
+    if c is not None and c.solution > 0:
+        state = f"firing solution {c.solution:.0f}s"
+    elif c is not None and c.visible:
+        state = "in sight"
+    elif c is not None and o.targets[0] in obs.plasma():
+        state = "trail on sensors"
+    else:
+        state = "no trail yet"
+    st = group_state(c, o.group) if o.group != "hull" else None
+    if st is not None and st[0]:
+        state += f", {st[1]}/{st[0]} {o.group} out"
+    elif o.group == "hull" and c is not None and c.scan is not None:
+        state += f", hull {c.scan.structure_frac * 100:.0f}%"
+    return f"{name} {state}"
+
+
 def summary(p: Planner, tick: int, tpc: int) -> str:
     """What the job took, for the officer's closing report."""
     t = p.tally
@@ -277,6 +303,8 @@ def summary(p: Planner, tick: int, tpc: int) -> str:
         bits.append(f"{t['baits']} bait volley{'s' * (t['baits'] != 1)}")
     if t.get("salvos"):
         bits.append(f"{t['salvos']} salvo{'s' * (t['salvos'] != 1)}")
+    if t.get("seekers"):
+        bits.append(f"{t['seekers']} seeker{'s' * (t['seekers'] != 1)}")
     if t.get("rounds"):
         bits.append(f"{t['rounds']} torpedoes in all")
     if t.get("parties"):
@@ -489,6 +517,129 @@ def plan_capture(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: 
 
 
 Plan = Callable[[Planner, Observation, Ship, Objective, "OfficerBrain | None"], list[Command]]
+
+
+def plan_strike(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: OfficerBrain | None) -> list[Command]:
+    """Sweep and strike [E]: "Seven, sweep and strike the Talon's shields", or `strike talon shields`.
+
+    The kill chain for a cloaked ship whose damaged warp drive vents plasma. The officer keeps a science sweep
+    running for her trail, designs a plasma-seeker if none is loaded, and fires it down the trail. The moment it
+    hits, its telemetry gives us a firing solution for a few seconds (Rules.seeker_lock_cycles): she shows, and
+    the officer puts every loaded torpedo and every phaser that bears into the named system (or her hull) at once.
+    Then she is gone again, and it starts over until the system is out (or she is destroyed).
+
+    The helm closes to torpedo range off her trail fix, so the salvo can reach her inside the window. It only works
+    while she leaks: a captain who repairs her drive or drops below warp leaves nothing to follow, and once no trail
+    and no sight of her have come for STRIKE_PATIENCE cycles, the strike is called off.
+    """
+    tpc = obs.rules.ticks_per_cycle
+    t = o.targets[0]
+    name = label(obs, t)
+    hull = o.group == "hull"
+    aim = None if hull else o.group
+    if t in obs.gone():
+        return [p._cmd(EndObjective, ship, group=o.group, outcome="done" if hull else "impossible",
+                       reason="" if hull else f"{name} is gone")]
+    if not ship.weapons_operational():
+        return [p._cmd(EndObjective, ship, group=o.group, outcome="impossible", reason="we have no working weapons")]
+    c = obs.contact(t)
+    if not hull and c is not None and disabled(c, o.group) and c.scan is not None \
+            and obs.tick - c.scan.tick <= DONE_SCAN_AGE * tpc:
+        return [p._cmd(EndObjective, ship, group=o.group, outcome="done")]
+    out: list[Command] = []
+    trail = t in obs.plasma()
+    p.scent = max(p.scent, o.started)
+    if trail or (c is not None and c.visible):
+        p.scent = obs.tick
+    elif obs.tick - p.scent > STRIKE_PATIENCE * tpc:
+        return [p._cmd(EndObjective, ship, group=o.group, outcome="impossible",
+                       reason=f"no plasma from {name} in {STRIKE_PATIENCE:.0f} seconds: her drives are sound, "
+                              "or she has dropped below warp")]
+    if c is not None and c.visible:
+        return out + _strike(p, obs, ship, c, aim, name)
+    # her drive vents plasma: keep the sweep running so the trail shows far out
+    if ship.sweep <= 0 and ship.sensors is not None and not ship.sensors.destroyed:
+        out.append(p._cmd(Sweep, ship, target=t))
+    seeker = next((x for x in ship.tubes if x.loaded is not None and x.loaded.ordnance == "seeker"), None)
+    flying = any(x.friendly and x.follow == t for x in obs.ordnance())
+    if flying:
+        p.note(obs, "seeker", f"Seeker running down {name}'s trail. Weapons ready the moment it hits")
+    elif seeker is not None and trail:
+        out.append(p._cmd(FireSeeker, ship, target=t))
+        p.count("seekers")
+        p.note(obs, "seeker", f"Seeker away down {name}'s trail")
+    elif seeker is None and "seeker" not in ship.projects:
+        out.append(p._cmd(StartProject, ship, project="seeker"))
+        p.note(obs, "load", f"Designing a plasma-seeker for {name}")
+    elif seeker is None:
+        p.note(obs, "load", f"Designing a plasma-seeker for {name} ({ship.projects['seeker']:.0f}s)")
+    else:
+        p.note(obs, "hunt", f"Sweeping for {name}'s plasma trail")
+    # close to torpedo range off her trail fix, so the salvo reaches her inside the window
+    if c is not None and c.exhaust and not ship.cls.is_base:
+        d = c.distance_to(ship.x, ship.y)
+        if d > STRIKE_STANDOFF * 1.3 or d < STRIKE_STANDOFF * 0.5:
+            out.append(p._cmd(Pursue, ship, target=t, keep=STRIKE_STANDOFF))
+    return out
+
+
+def _strike(p: Planner, obs: Observation, ship: Ship, c: ContactView, aim: str | None, name: str) -> list[Command]:
+    """She shows (the seeker's firing solution, or she simply can be seen): everything that bears, into `aim`."""
+    rules = obs.rules
+    tpc = rules.ticks_per_cycle
+    out: list[Command] = []
+    if ship.target != c.id or ship.target_subsystem != aim:
+        out.append(p._cmd(SelectTarget, ship, target=c.id, subsystem=aim))
+    d = c.distance_to(ship.x, ship.y)
+    what = f"{name}'s {aim}" if aim else name
+    fired: list[str] = []
+    if ship.banks and d < ship.cls.banks_range:
+        ready = tuple(i for i, b in enumerate(ship.banks) if bank_ready(ship, b) and b.role.value != "defense"
+                      and bank_bears_point(ship, b, c.x, c.y))
+        if ready:
+            out.append(p._cmd(FirePhasers, ship, banks=ready, target=c.id, subsystem=aim, spread=10.0))
+            p.count("phasers")
+            fired.append("phasers")
+    loaded = [x for x in ship.tubes if x.loaded is not None and x.intact and x.enabled
+              and not obs.content.torpedoes[x.loaded.ordnance].special]
+    if loaded and obs.tick - p.last_volley >= STRIKE_SPACING * tpc and ship.pending_volley is None:
+        spec = obs.content.torpedoes[loaded[0].loaded.ordnance]  # type: ignore[union-attr]
+        speed = spec.velocity * rules.units_per_warp
+        reach = speed * (spec.arm_time + spec.max_time_fuse) * 0.9
+        if speed * spec.arm_time * 1.1 < d < reach:
+            tof = d / speed
+            px, py = c.x + c.vx * tof, c.y + c.vy * tof
+            tof = math.hypot(px - ship.x, py - ship.y) / speed
+            px, py = c.x + c.vx * tof, c.y + c.vy * tof
+            blast_r = blast_radius(spec, rules)
+            spread = blast_r * 0.3 if len(loaded) > 1 else 0.0
+            if not any(math.hypot(s.x - px, s.y - py) < blast_r + spread + 100 for s in obs.own_ships()):
+                p.last_volley = obs.tick
+                p.count("salvos")
+                p.count("rounds", len(loaded))
+                p.aim = (px, py, spread, obs.tick)
+                out.append(p._cmd(FireAtPoint, ship, x=px, y=py, prox=max(rules.prox_floor, spread * 0.8),
+                                  target=c.id, subsystem=aim, spread=spread))
+                fired.insert(0, f"{len(loaded)} torpedo{'es' if len(loaded) != 1 else ''}")
+    # she shows but is out of reach (she decloaked and ran, or was never cloaked): close to torpedo range
+    if d > STRIKE_STANDOFF * 1.3 and not ship.cls.is_base and not fired:
+        out.append(p._cmd(Pursue, ship, target=c.id, keep=STRIKE_STANDOFF))
+    # a scan while she shows tells us whether it worked
+    reach_scan = ship.sensor_range() * rules.scan_range_fraction
+    if aim and d <= reach_scan and not any(obs.tick - x < 3 * tpc for x in p.last_scan.values()):
+        p.last_scan[c.id] = obs.tick
+        p.count("scans")
+        out.append(p._cmd(Scan, ship, target=c.id))
+    if fired:
+        lead = "Firing solution! " if c.solution > 0 else ""
+        p.note(obs, "strike", f"{lead}{' and '.join(fired).capitalize() if not lead else ' and '.join(fired)} into {what}")
+    elif p.step_kind == "strike" and obs.tick - p.step_tick < 3 * tpc:
+        pass                                     # the salvo is still on its way: keep saying what was fired
+    elif c.solution > 0:
+        p.note(obs, "strike", f"Firing solution on {name}: {c.solution:.0f}s. Weapons recharging")
+    else:
+        p.note(obs, "range", f"{name} in sight at {d:,.0f}: waiting for a shot at her {aim or 'hull'}")
+    return out
 def plan_hunt(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: OfficerBrain | None) -> list[Command]:
     """Find a ship we have lost, most often one that cloaked [E]: "Seven, find the Talon".
 
@@ -528,10 +679,11 @@ def plan_hunt(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: Off
     return out
 
 
-PLANNERS: dict[str, Plan] = {"disable": plan_disable, "destroy": plan_disable, "capture": plan_capture, "hunt": plan_hunt}
+PLANNERS: dict[str, Plan] = {"disable": plan_disable, "destroy": plan_disable, "capture": plan_capture, "hunt": plan_hunt,
+                             "strike": plan_strike}
 
 
 __all__ = [
-    "PLANNERS", "Planner", "baitable", "disabled", "group_state", "label", "open_shields", "plan_capture", "plan_disable", "plan_hunt",
+    "PLANNERS", "Planner", "baitable", "disabled", "group_state", "label", "open_shields", "plan_capture", "plan_disable", "plan_hunt", "plan_strike",
     "progress", "summary",
 ]

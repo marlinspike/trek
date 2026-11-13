@@ -26,7 +26,19 @@ _SOFT_DISABLE = re.compile(r"^(?:hit|shoot(?:\s+at)?|go\s+after|bring\s+down|tak
                            r"blast|pound|hammer|concentrate\s+(?:fire\s+)?on)\s+(.+)$")
 _WANT_DOWN = re.compile(r"^(?:i want|i need|we need|i'?d like)\s+((?:their|her|its|his)\b.*?)\s+(?:down|out|gone|offline)\W*$")
 _PLASMA = r"(?:warp\s+|nacelle\s+)?(?:exhaust|plasma(?:\s+trails?)?|trails?|leaks?)"
-_HIVE_REWRITES: tuple[tuple[re.Pattern[str], str], ...] = (
+_HIT = (r"(?:strike|hit|kill|attack|destroy|take\s+out|knock\s+out|cripple|disable|target|blast|nail|"
+        r"fire\s+(?:on|at|into)|lock\s+(?:on(?:\s+to)?|onto))")
+# [E] sweep and strike, in a captain's words: "sweep and strike the Talon's shields", "seeker strike talon warp",
+# "track her exhaust and hit her shields", "fire a seeker at the Talon and take out her engines"
+STRIKE_REWRITES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^(?:sweep|seeker)\s*,?\s+(?:(?:and|&|n|then)\s+)*" + _HIT + r"\b\s*(.*)$"), r"strike \1"),
+    (re.compile(r"^(?:sweep\s+for|follow|track|trace|hunt(?:\s+down)?|find|ride|sniff\s+out)\s+(.*?)\b" + _PLASMA
+                + r"\s*,?\s*(?:(?:and|then)\s+)+" + _HIT + r"\b\s*(.*)$"), r"strike \1 \2"),
+    (re.compile(r"^(?:fire|launch|send)\s+(?:a\s+|the\s+|our\s+)?(?:plasma[-\s])?seekers?\b\s*(.*?)\s*,?\s*"
+                r"(?:(?:and|then)\s+)+" + _HIT + r"\b\s*(.*)$"), r"strike \1 \2"),
+    (re.compile(r"^(?:run\s+(?:the|a)\s+)?kill\s*chain\b\s*(?:on\s+)?(.*)$"), r"strike \1"),
+)
+_HIVE_REWRITES: tuple[tuple[re.Pattern[str], str], ...] = STRIKE_REWRITES + (
     # [E] the Borg and the hunt by plasma, in a captain's words
     (re.compile(r"^(" + "|".join(n.lower() for n in SHUTTLE_NAMES) + r")\b[\s,:]*(.*)$"), r"hail \1 \2"),   # "Galileo, come back"
     (re.compile(r"^(?:take|fly|grab|use|get\s+in(?:to)?)\s+(?:a|the|one\s+of\s+the)\s+shuttle(?:craft)?s?\b"
@@ -93,6 +105,12 @@ _SPOKEN = re.compile(r"^(?:(?:" + "|".join(_NO_SPLIT) + r"|hail|hailing|channel)
                      r"open\s+(?:a\s+)?(?:channel|hailing|frequencies|comms|communications)\b)")
 
 
+def is_strike(text: str) -> bool:
+    """[E] 'Sweep and strike the Talon's shields': one order (the whole kill chain), however many verbs it has."""
+    low = _THEIR_TYPOS.sub("their", text.strip().lower())
+    return low.startswith(("strike ", "sweep strike")) or any(p.match(low) for p, _ in STRIKE_REWRITES)
+
+
 def _starts_order(piece: str) -> bool:
     first = (piece.split() or [""])[0].rstrip("!?.")
     if not first or is_num(first) or system_word(first) or first in AIM_FIRST:
@@ -104,7 +122,7 @@ def _starts_order(piece: str) -> bool:
 def split_orders(text: str) -> list[str]:
     """The separate orders in a line, where each after the first plainly starts a new one; else the line."""
     low = text.strip()
-    if not low or _SPOKEN.match(low.lower()):
+    if not low or _SPOKEN.match(low.lower()) or is_strike(low):
         return [low]
     pieces: list[str] = []
     start = 0
@@ -122,4 +140,4 @@ def split_orders(text: str) -> list[str]:
     return [plain_order(p) for p in pieces] if len(pieces) > 1 else [low]
 
 
-__all__ = ["STOP_ALL", "STOP_FIRE", "plain_order", "split_orders"]
+__all__ = ["STOP_ALL", "STOP_FIRE", "STRIKE_REWRITES", "is_strike", "plain_order", "split_orders"]

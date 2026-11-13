@@ -65,6 +65,8 @@ class Rules:
     probe_reflect: float = 0.5
     cloak_reveal_cycles: float = 1.0       # a cloaked ship that fires shows for this long
     cloak_hit_reveal_cycles: float = 3.0   # [E] and one that is hit, long enough for the crew to call it and aim
+    seeker_lock_cycles: float = 6.0        # [E] a plasma-seeker that hits her gives the side that fired it a firing
+                                           # solution this long: she shows, cloak or no cloak, at any range
     # [E] the deflector tachyon pulse (Spock and Seven reconfigure the dish; sim/projects.py)
     deflector_pulse_range: float = 15000.0
     deflector_pulse_arc: float = 60.0      # full width of the cone ahead of the ship, degrees

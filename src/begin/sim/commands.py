@@ -174,7 +174,8 @@ def end_objectives(world: World, ship: Ship, ending: list[Objective], outcome: s
     for o in ending:
         if outcome == "done" and o.goal == "disable":
             ship.spared.update(set(o.targets) - still)
-        if o.goal not in ("destroy", "hunt") and ship.target_subsystem is not None:
+        if o.goal not in ("destroy", "hunt") and not (o.goal == "strike" and o.group == "hull") \
+                and ship.target_subsystem is not None:
             ship.target_subsystem = None     # the systems were the objective's aim: by default we aim at the hull
         world.emit(ObjectiveEnded(world.tick, ship.id, o.officer, o.goal, o.group, o.targets, outcome, reason))
 
@@ -1142,12 +1143,14 @@ class SetObjective(Command):
         return ("objective",)
 
     def validate(self, world: World, ship: Ship) -> None:
-        from .objectives import DISABLE_GROUPS, GOALS
+        from .objectives import DISABLE_GROUPS, GOALS, STRIKE_GROUPS
 
         if self.goal not in GOALS:
             raise Rejected(f"Unknown objective '{self.goal}'.")
         if self.goal == "disable" and self.group not in DISABLE_GROUPS:
             raise Rejected(f"Can't disable '{self.group}'. Choose from: {', '.join(DISABLE_GROUPS)}.")
+        if self.goal == "strike" and self.group not in STRIKE_GROUPS:
+            raise Rejected(f"Strike at what? Choose from: {', '.join(STRIKE_GROUPS)}.")
         if not self.targets:
             raise Rejected(f"{self.goal.capitalize()} which ships?")
         for t in self.targets:

@@ -11,7 +11,7 @@ import math
 from typing import TYPE_CHECKING
 
 from ...core.angles import bearing, in_arc, norm360
-from ..events import Detonation, Message, ProbeLaunched, Tone, TorpedoLaunched
+from ..events import Detonation, Message, ProbeLaunched, SeekerLock, Tone, TorpedoLaunched
 from ..ordnance import Probe, Torpedo
 from ..ship import Launcher, Ship, Tube
 from .damage import Aim, DamageKind, apply_damage
@@ -400,10 +400,29 @@ def resolve_detonations(world: World) -> None:
                             t.target if t.target is not None else t.aim_ship, t.target_subsystem, cause=cause,
                             radius_scale=t.spec.blast_scale, family="harmonic" if t.spec.id == "harmonic" else "torpedo")
             ended.append((t, "burst", reached))
+            if t.follow is not None and t.follow in reached:
+                seeker_lock(world, t)
         for p in boom_p:
             blast(world, p.x, p.y, p.yield_, "probe", p.owner, 1, DamageKind.BLAST, p.target, None, family="probe")
     if any(t.blind is not None for t, _, _ in ended):
         report_blind_shots(world, ended)
+
+
+def seeker_lock(world: World, t: Torpedo) -> None:
+    """[E] A plasma-seeker burst on the ship whose trail it flew: its last telemetry gives the side that fired it a
+    firing solution on her for `Rules.seeker_lock_cycles`. She shows on their sensors wherever she is, cloak or no
+    cloak, and the window is the time they have to put a salvo into her before she is lost again."""
+    s = world.ships.get(t.follow) if t.follow is not None else None
+    if s is None or not s.alive:
+        return
+    cycles = world.rules.seeker_lock_cycles
+    s.solution, s.solution_side = cycles, t.side
+    world.emit(SeekerLock(world.tick, t.owner, s.id, t.side, cycles))
+    owner = world.ships.get(t.owner)
+    if owner is not None:
+        world.emit(Message(world.tick, f"Seeker hit: the {world.label(t.side, s.id)} is lit up. Firing solution for "
+                                       f"{cycles:.0f} seconds.", Tone.GOOD, ship_id=owner.id,
+                           visible_to=frozenset({owner.side})))
 
 
 def reveal_burst(world: World, t: Torpedo) -> None:

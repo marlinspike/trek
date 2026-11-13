@@ -50,6 +50,7 @@ class ContactView:
     haze: float = 0.0           # 0 = exact; up to 1 beyond rated sensor range
     uncertainty: float = 0.0    # possible position error, world units
     exhaust: bool = False       # [E] not on sensors, but placed (roughly) by her plasma trail: a cloaked, damaged ship
+    solution: float = 0.0       # [E] cycles left of the firing solution our plasma-seeker's hit gave us on her
 
     def distance_to(self, x: float, y: float) -> float:
         return math.hypot(self.x - x, self.y - y)
@@ -147,6 +148,7 @@ class Observation:
                         uncertainty=c.uncertainty if c.visible else (TRAIL_ERROR if exhaust else 0.0),
                         assessed=c.assessed,
                         exhaust=exhaust,
+                        solution=s.solution if s.solution_side == self.side else 0.0,
                     )
             self._contacts = out
         return self._contacts

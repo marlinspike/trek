@@ -583,7 +583,7 @@ Your officers can build rounds no armoury carries:
 
 - **The tachyon detector** (`design tachyon`, Spock and Seven). A torpedo whose burst lights up every cloaked ship within 6,000 units for about 30 cycles. It reaches about 39,000 units. See [Tachyon detector torpedo](#topic-tachyon).
 - **The deflector pulse** (`design deflector`). Not a round: the main dish set up to sweep a 60° cone ahead of your bow, out to 15,000 units. It is reusable every 30 cycles. See [Deflector tachyon pulse](#topic-deflector).
-- **The plasma-seeker** (`design seeker`, Seven and Spock). A torpedo that flies a damaged ship's plasma trail, every turn she made, and homes on her at the end of it. See [Cloaking device](#topic-cloak).
+- **The plasma-seeker** (`design seeker`, Seven and Spock). A torpedo that flies a damaged ship's plasma trail, every turn she made, and homes on her at the end of it. When it hits, you have a six-second firing solution on her, cloak or no cloak: `strike <ship> <system>` has Seven fire it and spend that window for you. See [Cloaking device](#topic-cloak).
 - **Harmonic torpedoes** (`design harmonic`). Against a Borg ship whose shield harmonics Seven has learned, they pass straight through her shields. See [Fighting the Borg](#topic-borg).
 
 ### Other tools
@@ -706,7 +706,7 @@ They decide when you see them.
 - **Make the plasma fly far.** Plasma homes in but fades as it travels, so open the range and keep it open. Every unit it flies is damage it loses.
 - **Don't chase blindly.** The feint is a turn and a run, often under cloak, that ends with a full spread at the ship that followed. Pursue at an angle, keep a fresh shield toward where she will turn, and keep your tubes loaded for the moment she shows.
 - **When she vanishes:** your science officer gives the last fix and heading. Say `hunt <ship>`, or burst a tachyon detector a little ahead of where she was going. At close range, turn your bow toward her and use the deflector pulse.
-- **When she is hurt:** a damaged warp drive vents plasma at warp, cloak or no cloak. `sweep` finds the trail and a plasma-seeker follows it. See [Cloaking device](#topic-cloak).
+- **When she is hurt:** a damaged warp drive vents plasma at warp, cloak or no cloak. `sweep` finds the trail and a plasma-seeker follows it. Better still, `strike <ship> shields`: Seven fires the seeker and, the moment it hits, a salvo into her shields while she is lit up. See [Cloaking device](#topic-cloak).
 - Their point defense is disciplined, so it won't take the bait. Use Seven's ring salvo instead ([Disabling or taking out enemy ships](#topic-disable)).
 
 #### Against Orions
@@ -825,6 +825,8 @@ Everything here works in the game today. None of it is on a button, and most of 
 - **Aim ahead of a vanishing ship.** A cloaked ship keeps moving. Burst the tachyon detector a little ahead of her last fix, along her last heading.
 - **Turn before you pulse.** The deflector pulse only looks ahead, a 60° cone from your bow.
 - **A damaged drive gives anyone away.** A badly damaged warp drive vents plasma at warp, cloak or no cloak. `sweep` follows trails much further than usual, and `seeker` flies a torpedo down one.
+- **Sweep and strike.** `strike <ship> <system>` runs the whole chain: Seven sweeps, sends a seeker down the trail, and the instant it lands she has six seconds of firing solution and spends them on the system you named. Name her shields first. Once they are down, the next window's salvo goes straight to her hull.
+- **Six seconds is enough if you are close.** The helm holds about 5,000 off her trail so the torpedoes arrive inside the window. If you fly the ship yourself, keep her within torpedo range and the salvo still lands.
 - **It works against you too.** If Geordi says you are venting plasma, repair the drives or drop below warp 1, or every enemy sensor can follow you.
 - **Under the refit cloak, move after every shot.** The enemy sees only the flash where you fired.
 
@@ -2565,6 +2567,30 @@ seeker talon
 - `sweep` (or "Seven, look for exhaust") has your science officer follow plasma much further than usual for a while and report every trail found. `sweep <ship>` looks for one ship's.
 - `design seeker` has Seven or Spock build a **plasma-seeker** torpedo. `seeker <ship>` fires it into her trail, and `seeker` alone fires down the nearest one. The torpedo flies the trail itself, every turn she made, and homes on her at the end of it. If the trail goes cold first, it bursts where the trail ends.
 
+#### Sweep and strike
+
+The whole kill chain in one order. When a cloaked ship leaks plasma, tell your science officer to **sweep and strike**, and name what to hit:
+
+```text
+strike talon shields
+sweep strike talon warp
+str tal sh
+Seven, sweep and strike the Talon's weapons
+track her exhaust and hit her engines
+strike off
+```
+
+Seven keeps a sweep running for the trail, designs a plasma-seeker if none is loaded, and has the helm close to about 5,000 units off the trail fix: torpedo range, outside most disruptors. She fires the seeker down the trail. **The moment it hits, its telemetry gives you a firing solution for six seconds.** She shows on your sensors wherever she is, cloak or no cloak, and Seven puts every loaded torpedo, and every phaser that bears, into the system you named. Then the window closes, she is gone again, and Seven starts over until that system is out.
+
+On the map the hit bursts out from her in a ring of plasma light. Four hot brackets snap onto her, and a thin ring around them drains clockwise as the seconds run out. Her label reads **FIRING SOLUTION** with the seconds left, and so does her line in the contacts list.
+
+- **Name the system**: shields, phasers, torpedoes, weapons, warp (or engines), sensors or cloak. Name none, or say `hull`, and the salvo goes into her hull to kill her. Systems shorten like anything else: `str tal sh` is the Talon's shields.
+- **Say it any way you like.** "Seven, sweep and strike the Talon", "seeker strike talon warp", "follow her plasma trail and take out her engines", "fire a seeker at the Talon and knock out her weapons" and "kill chain on the Talon" all work, typed or spoken, with or without a language model.
+- **Name no ship** and Seven takes the nearest one whose trail she can see.
+- **It only works while she leaks.** A captain who repairs her drive, or drops below warp 1, leaves nothing to follow. After 45 seconds with no trail and no sight of her, Seven calls it off and tells you why.
+- **A ship you can already see** gets the same aimed salvo straight away, with no seeker needed.
+- The counsel (O) offers it whenever a cloaked enemy is leaking. Seven picks the system that decides the fight: her warp drive if she is running, her weapons if you are badly hurt, otherwise her shields. Worf would rather put the whole salvo into her hull.
+
 #### The Enterprise's refit cloak
 
 In the tour, the Enterprise can be refitted with a cloak built from Romulan salvage and made to fire through. When she cloaks, enemy sensors lose her at once, with no lingering track to follow. She can fire without lifting the cloak: the enemy sees the flash where the shot came from and nothing more, so move after every shot. A damaged warp drive still gives her away.
@@ -4190,6 +4216,7 @@ Type `coach` or press **H** and pick **Coach**: this page then reads your actual
 | `spread` | `sp` | [Phasers](#topic-phasers) |
 | `status` | `st` | [Status displays](#topic-status) |
 | `stop` | `allstop`, `halt` | [Course and speed](#topic-helm) |
+| `strike` | `sweepstrike`, `killchain` | [Cloaking device](#topic-cloak) |
 | `style` | `styles`, `ribbons` | [Command styles and trust](#topic-styles) |
 | `surrender` | - | [Self-destruct and surrender](#topic-destruct) |
 | `sweep` | `sniff`, `exhaust`, `plasma` | [Cloaking device](#topic-cloak) |
@@ -4381,6 +4408,7 @@ Damage per bank for a Dreadnought (charge 10, range 2,000) before shields:
 | `spread` | `sp` | [Phasers](#topic-phasers) |
 | `status` | `st` | [Status displays](#topic-status) |
 | `stop` | `allstop`, `halt` | [Course and speed](#topic-helm) |
+| `strike` | `sweepstrike`, `killchain` | [Cloaking device](#topic-cloak) |
 | `style` | `styles`, `ribbons` | [Command styles and trust](#topic-styles) |
 | `surrender` | - | [Self-destruct and surrender](#topic-destruct) |
 | `sweep` | `sniff`, `exhaust`, `plasma` | [Cloaking device](#topic-cloak) |

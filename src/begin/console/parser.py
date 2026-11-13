@@ -40,7 +40,7 @@ from . import reports
 from .plain import STOP_ALL, STOP_FIRE, plain_order, split_orders
 from .tokens import ParseError, Tokens, aim_ahead, take_aim
 from .vocab import (
-    AIM_FIRST, AIM_HELP, FILLER, HAVE_WORDS, REPAIR_KINDS, STATION_WORDS, VERBS, WEAPONS, candidates, is_num, match_word,
+    AIM_FIRST, AIM_HELP, DISABLE_WORDS, FILLER, HAVE_WORDS, REPAIR_KINDS, STATION_WORDS, VERBS, WEAPONS, candidates, is_num, match_word,
     system_word,
 )
 
@@ -87,6 +87,14 @@ NOTHING_LOST = "Every enemy we know of is on sensors: there's nothing to find. N
 # words that don't name the ship to find: "find the cloaked ship", "hunt for her", "locate that ship" [E]
 _HUNT_FILLER = frozenset(("for", "down", "the", "a", "her", "him", "it", "them", "that", "this", "ship", "vessel",
                           "where", "is", "she", "he", "out", "again", "please", "now"))
+
+# words that don't name the ship or the system in a sweep and strike [E]: "strike the talon's shields", "sweep and
+# strike her warp drive", "seeker strike at the talon's engines"
+_STRIKE_FILLER = _HUNT_FILLER | frozenset(("and", "strike", "sweep", "seeker", "at", "on", "into", "in", "of", "to",
+                                           "her", "their", "its", "his", "salvo", "kill", "hit", "then", "with",
+                                           "by", "from", "through", "along", "trail", "trails", "exhaust", "plasma",
+                                           "drive", "system", "systems", "chain"))
+_STRIKE_HULL = ("hull", "everything")
 
 # words for the science officer's hive duties [E]
 DUTY_WORDS = {"shields": ("shields", "shield", "harmonics-shields", "deflectors"),
@@ -1279,7 +1287,11 @@ class Parser:
         return tuple(dict.fromkeys(team))
 
     def _v_sweep(self, tok: Tokens, res: ParseResult) -> None:
-        """`sweep [<ship>]`: science sweeps for plasma trails from damaged warp drives, cloaked ships' too [E]."""
+        """`sweep [<ship>]`: science sweeps for plasma trails from damaged warp drives, cloaked ships' too [E].
+        `sweep strike ...` (or `sweep and strike ...`) is the whole kill chain: see `strike`."""
+        if tok.peek() in ("strike", "and", "&", "n", "kill") and (tok.peek() != "and" or tok.peek(1) in ("strike", "kill")):
+            self._v_strike(tok, res)
+            return
         tok.take_word("for", "trails", "trail", "exhaust", "plasma")
         tok.take_word("from", "of")
         sid = self.resolve_ship(tok, allow_none=True)
@@ -1298,6 +1310,72 @@ class Parser:
             sid = min(trails, key=lambda k: min((p[0] - self.ship.x) ** 2 + (p[1] - self.ship.y) ** 2
                                                   for p in trails[k]))
         res.commands.append(self._cmd(FireSeeker, target=sid))
+
+    def _v_strike(self, tok: Tokens, res: ParseResult) -> None:
+        """`strike [<ship>] [<system>]` (also `sweep strike ...`): sweep and strike, the kill chain for a cloaked ship
+        that leaks plasma [E]. The science officer sweeps for her trail, fires a plasma-seeker down it, and the moment
+        it hits puts an aimed salvo into the system named (shields, phasers, torpedoes, weapons, warp/engines,
+        sensors, cloak) or, with none named, her hull. With no ship named: the nearest ship whose trail we can see,
+        else our target, else the nearest one that has cloaked. `strike off` calls it off.
+
+        Words come in any order, and systems shorten like anything else: `str tal sh` is the Talon's shields."""
+        from ..sim.objectives import STRIKE_DEFAULT
+
+        words = [w.strip(".!?;,'\"").removesuffix("'s").removesuffix("s'") for w in tok.rest()]
+        words = [w for w in words if w]
+        if any(w in ("off", "cancel", "stop", "belay", "abort") for w in words):
+            end = [o.group for o in self.ship.objectives if o.goal == "strike"]
+            if not end:
+                raise ParseError("No sweep and strike to call off.")
+            for g in dict.fromkeys(end):
+                res.commands.append(self._cmd(EndObjective, group=g, outcome="cancelled"))
+            return
+        group = None
+        ship_words: list[str] = []
+        names = [n for n, _ in self._ship_table()]
+        for w in words:
+            g = self._strike_system(w, names)
+            if g is not None:
+                group = group or g
+            elif w in _STRIKE_HULL:
+                group = group or "hull"
+            elif w not in _STRIKE_FILLER:
+                ship_words.append(w)
+        sid = self._strike_ship(ship_words)
+        res.commands.append(self._cmd(SetObjective, goal="strike", group=group or STRIKE_DEFAULT, targets=(sid,)))
+
+    @staticmethod
+    def _strike_system(word: str, names: list[str]) -> str | None:
+        """The system a word in a strike order names: a whole word ("warp", "sheilds"), or a short prefix of one
+        that is no ship's name ("sh", "eng") [E]."""
+        from ..sim.objectives import STRIKE_GROUPS
+
+        g = system_word(word)
+        if g is not None:
+            return g
+        if len(word) < 2 or any(n.startswith(word) for n in names):
+            return None
+        hits = {grp for w, grp in DISABLE_WORDS.items() if w.startswith(word)}
+        hits |= {"hull"} if "hull".startswith(word) else set()
+        return hits.pop() if len(hits) == 1 and next(iter(hits)) in STRIKE_GROUPS else None
+
+    def _strike_ship(self, words: list[str]) -> int:
+        """The ship to sweep and strike: one named, else the nearest whose trail we can see, else our target, else
+        the nearest that has cloaked."""
+        if words:
+            return self._lost_ship(words)
+        hostile = [c for c in self.obs.hostile_contacts() if c.id not in self.obs.gone()]
+        trails = self.obs.plasma()
+        venting = [c for c in hostile if c.exhaust or c.id in trails]
+        if venting:
+            return min(venting, key=lambda c: c.distance_to(self.ship.x, self.ship.y)).id
+        if self.ship.target is not None and self.ship.target in {c.id for c in hostile}:
+            return self.ship.target
+        try:
+            return self._lost_ship([])
+        except ParseError:
+            raise ParseError("Strike whom? No plasma trail on sensors and nothing has cloaked. "
+                             "'strike <ship> [shields|weapons|warp|...]'.") from None
 
     def _v_recall(self, tok: Tokens, res: ParseResult) -> None:
         tok.rest()

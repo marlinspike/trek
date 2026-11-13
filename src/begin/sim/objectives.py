@@ -17,7 +17,7 @@ from .ship import TARGETABLE_GROUPS
 if TYPE_CHECKING:
     from .observation import ContactView, Observation
 
-GOALS = ("disable", "destroy", "capture", "hunt")
+GOALS = ("disable", "destroy", "capture", "hunt", "strike")
 
 # what the captain can ask to have disabled, and how each is spoken of
 DISABLE_GROUPS: dict[str, str] = {
@@ -27,6 +27,10 @@ DISABLE_GROUPS: dict[str, str] = {
 DESTROY_GROUP = "hull"   # the group a destroy objective is filed under
 CAPTURE_GROUP = "crew"   # and a capture: her crew are what stands between us and her
 HUNT_GROUP = "hunt"      # and a hunt for a ship we've lost (most often cloaked): no weapon is fired for it
+# [E] sweep and strike: sweep for her plasma trail, fire a seeker down it, and the moment it hits put an aimed salvo
+# into one of her systems, or her hull. The group is what the salvo is aimed at.
+STRIKE_GROUPS: dict[str, str] = {**DISABLE_GROUPS, "propulsion": "warp drive", DESTROY_GROUP: "hull"}
+STRIKE_DEFAULT = DESTROY_GROUP
 assert set(DISABLE_GROUPS) <= set(TARGETABLE_GROUPS)
 
 
@@ -42,6 +46,8 @@ class Objective:
         who = ", ".join((names or {}).get(t, f"#{t}") for t in self.targets)
         if self.goal == "hunt":
             return f"find {who}"
+        if self.goal == "strike":
+            return f"sweep and strike {who}" + ("" if self.group == DESTROY_GROUP else f"'s {STRIKE_GROUPS.get(self.group, self.group)}")
         if self.goal in ("destroy", "capture"):
             return f"{self.goal} {who}"
         return f"{self.goal} {DISABLE_GROUPS.get(self.group, self.group)} on {who}"
@@ -64,4 +70,4 @@ def baitable(obs: Observation, c: ContactView) -> bool:
     return discipline < 0.6
 
 
-__all__ = ["CAPTURE_GROUP", "DESTROY_GROUP", "DISABLE_GROUPS", "GOALS", "HUNT_GROUP", "Objective", "attacking", "baitable"]
+__all__ = ["CAPTURE_GROUP", "DESTROY_GROUP", "DISABLE_GROUPS", "GOALS", "HUNT_GROUP", "STRIKE_DEFAULT", "STRIKE_GROUPS", "Objective", "attacking", "baitable"]

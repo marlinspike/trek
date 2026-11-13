@@ -60,6 +60,7 @@ cloaked = ["{target} has cloaked, Captain. Last fix: bearing {bearing}, {range} 
 decloaked = ["{target} is visible once more: bearing {bearing}, {range} units."]
 hunt = ["A tachyon burst at its projected position should reveal it, Captain. I will begin at once."]
 hunt_found = ["{target} located, Captain: bearing {bearing}, range {range}. Targeted."]
+strike = ["A seeker down the plasma trail, Captain, and a salvo the instant it strikes. The window will be brief; I will not waste it."]
 unknown = ["I do not follow, Captain.", "Please clarify, Captain. Your meaning is ambiguous.", "That request is not logical in our present situation."]
 thanks = ["Thanks are unnecessary, Captain.", "I was merely doing my duty."]
 rude = ["Your emotional response is noted, Captain.", "Insults do not improve our tactical position."]
@@ -201,6 +202,8 @@ cloaked = ["{target} has cloaked. Last fix: bearing {bearing}, {range} units, he
 decloaked = ["{target} is visible again: bearing {bearing}, {range} units.", "{target} has revealed itself. Bearing {bearing}, range {range}."]
 hunt = ["I will find it. A tachyon field at its projected position will expose the hull.", "Understood. I am extrapolating its course. It will not stay hidden."]
 hunt_found = ["{target} located: bearing {bearing}, {range} units. It is targeted, Captain.", "Found it. {target}, bearing {bearing}, range {range}. Targeted."]
+strike = ["Sweeping for the trail. When the seeker lands I will have a firing solution for six seconds. I will need only one.",
+          "Understood. Seeker down the trail, then everything we have into the target the moment it lights up."]
 target = ["{target} is the most efficient target.", "I recommend {target}."]
 victory = ["The enemy has been neutralised. Adequate.", "A satisfactory outcome."]
 defeat = ["This outcome was predictable.", "We have failed. I will analyse why."]

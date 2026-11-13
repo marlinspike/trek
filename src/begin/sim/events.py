@@ -179,6 +179,16 @@ class ScanCompleted(Event):
 
 
 @dataclass(slots=True)
+class SeekerLock(Event):
+    """[E] A plasma-seeker hit the ship whose trail it flew: `side` has a firing solution on her for `cycles`."""
+
+    ship_id: int           # who fired the seeker
+    target: int
+    side: int
+    cycles: float
+
+
+@dataclass(slots=True)
 class DeflectorPulsed(Event):
     ship_id: int
     x: float

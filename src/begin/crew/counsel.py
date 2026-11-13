@@ -22,6 +22,7 @@ from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 
 from ..core.angles import bearing, norm360
+from ..sim.rules import DEFAULT_RULES
 from .situation import EnemyView, ShieldView, Situation
 
 STATIONS = ("tactical", "helm", "engineering", "science")
@@ -175,7 +176,7 @@ def moves(s: Situation, goal: Goal | None = None) -> list[Move]:
 GOAL_KEEP = {"evasive": 1.0, "fresh-shield": 0.9, "power": 0.9, "reinforce": 0.8, "brace": 0.7, "repairs": 0.75,
              "hunt": 0.9, "scan": 0.8, "plasma": 0.8, "focus": 0.9, "meet-charge": 0.9, "bait": 0.9, "ring": 0.85,
              "standoff": 0.85, "inside": 0.85, "strike": 1.0, "dormant": 1.0, "relay": 0.9, "learn": 0.85,
-             "tune": 0.8, "remodulate": 0.85, "starfleet": 0.8}
+             "tune": 0.8, "remodulate": 0.85, "starfleet": 0.8, "seeker-strike": 1.0, "seeker-kill": 1.0}
 SYSTEMS = ("shields", "phasers", "torpedoes", "weapons", "engines", "sensors", "cloak")
 _SYSTEM_WORDS = {"engine": "engines", "engines": "engines", "drive": "engines", "drives": "engines",
                  "warp": "engines", "propulsion": "engines", "shield": "shields", "shields": "shields",
@@ -250,6 +251,34 @@ def parse_goal(text: str, s: Situation) -> Goal | str:
     return Goal(kind, tuple(picked), "", f"{kind.capitalize()} {who}")
 
 
+def strike_system(s: Situation, e: EnemyView) -> tuple[str, str]:
+    """[E] What a sweep-and-strike salvo should go into, and why, from where the fight stands: her warp drive if she
+    is running or must be stopped, her weapons if ours is the ship in trouble, else her shields, so that the next
+    salvo, from us or anyone, goes through."""
+    m = s.mission
+    if e.withdrawing or (m is not None and m.state == "open" and m.kind == "intercept"):
+        return "warp", "she is running, and with her drive gone she can't get away or reach anyone"
+    if s.hull < 0.5 or (m is not None and m.state == "open" and e.hunter):
+        return "weapons", "she can't hurt us, or anyone we protect, without them"
+    return "shields", "once they are down, every hit after it goes to her hull"
+
+
+def _sweep_strike(s: Situation, e: EnemyView, score: float = 0.95) -> Iterator[Move]:
+    """[E] A cloaked ship leaking plasma: sweep, seeker down the trail, and an aimed salvo the moment it lands.
+    Seven aims for the system that decides the fight; Worf would rather put the whole salvo into her hull."""
+    system, why = strike_system(s, e)
+    lit = f"{DEFAULT_RULES.seeker_lock_cycles:.0f} seconds"
+    yield Move("seeker-strike", f"Sweep and strike the {e.name}'s {system}",
+               f"The {e.name} is cloaked but her damaged drive vents plasma at {_rng(e.range)}. A seeker down the "
+               f"trail lights her up for {lit}, and I put every torpedo into her {system} the instant it lands: {why}.",
+               [Step(f"strike {e.handle} {system}", f"seeker, then a salvo into her {system}")], score,
+               {"science": 1.0, "tactical": 0.5, "helm": 0.4}, "hunt")
+    yield Move("seeker-kill", f"Sweep and strike: kill the {e.name}",
+               f"The {e.name} thinks her cloak hides her. Her plasma doesn't. A seeker down the trail, and the moment it hits, "
+               "everything we have into her hull.", [Step(f"strike {e.handle}", "seeker, then a full salvo")],
+               score * 0.9, {"tactical": 1.0, "helm": 0.3}, "hunt-kill")
+
+
 def _goal_moves(s: Situation, g: Goal) -> Iterator[Move]:
     """Each perspective's way to the captain's goal."""
     targets = [e for e in s.fighting if e.id in g.live(s)]
@@ -268,6 +297,14 @@ def _goal_moves(s: Situation, g: Goal) -> Iterator[Move]:
     e = min(seen, key=lambda x: x.range) if seen else None
     if lost and not seen:
         x = min(lost, key=lambda x: x.range)
+        if x.exhaust and g.kind in ("destroy", "disable"):
+            system = "" if g.kind == "destroy" else {"engines": "warp"}.get(g.system, g.system)
+            yield Move("goal-strike", f"{g.text}: sweep and strike",
+                       f"She is cloaked, but her plasma trail gives her away. A seeker down it lights her up, and the "
+                       f"salvo goes into her {system or 'hull'} the instant it hits.",
+                       [Step(f"strike {x.handle} {system}".strip(), "seeker, then the salvo")], 1.0,
+                       {"science": 1.0, "tactical": 1.0, "helm": 0.6}, "hunt")
+            return
         yield Move("goal-find", f"Find the {x.name} first", f"{g.text}: but we have lost her. Nothing else helps until "
                    "we know where she is.", [Step(f"hunt {x.handle}", "find her")], 1.0,
                    {"science": 1.0, "tactical": 0.8, "helm": 0.8}, "hunt")
@@ -702,8 +739,11 @@ def _knowledge(s: Situation) -> Iterator[Move]:
         if steps:
             yield Move("hunt", f"Find the {e.name}", f"We lost the {e.name} at {_rng(e.range)}: she has cloaked. " + how,
                        steps, 0.9, {**S, "tactical": 0.4, "helm": 0.3}, "hunt")
-    if s.trails or any(e.exhaust for e in s.enemies):
-        ex = next((x for x in s.enemies if x.exhaust), None)
+    venting = [e for e in s.enemies if e.exhaust and not e.surrendered]
+    if venting and "strike" not in s.objectives and not s.hold_fire:
+        yield from _sweep_strike(s, min(venting, key=lambda e: e.range))
+    elif s.trails or venting:
+        ex = venting[0] if venting else None
         steps = [Step(f"seeker {ex.handle}" if ex else "seeker", "plasma-seeker down her trail")] if ex or s.trails else []
         steps.insert(0, Step("sweep", "sweep for plasma trails"))
         yield Move("trails", "Follow the plasma trail",
@@ -889,7 +929,7 @@ def follow_on(station: str, lead: Move, all_moves: list[Move]) -> list[Move]:
 
 
 _HELM_VERBS = ("pursue ", "elude ", "helm ", "stop", "warp ")
-_OBJECTIVE_VERBS = ("disable ", "capture ")
+_OBJECTIVE_VERBS = ("disable ", "capture ", "strike ")
 
 
 def _groups(m: Move) -> set[str]:
@@ -905,6 +945,8 @@ def _groups(m: Move) -> set[str]:
             out.add("fire")
         if st.line.startswith(_OBJECTIVE_VERBS):
             out |= {"target", "fire"}      # an officer's objective works the weapons herself: no captain's fire beside it
+        if st.line.startswith("strike "):
+            out.add("helm")                # [E] and a sweep and strike closes to torpedo range off her trail
     return out
 
 
