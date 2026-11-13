@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import pygame
 
@@ -584,7 +584,7 @@ class TourScene:
         by = h - 76
         launch_tip = "Make your decision first" if run.needs_choice() else f"{run.transit_cycles():.0f} cycles to {stop.system}"
         calls, held = st.calls_left, st.prisoners
-        row = [
+        row: list[tuple[int, tuple[str, str], Callable[[], object], str, bool, int, dict[str, Any]]] = [
             (200, ("Captain's log", "Log"), self._open_log, "Every stop's page, and your entries", bool(st.log), 14, {}),
             (200, ("Save and leave", "Save, leave"), self.close, "Esc", True, 14, {}),
             (250, (f"Hand over prisoners ({held})", f"Prisoners ({held})"), self._prisoners,

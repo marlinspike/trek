@@ -162,8 +162,8 @@ def _draw(surf: pygame.Surface, box: pygame.Rect, blocks: list[tuple[Plan, list[
                 x += w + 6
             ry += 26
         y += bh + 8
-    steps = "click a step to run it" if any(rows for _, _, rows in blocks) or not blocks else "hover a plan for its steps"
-    foot = f"O closes  ·  1–4 all in  ·  {steps}  ·  'counsel <goal>' aims it"
+    hint = "click a step to run it" if any(rows for _, _, rows in blocks) or not blocks else "hover a plan for its steps"
+    foot = f"O closes  ·  1–4 all in  ·  {hint}  ·  'counsel <goal>' aims it"
     theme.text(surf, theme.fit(foot, 11, inner), (box.x + pad, box.bottom - 20), theme.TEXT_FAINT, 11)
     surf.set_clip(old_clip)
     return box

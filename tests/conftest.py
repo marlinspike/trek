@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from begin.content import default_content
@@ -11,6 +13,19 @@ from begin.sim.world import World
 def _private_config(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep tests away from the project's own config/ folder."""
     monkeypatch.setenv("BEGIN_HOME", str(tmp_path_factory.mktemp("config")))
+
+
+@pytest.fixture(autouse=True)
+def _fonts_of_a_live_pygame() -> None:
+    """A test that runs the whole app ends with pygame.quit(), which leaves the font caches holding dead fonts;
+    the next test on the same worker would draw with them ("Invalid font"). Start that test with empty caches."""
+    theme = sys.modules.get("begin.ui.theme")
+    if theme is not None:
+        import pygame
+
+        if not pygame.font.get_init():
+            theme.font.cache_clear()
+            theme._fallback.cache_clear()
 
 
 @pytest.fixture(scope="session")
