@@ -309,3 +309,97 @@ The raiders' base of operations is an Armadillo: a slow, heavily armoured ship w
 Take her and the band is finished.
 """
 enemies = ["orion.ar", "orion.ra", "orion.ra", "orion.ra"]
+
+# [E] The Borg storyline (help page "Fighting the Borg"). The hive remembers our weapons from stop to stop
+# (tour/run.py), the Treaty choice offers Spock's cloak refit (federation.dnc), and if the drones take the
+# flagship the tour ends there.
+[[tour]]
+id = "the-collective"
+title = "The Collective"
+sector = "Beyond the Federation's edge"
+description = "Something is taking whole colonies along the frontier and leaving nothing behind. Find it, learn it, and stop it before it reaches the core worlds. Four stops, about forty-five minutes."
+flagship = "federation.dn"
+budget = 240
+reinforcement_calls = 2
+reinforcements = ["federation.hc", "federation.de", "federation.de"]
+starbase = "Starbase 157"
+
+[[tour.stop]]
+id = "colony"
+title = "The empty colony"
+system = "Deneb V"
+chart = [0.14, 0.62]
+transit = 120
+eta = 150
+officer = "seven"
+seed = 7101
+briefing = """
+The colony on Deneb V is gone: not destroyed, removed. Every building has been cut out of the ground. Two small
+ships are still in orbit. Seven of Nine knows them: Borg probes. Captain, they will learn every weapon we use on
+them. Scan them first, let me find the relay, and only then strike. What we learn here, we will need later.
+"""
+enemies = ["borg.pr", "borg.pr"]
+enemy_center = [0, 9000]
+
+[[tour.stop]]
+id = "rift"
+title = "The sphere at the rift"
+system = "The Kerrigan Rift"
+chart = [0.38, 0.36]
+transit = 160
+eta = 170
+officer = "spock"
+seed = 7102
+briefing = """
+The probes' course leads to the Kerrigan Rift, where a Borg sphere is gathering what it took. It will remember
+how we fought at Deneb: our phasers on their old frequency will barely touch it. Remodulate early. Logic suggests
+tuning the shields before the drones come aboard, and sending an away team only once the relay has been found.
+"""
+enemies = ["borg.sp", "borg.pr"]
+enemy_center = [0, 10000]
+
+[[tour.stop]]
+id = "graveyard"
+title = "The graveyard"
+system = "Starbase 157 approach"
+chart = [0.60, 0.58]
+transit = 140
+eta = 120
+officer = "worf"
+seed = 7103
+briefing = """
+A task force met the Borg here and lost. Among the wrecks, a sphere and two probes are taking what is left.
+They have not seen us yet. If we have the cloak, they will not, until we fire. Their drones will be
+coming for our crew. Captain, I request permission to lead an away team the moment their relay is down.
+"""
+enemies = ["borg.sp", "borg.pr", "borg.pr"]
+enemy_center = [3000, 10000]
+
+[[tour.stop.choice]]
+label = "Keep the Treaty of Algeron"
+consequence = "Starfleet's word stands. The Enterprise goes on as she is, with a short supply stop on the way."
+
+[[tour.stop.choice]]
+label = "Fit Spock's cloak (break the Treaty)"
+consequence = "Spock and Geordi fit the cloak built from Romulan salvage: a long stop at Starbase 157 that leaves the Enterprise fully repaired. She can fire from under it. Every time you call for help, Starfleet will ask why you are cloaked, and the question goes in the log."
+flagship = "federation.dnc"
+refit = true
+transit = 320
+flags = ["cloak"]
+
+[[tour.stop]]
+id = "cube"
+title = "The cube"
+system = "Sector 001 approaches"
+chart = [0.84, 0.30]
+transit = 160
+eta = 140
+officer = "seven"
+seed = 7104
+briefing = """
+The cube is here. It is on course for the core worlds, and it has learned everything we have done to its ships.
+Power alone will not stop it. Survey it. Find the relay. Put it to sleep, and while it sleeps, strike at its
+warp core and stand clear. If its drones take the Enterprise, there will be no one left to warn Earth.
+"""
+enemies = ["borg.cu"]
+enemy_center = [0, 12000]

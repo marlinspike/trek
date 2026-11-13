@@ -8,7 +8,7 @@ see: after-battle, crew, dock, fleet
 ---
 A tour of duty is a patrol of several stops, each one a battle. Open one from the main menu (**Tour of duty**, or **T**).
 
-Your squadron carries everything that matters from one fight to the next: hull and system damage, casualties, torpedoes and probes fired, morale, and the ships you take as prizes. Shields, batteries, heat and positions start fresh each time. A ship that is destroyed, abandoned, surrendered or boarded is gone for the rest of the tour. If the flagship is lost, the tour is over; at a starbase, so is losing the starbase.
+Your squadron carries everything that matters from one fight to the next: hull and system damage, casualties, torpedoes and probes fired, morale, and the ships you take as prizes. Shields, batteries, heat and positions start fresh each time. A ship that is destroyed, abandoned, surrendered or boarded is gone for the rest of the tour. If the flagship is lost, the tour is over; at a starbase, so is losing the starbase. Against the Borg, if their drones take the flagship, the tour ends there.
 
 ## The squadron
 
@@ -42,3 +42,7 @@ The log is also kept as Markdown in `config/tours/<tour>-log.md`. Edit the capta
 ## Your own tours
 
 Write your own in `config/tours/<anything>.toml`, in the same format as the shipped ones (`src/begin/content/data/tours.toml`): the stops, their briefings, the enemies, any choices and waves. A tour with the same id as a shipped one replaces it.
+
+## The Collective
+
+The Borg tour plays by a few rules of its own. The hive remembers your weapons from one stop to the next: most of what it learned of your phasers and torpedoes it still knows, so remodulate early. Seven, in turn, reads them faster each time. Before the third stop you decide whether to keep the Treaty of Algeron or let Spock and Geordi fit the cloak they built from Romulan salvage. With the cloak, you can fire from under it ([[cloak]]), but every time you call for reinforcements, Starfleet asks why the flagship is cloaked. The question goes in the log.

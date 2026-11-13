@@ -252,11 +252,21 @@ The assessment shows the score, your ship's record, every ship's damage and hits
 
 **Tour of duty** on the main menu (or **T**) strings battles into a patrol. Pick your escorts within the tour's fleet budget, then fly stop after stop: every ship keeps her damage, casualties, empty torpedo racks and morale from one fight to the next, prizes you board join the squadron, and a ship you lose stays lost. Between stops you are in the Ready Room, over the patrol chart: an officer briefs you on the next stop (and on what the enemy has learned about how you fight), you make the stop's decision, such as a refit that costs time, and Geordi shows how each ship will arrive after the crews patch her up on the way. You can call Starfleet for reinforcements there or in battle with `request reinforcements`; the ship drops out of warp after a delay, with her ETA on the map. Starbase stops come in waves, with a lull between them for docking.
 
-After each stop your officers write up their stations, each captain reports on their ship, and your own entry is drafted for you to rewrite. With a language model configured, the officers rewrite theirs in their own voices. The log is kept as Markdown in `config/tours/`, and you can edit your entries there too. Three tours ship with the game, and your own go in `config/tours/*.toml` (see [docs/EXTENDING.md](docs/EXTENDING.md#a-tour-of-duty)).
+After each stop your officers write up their stations, each captain reports on their ship, and your own entry is drafted for you to rewrite. With a language model configured, the officers rewrite theirs in their own voices. The log is kept as Markdown in `config/tours/`, and you can edit your entries there too. Four tours ship with the game, and your own go in `config/tours/*.toml` (see [docs/EXTENDING.md](docs/EXTENDING.md#a-tour-of-duty)).
 
 ![Assembling the squadron within the fleet budget](docs/screenshots/tour-squadron.png)
 
 ![The captain's log after a stop, written by the bridge officers and the squadron's captains](docs/screenshots/tour-log.png)
+
+### The Borg
+
+The Borg are not another navy. They don't bargain, retreat or surrender, and a hail gets the Collective's flat answer and nothing more. Every weapon that hurts them teaches the whole hive to shrug it off, their hulls grow back, and their drones beam aboard to turn your crew into more drones. Trading shots loses. You win by learning them first and then striking hard.
+
+Seven of Nine knows the Collective from the inside, and she takes one duty at a time. She can tune your shields so their transporters can't lock on, keep scanning their ships, or remodulate your phasers before they adapt. Her gauge in the activity panel shows how far she has got. Halfway through a survey she finds the ship's **vinculum relay**. Destroy it and every drone aboard goes dormant: the ship goes dark, with no shields, no weapons and no healing. While she sleeps, hit her warp core and stand clear for the chain reaction, or send Worf across in the Galileo to plant charges. You can hail the shuttle while the team is out. Finish the survey and you have her shield harmonics, and harmonic torpedoes go straight through her shields.
+
+Three presets teach it (a probe, a sphere and the cube), and **The Collective** is a tour built around it. The hive remembers your weapons from one stop to the next. Halfway through, you decide whether to break the Treaty of Algeron and fit Spock's cloak, built from Romulan salvage. If the drones take the Enterprise, the tour ends there.
+
+The cloak refit fires from under her cloak, and the enemy sees only the flash where she fired. Any ship with a badly damaged warp drive vents plasma at warp, cloak or no cloak, and any sensor can follow it. Tell Seven to look for exhaust, and a cloaked ship leaking plasma shows as an exhaust contact: a rose-coloured wake ending in a wavering ring. Then have her program a torpedo to follow the trail, and it flies every turn she made. The same holds for you, so repair the drive, or cloak and go to full stop.
 
 ### The ships
 

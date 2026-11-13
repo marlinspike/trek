@@ -641,6 +641,8 @@ class Crew:
             total = TASKS[op.task][0]
             prog = (f"{op.work:.0f} cycles to go" if op.phase == "aboard" else
                     "they've been noticed" if op.noticed else "")
+            if op.shuttle is not None and op.phase != "return":
+                prog = " · ".join(x for x in (prog, f"hail {name} to change their orders") if x)
             names = ", ".join(n for m in op.members if (o := self.find(m)) is not None for n in [o.name.split()[0]])
             out.append(Activity(lead.id, f"Away team · {names} · {name}", doing, "away", op.started, prog,
                                 target=op.target, gauge=1.0 - op.work / total if op.phase == "aboard" else None))

@@ -75,6 +75,8 @@ transit = 360
 flags = ["refit"]
 ```
 
+A choice can also rebuild the flagship as another class with `flagship = "federation.dnc"` (a story class such as the cloak refit). A cloaked flagship makes Starfleet ask about it on every reinforcement call.
+
 A stop can add later waves (`[[tour.stop.wave]]` with `ships`, `after_clear` and/or `at`, and `if_flag` or `unless_flag`), add or drop enemies when a flag is set (`[tour.stop.add]`, `[tour.stop.drop]`), set a flag when it is won (`win_flag`), and put friendly ships on the field (`friends = ["federation.sb"]`). On a `finale = true` stop, losing those friends loses the tour. A misspelt class is reported on the tour list rather than crashing the game. Check a tour's difficulty with `begin --tour-test 8`; the officers win the shipped tours roughly a third to all of the time.
 
 ## Rules
@@ -170,6 +172,12 @@ A player reshapes the shipped officers without touching this file: `config/offic
 ## Enemy captains and hails
 
 A race's captains take their `temperament` from `factions.toml` (`temper`: 0 cowed by losses, 1 enraged by them; `obstinacy`: how hard they are to talk round at the start; `deviation`). What they watch, and how a hail is answered, lives in `sim/systems/disposition.py`: the shock each event deals, how fast fear and anger build and fade, and the odds of a demand being accepted. Their words come from `content/data/hails.toml`, one table per race over `[default]`; a player's `config/hails.toml` is read over it. `crew/hails.py` reads the captain's words (keywords, or the language model) and puts the answer into words, and `ui/comms_view.py` draws the comms card and the mood marks.
+
+A faction with `collective` rules (the Borg) never takes terms: `disposition.answer` gives it a refusal or silence. Its table needs only `refuse`, `defy`, `silence` and the `talk_*` lines, in the hive's single voice. Its style for the language model is in `RACE_STYLE` in `crew/hails.py`.
+
+## A hive faction
+
+A faction becomes a hive by giving it `doctrine = "collective"` and a `collective = {...}` table in `factions.toml`. The keys are described above the Borg's entry: how much damage teaches it each weapon family, how fast its hulls regrow, how its drones board, and which kinds of system its vinculum relay can run through. Its ships then adapt, sleep when the relay is destroyed, and answer hails as one. The officers' Borg lines are in `crew/borg_talk.py`, and the coach's advice is in `_hive_tips` in `help/coach.py`. Its look comes from `colors.phaser_style = "cutter"` (beams that drag across the hull) and `torpedo_style = "borg"`.
 
 ## Crew collaborations and projects
 

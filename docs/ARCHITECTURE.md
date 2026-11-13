@@ -47,6 +47,15 @@ The game has three layers. The simulation (`sim/`) owns every fact about the bat
 
 **Observation** (`sim/observation.py`) is one side's read-only picture for the current tick: its own ships in full, and contacts and ordnance only as far as its sensors know them. Controllers get nothing else, so an AI can't see a cloaked ship any more than you can.
 
+**The Borg** [E] are a faction with `collective` rules (`content/schema.py` `CollectiveRules`), and their behaviour lives in its own modules rather than in the shared systems:
+
+- `sim/collective.py` covers the hive's memory (`Mind`), adaptation per weapon family and phaser frequency, what each side has learned (`Insight`, `Survey`), the vinculum relay, dormancy, chain reactions and drones aboard. `damage.py` asks `collective.incoming` for the multiplier on every hit and calls `collective.learn` afterwards.
+- `sim/away.py` runs away teams, by shuttle or transporter, through their phases (`AwayOp`) and tasks.
+- `sim/systems/sensors.py` covers plasma trails from a damaged drive at warp, the sweep, and the trail-following seeker. Fire from a `cloak_fire` class's cloak shows only the flash.
+- `sim/systems/disposition.py` answers a hail to a hive with a refusal or silence, and never with terms.
+
+`Observation` exposes all of this to the UI and the crew: `is_hive`, `adaptation`, `weak_point`, `dormant`, `away_ops`, `plasma`, `venting` and `plasma_fresh`. `HiveEvent` carries the moments. `crew/borg_talk.py` turns them into what the officers say, even with chatter off. On the map, `ui/hive_marks.py` draws adaptation rings, dormant veils and core-critical rings, and `ui/stealth.py` draws our ship under her cloak, plasma trails, exhaust fixes and seekers.
+
 ## Content
 
 The TOML files in `content/data/` describe everything that isn't a rule:
@@ -185,6 +194,8 @@ A tour links battles. `tour/model.py` reads tours from `content/data/tours.toml`
 2. `prepare` writes each record onto its freshly built ship.
 3. During the battle, `reinforcement_arrival` adds a Starfleet `Arrival` with an ETA.
 4. `finish` writes every ship back, adds prizes and reinforcements, records the result and what the enemy learned, and drafts the log page (`tour/log.py`).
+
+A hive's memory carries between stops [E]. `finish` keeps a share of each `Mind`'s levels, plus our `Insight`'s experience, in `TourState.lessons` (`hive:<faction>|<weapon key>`), and `prepare` puts them back into the next battle. A flagship taken by drones ends the tour with the outcome `assimilated`. A choice with `flagship = "<class>"` rebuilds the flagship as that class (the cloak refit), and while she carries a cloak, every reinforcement call has Starfleet ask why.
 
 Arrivals are part of the simulation (`sim/arrivals.py`): the world places the ships when their time comes and emits `ShipArrived`; `World.on_arrival` lets the battle give them a ship computer and a captain. Waves hold the battle open (`World._check_outcome`), and each wave's lull starts only once the earlier waves are here and beaten.
 

@@ -42,7 +42,7 @@ Better still, ask Spock and Seven for a [[tachyon]] detector torpedo. Its burst 
 
 ## Plasma trails
 
-A warp drive that is badly damaged vents plasma while the ship is at warp, and **any** ship's sensors can follow it, cloak or no cloak. A cloaked ship with a leaking drive shows on your map as an **exhaust contact**: a fading orange wake that ends in a soft, wavering ring where she probably is. It is a rough fix, give or take 700 units, and it never shows her clearly.
+A warp drive that is badly damaged vents plasma while the ship is at warp, and **any** ship's sensors can follow it, cloak or no cloak. A cloaked ship with a leaking drive shows on your map as an **exhaust contact**: a fading rose-coloured wake that ends in a soft, wavering ring where she probably is. It is a rough fix, give or take 700 units, and it never shows her clearly.
 
 It works both ways. If your own drives are hurt, Geordi warns you that you are venting plasma. Repair the drives, or drop below warp 1, and the trail goes cold.
 

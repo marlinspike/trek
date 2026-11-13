@@ -92,7 +92,6 @@ def launch_torpedoes(
     fan: float = 0.0,
 ) -> int:
     """Fire the given loaded tubes. Returns the number of torpedoes launched."""
-    rules = world.rules
     rng = world.rng
     n = len(tubes)
     fired = 0

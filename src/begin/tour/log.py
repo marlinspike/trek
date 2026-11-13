@@ -214,6 +214,9 @@ def captain_draft(f: dict[str, Any]) -> str:
         t += ". "
     elif f["outcome"] == "base lost":
         t += "We could not hold the starbase. "
+    elif f["outcome"] == "assimilated":
+        return (t + f"This is the last entry. The drones hold every deck of the {f['flagship']}, and her crew "
+                "are becoming part of the Collective. Starfleet must be warned.").strip()
     elif f["outcome"] == "lost":
         t += f"The {f['flagship']} has been lost. "
         others = [n for n in f["lost"] if n != f["flagship"]]

@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 
 from ..battle import Battle, BattleSetup, FleetSpec, ShipSpec
 from ..content.schema import ContentDB
+from ..sim import collective
 from ..sim.arrivals import Arrival
 from ..sim.commands import FirePhasers, FireTorpedoes, SelectTarget
 from ..sim.rules import DEFAULT_RULES, Rules
@@ -44,6 +45,10 @@ PRISONERS_PER_CALL = 40      # prisoners handed to Starfleet that earn the squad
 PRESS_LOW_MAGAZINE = 0.35     # our flagship's magazine below this share: the enemy knows, and closes in
 REINFORCEMENT_EDGE = 16000.0  # how far from the battle Starfleet's ship drops out of warp
 REINFORCEMENT_MIN = 15.0      # the soonest one can arrive, cycles
+HIVE_RECALL = 0.6             # [E] share of what a hive learned of our weapons that it still knows at the next stop
+HIVE_KEY = "hive:"            # lessons kept as "hive:<faction>|<weapon key>"
+CLOAK_QUESTION = ("Starfleet Command asks why the flagship is running under a cloak. "
+                  "The question goes in the log.")
 
 
 @dataclass
@@ -128,6 +133,11 @@ class TourRun:
     def _travel(self, recs: list[ShipRecord]) -> None:
         ch = self.chosen()
         cycles = self.transit_cycles()
+        if ch is not None and ch.flagship and ch.flagship in self.content.classes:
+            for r in recs:
+                if r.role == "flagship" and not r.lost:
+                    r.class_id = ch.flagship       # the refit yard rebuilds her: she comes out whole
+                    r.damage, r.hull, r.crew, r.torps, r.probes = {}, 1.0, None, None, None
         for r in recs:
             if r.lost:
                 continue
@@ -146,6 +156,9 @@ class TourRun:
                        "their distance and turn fresh shields to us early.")
         elif caution > 0:
             out.append("They will have heard how we fought at the last stop. Expect more care at the start.")
+        if self.hive_met():
+            out.append("The Collective remembers us. Most of what it learned of our weapons, it still knows: "
+                       "remodulate early, and expect our first torpedoes to bite less. Seven reads them faster now.")
         if self._low_magazine():
             out.append("Our magazines are low, and their scouts will have counted our torpedoes. Expect them to close "
                        "to phaser range.")
@@ -202,7 +215,20 @@ class TourRun:
         late = max(0.0, (stop.eta if stop else 0.0) - self.transit_cycles())
         cls = self.content.classes[cid]
         when = "and will be there when we arrive" if late <= 0 else f"and will reach us {late:.0f} cycles into the fight"
-        return f"Starfleet is sending a {cls.name.lower()} {when}."
+        return f"Starfleet is sending a {cls.name.lower()} {when}." + self._cloak_question()
+
+    def cloaked_flagship(self) -> bool:
+        """[E] The flagship carries a cloak (the refit): Starfleet asks about it whenever we ask for help."""
+        f = self.state.flagship
+        ch = self.chosen()
+        cid = ch.flagship if ch is not None and ch.flagship in self.content.classes else f.class_id
+        return not f.lost and self.content.classes[cid].can_cloak
+
+    def _cloak_question(self) -> str:
+        if not self.cloaked_flagship():
+            return ""
+        self.state.cloak_questions += 1
+        return " " + CLOAK_QUESTION
 
     def _pick_reinforcement(self, n: int) -> str | None:
         pool = [c for c in self.tour.reinforcements if c in self.content.classes]
@@ -231,7 +257,7 @@ class TourRun:
         w.arrivals.append(a)
         fight.called.append(a)
         cls = self.content.classes[cid]
-        return a, f"Starfleet acknowledges. USS {name}, {cls.name.lower()}, ETA {eta:.0f} cycles."
+        return a, f"Starfleet acknowledges. USS {name}, {cls.name.lower()}, ETA {eta:.0f} cycles." + self._cloak_question()
 
     def _entry_point(self, battle: Battle, me: Ship | None) -> tuple[float, float, float]:
         """Where Starfleet's ship drops out of warp: behind our nearest base or ship, away from the enemy."""
@@ -324,6 +350,35 @@ class TourRun:
             apply_record(w.ships[sid], rec)
         if fight.ship_ids:
             w.ships[fight.ship_ids[0]].prisoners = self.state.prisoners   # the brig comes along
+        self._recall_hive(battle)
+
+    # ------------------------------------------------------------ the hive's memory [E]
+
+    def _recall_hive(self, battle: Battle) -> None:
+        """A hive met before remembers our weapons (most of what it learned), and we remember how to read it."""
+        w = battle.world
+        for k, v in self.state.lessons.items():
+            if k.startswith(HIVE_KEY):
+                faction, key = k[len(HIVE_KEY):].split("|", 1)
+                m = collective.mind(w, faction)
+                m.levels[key] = m.carried[key] = v
+        ins = collective.insight(w, w.player_side)
+        ins.experience = self.state.lessons.get("insight:experience", ins.experience)
+        ins.vigilance = self.state.lessons.get("insight:vigilance", ins.vigilance)
+
+    def _remember_hive(self, battle: Battle) -> None:
+        w = battle.world
+        for faction, m in w.minds.items():
+            for key, v in m.levels.items():
+                if key and v > 0.01:
+                    self.state.lessons[f"{HIVE_KEY}{faction}|{key}"] = round(v * HIVE_RECALL, 3)
+        ins = w.insight.get(w.player_side)
+        if ins is not None and w.minds:
+            self.state.lessons["insight:experience"] = round(ins.experience, 3)
+            self.state.lessons["insight:vigilance"] = round(ins.vigilance + ins.heists, 3)
+
+    def hive_met(self) -> bool:
+        return any(k.startswith(HIVE_KEY) for k in self.state.lessons)
         # the reinforcements called in from the Ready Room are named already; their records were made at launch
 
     def finish(self, battle: Battle, standout: str = "") -> LogEntry:
@@ -355,7 +410,12 @@ class TourRun:
         won = w.outcome.over and w.outcome.winner == side
         friends_ok = all(w.ships[i].alive for i in fight.friend_ids)
         flag = self.state.flagship
-        if flag.lost:
+        flag_ship = w.ships.get(fight.ship_ids[0]) if fight.ship_ids else None      # the flagship fights first
+        taken = flag_ship is not None and flag_ship.side != side and any(
+            s.side == flag_ship.side and collective.is_hive(w, s) for s in w.ships.values() if s is not flag_ship)
+        if flag.lost and taken:
+            outcome = "assimilated"            # [E] the Collective has her: the tour ends here
+        elif flag.lost:
             outcome = "lost"
         elif won and (friends_ok or not stop.finale):
             outcome = "victory"
@@ -366,6 +426,7 @@ class TourRun:
         kills = sum(w.ships[i].stats.kills for i in fight.ship_ids if i in w.ships)
         self.state.results.append(StopResult(stop.id, outcome, round(w.time, 1), kills, captured, lost))
         self._learn(battle, fight, captured)
+        self._remember_hive(battle)
         if outcome == "victory" and stop.win_flag and stop.win_flag not in self.state.flags:
             self.state.flags.append(stop.win_flag)
         # crew spirits: a win lifts them, a loss of shipmates weighs on them
@@ -374,7 +435,7 @@ class TourRun:
                 r.morale = max(0.0, min(100.0, r.morale + (5.0 if outcome == "victory" else -5.0) - 6.0 * len(lost)))
         entry = draft_entry(self, battle, fight, outcome, captured, lost, standout)
         self.state.log.append(entry)
-        if outcome == "lost" or outcome == "base lost":
+        if outcome in ("lost", "base lost", "assimilated"):
             self.state.over = "lost"
         else:
             self.state.stop += 1

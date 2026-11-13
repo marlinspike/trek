@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 import pygame
 
@@ -33,6 +33,9 @@ from .hulls import MIN_HULL_PX, draw_hull, hull_pixel_scale
 from .starfield import Starfield
 from . import gfx, stealth
 from .hive_marks import HiveMark, adaptation_rings, critical_ring, dormant_veil, hive_mark
+
+if TYPE_CHECKING:
+    from ..sim.away import AwayOp
 
 SHIELD_FLASH = 0.7        # seconds a shield hit shimmers
 TRAIL_POINT = 0.25        # cycles between the points of an engine trail
@@ -904,6 +907,9 @@ class TacticalView:
         self._shield_ring(surf, s.id, sx, sy, p[2], 62 * k, strengths, overlay)
         if s.alive and s.structure < s.structure_max * SMOULDER_BELOW:
             self._burning.append((p[0], p[1], s.structure / s.structure_max))
+        op = next((o for o in obs.away_ops() if o.shuttle == s.id), None) if s.alive and s.cls.craft else None
+        if op is not None and op.phase == "aboard":
+            return                     # latched to the hive ship's hull: the activity panel tells their story
         label = s.name if s.alive else f"{s.name} — {s.status.value}"
         if s.alive and s.docked_to is not None:
             label += " · docked"
@@ -918,7 +924,7 @@ class TacticalView:
         place = self._label_x(sx, sy, lx, lw)
         if place is not None:
             lx = place
-            top = self._free_label_y(lx, sy - 8, lw, 14)
+            top = self._free_label_y(lx, sy - 8, lw, 26 if op is not None else 14)
             if art:
                 self._leader(surf, sx, sy, 62 * k, lx if lx > sx else lx + lw, top, color)
             theme.label(surf, label, (lx, top), color, 12)
@@ -933,6 +939,9 @@ class TacticalView:
                 if obs.leaking(s.id):
                     theme.text(surf, theme.fit("venting plasma", 10, room), (lx, ly), theme.EXHAUST, 10)
                     ly += 12
+            elif op is not None:
+                self._shuttle_lines(surf, op, lx, ly, room, names or {})
+                ly += 12
             elif s.alive:
                 st = obs.ally_order(s.id)
                 mission = st.summary(names or {}) if st is not None else ""
@@ -1152,6 +1161,16 @@ class TacticalView:
             e = min(L, d + on)
             gfx.draw.line(surf, col, (a[0] + ux * d, a[1] + uy * d), (a[0] + ux * e, a[1] + uy * e))
             d = e + off
+
+    def _shuttle_lines(self, surf: pygame.Surface, op: AwayOp, lx: float, ly: float, room: int,
+                       names: dict[int, str]) -> None:
+        """An away team's shuttle in flight: who is aboard, and what they are doing (`hail <shuttle>` reaches them)."""
+        crew = ", ".join(m.capitalize() for m in op.members)
+        where = names.get(op.target, "the hive ship")
+        doing = {"outbound": f"crossing to {where}", "aboard": f"{op.label} aboard {where}",
+                 "return": "coming home"}.get(op.phase, op.phase)
+        col = theme.ALERT if op.noticed else theme.HIVE
+        theme.text(surf, theme.fit(f"{crew} · {doing}", 10, room), (lx, ly), col, 10)
 
     def _label_x(self, sx: float, sy: float, lx: float, lw: int) -> float | None:
         """Where a ship's name goes across: kept whole inside the map when she is on it, and left out when she

@@ -4,7 +4,7 @@ category: Game
 order: 20
 aliases: borg, collective, cube, sphere, adapt, adaptation, remodulate, remod, modulate, rotate, duty, tune, retune, tune shields, harmonics, harmonic, vinculum, relay, weak point, dormant, drones, assimilation, repel, security, intruders, seal, vent
 summary: The Borg learn your weapons, take your crew and regrow their hulls. Learn them first, then strike hard.
-see: away-team, scan, crew, tactics, transport
+see: away-team, scan, crew, tactics, transport, tour, cloak
 ---
 The Borg don't fight the way captains do. They don't retreat, bargain or surrender. Every weapon that hurts them teaches them, every drone that comes aboard is trying to make your crew into more drones, and their hulls grow back. **Trading shots loses.** What wins is guile first and then power: learn the ship, find the opening, then land everything at once.
 
@@ -69,3 +69,9 @@ A cube can be beaten by power alone, but it will cost you dearly. Guile and powe
 2. Tune your shields before the drones come.
 3. Find the relay, then send Worf in, or burn it out.
 4. Strike while she sleeps.
+
+## Talking to them
+
+`hail cube` gets an answer from the Collective, not from a captain. They never accept terms, and they never break. Their silence is not anger; there is simply nothing over there to persuade.
+
+Three presets teach the Borg in order: **First Contact: a Borg Probe**, **The Sphere** and **Wolf at the Door: the Cube**. The tour **The Collective** strings them into a campaign ([[tour]]).
