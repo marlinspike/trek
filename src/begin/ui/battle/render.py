@@ -248,10 +248,15 @@ class RenderMixin(SceneState):
             self.ui.button(surf, pygame.Rect(x, y, 46, 24), label, partial(setattr, self, "speed", s),
                            "Simulation speed ([ and ])", active=self.speed == s)
             x += 50
-        theme.text(surf, "Orders also work while paused.", (x + 8, y + 5), theme.TEXT_FAINT, 11)
         # log: two columns, the bridge (who said what) and the computer (everything else), when there is room
         lines_area = pygame.Rect(r.x + 10, r.y + 40, r.width - 20, r.height - 76)
-        if self.prefs.classic or lines_area.width < 760:
+        two = not self.prefs.classic and lines_area.width >= 760
+        hint_room = (lines_area.x + int(lines_area.width * 0.56) - 70 if two else r.right - 12) - (x + 8)
+        hint = next((h for h in ("Orders also work while paused.", "Orders work paused.")
+                     if theme.text_width(h, 11) <= hint_room), None)
+        if hint is not None:
+            theme.text(surf, hint, (x + 8, y + 5), theme.TEXT_FAINT, 11)
+        if not two:
             self._log_column(surf, lines_area, self.log)
         else:
             left = pygame.Rect(lines_area.x, lines_area.y, int(lines_area.width * 0.56) - 10, lines_area.height)
