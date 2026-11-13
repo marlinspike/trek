@@ -297,7 +297,7 @@ def scan_duration(ship: Ship) -> float:
     return 2.5 - 1.5 * ship.sophistication
 
 
-def perform_scan(world: World, ship: Ship, target: Ship) -> None:
+def perform_scan(world: World, ship: Ship, target: Ship, by: str = "") -> None:
     """Complete an active scan: noisy snapshot of the target's condition."""
     rng = world.rng
     soph = ship.sophistication
@@ -330,7 +330,7 @@ def perform_scan(world: World, ship: Ship, target: Ship) -> None:
     if c is not None:
         c.scan = rec
         c.identified = True
-    world.emit(ScanCompleted(world.tick, ship.id, target.id))
+    world.emit(ScanCompleted(world.tick, ship.id, target.id, by))
 
 
 def assess(world: World, side: int, target: Ship) -> Assessment | None:

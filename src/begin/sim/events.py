@@ -175,6 +175,7 @@ class CloakFlash(Event):
 class ScanCompleted(Event):
     ship_id: int
     target_id: int
+    by: str = ""            # the officer who ran it ("" the captain) [E]: officers' own scans stay off the screen
 
 
 @dataclass(slots=True)

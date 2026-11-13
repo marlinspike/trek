@@ -31,6 +31,8 @@ from ..ai.personality import Personality
 from ..content.schema import ContentDB
 from ..core.rng import Rng
 from ..sim.allies import AllyStanding
+from ..sim.away import TASKS
+from ..sim.collective import CODE_AT, TUNE_BLOCKS_BEAMING
 from ..sim.commands import (
     Authority, Command, ConfigureAutoload, Remodulate, SetDuty, ControlProbe, DeflectorPulse, Dock, EndObjective, EngineBoost, Evasive, FireAtPoint, FirePhasers,
     FireSpecialRound, FireTorpedoes, LaunchProbe, LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak,
@@ -43,7 +45,7 @@ from ..sim.ship import HULL, HelmMode, Kind, RepairTarget, Ship
 from ..sim.systems.ordnance import suggested_prox
 from .characters import STATIONS, OfficerProfile
 from .helm import HelmPlan, incoming, plan_helm, support_range, threatened
-from .objectives import Planner
+from .objectives import Planner, label, progress
 
 STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
     "helm": (SetHelm, Pursue, Evasive, Dock),
@@ -312,6 +314,12 @@ def repair_priority(ship: Ship, obs: Observation) -> RepairTarget | None:
     return None
 
 
+def _system(sid: str) -> str:
+    """'battery8' -> 'battery 8'."""
+    stem = sid.rstrip("0123456789")
+    return f"{stem} {sid[len(stem):]}" if stem != sid else sid
+
+
 @dataclass
 class Activity:
     """What one officer is doing right now, for the activity panel, the map and their callouts."""
@@ -325,6 +333,7 @@ class Activity:
     plan: HelmPlan | None = None  # the helm's chosen course, for the map
     target: int | None = None
     aim: tuple[float, float, float, int] | None = None   # the last salvo's burst point and spread
+    gauge: float | None = None    # 0..1: how far a long job has got, drawn as a bar beside `progress` [E]
 
 
 @dataclass
@@ -442,8 +451,6 @@ class Crew:
         def cmd(cls: type[Command], who: OfficerProfile | None, **kw: object) -> Command:
             return cls(ship_id=ship.id, issuer=Authority.OFFICER, source=who.title if who else "Science", **kw)  # type: ignore[arg-type]
 
-        from ..sim.collective import CODE_AT
-
         unsurveyed = [c for c in hives if (sv := obs.survey(c.id)) is None or sv.progress < CODE_AT]
         if "science" in ship.delegated and sci is not None and sci.id in ("seven", "spock") and sci.id not in ship.away:
             if not ship.duty and unsurveyed:
@@ -556,8 +563,6 @@ class Crew:
 
     def activity(self, obs: Observation) -> list[Activity]:
         """Every officer doing something the captain asked for: flying the ship, or working an objective."""
-        from .objectives import label, progress
-
         ship = obs.own(self.ship_id)
         if ship is None or not ship.alive:
             return []
@@ -594,6 +599,51 @@ class Crew:
                                 pl.step_kind if pl is not None else "", pl.step_tick if pl is not None else 0,
                                 progress(obs, o, self.names), target=ship.target,
                                 aim=pl.aim if pl is not None else None))
+        return out + self._hive_activity(obs, ship)
+
+    def _hive_activity(self, obs: Observation, ship: Ship) -> list[Activity]:
+        """The Borg work [E] in the activity panel: the officer on a hive duty with a gauge of how far it has got,
+        and each away team out, with what they are doing over there."""
+        out: list[Activity] = []
+        who = self.find(ship.duty_by) if ship.duty_by else self.officer("science")
+        hives = [c for c in obs.hostile_contacts() if c.identified and obs.is_hive(c.id)]
+        if ship.duty == "harmonics" and who is not None:
+            mine = [c for c in hives if c.visible]
+            c = min(mine, key=lambda c: ((sv := obs.survey(c.id)) is not None and sv.progress >= CODE_AT,
+                                         c.id != ship.target, c.distance_to(ship.x, ship.y)), default=None)
+            if c is not None:
+                sv = obs.survey(c.id)
+                frac = min(1.0, (sv.progress if sv is not None else 0.0) / CODE_AT)
+                found = obs.weak_point(c.id)
+                doing = (f"Scanning the {label(obs, c.id, self.names)} for her shield harmonics" if frac < 1.0 else
+                         f"The {label(obs, c.id, self.names)}'s harmonics are ours")
+                note = f"relay in her {_system(found)}" if found else "her weak point at half way"
+                out.append(Activity(who.id, "Harmonics", doing, "harmonics", 0, f"{frac * 100:.0f}%  ·  {note}",
+                                    target=c.id, gauge=frac))
+        elif ship.duty == "shields" and who is not None:
+            note = "their transporters can't lock on" if ship.tuning >= TUNE_BLOCKS_BEAMING else "drones can still beam in"
+            out.append(Activity(who.id, "Shield harmonics", "Tuning our shields against the hive's weapons", "tune", 0,
+                                f"{ship.tuning * 100:.0f}%  ·  {note}", gauge=ship.tuning))
+        elif ship.duty == "phasers" and who is not None:
+            grip = max((obs.adaptation(c.id, ship.id).get("phaser", 0.0) for c in hives if c.visible), default=0.0)
+            out.append(Activity(who.id, "Phaser frequencies", "Remodulating before the hive learns them", "remodulate", 0,
+                                f"the hive has learned them {grip * 100:.0f}%", gauge=grip))
+        for op in obs.away_ops():
+            if op.mother != ship.id or not op.members:
+                continue
+            lead = self.find(op.members[0])
+            if lead is None:
+                continue
+            name = label(obs, op.shuttle, self.names) if op.shuttle is not None else "the transporter"
+            where = label(obs, op.target, self.names)
+            doing = {"outbound": f"Crossing to the {where}", "aboard": TASKS[op.task][1][:1].upper() + TASKS[op.task][1][1:],
+                     "return": "Coming home"}.get(op.phase, "")
+            total = TASKS[op.task][0]
+            prog = (f"{op.work:.0f} cycles to go" if op.phase == "aboard" else
+                    "they've been noticed" if op.noticed else "")
+            names = ", ".join(n for m in op.members if (o := self.find(m)) is not None for n in [o.name.split()[0]])
+            out.append(Activity(lead.id, f"Away team · {names} · {name}", doing, "away", op.started, prog,
+                                target=op.target, gauge=1.0 - op.work / total if op.phase == "aboard" else None))
         return out
 
     def move_to(self, ship_id: int) -> None:

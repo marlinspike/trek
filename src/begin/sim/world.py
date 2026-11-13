@@ -516,7 +516,8 @@ class World:
         dur = sensors_sys.scan_duration(ship)
         self._scans = [s for s in self._scans if s.ship_id != ship.id]
         self._scans.append(PendingScan(ship.id, target_id, self.tick + max(1, int(dur * self.rules.ticks_per_cycle)), by))
-        self.say(ship, f"Scanning {self.label(ship.side, target_id)}…", "info", speaker="Science")
+        if not by:          # an officer's own scans (routine, or a Borg survey) go on quietly [E]
+            self.say(ship, f"Scanning {self.label(ship.side, target_id)}…", "info", speaker="Science")
 
     def _complete_scans(self) -> None:
         keep = []
@@ -531,8 +532,9 @@ class World:
             if not self.is_visible(ship.side, tgt.id) or ship.sensors is None or ship.sensors.destroyed:
                 self.say(ship, "Scan interrupted: contact lost.", "caution", speaker="Science")
                 continue
-            sensors_sys.perform_scan(self, ship, tgt)
-            self.say(ship, f"Scan of {tgt.name} complete.", "good", speaker="Science")
+            sensors_sys.perform_scan(self, ship, tgt, sc.by)
+            if not sc.by:
+                self.say(ship, f"Scan of {tgt.name} complete.", "good", speaker="Science")
             collective.on_scan(self, ship, tgt, sc.by)
         self._scans = keep
 

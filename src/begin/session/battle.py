@@ -383,8 +383,7 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
                 who = f"{ev.speaker}: " if ev.speaker and ev.speaker not in ev.text else ""
                 self._log(who + ev.text, EVENT_TONE.get(ev.tone, "text"),
                           channel="bridge" if ev.speaker and ev.speaker != "captain" else "computer")
-            elif (isinstance(ev, ScanCompleted) and ev.ship_id == self.player_id
-                  and not (self.player is not None and "science" in self.player.delegated)):  # Seven's routine scans stay quiet
+            elif isinstance(ev, ScanCompleted) and ev.ship_id == self.player_id and not ev.by:   # officers' scans stay quiet
                 c = self.obs.contact(ev.target_id)
                 if c is not None and c.scan is not None:
                     before = self._scans_seen.get(c.id)

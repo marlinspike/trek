@@ -32,6 +32,7 @@ from .showpiece import SPRITE_CENTRE_Y, SPRITE_PX, ship_image, ship_lights
 from .hulls import MIN_HULL_PX, draw_hull, hull_pixel_scale
 from .starfield import Starfield
 from . import gfx, stealth
+from .hive_marks import HiveMark, adaptation_rings, critical_ring, dormant_veil, hive_mark
 
 SHIELD_FLASH = 0.7        # seconds a shield hit shimmers
 TRAIL_POINT = 0.25        # cycles between the points of an engine trail
@@ -54,6 +55,7 @@ JOLT_MAX = 6.0            # pixels
 INBOUND_RANGE = 9000.0    # an enemy round this close and heading for one of ours is marked as a threat
 INBOUND_CONE = 14.0       # degrees either side of dead on
 INCOMING_SOUND = 4500.0   # an inbound round this close is heard rushing in
+ADAPT_NOTE = 0.25         # the target's name says how far her hive has adapted, past this [E]
 
 Pose = tuple[float, float, float]  # x, y, course
 
@@ -412,7 +414,13 @@ class TacticalView:
         contacts = [(c, p) for c in obs.contacts().values() if (p := pose(c.id))]
         self._group_labels([(c.id, p) for c, p in contacts if c.visible], {target_id})
         for c, p in contacts:
-            self._contact(surf, c, p, c.id == target_id, selected_sub, overlay)
+            mark = hive_mark(obs, c.id, player_id) if c.identified else None
+            self._contact(surf, c, p, c.id == target_id, selected_sub, overlay, mark)
+        for sid, x, y, left, reach in obs.countdowns():      # a ship about to go up: how far the blast will reach
+            if cam.visible(x, y, reach + 100):
+                sx, sy = cam.to_screen(x, y)
+                critical_ring(surf, overlay, sx, sy, reach * cam.zoom, left, self.clock,
+                              "CORE CRITICAL" if obs.is_hive(sid) else "SELF-DESTRUCT")
 
         # target link
         if me is not None and target_id is not None:
@@ -977,7 +985,7 @@ class TacticalView:
             placed.append((sid, x, y))
 
     def _contact(self, surf: pygame.Surface, c: ContactView, p: Pose, targeted: bool, sub: str | None,
-                 overlay: pygame.Surface | None = None) -> None:
+                 overlay: pygame.Surface | None = None, hive: HiveMark | None = None) -> None:
         cam = self.cam
         if not cam.visible(p[0], p[1], 200):
             return
@@ -1018,6 +1026,11 @@ class TacticalView:
             pts = [(sx, sy - rad), (sx + rad, sy), (sx, sy + rad), (sx - rad, sy)]
             gfx.draw.polygon(surf, color, pts, 1)
             theme.text(surf, "?", (sx, sy), color, 12, anchor="center")
+        if hive is not None and c.visible and overlay is not None:
+            if hive.dormant > 0:
+                dormant_veil(overlay, sx, sy, rad, hive.dormant, self.clock)
+            else:
+                adaptation_rings(overlay, sx, sy, rad, hive, self.clock)
         if c.exhaust and overlay is not None:
             color = theme.EXHAUST
             stealth.exhaust_fix(surf, overlay, sx, sy, max(rad + 10, min(180.0, c.uncertainty * cam.zoom)), self.clock, c.id)
@@ -1047,6 +1060,12 @@ class TacticalView:
             theme.label(surf, label, (lx, top), color, 12)
         if c.exhaust and place is not None:
             theme.text(surf, "EXHAUST · rough fix", (lx, top + 14), theme.EXHAUST, 10, weight="semibold")
+        elif hive is not None and c.visible and place is not None and not quiet:
+            note = self._hive_note(hive, targeted)
+            if note:
+                room = int(cam.rect.right - 4 - lx)
+                theme.text(surf, theme.fit(note, 10, room), (lx, top + 14),
+                           theme.HIVE if hive.dormant > 0 else theme.dim(theme.HIVE, 0.85), 10, weight="medium")
         elif lost and place is not None:
             theme.text(surf, f"lost {c.age:.0f}s", (lx, top + 14), theme.TEXT_FAINT, 10)
         if targeted:
@@ -1074,6 +1093,21 @@ class TacticalView:
                 gfx.draw.circle(overlay, (*theme.CAUTION, int(60 * (1 - t))), (int(sx), int(sy)), int(b), 1)
             if sub:
                 theme.text(surf, f"⌖ {sub}", (sx, sy + b + 6), col, 11, anchor="midtop")
+
+    @staticmethod
+    def _hive_note(m: HiveMark, targeted: bool) -> str:
+        """The line under a Borg ship's name: dark and when she wakes; for the target, what the hive has learned
+        and where her relay is."""
+        if m.dormant > 0:
+            return f"DORMANT · wakes in {m.dormant:.0f}"
+        if not targeted:
+            return ""
+        parts = []
+        if max(m.phaser, m.torpedo) >= ADAPT_NOTE:
+            parts.append(f"adapted: phasers {m.phaser * 100:.0f}% · torpedoes {m.torpedo * 100:.0f}%")
+        if m.relay:
+            parts.append(f"relay: {m.relay}")
+        return "  ·  ".join(parts)
 
     def _ordnance(self, surf: pygame.Surface, o: OrdnanceView, p: Pose, f: Faction | None,
                   overlay: pygame.Surface | None = None) -> None:

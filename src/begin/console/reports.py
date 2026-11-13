@@ -124,9 +124,9 @@ BAR = 12
 
 
 def bar(frac: float, width: int = BAR) -> str:
-    """A gauge in the monospaced log: ▰▰▰▰▱▱▱."""
+    """A gauge in the log: ■■■■□□□ (squares both bundled faces carry; ▰▱ would print as boxes)."""
     n = round(max(0.0, min(1.0, frac)) * width)
-    return "\u25b0" * n + "\u25b1" * (width - n)
+    return "\u25a0" * n + "\u25a1" * (width - n)
 
 
 def sid_label(sid: str) -> str:
