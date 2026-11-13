@@ -216,7 +216,8 @@ class Compositor:
         if y1 <= y0:
             return False
         pitch = layer.get_pitch()
-        buf = memoryview(layer.get_buffer())[y0 * pitch:y1 * pitch]     # whole rows: one contiguous block
+        buf = memoryview(layer.get_buffer())  # type: ignore[arg-type,unused-ignore]  # BufferProxy is a buffer; older stubs disagree
+        buf = buf[y0 * pitch:y1 * pitch]     # whole rows: one contiguous block
         self.light.write(buf, viewport=(0, y0, self.size[0], y1 - y0))
         self._light_rows = (y0, y1)
         return True
