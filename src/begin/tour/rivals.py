@@ -4,8 +4,10 @@ When a tour stop ends with the enemy's commander (the captain of their heaviest 
 ship escaped or held the field, that captain becomes a **rival**. Rivals are kept in the captain's career
 (settings.json, "career", "rivals"), so they follow you from tour to tour.
 
-A rival returns at a later stop against their own navy: they take command of the heaviest enemy ship there,
-better than before (each meeting sharpens them), and they hail you as someone they know. How much your bridge
+A rival returns on a later tour, once a tour, at the first stop against their own navy: they take command of the
+heaviest enemy ship there, better than before (each meeting sharpens them), and they hail you as someone they know.
+They fight the way they got away: one who broke off and ran will run again sooner than most, one who held the field
+will stand longer. How much your bridge
 can tell you about them rides on the officers' trust (crew/career.py):
 
     Green     sensors name the ship and its captain, and say we have met
@@ -21,7 +23,7 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any
 
 from ..crew.career import Career, level_index
-from ..sim.ship import ShipStatus
+from ..sim.ship import Ship, ShipStatus
 
 if TYPE_CHECKING:
     from ..battle import Battle
@@ -41,6 +43,7 @@ GREETINGS = {
 }
 GREETING = "Enterprise. We have met before, at {place}. I have not forgotten."
 HABITS = {"escaped": "broke off and ran when the fight turned", "held": "held the field when we withdrew"}
+NERVE = {"escaped": 0.35, "held": 0.75}       # a rival's bravery, by how they got away last time
 
 
 @dataclass
@@ -54,6 +57,7 @@ class Rival:
     tour: str = ""                # on which tour
     habit: str = "escaped"        # how they last got away: escaped | held
     fate: str = "at large"        # at large | destroyed | captured
+    last_run: str = ""            # the tour run ("<tour id>#<seed>") we last met them on: once a tour
 
     @property
     def at_large(self) -> bool:
@@ -84,13 +88,18 @@ class RivalBook:
 
     # ------------------------------------------------------------ before a stop
 
-    def for_stop(self, stop: Stop, content: ContentDB, flags: set[str]) -> Rival | None:
-        """The rival who comes back at this stop: one at large from the navy we face, the most met first."""
+    def names(self) -> tuple[str, ...]:
+        """Every rival's name, kept from random captains so a stranger never wears one."""
+        return tuple(r.name for r in self.rivals)
+
+    def for_stop(self, stop: Stop, content: ContentDB, flags: set[str], run: str = "") -> Rival | None:
+        """The rival who comes back at this stop: one at large from the navy we face, not yet met on this tour
+        run, the most met first."""
         factions = {content.classes[c].faction for c in stop.enemy_ships(flags)}
         if len(factions) != 1:
             return None
         faction = next(iter(factions))
-        free = [r for r in self.rivals if r.at_large and r.faction == faction]
+        free = [r for r in self.rivals if r.at_large and r.faction == faction and not (run and r.last_run == run)]
         return max(free, key=lambda r: (r.met, -self.rivals.index(r))) if free else None
 
     def greeting(self, rival: Rival) -> str:
@@ -110,11 +119,16 @@ class RivalBook:
 
     # ------------------------------------------------------------ after a stop
 
-    def after_battle(self, battle: Battle, place: str, tour: str, rival: Rival | None) -> str:
-        """Who is a rival now, who returns again, and who is done. Returns a line for the Ready Room, or ""."""
+    def after_battle(self, battle: Battle, place: str, tour: str, rival: Rival | None, run: str = "",
+                     enemy_ids: set[int] | None = None) -> str:
+        """Who is a rival now, who returns again, and who is done. Returns a line for the Ready Room, or "".
+
+        `enemy_ids`: the ships that fought against us (a ship we captured is on our side by the end)."""
         w = battle.world
         side = w.player_side
-        enemies = [s for s in w.ships.values() if s.side != side and s.side >= 0 and not s.cls.is_base and s.captain]
+        if enemy_ids is None:
+            enemy_ids = {s.id for s in w.ships.values() if s.side != side and s.side >= 0}
+        enemies = [w.ships[i] for i in sorted(enemy_ids) if i in w.ships and not w.ships[i].cls.is_base and w.ships[i].captain]
         if not enemies:
             return ""
         news = ""
@@ -122,20 +136,20 @@ class RivalBook:
             ship = next((s for s in enemies if s.captain == rival.name), None)
             if ship is not None:
                 rival.met += 1
-                rival.place, rival.tour = place, tour
-                news = self._settle(rival, ship.status, w.outcome.winner == side)
+                rival.place, rival.tour, rival.last_run = place, tour, run
+                news = self._settle(rival, _status(ship, side), w.outcome.winner == side)
         else:
             boss = max(enemies, key=lambda s: s.cls.mass)
-            free = _free(boss.status, w.outcome.winner == side)
+            free = _free(_status(boss, side), w.outcome.winner == side)
             if free:
                 known = self.find(boss.captain, boss.cls.faction)
                 if known is None:
                     self.rivals.append(Rival(boss.captain, boss.cls.faction, boss.cls.id, boss.name, place=place,
-                                             tour=tour, habit=free))
+                                             tour=tour, habit=free, last_run=run))
                     news = f"{boss.captain} of the {boss.name} got away. We have not seen the last of them."
-                else:
+                elif known.at_large:
                     known.met += 1
-                    known.place, known.tour, known.habit = place, tour, free
+                    known.place, known.tour, known.habit, known.last_run = place, tour, free, run
         self.save()
         return news
 
@@ -151,6 +165,11 @@ class RivalBook:
         return f"{rival.name} got away again." if free else ""
 
 
+def _status(ship: Ship, side: int) -> ShipStatus:
+    """How an enemy ship ended the battle; one that ends it on our side is ours (boarded and taken)."""
+    return ShipStatus.CAPTURED if ship.side == side else ship.status
+
+
 def _free(status: ShipStatus, we_won: bool) -> str:
     """How an enemy captain left the field free: 'escaped', 'held' (we withdrew), or '' (not free)."""
     if status == ShipStatus.ESCAPED:
@@ -163,11 +182,12 @@ def _free(status: ShipStatus, we_won: bool) -> str:
 def personality(rival: Rival) -> dict[str, float]:
     """The leanings a returning rival fights with: sharper with every meeting."""
     c = rival.competence()
-    return {"competence": c, "crew_competence": c, "discipline": min(TOP, c + 0.05)}
+    return {"competence": c, "crew_competence": c, "discipline": min(TOP, c + 0.05),
+            "bravery": NERVE.get(rival.habit, 0.5)}
 
 
 def as_dict(rival: Rival) -> dict[str, Any]:
     return asdict(rival)
 
 
-__all__ = ["GREETINGS", "MAX_RIVALS", "Rival", "RivalBook", "WHO_KNOWS", "personality"]
+__all__ = ["GREETINGS", "MAX_RIVALS", "NERVE", "Rival", "RivalBook", "WHO_KNOWS", "personality"]

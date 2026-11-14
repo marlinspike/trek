@@ -136,6 +136,12 @@ def _chart_y(rng: Rng, i: int) -> float:
     return rng.uniform(0.78, 0.86) if i % 2 == 0 else rng.uniform(0.55, 0.62)
 
 
+def _room(theirs: list[ShipClass], mass: float, n: int) -> int:
+    """No more ships than the threat has room for: a pack of their lightest ships can't overshoot it by much."""
+    light = min(c.mass for c in theirs)
+    return max(3, min(n, int(mass * 1.1 // light)))
+
+
 def _brief(sid: str) -> tuple[str, str]:
     _, title, brief = next(x for x in PATROL_SITUATIONS if x[0] == sid)
     return title, brief
@@ -157,7 +163,7 @@ def _stop(content: ContentDB, rng: Rng, i: int, sid: str, theirs: list[ShipClass
         enemies, center = group[:half], (-10500.0, 3500.0)
         waves.append(WaveDef(tuple(group[half:]), at=0.0, center=(10500.0, 3500.0)))
     elif sid == "wolfpack":
-        enemies = _fill(rng, theirs, mass, rng.choice((5, 6, 7)), 0.8)
+        enemies = _fill(rng, theirs, mass, _room(theirs, mass, rng.choice((5, 6, 7))), 0.8)
     elif sid == "waves":
         enemies = _fill(rng, theirs, mass * 0.55, 3)
         side = rng.choice((-1.0, 1.0))

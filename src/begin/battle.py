@@ -58,6 +58,7 @@ class BattleSetup:
     arrivals: list[Arrival] = field(default_factory=list)   # waves and reinforcements that join later [E]
     personalities: dict[int, dict[str, float]] = field(default_factory=dict)  # side -> captains' leanings (a tour's memory) [E]
     mission: MissionDef | None = None   # a goal beyond holding the field: rescue, escort or intercept (sim/mission.py) [E]
+    reserved_captains: tuple[str, ...] = ()   # [E] names no random captain draws (a tour's rivals)
 
     @property
     def player_side(self) -> int:
@@ -169,6 +170,7 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
     flagship_name = _player_flagship_name(content, setup)
     if flagship_name:
         world.reserved_names.add(flagship_name)  # no other ship draws the flagship's name
+    world.reserved_captains |= set(setup.reserved_captains) | {s.captain for f in setup.fleets for s in f.ships if s.captain}
     rng = Rng(setup.seed).derive("setup")
     n = len(setup.fleets)
     player_ship: int | None = None

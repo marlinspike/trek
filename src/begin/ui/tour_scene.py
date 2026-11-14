@@ -29,7 +29,7 @@ from ..tour.log import OFFICER_ORDER, OFFICER_TITLES, read_markdown_edits, voice
 from ..crew.career import Career
 from ..tour import generate, squadrons
 from ..tour.rivals import RivalBook
-from ..tour.model import TourDef, check_tour, load_tours
+from ..tour.model import Stop, TourDef, check_tour, load_tours
 from ..tour.ready import ReadyView, ready_counsel
 from ..tour.run import TourRun
 from ..tour.state import ShipRecord, TourState, fleet_cost
@@ -51,6 +51,34 @@ OUTCOME_WORDS = {"victory": "Victory", "withdrew": "Withdrew", "lost": "Flagship
 
 def tours_dir() -> Path:
     return config_dir() / "tours"
+
+
+PORTRAIT_H = 150        # the briefing officer's portrait and name
+
+
+def _flow(text: str, bw: int, size: int, lh: int) -> list[tuple[int, str]]:
+    """A briefing's lines as (x offset, line): beside the portrait while it lasts, then the panel's full width."""
+    beside = -(-PORTRAIT_H // lh)
+    out: list[tuple[int, str]] = []
+    paras = text.split("\n\n")
+    for k, para in enumerate(paras):
+        if k:
+            out.append((132 if len(out) < beside else 14, ""))
+        words = para
+        while words:
+            narrow = len(out) < beside
+            lines = wrap(words, size, bw - (150 if narrow else 28))
+            if not narrow:
+                out += [(14, ln) for ln in lines]
+                break
+            take = lines[:beside - len(out)]
+            out += [(132, ln) for ln in take]
+            words = " ".join(" ".join(lines[len(take):]).split())
+    return out
+
+
+def _briefing_height(lines: int, lh: int, lessons: int, enemies: bool) -> int:
+    return 32 + max(lines * lh, PORTRAIT_H) + 6 + (26 if enemies else 0) + 19 * lessons + 14
 
 
 class TourScene:
@@ -513,7 +541,11 @@ class TourScene:
                   theme.GOOD if left > 0 else theme.CAUTION)
         theme.text(surf, f"{left} of {tour.budget}", (br.right - 14, y), theme.TEXT, 14, "mono", anchor="topright")
         # the yard: classes to add
-        yr = pygame.Rect(40, 186, 360, 46 + 48 * len(self._classes(tour)))
+        groups = len(squadrons.offered(self.content, tour.faction))
+        n = len(self._classes(tour))
+        tight = 186 + 46 + 48 * n + 14 + (40 + 36 * groups if groups else 0) > h - 20   # a short window: closer rows
+        row, btn = (40, 34) if tight else (48, 40)
+        yr = pygame.Rect(40, 186, 360, 46 + row * n)
         y = self._glass(surf, yr, "Starfleet yard")
         for cid in self._classes(tour):
             cls = self.content.classes[cid]
@@ -521,10 +553,10 @@ class TourScene:
             ok = cost <= left and len(self.escorts) < MAX_ESCORTS
             tip = (f"{cls.crew} crew · {cls.banks} phaser banks · {cls.tubes} tubes · warp {cls.max_warp:g}" if ok else
                    "Over budget" if cost > left else f"At most {MAX_ESCORTS} escorts")
-            self.ui.button(surf, pygame.Rect(yr.x + 14, y, yr.width - 28, 40), f"{cls.name}  ·  {cost} points",
+            self.ui.button(surf, pygame.Rect(yr.x + 14, y, yr.width - 28, btn), f"{cls.name}  ·  {cost} points",
                            partial(self.escorts.append, cid), tip, enabled=ok, size=14, face="ui")
-            y += 48
-        self._groups_panel(surf, tour, pygame.Rect(40, yr.bottom + 14, 360, 0))
+            y += row
+        self._groups_panel(surf, tour, pygame.Rect(40, yr.bottom + 14, 360, 0), tight)
         # the squadron: the flagship and the escorts, lit and turning
         sx = 430
         sr = pygame.Rect(sx, 100, w - sx - 40, h - 200)
@@ -555,13 +587,14 @@ class TourScene:
                        accent=theme.GOOD)
         self.ui.button(surf, pygame.Rect(w - 460, h - 80, 140, 44), "Back", lambda: setattr(self, "page", "tours"), size=13)
 
-    def _groups_panel(self, surf: pygame.Surface, tour: TourDef, r: pygame.Rect) -> None:
+    def _groups_panel(self, surf: pygame.Surface, tour: TourDef, r: pygame.Rect, tight: bool = False) -> None:
         """[E] Starting squadrons (tour/squadrons.py): earned ones fill the escorts and bring a perk."""
         groups = squadrons.offered(self.content, tour.faction)
         if not groups:
             return
         career = Career(self.settings.career)
-        r.height = 40 + 36 * len(groups)
+        row, btn = (32, 28) if tight else (36, 30)
+        r.height = 40 + row * len(groups)
         y = self._glass(surf, r, "Starting squadrons", theme.CREW)
         current = self.group()
         for sq in groups:
@@ -575,9 +608,9 @@ class TourScene:
             else:
                 tip = f"{sq.describe(self.content).capitalize()}, {cost} points. {perks + '. ' if perks else ''}{sq.blurb}"
             label = sq.name if earned else f"{sq.name}  ·  locked"
-            self.ui.button(surf, pygame.Rect(r.x + 14, y, r.width - 28, 30), label, partial(self.pick_group, sq), tip,
+            self.ui.button(surf, pygame.Rect(r.x + 14, y, r.width - 28, btn), label, partial(self.pick_group, sq), tip,
                            enabled=earned and cost <= tour.budget, active=current is sq, size=13, face="ui")
-            y += 36
+            y += row
 
     def group(self) -> squadrons.Squadron | None:
         """The starting squadron picked, while all its ships are still among the escorts."""
@@ -611,26 +644,46 @@ class TourScene:
         st = run.state
         self._heading(surf, "Ready Room", f"{run.tour.title}  ·  stop {st.stop + 1} of {len(run.tour.stops)}  ·  "
                                           f"stardate {st.stardate()}")
-        # the briefing, from the officer who gives it
-        bw = min(520, int(w * 0.34))
+        # the briefing, from the officer who gives it: beside the portrait, then the panel's full width under it.
+        # Where the window is short or narrow, the briefing takes the room between it and the squadron (the officers
+        # then speak under the squadron), then a smaller hand, so that it and the decision fit above the buttons
         title, briefing = run.briefing()
-        lines = [ln for para in briefing.split("\n\n") for ln in (*wrap(para, 14, bw - 150), "")][:-1]
-        lessons = [ln for lesson in run.lesson_lines() for ln in wrap(lesson, 13, bw - 40)]
         enemies = self._enemy_words(run)
-        br = pygame.Rect(40, 100, bw, 130 + 21 * max(len(lines), 5) + 19 * len(lessons) + (26 if enemies else 0))
+        sw = min(560, int(w * 0.36))
+        sq = pygame.Rect(w - sw - 40, 100, sw, h - 200)
+        room_h = h - 76 - 14 - 100
+        bw = min(520, int(w * 0.34))
+        if self._left_height(run, briefing, enemies, bw, 14) > room_h or sq.x - (40 + bw) - 32 < 250:
+            bw = max(bw, sq.x - 16 - 40)
+        size = 14 if self._left_height(run, briefing, enemies, bw, 14) <= room_h else 13
+        lh = size + 7
+        flow = _flow(briefing, bw, size, lh)
+        lessons = [ln for lesson in run.lesson_lines() for ln in wrap(lesson, 13, bw - 40)]
+        cut = False
+        while len(flow) > 3 and self._left_height(run, briefing, enemies, bw, size, len(flow)) > room_h:
+            flow.pop()                    # still too long: the last lines go, and the whole briefing is a tooltip
+            cut = True
+        if cut:
+            while flow and not flow[-1][1]:
+                flow.pop()
+            dx, last = flow[-1]
+            flow[-1] = (dx, theme.fit(last + " ...", size, bw - dx - 14))
+        br = pygame.Rect(40, 100, bw, _briefing_height(len(flow), lh, len(lessons), bool(enemies)))
         y = self._glass(surf, br, f"Briefing: {title}", theme.CAUTION)
+        if cut:
+            self.ui.add(br, lambda: None, briefing.replace("\n\n", " "))
         pic = portrait(stop.officer, 104)
         surf.blit(pic, (br.x + 14, y + 4))
         name = OFFICER_TITLES.get(stop.officer, stop.officer).split(",")[0]
         for k, part in enumerate(wrap(name, 11, 104)):
             theme.text(surf, part, (br.x + 66, y + 114 + 15 * k), theme.CREW, 11, anchor="midtop")
         ty = y
-        for ln in lines:
-            theme.text(surf, ln, (br.x + 132, ty), theme.TEXT, 14)
-            ty += 21
-        ty = max(ty, y + 150) + 6
+        for dx, ln in flow:
+            theme.text(surf, ln, (br.x + dx, ty), theme.TEXT, size)
+            ty += lh
+        ty = max(ty, y + PORTRAIT_H) + 6
         if enemies:
-            theme.text(surf, enemies, (br.x + 14, ty), theme.HOSTILE, 13)
+            theme.text(surf, theme.fit(enemies, 13, bw - 28), (br.x + 14, ty), theme.HOSTILE, 13)
             ty += 26
         for ln in lessons:
             theme.text(surf, ln, (br.x + 14, ty), theme.CAUTION, 13)
@@ -638,7 +691,7 @@ class TourScene:
         # the choice the stop asks of you
         y = br.bottom + 14
         if stop.choices:
-            cr = pygame.Rect(40, y, bw, 46 + sum(30 + 18 * len(wrap(c.consequence, 12, bw - 40)) for c in stop.choices))
+            cr = pygame.Rect(40, y, bw, self._choices_height(stop, bw))
             yy = self._glass(surf, cr, "Your decision", theme.ALERT if run.needs_choice() else theme.GOOD)
             for i, c in enumerate(stop.choices):
                 cons = wrap(c.consequence, 12, bw - 40)
@@ -655,12 +708,11 @@ class TourScene:
                 yy = box.bottom + 8
             y = cr.bottom + 14
         if self.note:
-            for k, ln in enumerate(wrap(self.note, 13, bw)):
+            note = wrap(self.note, 13, bw)
+            for k, ln in enumerate(note[:max(1, (h - 90 - y) // 18)]):
                 theme.text(surf, ln, (42, y + 18 * k), theme.GOOD, 13)
         # the squadron, as Geordi expects it to arrive, and between the two each officer's view of the stop; on a
         # narrow window there is no room between them, so the officers speak under the squadron instead
-        sw = min(560, int(w * 0.36))
-        sq = pygame.Rect(w - sw - 40, 100, sw, h - 200)
         mid = pygame.Rect(br.right + 16, 100, min(560, sq.x - br.right - 32), h - 200)   # lines a reader can follow
         if mid.width >= 250:
             self._squadron_panel(surf, run, sq)
@@ -705,6 +757,19 @@ class TourScene:
         for (_, labels, act, tip, on, size, kw), bx, bw_ in zip(row, xs, widths):
             label = labels[0] if theme.text_width(labels[0], size, "ui") <= bw_ - 20 else labels[1]
             self.ui.button(surf, pygame.Rect(bx, by, bw_, 46), label, act, tip, enabled=on, size=size, **kw)
+
+    @staticmethod
+    def _choices_height(stop: Stop, bw: int) -> int:
+        return 46 + sum(30 + 18 * len(wrap(c.consequence, 12, bw - 40)) for c in stop.choices)
+
+    def _left_height(self, run: TourRun, briefing: str, enemies: str, bw: int, size: int, n: int | None = None) -> int:
+        """How tall the briefing (`n` of its lines, or all) and the decision stand at this width and hand."""
+        stop = run.stop
+        assert stop is not None
+        lessons = sum(len(wrap(lesson, 13, bw - 40)) for lesson in run.lesson_lines())
+        lines = len(_flow(briefing, bw, size, size + 7)) if n is None else n
+        out = _briefing_height(lines, size + 7, lessons, bool(enemies))
+        return out + (14 + self._choices_height(stop, bw) if stop.choices else 0)
 
     def _squadron_height(self, run: TourRun, r: pygame.Rect) -> int:
         """How tall the squadron panel needs to be for its ships and Geordi's note, at most `r.height`."""

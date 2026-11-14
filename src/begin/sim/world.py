@@ -105,6 +105,7 @@ class World:
     controllers: list[Controller] = field(default_factory=list)
     outcome: Outcome = field(default_factory=Outcome)
     reserved_names: set[str] = field(default_factory=set)      # never drawn at random (the player's flagship)
+    reserved_captains: set[str] = field(default_factory=set)   # [E] never drawn at random (named commanders, rivals)
 
     events: list[Event] = field(default_factory=list)          # since last take_events()
     step_events: list[Event] = field(default_factory=list)     # produced by the last step
@@ -166,7 +167,10 @@ class World:
             free = [n for n in cls.ship_names if n not in used]
             name = self._names_rng.choice(free) if free else f"{cls.abbrev}-{self._next_id}"
         if captain is None:
-            captain = self._names_rng.choice(list(faction.captain_names)) if faction.captain_names else ""
+            # [E] no two captains in a battle share a name, and no random one takes a named commander's
+            taken = {s.captain for s in self.ships.values()} | self.reserved_captains
+            names = [n for n in faction.captain_names if n not in taken] or list(faction.captain_names)
+            captain = self._names_rng.choice(names) if names else ""
         ship = build_ship(self.content, self.rules, self.new_id(), class_id, side, name, captain, x, y, course, warp)
         self.ships[ship.id] = ship
         self.intel.setdefault(side, sensors_sys.SideIntel(side))

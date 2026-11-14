@@ -69,7 +69,7 @@ The Enterprise is your Dreadnought on every generated tour, as on every other. A
 
 Enemy captains remember you, and you meet some of them again. When a stop ends with the enemy's commander still free (the captain of their heaviest ship got away, or held the field when you withdrew), they become a **rival**, and they stay one from tour to tour.
 
-A rival comes back at a later stop against their own navy. They command the heaviest ship there and fight better each time you meet. The briefing tells you they're coming, and in battle they hail you by name. How much your bridge can tell you about them depends on trust ([[styles|trust]]):
+A rival comes back on a later tour, once a tour, at the first stop against their own navy (on a generated tour they wait for the last stop, and take the place of the commander there). They command the heaviest ship there, fight better each time you meet, and fight the way they got away: one who ran will break off sooner than most, one who held the field will stand longer. No other enemy captain ever wears a rival's name. The briefing tells you they're coming, and in battle they hail you by name. How much your bridge can tell you about them depends on trust ([[styles|trust]]):
 
 | The officer who knows that navy (Worf for Klingons and Orions, Spock for Romulans) | What you're told |
 |---|---|
@@ -77,7 +77,7 @@ A rival comes back at a later stop against their own navy. They command the heav
 | Steady | they name the captain, how many times you've met, and where you last met |
 | Trusted | ...and how they got away last time, so you can be ready for it |
 
-A rival you destroy or take prisoner is finished: the Ready Room says so, and they never return. On a generated tour, if a rival from that navy is still free, they are the commander waiting at the last stop.
+A rival you destroy or take prisoner is finished: the Ready Room says so, and they never return.
 
 ## Your own tours
 
