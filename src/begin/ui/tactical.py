@@ -34,6 +34,7 @@ from .hulls import MIN_HULL_PX, draw_hull, hull_pixel_scale
 from .starfield import Starfield
 from . import gfx, stealth
 from .hive_marks import HiveMark, adaptation_rings, critical_ring, dormant_veil, hive_mark
+from .labels import Ask, Placer, Spot, fade as name_fade
 
 if TYPE_CHECKING:
     from ..sim.away import AwayOp
@@ -60,6 +61,7 @@ JOLT_MAX = 6.0            # pixels
 INBOUND_RANGE = 9000.0    # an enemy round this close and heading for one of ours is marked as a threat
 INBOUND_CONE = 14.0       # degrees either side of dead on
 INCOMING_SOUND = 4500.0   # an inbound round this close is heard rushing in
+FADE_NEAR, FADE_FAR = 8000.0, 20000.0   # world units from our ship: in a crowded fight, names beyond fade
 ADAPT_NOTE = 0.25         # the target's name says how far her hive has adapted, past this [E]
 
 Pose = tuple[float, float, float]  # x, y, course
@@ -162,6 +164,11 @@ class TacticalView:
     _label_more: dict[int, int] = field(default_factory=dict)      # a group's named ship: how many more fly with her
     _label_quiet: set[int] = field(default_factory=set)            # ships named by their group's label this frame
     _label_reach: dict[int, float] = field(default_factory=dict)   # a group's named ship: screen x of its right-most ship
+    labels: Placer = field(default_factory=Placer)                  # where every name goes (see `labels`)
+    keep_out: list[pygame.Rect] = field(default_factory=list)       # the map's own writing: names keep off it
+    _asks: list[tuple[Ask, Callable[[Spot, float], None]]] = field(default_factory=list)   # names asking for a place
+    _hulls: list[tuple[int, float, float, float]] = field(default_factory=list)   # (ship, x, y, radius) drawn this frame
+    _me_at: tuple[float, float] | None = None    # our ship, world units, this frame
     torp_trails: dict[int, list[tuple[float, float, float]]] = field(default_factory=dict)   # round -> [(x, y, time)]
     clock: float = 0.0                       # wall-clock seconds, for animation
     _lock: tuple[int | None, float] = (None, 0.0)   # the target the brackets are on, and when they started closing
@@ -396,6 +403,7 @@ class TacticalView:
         self._overlay_used = used = gfx.take_dirty(overlay)
         if used is not None and (used := used.clip(r)).w > 0:
             surf.blit(overlay, used.topleft, area=used)
+        self._draw_names(surf)
         self._scale_bar(surf)
         gfx.draw.rect(surf, theme.border(), r, 1)
         surf.set_clip(clip)
@@ -415,6 +423,8 @@ class TacticalView:
         self._label_rects = []
         self._range_tag = None
         self._names = []
+        self._asks = []
+        self._hulls = []
         self._burning = []
         return overlay
 
@@ -448,6 +458,8 @@ class TacticalView:
                    selected_sub: str | None, selected_ally: int | None, names: dict[int, str]) -> None:
         """Our ships, then the contacts, then every name on top of all the hulls."""
         self._label_more, self._label_quiet, self._label_reach = {}, set(), {}
+        mp = pose(player_id) if player_id is not None else None
+        self._me_at = (mp[0], mp[1]) if mp else None
         allies = [(s.id, pose(s.id)) for s in obs.own_ships(alive_only=False) if s.exists and s.alive and not s.cloaked]
         self._group_labels([(sid, p) for sid, p in allies if p], {player_id, selected_ally})
         for s in obs.own_ships(alive_only=False):
@@ -461,10 +473,31 @@ class TacticalView:
         for c, p in contacts:
             mark = hive_mark(obs, c.id, player_id) if c.identified else None
             self._contact(surf, c, p, c.id == target_id, selected_sub, overlay, mark)
+
+    def _draw_names(self, surf: pygame.Surface) -> None:
+        """Every name on the map, last of all, so no hull, round or glow covers one."""
+        self._place_names()
         for name in self._names:
             name()
         self._names = []
         self._range_label(surf)
+
+    def _place_names(self) -> None:
+        """Every name asked for this frame, placed in order of how much it matters, then drawn (see `labels`)."""
+        asks = [a for a, _ in self._asks]
+        spots = self.labels.place(asks, self.cam.rect, self._hulls, self.keep_out)
+        self._label_rects = [sp.rect for sp in spots.values()]
+        n = len(asks)
+        for a, draw in self._asks:
+            sp = spots.get(a.key)
+            if sp is not None:
+                draw(sp, round(name_fade(n, a.rank[-1], a.must, FADE_NEAR, FADE_FAR), 1))
+        self._asks = []
+
+    def _rank(self, x: float, y: float, tier: int) -> tuple[float, float]:
+        """How much a ship's name matters: its tier, then how far she is from our ship (world units)."""
+        me = self._me_at
+        return float(tier), math.hypot(x - me[0], y - me[1]) if me is not None else 0.0
 
     def _countdowns(self, surf: pygame.Surface, overlay: pygame.Surface, obs: Observation) -> None:
         """A ship about to go up: how far the blast will reach."""
@@ -933,6 +966,7 @@ class TacticalView:
         if s.cloaked:
             color = theme.dim(color, 0.5)
         art = self._own_ship_art(surf, overlay, s, p, sx, sy, k, color, is_player)
+        self._hulls.append((s.id, sx, sy, 62 * k if art else 34 * k))
         op = next((o for o in obs.away_ops() if o.shuttle == s.id), None) if s.alive and s.cls.craft else None
         if op is not None and op.phase == "aboard":
             return                     # latched to the hive ship's hull: the activity panel tells their story
@@ -943,7 +977,8 @@ class TacticalView:
             label += f"  +{self._label_more[s.id]}"
         if s.id in self._label_quiet:
             return                     # named by her group's label (never the selected ship: she keeps her own)
-        self._own_ship_label(surf, s, label, sx, sy, k, art, color, is_player, obs, selected, names, op)
+        rank = self._rank(p[0], p[1], 0 if is_player else 2 if selected else 3)
+        self._own_ship_label(surf, s, label, sx, sy, k, art, color, is_player, obs, selected, names, op, rank)
         if selected:
             b = 62 * k + 8
             for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
@@ -980,40 +1015,46 @@ class TacticalView:
 
     def _own_ship_label(self, surf: pygame.Surface, s: Ship, label: str, sx: float, sy: float, k: float, art: bool,
                         color: theme.Color, is_player: bool, obs: Observation, selected: bool,
-                        names: dict[int, str] | None, op: AwayOp | None) -> None:
-        """Her name beside her, clear of her art and of other names, and the lines under it."""
-        cam = self.cam
-        lx = max(sx, self._label_reach.get(s.id, sx)) + (62 * k + 12 if art else 34 * k + 6)   # clear of her art (and her group's)
+                        names: dict[int, str] | None, op: AwayOp | None, rank: tuple[float, float] = (3.0, 0.0)) -> None:
+        """Her name, and the lines under it: asked for here, placed beside her once every hull is down."""
         lw = theme.text_width(label, 12, weight="medium")
-        if lx + lw > cam.rect.right - 6:                    # no room on the right: her name goes on the left
-            lx = sx - (62 * k + 12 if art else 34 * k + 6) - lw
-        place = self._label_x(sx, sy, lx, lw)
-        if place is None:
-            return
-        lx = place
+        st = obs.ally_order(s.id) if s.alive and not is_player and op is None else None
+        mission = st.summary(names or {}) if st is not None else ""
+        boarded = s.alive and s.boarders > 0 and s.boarder_side != s.side
         # our own ship's name carries her warp (and a cloak or a leak) on a line below: room is kept for it
-        tall = 26 + (12 if obs.leaking(s.id) else 0) if is_player else 26 if op is not None else 14
-        top = self._free_label_y(lx, sy - 8, max(lw, 90) if is_player else lw, tall)
+        tall = 26 + (12 if obs.leaking(s.id) else 0) if is_player else 26 if op is not None or mission else 14
+        tall += 12 if boarded else 0
+        w = max(lw, 90 if is_player else 0, min(200, theme.text_width(mission, 10)) if mission else 0)
+        ask = Ask(s.id, sx, sy, 62 * k + 12 if art else 34 * k + 6, w, tall, rank, is_player or selected,
+                  self._label_reach.get(s.id))
+        self._asks.append((ask, partial(self._own_label_at, surf, s, label, lw, sx, sy, k, art, color, is_player, obs,
+                                        selected, names, op, mission, boarded)))
+
+    def _own_label_at(self, surf: pygame.Surface, s: Ship, label: str, lw: int, sx: float, sy: float, k: float,
+                      art: bool, color: theme.Color, is_player: bool, obs: Observation, selected: bool,
+                      names: dict[int, str] | None, op: AwayOp | None, mission: str, boarded: bool, spot: Spot,
+                      fade: float) -> None:
+        """Draw one of our ships' names where it was placed, with a leader back to her art."""
+        cam = self.cam
+        col = theme.dim(color, 1.0 - fade) if fade else color
+        lx, top = spot.x, spot.y
         if art:
-            self._leader(surf, sx, sy, 62 * k, lx if lx > sx else lx + lw, top, color)
-        self._later(theme.label, surf, label, (lx, top), color, 12)
-        ly = top + 14
+            self._leader(surf, sx, sy, 62 * k, lx if lx > sx else lx + lw, top, col)
+        theme.label(surf, label, (lx, top), col, 12)
+        ly: float = top + 14
         room = int(cam.rect.right - 4 - lx)
         if is_player:
             ly = self._own_ship_readout(surf, s, obs, lx, ly, room)
         elif op is not None:
             self._shuttle_lines(surf, op, lx, ly, room, names or {})
             ly += 12
-        elif s.alive:
-            st = obs.ally_order(s.id)
-            mission = st.summary(names or {}) if st is not None else ""
-            if mission:
-                self._later(theme.text, surf, theme.fit(mission, 10, room), (lx, ly),
-                           theme.TEXT_FAINT if not selected else theme.TEXT_DIM, 10)
-                ly += 12
-        if s.alive and s.boarders > 0 and s.boarder_side != s.side:
+        elif mission:
+            self._later(theme.text, surf, theme.fit(mission, 10, room), (lx, ly),
+                        theme.TEXT_FAINT if not selected else theme.TEXT_DIM, 10)
+            ly += 12
+        if boarded:
             self._later(theme.text, surf, theme.fit(f"boarders aboard: {s.boarders}", 10, room, weight="medium"), (lx, ly),
-                       theme.ALERT, 10, weight="medium")
+                        theme.ALERT, 10, weight="medium")
 
     def _own_ship_readout(self, surf: pygame.Surface, s: Ship, obs: Observation, lx: float, ly: float, room: int) -> float:
         """Under our own ship's name: her warp, her cloak, and plasma venting from a damaged drive. Returns the next
@@ -1077,8 +1118,10 @@ class TacticalView:
         if not c.visible:
             color = theme.dim(color, 0.45)
         art, rad = self._contact_art(surf, c, p, sx, sy, color, overlay)
+        if c.visible:
+            self._hulls.append((c.id, sx, sy, rad))
         color = self._contact_marks(surf, c, sx, sy, rad, color, overlay, hive)
-        self._contact_label(surf, c, sx, sy, rad, art, color, targeted, hive)
+        self._contact_label(surf, c, sx, sy, rad, art, color, targeted, hive, self._rank(p[0], p[1], 1 if targeted else 3))
         if targeted:
             self._target_brackets(surf, c, p, sx, sy, rad, sub, overlay)
 
@@ -1136,42 +1179,55 @@ class TacticalView:
         return color
 
     def _contact_label(self, surf: pygame.Surface, c: ContactView, sx: float, sy: float, rad: float, art: bool,
-                       color: theme.Color, targeted: bool, hive: HiveMark | None) -> None:
-        """Her name, clear of her marks and of other names, and one line under it."""
-        cam = self.cam
+                       color: theme.Color, targeted: bool, hive: HiveMark | None,
+                       rank: tuple[float, float] = (3.0, 0.0)) -> None:
+        """Her name and one line under it: asked for here, placed beside her once every hull is down. A ship named
+        by her group's label asks only for her line, if she has one."""
         label = c.label if c.identified else f"#{c.id}"
         if (c.visible and c.haze > 0) or c.exhaust:
             label = "~" + label
         if c.id in self._label_more:
             label += f"  +{self._label_more[c.id]}"
-        lost = not c.visible
-        lw = theme.text_width(label, 12, weight="medium")
-        lx = max(sx, self._label_reach.get(c.id, sx)) + rad + (20 if c.solution > 0 else 8)   # clear of its brackets
-        if lx + lw > cam.rect.right - 6:                    # no room on the right: the name goes on the left
-            lx = sx - rad - 8 - lw
-        place = self._label_x(sx, sy, lx, lw)
-        quiet = c.id in self._label_quiet or place is None
-        lx = place if place is not None else lx
-        top = sy - 8 if quiet else self._free_label_y(lx, sy - 8, lw, 26 if lost or c.solution > 0 else 14)
-        if art and not quiet:
-            self._leader(surf, sx, sy, rad - 4, lx if lx > sx else lx + lw, top, color)
-        if not quiet:
-            self._later(theme.label, surf, label, (lx, top), color, 12)
-        if place is None:
+        quiet = c.id in self._label_quiet
+        note = self._contact_note(c, targeted, hive, quiet)
+        if quiet and note is None:
             return
+        lw = theme.text_width(label, 12, weight="medium")
+        w = max(0 if quiet else lw, theme.text_width(note[0], 10, weight=note[2]) if note is not None else 0)
+        ask = Ask(c.id, sx, sy, rad + (20 if c.solution > 0 else 8), min(w, 240), 26 if note is not None else 14, rank,
+                  targeted, self._label_reach.get(c.id))
+        self._asks.append((ask, partial(self._contact_label_at, surf, label, lw, sx, sy, rad, art, color, quiet, note)))
+
+    def _contact_note(self, c: ContactView, targeted: bool, hive: HiveMark | None,
+                      quiet: bool) -> tuple[str, theme.Color, str] | None:
+        """The line under a contact's name: (words, colour, weight), or None."""
         if c.solution > 0:
-            self._later(theme.text, surf, f"FIRING SOLUTION · {c.solution:.0f}s", (lx, top + 14),
-                       theme.mix(theme.EXHAUST, (255, 255, 255), 0.45), 10, weight="semibold")
-        elif c.exhaust:
-            self._later(theme.text, surf, "EXHAUST · rough fix", (lx, top + 14), theme.EXHAUST, 10, weight="semibold")
-        elif hive is not None and c.visible and not quiet:
+            return f"FIRING SOLUTION · {c.solution:.0f}s", theme.mix(theme.EXHAUST, (255, 255, 255), 0.45), "semibold"
+        if c.exhaust:
+            return "EXHAUST · rough fix", theme.EXHAUST, "semibold"
+        if hive is not None and c.visible and not quiet:
             note = self._hive_note(hive, targeted)
             if note:
-                room = int(cam.rect.right - 4 - lx)
-                self._later(theme.text, surf, theme.fit(note, 10, room), (lx, top + 14),
-                           theme.HIVE if hive.dormant > 0 else theme.dim(theme.HIVE, 0.85), 10, weight="medium")
-        elif lost:
-            self._later(theme.text, surf, f"lost {c.age:.0f}s", (lx, top + 14), theme.TEXT_FAINT, 10)
+                return note, theme.HIVE if hive.dormant > 0 else theme.dim(theme.HIVE, 0.85), "medium"
+            return None
+        if not c.visible:
+            return f"lost {c.age:.0f}s", theme.TEXT_FAINT, "regular"
+        return None
+
+    def _contact_label_at(self, surf: pygame.Surface, label: str, lw: int, sx: float, sy: float, rad: float, art: bool,
+                          color: theme.Color, quiet: bool, note: tuple[str, theme.Color, str] | None, spot: Spot,
+                          fade: float) -> None:
+        """Draw a contact's name where it was placed, with a leader back to her art, and the line under it."""
+        col = theme.dim(color, 1.0 - fade) if fade else color
+        lx, top = spot.x, spot.y
+        if not quiet:
+            if art:
+                self._leader(surf, sx, sy, rad - 4, lx if lx > sx else lx + lw, top, col)
+            theme.label(surf, label, (lx, top), col, 12)
+        if note is not None:
+            words, ncol, weight = note
+            room = int(self.cam.rect.right - 4 - lx)
+            theme.text(surf, theme.fit(words, 10, room, weight=weight), (lx, top + 14), ncol, 10, weight=weight)
 
     def _target_brackets(self, surf: pygame.Surface, c: ContactView, p: Pose, sx: float, sy: float, rad: float,
                          sub: str | None, overlay: pygame.Surface | None) -> None:
@@ -1280,33 +1336,6 @@ class TacticalView:
                  "return": "coming home"}.get(op.phase, op.phase)
         col = theme.ALERT if op.noticed else theme.HIVE
         theme.text(surf, theme.fit(f"{crew} · {doing}", 10, room), (lx, ly), col, 10)
-
-    def _label_x(self, sx: float, sy: float, lx: float, lw: int) -> float | None:
-        """Where a ship's name goes across: kept whole inside the map when she is on it, and left out when she
-        is off it (half a name cut by the map's edge is never drawn)."""
-        area = self.cam.rect
-        if not area.collidepoint(sx, sy):
-            return None
-        return max(area.left + 4, min(lx, area.right - 4 - lw))
-
-    def _free_label_y(self, x: float, y: float, w: int, h: int) -> float:
-        """Push a label down until it clears the labels already drawn this frame, so close ships stay legible."""
-        area = self.cam.rect
-        r = pygame.Rect(int(x), int(min(max(y, area.top + 2), area.bottom - h - 2)), w, h)
-        for _ in range(12):
-            hit = r.collidelist(self._label_rects)
-            if hit < 0:
-                break
-            r.top = self._label_rects[hit].bottom + 1
-        if r.bottom > area.bottom - 2:      # pushed off the bottom of the map: stack it above instead
-            r.bottom = area.bottom - 2
-            for _ in range(12):
-                hit = r.collidelist(self._label_rects)
-                if hit < 0:
-                    break
-                r.bottom = self._label_rects[hit].top - 1
-        self._label_rects.append(r)
-        return r.top
 
     @staticmethod
     def _dashed_circle(surf: pygame.Surface, col: theme.Color | tuple[int, int, int, int], c: tuple[float, float], r: float, seg: int | None = None) -> None:

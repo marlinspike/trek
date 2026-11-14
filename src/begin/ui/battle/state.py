@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     from ..tween import Tweens
     from ..widgets import UI
     from .common import LogLine
+    from .stage import Stage
 
 
 class SceneState:
@@ -122,6 +123,8 @@ class SceneState:
     counsel_open: bool
     counsel_ran: dict[str, float]
     counsel_box: pygame.Rect | None
+    stage: Stage
+    _mission_box: pygame.Rect | None
     _wheel_t: float
     completer: Completer
     _preview_key: object

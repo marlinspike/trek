@@ -242,7 +242,7 @@ Some battles carry a mission beyond holding the field. On a **rescue** a cripple
 
 Press **O** for counsel and your four officers each lay out a way forward from the live fight, from their own station: Worf the sword, Spock geometry and the mind, La Forge keeping the ship alive to win, Seven knowing before striking. Every plan is a few console lines, rebuilt as the battle changes. Go all in on one with **1** to **4**, or click single steps from several; in testing over 210 battles both ways won. Aim it at a goal (`counsel disable all their engines`, `counsel kill all the borg cubes`) and each officer plans toward that instead. The battle slows while the panel is open, and **Space** stops it. Officers who want a ship fought at a range now say so with a hold-range order, `pursue gorkon at 9000`, which keeps her there instead of running off the map.
 
-![Counsel during a rescue: four officers' plans on the left, the mission card at the top](docs/screenshots/counsel.png)
+![Counsel during a rescue: four officers' plans on the left, the mission on one line at the top](docs/screenshots/counsel.png)
 
 ### After the battle
 

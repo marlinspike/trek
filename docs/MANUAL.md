@@ -1308,6 +1308,14 @@ Every order you give through the console (and the wheel, a proposal or your voic
 
 Officers' words show low on the map, one voice at a time, with their station's mark: helm a chevron, tactical a diamond, engineering a hexagon, science a ring. The log keeps every word in two columns: **Bridge** (who said what) and **Computer** (everything else).
 
+#### One card at a time
+
+A big fight is when you most need a calm screen, so the map shows one card at a time, in this order: the counsel when you open it, an officer's proposal waiting for your yes or no, the comms card while someone on the channel is talking, an urgent warning, the mission card when the mission has news, and then the officers' everyday lines. Whatever isn't the one waits: a subtitle goes to the log (which keeps every word), and the mission and comms cards fold to a single line at the top right. Rest the pointer on the mission's line to see the whole card, or click the comms line to bring the channel back.
+
+#### Names in a crowded fight
+
+Every ship's name looks for a clear place beside her: to the right, to the left, at a corner, or a row further out, with a faint line back to her. It keeps clear of other names, other hulls and the cards on the map, and keeps the same side while that side stays clear, so names don't hop about. Your own ship, your target and the ally you've selected always have their name; a ship with nowhere clear to put hers goes without (she's still drawn, and the contacts list has her). Ships flying in close formation share one name (*"Wraith (DR)  +3"*), and when the map is crowded, the names of ships far from yours fade, so the fight near you stands out.
+
 #### The command wheel
 
 Right-click a ship (or press `E` for your target) and pick an order. Eight slices, always in the same places for an enemy: Phasers, Torpedoes, Disable, Close to, Hail, Board, Elude, Target. Rest on a slice with a `›` for its second ring. Keys `1`-`8` pick a slice too. Your own ships and your own ship have wheels of their own.
@@ -3328,7 +3336,7 @@ A captain who agrees to **withdraw** holds fire and leaves the field. Fire on th
 
 #### The comms panel
 
-When you hail a ship, or a captain hails you, the comms card shows who is on the channel, their mood, and the last few words exchanged. Enemy ships whose captain you have heard from carry a small mood mark on the map: a red flame when enraged, amber when shaken, blue when wavering, and a white flag once they have surrendered.
+When you hail a ship, or a captain hails you, the comms card shows who is on the channel, their mood, and the last few words exchanged. Enemy ships whose captain you have heard from carry a small mood mark on the map: a red flame when enraged, amber when shaken, blue when wavering, and a white flag once they have surrendered. In a crowded fight the everyday moods (rage, wavering, calm) shrink to a small dot in the mood's colour, except on your target and the captain on the channel; a mood you can act on (shaken, broken, withdrawing, surrendered) always shows in full.
 
 Your science officer reads each answer for you ("They are close to giving way, Captain"), and your tactical officer tells you what a surrender or withdrawal means for your next move.
 
@@ -3730,7 +3738,7 @@ See also: [Bridge officers](#topic-crew), [The bridge](#topic-bridge), [After th
 
 *Battles with a goal beyond holding the field: rescue a crippled ship's people, get a convoy through, stop a runner.*
 
-Some battles carry a mission. The battle still ends the old way, when one side holds the field; the mission is a second question it answers, and Starfleet's assessment judges both. The mission card at the top right of the map shows the goal and how it stands, and the ship it is about is marked on the map.
+Some battles carry a mission. The battle still ends the old way, when one side holds the field; the mission is a second question it answers, and Starfleet's assessment judges both. The mission card at the top right of the map shows the goal and how it stands, and the ship it is about is marked on the map. The card opens in full when the mission has news (it starts, asks something new of you, or ends) and then folds to one line, so it doesn't sit over the fight; rest the pointer on the line to see the whole card.
 
 #### Rescue
 
