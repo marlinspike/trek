@@ -5,7 +5,7 @@ The SDK finds credentials itself (ANTHROPIC_API_KEY, or an `ant auth login` prof
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from ..context import split
 from .base import Completion, LLMConfig, LLMError, Message, Usage
@@ -36,7 +36,7 @@ class AnthropicProvider:
         sdk = self._sdk
         try:
             resp = self.client.messages.create(model=self.cfg.model, max_tokens=self.cfg.max_tokens,
-                                               system=system_blocks(system),
+                                               system=cast(Any, system_blocks(system)),
                                                messages=messages, **kw)  # type: ignore[arg-type]
         except sdk.AuthenticationError as e:
             raise LLMError("Anthropic rejected the API key (ANTHROPIC_API_KEY).") from e

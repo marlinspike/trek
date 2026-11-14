@@ -13,6 +13,7 @@ import pytest
 from begin.speech import CAST, OFFICERS, RACES, Speaker, SpeechSettings, VoiceInfo, cast_voice, choices, part_for, speakable
 from begin.speech.engines import Espeak, MacSay, Spoken, parse_say_voices, sapi_rate, sapi_ssml
 from begin.speech.casting import cast_all
+from begin.speech.settings import VERSION
 
 MAC = [VoiceInfo(n, lang) for n, lang in (
     ("Albert", "en_US"), ("Daniel", "en_GB"), ("Fred", "en_US"), ("Karen", "en_AU"), ("Moira", "en_IE"),
@@ -59,9 +60,20 @@ def _wait(cond, seconds: float = 2.0) -> bool:  # type: ignore[no-untyped-def]
 
 # ------------------------------------------------------------------ settings and casting
 
-def test_voices_are_on_by_default_and_the_settings_say_what_is_spoken() -> None:
-    s = SpeechSettings()
-    assert s.enabled and s.speak == "all" and s.captains
+ON: dict[str, object] = {"enabled": True, "version": VERSION}     # the player turned the voices on
+
+
+def test_a_file_saved_under_the_old_default_is_read_as_off_but_a_choice_is_kept() -> None:
+    old = SpeechSettings.from_dict({"enabled": True, "volume": 0.5})       # written when voices were on by default
+    assert not old.enabled and old.volume == 0.5 and old.version == VERSION
+    assert SpeechSettings.from_dict(old.to_dict()).enabled is False
+    chose = SpeechSettings.from_dict({**old.to_dict(), "enabled": True})   # then turned them on in Settings
+    assert SpeechSettings.from_dict(chose.to_dict()).enabled
+
+def test_voices_are_off_by_default_and_the_settings_say_what_is_spoken() -> None:
+    assert not SpeechSettings().enabled and not SpeechSettings().wants("report", True)
+    s = SpeechSettings(enabled=True)
+    assert s.speak == "all" and s.captains
     assert all(s.wants(k, False) for k in ("readback", "proposal", "report", "hail"))
     s.speak = "orders"
     assert s.wants("readback", False) and s.wants("proposal", False) and not s.wants("report", False)
@@ -156,7 +168,7 @@ def test_no_engine_speaks_when_speech_is_off_in_the_environment(monkeypatch) -> 
 
 def test_one_voice_at_a_time_warnings_first_and_stale_lines_dropped() -> None:
     eng = FakeEngine(took=0.3)
-    sp = Speaker({}, engine=eng)
+    sp = Speaker(dict(ON), engine=eng)
     assert sp.say("Course 090, warp 6.", "sulu", kind="readback")
     assert _wait(lambda: len(eng.spoken) == 1)
     for i in range(4):
@@ -172,7 +184,7 @@ def test_one_voice_at_a_time_warnings_first_and_stale_lines_dropped() -> None:
 
 def test_answers_outlast_remarks_repeats_are_said_once_and_old_warnings_lapse() -> None:
     eng = FakeEngine(took=0.4)
-    sp = Speaker({}, engine=eng)
+    sp = Speaker(dict(ON), engine=eng)
     sp.say("First.", "spock")
     assert _wait(lambda: len(eng.spoken) == 1)
     sp.say("Warp 6.", "sulu", kind="readback")
@@ -197,7 +209,7 @@ def test_a_cut_that_lands_before_the_engine_starts_is_not_lost() -> None:
             super().speak(line)
 
     eng = Late(took=2.0)
-    sp = Speaker({}, engine=eng)
+    sp = Speaker(dict(ON), engine=eng)
     sp.say("A long routine report about nothing in particular.", "spock")
     time.sleep(0.02)
     sp.say("Incoming torpedoes!", "worf", urgent=True)
@@ -216,7 +228,7 @@ def test_figures_and_noughts_are_for_the_eye_only() -> None:
 
 def test_the_settings_decide_what_is_said_and_how() -> None:
     eng = FakeEngine()
-    store: dict[str, object] = {"speak": "urgent", "volume": 0.4, "rate": 1.2}
+    store: dict[str, object] = {**ON, "speak": "urgent", "volume": 0.4, "rate": 1.2}
     sp = Speaker(store, engine=eng)
     assert not sp.say("Course 090.", "sulu", kind="readback")
     assert sp.say("Shields failing!", "worf", urgent=True)
@@ -246,7 +258,7 @@ def scene(content):  # type: ignore[no-untyped-def]
     from begin.ui.battle_scene import BattleScene
 
     eng = FakeEngine()
-    sp = Speaker({}, engine=eng)
+    sp = Speaker(dict(ON), engine=eng)
     p = {x.id: x for x in load_presets()}["border-incident"]
     sc = BattleScene(build_battle(content, p.setup()), (1280, 800), lambda: None, speaker=sp)
     sc.audio.muted = False
@@ -358,11 +370,11 @@ def test_the_speech_package_never_touches_pygame() -> None:
 def test_silenced_captains_stay_silent_even_when_a_hail_is_urgent() -> None:
     from begin.speech.settings import SpeechSettings
 
-    off = SpeechSettings(captains=False)
+    off = SpeechSettings(enabled=True, captains=False)
     assert not off.wants("hail", urgent=True) and not off.wants("hail", urgent=False)
-    on = SpeechSettings(captains=True, speak="urgent")
+    on = SpeechSettings(enabled=True, captains=True, speak="urgent")
     assert on.wants("hail", urgent=True) and not on.wants("hail", urgent=False)
-    assert SpeechSettings().wants("hail", urgent=False)
+    assert SpeechSettings(enabled=True).wants("hail", urgent=False)
 
 
 def test_a_speech_thread_that_ends_lets_the_next_line_start_another() -> None:
@@ -370,6 +382,7 @@ def test_a_speech_thread_that_ends_lets_the_next_line_start_another() -> None:
     from begin.speech import Speaker
 
     sp = Speaker.silent()
+    sp.store.update(ON)
     sp._closed = True
     assert sp._next() is None and sp._thread is None
     sp._closed = False

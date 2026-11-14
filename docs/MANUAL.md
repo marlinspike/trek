@@ -1413,9 +1413,9 @@ See also: [The bridge](#topic-bridge), [The command console](#topic-console), [O
 
 ### Officers' voices
 
-*Your officers speak aloud, each in a voice cast for them. On by default; Settings or `speak` changes it.*
+*Your officers can speak aloud, each in a voice cast for them. Off by default; turn it on in Settings or with `speak on`.*
 
-Your officers speak aloud. Every order you give is read back in the voice of the officer who carries it out. Their reports, warnings and proposals are spoken too, and the ship's computer speaks its warnings. Enemy captains answer your hails in voices of their own. It's on from the first battle and uses the speech engine your computer already has: macOS's voices on a Mac, Windows' voices on Windows, and eSpeak NG on Linux. Subtitles still show every line, and the log still keeps every word.
+Your officers can speak aloud. Turn it on and every order you give is read back in the voice of the officer who carries it out. Their reports, warnings and proposals are spoken too, and the ship's computer speaks its warnings. Enemy captains answer your hails in voices of their own. It's off until you turn it on (Settings, then Officers' voices, or `speak on` in battle), so the bridge stays quiet unless you want it otherwise. It uses the speech engine your computer already has: macOS's voices on a Mac, Windows' voices on Windows, and eSpeak NG on Linux. Subtitles still show every line, and the log still keeps every word.
 
 One voice speaks at a time. A warning goes to the front and cuts short whatever routine line is being spoken. A routine line that has waited too long is no longer news, so it is dropped rather than read out late; when lines pile up in a busy fight, an officer's remark gives way before an answer to one of your orders, and only the newest warnings wait. A line said twice in a breath is spoken once. Figures in brackets, such as `(12,467 > 2,000)`, are for the eye and aren't read out. **M** hushes the bridge along with every other sound.
 
@@ -1443,7 +1443,7 @@ More voices make a better cast. On a Mac, open System Settings, then Accessibili
 
 In **Settings** on the main menu (**S**, then Officers' voices), or in battle under **Esc**, then **Bridge voices**:
 
-- **Officers speak**: on or off.
+- **Officers speak**: on or off (off when the game is new).
 - **What they say**: *Everything*, *Orders and warnings* (readbacks, proposals and warnings), or *Warnings only*.
 - **Enemy captains**: whether captains speak their hails.
 - **Volume** and **Pace**.
