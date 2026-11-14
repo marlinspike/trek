@@ -62,7 +62,7 @@ Useful shortcuts:
 | `begin --preset fleet-action --cycles 30 --screenshot shot.png` | Simulates 30 cycles headlessly and saves a screenshot. |
 | `begin --tournament 20` | Runs 20 headless AI-versus-AI battles and prints a balance summary. |
 | `begin --balance 8` | Fights every preset 8 times with AI captains on both sides and prints win rates. |
-| `begin --tour-test 6` | Flies every tour of duty 6 times with the officers in command and prints how many were won. Add `--difficulty admiral` (or `ensign`) to either to play them at that level. |
+| `begin --tour-test 6` | Flies every tour of duty 6 times with the officers in command and prints how many were won. A tour with Borg in it is flown again with a scripted captain who fights the cube with guile (the `+guile` row). Add `--difficulty admiral` (or `ensign`) to either to play them at that level. |
 | `begin --llm provider=ollama model=lfm3 think=off` | Saves the officers' language model settings. |
 | `begin --llm-test` | Asks Spock one question through that model and prints the answer and timing. |
 | `begin --llm log_prompts=on log_tokens=on` | Turns on the language model's debug logs in `config/logs/`. |

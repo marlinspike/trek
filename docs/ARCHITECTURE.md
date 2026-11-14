@@ -231,7 +231,7 @@ The screens are `ui/tour_scene.py` (the tour list, the squadron, the Ready Room,
 
 - `begin --balance N` (`tools/balance.py`) fights every preset N times with AI captains on all ships, including the player's, and prints win rates.
 - `begin --tournament N` (`tools/tournament.py`) runs random AI battles.
-- `begin --tour-test N` (`tools/tours.py`) flies every tour N times with the officers in command of the flagship and AI captains on every other ship, and prints how many were won.
+- `begin --tour-test N` (`tools/tours.py`) flies every tour N times with the officers in command of the flagship and AI captains on every other ship, and prints how many were won. A tour with Borg in it gets a second row (`+guile`): the same tour with a scripted captain (`tools/guile.py`) at any stop with a cube, playing it as the manual teaches (survey, away team to the relay, torpedoes into her drives while she sleeps), because the officers alone fight with power, which a cube is built to beat. `--difficulty` sets the level for both.
 - `begin --preset ... --cycles N --screenshot file.png` renders a frame headlessly; the README screenshots are made this way.
 - `pytest` runs headless tests of the geometry, the rules, commands, the AI, the parser, the manual, the officers and the UI wiring. Tests use a temporary config folder.
 
