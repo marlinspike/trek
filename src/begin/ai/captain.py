@@ -813,16 +813,10 @@ class AICaptain:
             return self._helm(obs, ship, brg + 180.0, max(1.0, min(speed, w + 1.0)))
         return self._helm(obs, ship, crs, max(0.0, min(speed, w)))
 
-    def _standing_orders(self, obs: Observation, ship: Ship, c: ContactView | None, st: AllyStanding,  # noqa: C901
+    def _standing_orders(self, obs: Observation, ship: Ship, c: ContactView | None, st: AllyStanding,
                          out: list[Command]) -> bool:
         """Carry out the flagship's movement order. Returns True when it decided the helm."""
-        rules = obs.rules
-        # a base told to recover a ship brings it aboard once it is alongside
-        if st.recover is not None:
-            guest = obs.own(st.recover)
-            if guest is not None and guest.docked_to is None and \
-                    math.hypot(guest.x - ship.x, guest.y - ship.y) <= rules.dock_range:
-                out.append(Dock(ship_id=guest.id, host=ship.id, issuer=Authority.AI_CAPTAIN, source=f"{ship.name} recovery"))
+        self._recover(obs, ship, st, out)
         m = st.movement
         if m is None or m == "run" or ship.cls.is_base or not ship.can_move():
             return False  # run is handled by the normal retreat behaviour
@@ -831,39 +825,60 @@ class AICaptain:
             out.extend(filter(None, [self._helm(obs, ship, ship.desired_course, 0.0)]))
             return True
         if m == "course":
-            base = st.move_value or 0.0
-            threat = min((h.distance_to(ship.x, ship.y) for h in obs.hostile_contacts() if h.visible), default=1e9)
-            torps = any(not o.friendly for o in obs.ordnance())
-            if threat < AI_WEAVE_THREAT_RANGE or torps:
-                cmd = self._weave(obs, ship, base, threat)  # zig-zag around the course for self-defence
-            else:
-                cmd = self._helm(obs, ship, base, speed)
-            out.extend(filter(None, [cmd]))
+            self._hold_course(obs, ship, st, speed, out)
             return True
         if m == "withdraw":
-            near = [h for h in obs.hostile_contacts() if h.visible]
-            if not near:
-                out.extend(filter(None, [self._helm(obs, ship, ship.desired_course, 0.0)]))
-                return True
-            h = min(near, key=lambda k: k.distance_to(ship.x, ship.y))
-            d = h.distance_to(ship.x, ship.y)
-            reach = 12000.0
-            if h.cls is not None and h.cls.tubes > 0:
-                spec = obs.content.torpedoes.get(h.cls.torpedo)
-                if spec is not None:
-                    reach = spec.velocity * rules.units_per_warp * (spec.arm_time + spec.max_time_fuse)
-            brg = bearing(h.x - ship.x, h.y - ship.y)
-            if d < reach * 1.1:
-                cmd = self._weave(obs, ship, brg + 180.0, d)
-            elif d > reach * 1.5:
-                cmd = self._helm(obs, ship, brg, speed)
-            else:
-                cmd = self._helm(obs, ship, brg, 0.0)  # in reserve, facing the enemy
-            out.extend(filter(None, [cmd]))
+            self._withdraw_order(obs, ship, speed, out)
             return True
         pos = self._position_of(obs, st.move_target)
         if pos is None:
             return False  # lost the ship: fight on normally
+        return self._order_at(obs, ship, st, m, pos, speed, out)
+
+    def _recover(self, obs: Observation, ship: Ship, st: AllyStanding, out: list[Command]) -> None:
+        """A base told to recover a ship brings it aboard once it is alongside."""
+        if st.recover is not None:
+            guest = obs.own(st.recover)
+            if guest is not None and guest.docked_to is None and \
+                    math.hypot(guest.x - ship.x, guest.y - ship.y) <= obs.rules.dock_range:
+                out.append(Dock(ship_id=guest.id, host=ship.id, issuer=Authority.AI_CAPTAIN, source=f"{ship.name} recovery"))
+
+    def _hold_course(self, obs: Observation, ship: Ship, st: AllyStanding, speed: float, out: list[Command]) -> None:
+        base = st.move_value or 0.0
+        threat = min((h.distance_to(ship.x, ship.y) for h in obs.hostile_contacts() if h.visible), default=1e9)
+        torps = any(not o.friendly for o in obs.ordnance())
+        if threat < AI_WEAVE_THREAT_RANGE or torps:
+            cmd = self._weave(obs, ship, base, threat)  # zig-zag around the course for self-defence
+        else:
+            cmd = self._helm(obs, ship, base, speed)
+        out.extend(filter(None, [cmd]))
+
+    def _withdraw_order(self, obs: Observation, ship: Ship, speed: float, out: list[Command]) -> None:
+        """Pull back out of the nearest enemy's torpedo reach and wait there, facing her."""
+        near = [h for h in obs.hostile_contacts() if h.visible]
+        if not near:
+            out.extend(filter(None, [self._helm(obs, ship, ship.desired_course, 0.0)]))
+            return
+        h = min(near, key=lambda k: k.distance_to(ship.x, ship.y))
+        d = h.distance_to(ship.x, ship.y)
+        reach = 12000.0
+        if h.cls is not None and h.cls.tubes > 0:
+            spec = obs.content.torpedoes.get(h.cls.torpedo)
+            if spec is not None:
+                reach = spec.velocity * obs.rules.units_per_warp * (spec.arm_time + spec.max_time_fuse)
+        brg = bearing(h.x - ship.x, h.y - ship.y)
+        if d < reach * 1.1:
+            cmd = self._weave(obs, ship, brg + 180.0, d)
+        elif d > reach * 1.5:
+            cmd = self._helm(obs, ship, brg, speed)
+        else:
+            cmd = self._helm(obs, ship, brg, 0.0)  # in reserve, facing the enemy
+        out.extend(filter(None, [cmd]))
+
+    def _order_at(self, obs: Observation, ship: Ship, st: AllyStanding, m: str, pos: tuple[float, float, float, float],
+                  speed: float, out: list[Command]) -> bool:
+        """The movement orders that are about another ship: keep station on her, dock, tow, board."""
+        rules = obs.rules
         d = math.hypot(pos[0] - ship.x, pos[1] - ship.y)
         if m == "escort":
             out.extend(filter(None, [self._keep_range(obs, ship, pos, st.move_value or DEFAULT_ESCORT_RANGE)]))
@@ -884,50 +899,59 @@ class AICaptain:
                 out.extend(filter(None, [self._keep_range(obs, ship, pos, rules.dock_range * 0.5, rules.dock_range * 0.3)]))
             return True
         if m in ("tractor", "tow"):
-            if ship.tractor_target != st.move_target:
-                if self.order_done:
-                    out.extend(filter(None, [self._helm(obs, ship, ship.course, 0.0)]))
-                    return True
-                if d <= rules.tractor_range * 0.8:
-                    out.append(self._cmd(Tractor, ship, target=st.move_target))
-                out.extend(filter(None, [self._keep_range(obs, ship, pos, rules.tractor_range * 0.5, rules.tractor_range * 0.25)]))
-                return True
-            if m == "tractor":
+            return self._tow_order(obs, ship, st, m, pos, d, speed, out)
+        if m == "board":
+            return self._board_order(obs, ship, st, d, speed, out)
+        return False
+
+    def _tow_order(self, obs: Observation, ship: Ship, st: AllyStanding, m: str, pos: tuple[float, float, float, float],
+                   d: float, speed: float, out: list[Command]) -> bool:
+        rules = obs.rules
+        if ship.tractor_target != st.move_target:
+            if self.order_done:
                 out.extend(filter(None, [self._helm(obs, ship, ship.course, 0.0)]))
                 return True
-            dest = self._position_of(obs, st.destination)
-            if dest is None:
-                return False
-            dd = math.hypot(dest[0] - ship.x, dest[1] - ship.y)
-            if dd < 3000.0:
-                out.append(self._cmd(Tractor, ship, target=None))
-                self.order_done = True
-                return True
-            out.extend(filter(None, [self._helm(obs, ship, bearing(dest[0] - ship.x, dest[1] - ship.y), min(speed, 3.0))]))
+            if d <= rules.tractor_range * 0.8:
+                out.append(self._cmd(Tractor, ship, target=st.move_target))
+            out.extend(filter(None, [self._keep_range(obs, ship, pos, rules.tractor_range * 0.5, rules.tractor_range * 0.25)]))
             return True
-        if m == "board":
-            if self.order_done:
-                return False  # party away: carry on fighting
-            t = obs.contact(st.move_target) if st.move_target is not None else None
-            if t is None:
-                return False
-            if d <= rules.beam_range * 0.8:
-                from ..sim.systems.damage import relative_bearing_from
+        if m == "tractor":
+            out.extend(filter(None, [self._helm(obs, ship, ship.course, 0.0)]))
+            return True
+        dest = self._position_of(obs, st.destination)
+        if dest is None:
+            return False
+        dd = math.hypot(dest[0] - ship.x, dest[1] - ship.y)
+        if dd < 3000.0:
+            out.append(self._cmd(Tractor, ship, target=None))
+            self.order_done = True
+            return True
+        out.extend(filter(None, [self._helm(obs, ship, bearing(dest[0] - ship.x, dest[1] - ship.y), min(speed, 3.0))]))
+        return True
 
-                own = ship.shield_for_bearing(relative_bearing_from(ship, t.x, t.y))
-                if own is not None and own.up:
-                    out.append(self._cmd(SetShields, ship, sectors=(own.index,), up=False))
-                else:
-                    party = min(st.party, max(0, ship.crew - 6))
-                    if party > 0:
-                        out.append(self._cmd(Transport, ship, target=t.id, count=party))
-                    out.append(self._cmd(SetShields, ship, sectors=None, up=True))
-                    self.order_done = True
-                out.extend(filter(None, [self._helm(obs, ship, bearing(t.x - ship.x, t.y - ship.y), max(1.0, t.warp))]))
+    def _board_order(self, obs: Observation, ship: Ship, st: AllyStanding, d: float, speed: float,
+                     out: list[Command]) -> bool:
+        if self.order_done:
+            return False  # party away: carry on fighting
+        t = obs.contact(st.move_target) if st.move_target is not None else None
+        if t is None:
+            return False
+        if d <= obs.rules.beam_range * 0.8:
+            from ..sim.systems.damage import relative_bearing_from
+
+            own = ship.shield_for_bearing(relative_bearing_from(ship, t.x, t.y))
+            if own is not None and own.up:
+                out.append(self._cmd(SetShields, ship, sectors=(own.index,), up=False))
             else:
-                out.extend(filter(None, [self._helm(obs, ship, bearing(t.x - ship.x, t.y - ship.y), speed)]))
-            return True
-        return False
+                party = min(st.party, max(0, ship.crew - 6))
+                if party > 0:
+                    out.append(self._cmd(Transport, ship, target=t.id, count=party))
+                out.append(self._cmd(SetShields, ship, sectors=None, up=True))
+                self.order_done = True
+            out.extend(filter(None, [self._helm(obs, ship, bearing(t.x - ship.x, t.y - ship.y), max(1.0, t.warp))]))
+        else:
+            out.extend(filter(None, [self._helm(obs, ship, bearing(t.x - ship.x, t.y - ship.y), speed)]))
+        return True
 
     # ------------------------------------------------------------ maneuver
 
@@ -1004,7 +1028,7 @@ class AICaptain:
             return self._weave(obs, ship, brg, d)
         return self._helm(obs, ship, brg, c.warp + self.helm_aggression(obs, ship) * AI_APPROACH_WARP_AGGR)
 
-    def _maneuver(self, obs: Observation, ship: Ship, c: ContactView | None,  # noqa: C901
+    def _maneuver(self, obs: Observation, ship: Ship, c: ContactView | None,
                   st: AllyStanding | None = None) -> Command | None:
         if ship.cls.is_base or not ship.can_move() or ship.docked_to is not None:
             return None
@@ -1012,46 +1036,16 @@ class AICaptain:
             home = self._stay_home(obs, ship, c)
             if home is not None:
                 return home
-        if c is None and self.withdrawing:
-            # [E] leaving the field with no enemy left on sensors: hold the course away, full speed, until clear
-            return self._helm(obs, ship, ship.desired_course, ship.max_attainable_warp)
         if c is None:
-            # wander [R]: hold course at cruise, occasionally sidestep
-            turn = 0.0
-            if self.rng.unit() < 0.05:
-                turn = AI_SIDESTEP if self.rng.unit() < 0.5 else -AI_SIDESTEP
-            return self._helm(obs, ship, ship.desired_course + turn, ship.cls.cruise_warp)
+            return self._no_contact(obs, ship)
         d = c.distance_to(ship.x, ship.y)
         brg = bearing(c.x - ship.x, c.y - ship.y)
-        if self.retreating:
-            self.style_phase = ""               # a broken captain has no tricks left
-            if self.withdrawing and d >= AI_WEAVE_THREAT_RANGE:
-                return self._helm(obs, ship, norm360(brg + 180.0), ship.max_attainable_warp)   # [E] clear out
-            return self._weave(obs, ship, brg + 180.0, d)
-        if self.pressing and not st:
-            return self._close_for_phasers(obs, ship, c, d, brg)
-        if self.last_stand:
-            return self._helm(obs, ship, brg, ship.max_attainable_warp)  # ram
-        if (st is None or st.weapon is None) and any(
-                o.friendly and o.kind == "probe" and o.owner == ship.id and o.target == c.id for o in obs.ordnance()):
-            return self._weave(obs, ship, brg + 180.0, d)   # [R] our probes are working: stand off and let them
-        if (st is None or st.weapon is None) and self.personality.style:
-            styled = self._style_helm(obs, ship, c, d, brg)
-            if styled is not None:
-                return styled
+        decided, cmd = self._overriding_helm(obs, ship, c, st, d, brg)
+        if decided:
+            return cmd
 
         p = self.personality
-        bias = p.doctrine.weapon_bias
-        my_ph = strength(sum(1 for b in ship.banks if b.intact), ship.cls.banks_range, 0) - 1.0
-        armed = ship.torps_remaining > 0  # magazine empty: the last loads go when they bear, but close for phasers
-        my_tp = sum(1 for t in ship.tubes if t.intact) * 6.0 if armed else 0.0  # out of torpedoes: close for phasers
-        if c.cls is not None:
-            their_ph = c.cls.banks * c.cls.banks_range / STRENGTH_DIVISOR
-            their_tp = c.cls.tubes * 6.0
-        else:
-            their_ph, their_tp = 8.0, 12.0
-        ph_dom = 0.0 if my_ph <= 0 else (1000.0 if their_ph <= 0 else my_ph / their_ph) * bias.get("phaser", 1.0)
-        tp_dom = 0.0 if my_tp <= 0 else (1000.0 if their_tp <= 0 else my_tp / their_tp) * bias.get("torpedo", 1.0)
+        ph_dom, tp_dom = self._dominance(ship, c, p)
         weapon = st.weapon if st is not None else None
         if weapon == "probe" and ship.launchers:
             pspec = obs.content.probes.get(ship.launchers[0].load_ordnance or ship.cls.probe)
@@ -1068,45 +1062,104 @@ class AICaptain:
             fresh = self._fresh_shield(obs, ship, c, d, brg)
             if fresh is not None:
                 return fresh
-            close, stand = self._odds(obs, ship, c)
-            # [E] what this navy has learned on the tour: wary of our aimed fire, or sure our magazines are low
-            close *= 1.0 + 0.6 * p.press - 0.4 * p.caution
-            stand *= 1.0 + 0.4 * p.caution
-            armed = ship.torps_remaining + sum(t.loaded is not None for t in ship.tubes) > 0 and tp_dom > 0
-            quicker = c.cls is not None and ship.max_attainable_warp > c.cls.max_warp
-            if armed and quicker and max(close, stand) < 1.0:
-                ph_dom = 0.0                   # outgunned either way but faster: stay out of its reach, tubes only
-            elif close > stand * AI_CLOSE_HYSTERESIS:
-                ph_dom = max(ph_dom, tp_dom * 2.0, 1.0)
-            elif armed and stand > close * AI_CLOSE_HYSTERESIS:
-                ph_dom = min(ph_dom, tp_dom * 0.5)
-            knife_ok = close >= stand
+            ph_dom, knife_ok = self._weigh_range(obs, ship, c, p, ph_dom, tp_dom)
         if ph_dom > 0 and ph_dom > tp_dom:
             return self._close_for_phasers(obs, ship, c, d, brg)
         if tp_dom > 0:
-            spec = obs.content.torpedoes.get(ship.tubes[0].load_ordnance or ship.cls.torpedo) if ship.tubes else None
-            if spec is not None:
-                lo, hi = torpedo_envelope(ship, c.x, c.y, c.vx, c.vy, spec.velocity, spec.arm_time,
-                                          spec.max_time_fuse, obs.rules.units_per_warp)
-                standoff = lo + (1.0 - p.aggression) * (hi - lo) * 0.6
-                if self.smart and c.cls is not None and c.cls.banks:
-                    # [E] a torpedo boat keeps outside the reach of the target's banks
-                    standoff = max(standoff, min(c.cls.banks_range * AI_KITE_MARGIN, hi * 0.6))
-                # [E] a faster enemy cannot be held off, and one already inside phaser reach must be fought there:
-                # turning away only shows it the weaker shields and the tubes' blind arcs
-                faster = c.cls is not None and c.cls.max_warp >= ship.max_attainable_warp
-                if knife_ok and ph_dom > 0 and d < ship.cls.banks_range * AI_KNIFE_FIGHT_RANGE and (faster or d < lo):
-                    return self._close_for_phasers(obs, ship, c, d, brg)
-                if obs.tick - self.lane_blocked < AI_SIDESTEP_CYCLES * obs.rules.ticks_per_cycle:
-                    # [R] a friend is in the torpedo lane: step 90° aside to clear it
-                    side = 1.0 if ship.id % 2 else -1.0
-                    return self._weave(obs, ship, brg + side * AI_SIDESTEP, d)
-                if d < standoff:
-                    # open the range obliquely, not straight away: running dead astern only invites a chase
-                    side = 1.0 if ship.id % 2 else -1.0
-                    return self._weave(obs, ship, brg + 180.0 - side * AI_STANDOFF_OPEN_ANGLE, d)
-                return self._weave(obs, ship, brg, d)
+            return self._torpedo_helm(obs, ship, c, d, brg, p, ph_dom, knife_ok)
         return self._helm(obs, ship, ship.course, 0.0)  # helpless: full stop
+
+    def _no_contact(self, obs: Observation, ship: Ship) -> Command | None:
+        if self.withdrawing:
+            # [E] leaving the field with no enemy left on sensors: hold the course away, full speed, until clear
+            return self._helm(obs, ship, ship.desired_course, ship.max_attainable_warp)
+        # wander [R]: hold course at cruise, occasionally sidestep
+        turn = 0.0
+        if self.rng.unit() < 0.05:
+            turn = AI_SIDESTEP if self.rng.unit() < 0.5 else -AI_SIDESTEP
+        return self._helm(obs, ship, ship.desired_course + turn, ship.cls.cruise_warp)
+
+    def _overriding_helm(self, obs: Observation, ship: Ship, c: ContactView, st: AllyStanding | None, d: float,
+                         brg: float) -> tuple[bool, Command | None]:
+        """The moods and moments that decide the helm before any weighing of weapons: running, pressing in, a last
+        stand, standing off while our probes work, a signature tactic. (True, command) when one of them did."""
+        if self.retreating:
+            self.style_phase = ""               # a broken captain has no tricks left
+            if self.withdrawing and d >= AI_WEAVE_THREAT_RANGE:
+                return True, self._helm(obs, ship, norm360(brg + 180.0), ship.max_attainable_warp)   # [E] clear out
+            return True, self._weave(obs, ship, brg + 180.0, d)
+        if self.pressing and not st:
+            return True, self._close_for_phasers(obs, ship, c, d, brg)
+        if self.last_stand:
+            return True, self._helm(obs, ship, brg, ship.max_attainable_warp)  # ram
+        if (st is None or st.weapon is None) and any(
+                o.friendly and o.kind == "probe" and o.owner == ship.id and o.target == c.id for o in obs.ordnance()):
+            return True, self._weave(obs, ship, brg + 180.0, d)   # [R] our probes are working: stand off and let them
+        if (st is None or st.weapon is None) and self.personality.style:
+            styled = self._style_helm(obs, ship, c, d, brg)
+            if styled is not None:
+                return True, styled
+        return False, None
+
+    def _dominance(self, ship: Ship, c: ContactView, p: Personality) -> tuple[float, float]:
+        """How far our phasers and our torpedoes outclass hers, each weighted by the navy's taste for it."""
+        bias = p.doctrine.weapon_bias
+        my_ph = strength(sum(1 for b in ship.banks if b.intact), ship.cls.banks_range, 0) - 1.0
+        armed = ship.torps_remaining > 0  # magazine empty: the last loads go when they bear, but close for phasers
+        my_tp = sum(1 for t in ship.tubes if t.intact) * 6.0 if armed else 0.0  # out of torpedoes: close for phasers
+        if c.cls is not None:
+            their_ph = c.cls.banks * c.cls.banks_range / STRENGTH_DIVISOR
+            their_tp = c.cls.tubes * 6.0
+        else:
+            their_ph, their_tp = 8.0, 12.0
+        ph_dom = 0.0 if my_ph <= 0 else (1000.0 if their_ph <= 0 else my_ph / their_ph) * bias.get("phaser", 1.0)
+        tp_dom = 0.0 if my_tp <= 0 else (1000.0 if their_tp <= 0 else my_tp / their_tp) * bias.get("torpedo", 1.0)
+        return ph_dom, tp_dom
+
+    def _weigh_range(self, obs: Observation, ship: Ship, c: ContactView, p: Personality, ph_dom: float,
+                     tp_dom: float) -> tuple[float, bool]:
+        """[E] Close in or stand off, by the odds at each range. Returns the phaser dominance as adjusted, and
+        whether a knife fight is acceptable."""
+        close, stand = self._odds(obs, ship, c)
+        # [E] what this navy has learned on the tour: wary of our aimed fire, or sure our magazines are low
+        close *= 1.0 + 0.6 * p.press - 0.4 * p.caution
+        stand *= 1.0 + 0.4 * p.caution
+        armed = ship.torps_remaining + sum(t.loaded is not None for t in ship.tubes) > 0 and tp_dom > 0
+        quicker = c.cls is not None and ship.max_attainable_warp > c.cls.max_warp
+        if armed and quicker and max(close, stand) < 1.0:
+            ph_dom = 0.0                   # outgunned either way but faster: stay out of its reach, tubes only
+        elif close > stand * AI_CLOSE_HYSTERESIS:
+            ph_dom = max(ph_dom, tp_dom * 2.0, 1.0)
+        elif armed and stand > close * AI_CLOSE_HYSTERESIS:
+            ph_dom = min(ph_dom, tp_dom * 0.5)
+        return ph_dom, close >= stand
+
+    def _torpedo_helm(self, obs: Observation, ship: Ship, c: ContactView, d: float, brg: float, p: Personality,
+                      ph_dom: float, knife_ok: bool) -> Command | None:
+        """Fight with the tubes: hold the range where a torpedo arms and still reaches her."""
+        spec = obs.content.torpedoes.get(ship.tubes[0].load_ordnance or ship.cls.torpedo) if ship.tubes else None
+        if spec is None:
+            return self._helm(obs, ship, ship.course, 0.0)  # helpless: full stop
+        lo, hi = torpedo_envelope(ship, c.x, c.y, c.vx, c.vy, spec.velocity, spec.arm_time,
+                                  spec.max_time_fuse, obs.rules.units_per_warp)
+        standoff = lo + (1.0 - p.aggression) * (hi - lo) * 0.6
+        if self.smart and c.cls is not None and c.cls.banks:
+            # [E] a torpedo boat keeps outside the reach of the target's banks
+            standoff = max(standoff, min(c.cls.banks_range * AI_KITE_MARGIN, hi * 0.6))
+        # [E] a faster enemy cannot be held off, and one already inside phaser reach must be fought there:
+        # turning away only shows it the weaker shields and the tubes' blind arcs
+        faster = c.cls is not None and c.cls.max_warp >= ship.max_attainable_warp
+        if knife_ok and ph_dom > 0 and d < ship.cls.banks_range * AI_KNIFE_FIGHT_RANGE and (faster or d < lo):
+            return self._close_for_phasers(obs, ship, c, d, brg)
+        if obs.tick - self.lane_blocked < AI_SIDESTEP_CYCLES * obs.rules.ticks_per_cycle:
+            # [R] a friend is in the torpedo lane: step 90° aside to clear it
+            side = 1.0 if ship.id % 2 else -1.0
+            return self._weave(obs, ship, brg + side * AI_SIDESTEP, d)
+        if d < standoff:
+            # open the range obliquely, not straight away: running dead astern only invites a chase
+            side = 1.0 if ship.id % 2 else -1.0
+            return self._weave(obs, ship, brg + 180.0 - side * AI_STANDOFF_OPEN_ANGLE, d)
+        return self._weave(obs, ship, brg, d)
 
     # ------------------------------------------------------------ signature styles [E]
 
