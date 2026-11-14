@@ -2,7 +2,7 @@
 title: Tours of duty
 category: Game
 order: 5
-aliases: tour, tours, tour of duty, officers' view, request, request reinforcements, reinforcements, ready room, squadron, captain's log, log, waves
+aliases: tour, tours, tour of duty, generated tour, another patrol, boss, officers' view, request, request reinforcements, reinforcements, ready room, squadron, captain's log, log, waves
 summary: Linked battles with a squadron you choose: damage, crews, torpedoes and prizes carry from one stop to the next.
 see: after-battle, crew, dock, fleet
 ---
@@ -39,6 +39,17 @@ A reinforcement and any prize you take join your squadron for the rest of the to
 After each stop your officers write up their stations, each captain in the squadron reports on their own ship, and the captain's entry is drafted for you. Click it to rewrite it: your words are kept as written. With a language model configured ([[llm]]), the officers rewrite their entries in their own voices while you read.
 
 The log is also kept as Markdown in `config/tours/<tour>-log.md`. Edit the captain's entries there between sessions and the game reads them back. At the end of the tour you get a rating: stops won, kills and prizes, ships lost and crews brought home.
+
+## A fresh patrol every time
+
+The last tour on the list is made for you: a generated patrol, different each time. Pick it and press **Another patrol** until one appeals, or take what you're given. Each one has a sector, one adversary for the whole tour (Klingons, Romulans or Orions) and five stops:
+
+- **Four stops built from the patrol situations** ([[patrol]]): an ambush, a wolf pack, a second wave, a distress call, a convoy or a runner. At least one is a mission.
+- **The threat rises.** The first stop is a skirmish; each one after brings more and better ships, sized against the squadron you can field, not the flagship alone. The briefings say so as it happens.
+- **Two choices.** Before the third stop, refit at the starbase (everything made good, but they send one more ship) or press on. Before the last, strike before they gather (less repair on the way, one fewer ship in her screen) or come in repaired (and meet one more).
+- **The boss.** The last stop is the commander behind the raids, aboard their heaviest class, with a screen and a reserve that drops out of warp when the screen is beaten. Take or destroy the flagship and the tour is won.
+
+The Enterprise is your Dreadnought on every generated tour, as on every other. A generated tour saves and resumes like the rest, and its number is in its description: the same number is always the same patrol.
 
 ## Your own tours
 

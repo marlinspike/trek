@@ -117,6 +117,9 @@ def tour_list(ctx: HelpContext) -> str:
     for t in load_tours(user_dir=None)[0]:
         stops = " → ".join(s.title for s in t.stops)
         out.append(f"- **{t.title}** ({t.sector or 'patrol'}). {t.description} *Stops:* {stops}.")
+    out.append("- **A generated patrol** (a new sector each time). One adversary, four stops built from the patrol "
+               "situations with the threat rising, two choices, and their commander's flagship at the end. "
+               "See [[tour|Tours of duty]].")
     return "\n".join(out)
 
 
