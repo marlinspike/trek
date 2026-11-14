@@ -228,7 +228,7 @@ def _boss(content: ContentDB, rng: Rng, theirs: list[ShipClass], them: str, enem
                  Choice("Come in repaired", "A slower approach: more field repairs, but her reserve has time to grow.",
                         transit=260.0, flags=("came-slow",))),
         add={"came-slow": tuple(extra)}, drop={"struck-first": tuple(screen[-1:])},
-        win_flag="boss-beaten", seed=rng.irange(1, 10**6), mission=None,
+        win_flag="boss-beaten", seed=rng.irange(1, 10**6), mission=None, commander=commander,
     )
 
 

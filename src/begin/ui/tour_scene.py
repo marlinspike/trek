@@ -28,6 +28,7 @@ from ..paths import config_dir
 from ..tour.log import OFFICER_ORDER, OFFICER_TITLES, read_markdown_edits, voice_request, write_markdown
 from ..crew.career import Career
 from ..tour import generate, squadrons
+from ..tour.rivals import RivalBook
 from ..tour.model import TourDef, check_tour, load_tours
 from ..tour.ready import ReadyView, ready_counsel
 from ..tour.run import TourRun
@@ -122,7 +123,7 @@ class TourScene:
         if state is None:
             return
         read_markdown_edits(state, tours_dir())      # your edits to the Markdown log, between sessions
-        self.run = TourRun(tour, state, self.content)
+        self.run = self._keep_rivals(TourRun(tour, state, self.content))
         self.save()
         self.note = ""
         self.glide = 1.0
@@ -139,7 +140,8 @@ class TourScene:
         if tour is None:
             return
         seed = (pygame.time.get_ticks() * 7919 + len(self.escorts)) % 100000 + 1
-        self.run = TourRun.new(tour, self.content, list(self.escorts), seed=seed, squadron=self.group())
+        self.run = self._keep_rivals(TourRun.new(tour, self.content, list(self.escorts), seed=seed,
+                                                 squadron=self.group()))
         self.save()
         self.note = ""
         self.glide = 0.0
@@ -147,15 +149,21 @@ class TourScene:
 
     def after_battle(self, run: TourRun) -> None:
         """Back from a stop's battle: save, open the new log page, and have the officers write it up."""
-        self.run = run
+        self.run = self._keep_rivals(run)
         self.save()
+        self.note = run.rival_news
         self._count_win(run)
         self.log_i = len(run.state.log) - 1
         self.log_scroll = 0
         self.glide = 0.0
         self.page = "log"
-        self.note = ""
         self._ask_voices(self.log_i)
+
+    def _keep_rivals(self, run: TourRun) -> TourRun:
+        """[E] The captain's rivals (tour/rivals.py), kept in the career, come along on every tour."""
+        if run.rivals is None:
+            run.rivals = RivalBook(Career(self.settings.career))
+        return run
 
     def _count_win(self, run: TourRun) -> None:
         """[E] A tour brought home goes on the captain's record; it may earn a starting squadron."""
@@ -169,7 +177,8 @@ class TourScene:
             except OSError:
                 pass
             if new:
-                self.note = f"Starfleet has assigned you a new starting squadron: {new[0].name}."
+                self.note = (self.note + "  " if self.note else "") + \
+                    f"Starfleet has assigned you a new starting squadron: {new[0].name}."
 
         # ------------------------------------------------------------ the officers' voices
 
@@ -604,11 +613,12 @@ class TourScene:
                                           f"stardate {st.stardate()}")
         # the briefing, from the officer who gives it
         bw = min(520, int(w * 0.34))
-        lines = wrap(stop.briefing, 14, bw - 150)
+        title, briefing = run.briefing()
+        lines = [ln for para in briefing.split("\n\n") for ln in (*wrap(para, 14, bw - 150), "")][:-1]
         lessons = [ln for lesson in run.lesson_lines() for ln in wrap(lesson, 13, bw - 40)]
         enemies = self._enemy_words(run)
         br = pygame.Rect(40, 100, bw, 130 + 21 * max(len(lines), 5) + 19 * len(lessons) + (26 if enemies else 0))
-        y = self._glass(surf, br, f"Briefing: {stop.title}", theme.CAUTION)
+        y = self._glass(surf, br, f"Briefing: {title}", theme.CAUTION)
         pic = portrait(stop.officer, 104)
         surf.blit(pic, (br.x + 14, y + 4))
         name = OFFICER_TITLES.get(stop.officer, stop.officer).split(",")[0]

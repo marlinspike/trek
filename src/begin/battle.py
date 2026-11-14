@@ -37,6 +37,7 @@ class ShipSpec:
     y: float | None = None
     course: float | None = None
     personality: dict[str, float] | None = None
+    captain: str | None = None       # [E] a named captain (a returning rival, tour/rivals.py); None: one at random
 
 
 @dataclass
@@ -194,7 +195,8 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
             cls = content.classes[spec.class_id]
             warp = 0.0 if cls.is_base else min(cls.cruise_warp, 3.0)
             name = spec.name or (flagship_name if fleet.player and si == 0 else None)
-            ship = world.add_ship(spec.class_id, fleet.side, x, y, course=course, warp=warp, name=name)
+            ship = world.add_ship(spec.class_id, fleet.side, x, y, course=course, warp=warp, name=name,
+                                  captain=spec.captain)
             faction = content.factions[cls.faction]
             ship.pd_doctrine = PDDoctrine(faction.doctrine.point_defense)
             comp = ShipComputer(ship.id, fleet.side, world.rng.derive(f"computer:{ship.id}"), phase=ship.id % 2)

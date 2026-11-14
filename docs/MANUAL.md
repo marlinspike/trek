@@ -853,6 +853,7 @@ Everything here works in the game today. None of it is on a button, and most of 
 - **Evasive manoeuvres beat aimed torpedoes.** Enemy rounds are aimed where you would be if you held course, so any turn as they launch makes them miss. `evasive`
 - **Change ships to fight on.** `beam <ally>` moves you and your command, and your officers come with you.
 - **Veteran officers act for you.** Once trust reaches Veteran, an urgent proposal you leave unanswered, such as evasive manoeuvres or shields up, is carried out.
+- **Earn your officers' trust before you meet an old enemy again.** At Trusted, Worf or Spock tells you how a returning rival got away last time; block that escape route and you can finish them for good.
 - **Record what worked.** `record last 3 as strike` turns your last three orders into a named order you can run again with one word.
 
 See also: [The sword and the mind](#topic-sword-and-mind), [Coach](#topic-coach).
@@ -3730,7 +3731,7 @@ Each officer's trust in you grows as you fight together, and stays with you betw
 
 An officer earns 2 for each proposal you make so, 2 for each battle won at their post (3 if you'd handed them the station), and 4 for standing out in the debrief. Belaying a proposal costs nothing: you decide.
 
-Trust also earns **starting squadrons** for your tours of duty: when Worf, La Forge or Spock reach Trusted, they each put their name to a group of escorts, and a tour won earns a Starfleet detachment. See [Tours of duty](#topic-tour).
+Trust also earns **starting squadrons** for your tours of duty: when Worf, La Forge or Spock reach Trusted, they each put their name to a group of escorts, and a tour won earns a Starfleet detachment. It also decides how much they can tell you about a returning enemy captain. See [Tours of duty](#topic-tour).
 
 See also: [Bridge officers](#topic-crew), [The bridge](#topic-bridge), [After the battle](#topic-after-battle).
 
@@ -3857,6 +3858,20 @@ The last tour on the list is made for you: a generated patrol, different each ti
 - **The boss.** The last stop is the commander behind the raids, aboard their heaviest class, with a screen and a reserve that drops out of warp when the screen is beaten. Take or destroy the flagship and the tour is won.
 
 The Enterprise is your Dreadnought on every generated tour, as on every other. A generated tour saves and resumes like the rest, and its number is in its description: the same number is always the same patrol.
+
+#### Old enemies
+
+Enemy captains remember you, and you meet some of them again. When a stop ends with the enemy's commander still free (the captain of their heaviest ship got away, or held the field when you withdrew), they become a **rival**, and they stay one from tour to tour.
+
+A rival comes back at a later stop against their own navy. They command the heaviest ship there and fight better each time you meet. The briefing tells you they're coming, and in battle they hail you by name. How much your bridge can tell you about them depends on trust ([trust](#topic-styles)):
+
+| The officer who knows that navy (Worf for Klingons and Orions, Spock for Romulans) | What you're told |
+|---|---|
+| Green | the computer says the enemy flagship is under a captain we've fought before |
+| Steady | they name the captain, how many times you've met, and where you last met |
+| Trusted | ...and how they got away last time, so you can be ready for it |
+
+A rival you destroy or take prisoner is finished: the Ready Room says so, and they never return. On a generated tour, if a rival from that navy is still free, they are the commander waiting at the last stop.
 
 #### Your own tours
 

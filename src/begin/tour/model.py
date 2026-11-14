@@ -35,7 +35,8 @@ in the same format (a tour with the same id as a shipped one replaces it):
     after_clear = 60
     if_flag = "refit"                  # only if a choice set this flag (or `unless_flag`)
 
-A stop can also set `win_flag` (a flag set when you win it), list friendly ships already
+A stop can name the enemy commander (`commander = "Kor"`): the captain of the heaviest enemy ship. A
+returning rival (tour/rivals.py) takes that name's place in the briefing. A stop can also set `win_flag` (a flag set when you win it), list friendly ships already
 there (`friends`, e.g. the starbase), drop enemies when a flag is set
 (`[tour.stop.drop] dreadnought-beaten = ["klingon.dr"]`) or add them
 (`[tour.stop.add] refit = ["klingon.bc"]`).
@@ -113,6 +114,7 @@ class Stop:
     add: dict[str, tuple[str, ...]] = field(default_factory=dict)    # flag -> extra enemies
     drop: dict[str, tuple[str, ...]] = field(default_factory=dict)   # flag -> enemies that don't come
     finale: bool = False                # losing the friends here (the starbase) loses the tour
+    commander: str = ""                 # [E] the captain of the heaviest enemy ship, if the briefing names them
     seed: int = 1
     mission: MissionDef | None = None   # [E] a goal beyond holding the field (sim/mission.py)
 
@@ -193,6 +195,7 @@ def parse_tour(t: dict[str, Any], source: str = "shipped") -> TourDef:
             friends_center=_pair(s.get("friends_center"), (0.0, -4000.0)),
             choices=choices, waves=waves, win_flag=str(s.get("win_flag", "")),
             add=_ships(s.get("add")), drop=_ships(s.get("drop")), finale=bool(s.get("finale", False)),
+            commander=str(s.get("commander", "")),
             seed=int(s.get("seed", 1000 + i)),
             mission=MissionDef.from_dict(s["mission"]) if "mission" in s else None,
         ))

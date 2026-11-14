@@ -77,7 +77,7 @@ flags = ["refit"]
 
 A choice can also rebuild the flagship as another class with `flagship = "federation.dnc"` (a story class such as the cloak refit). A cloaked flagship makes Starfleet ask about it on every reinforcement call.
 
-A stop can add later waves (`[[tour.stop.wave]]` with `ships`, `after_clear` and/or `at`, and `if_flag` or `unless_flag`), add or drop enemies when a flag is set (`[tour.stop.add]`, `[tour.stop.drop]`), set a flag when it is won (`win_flag`), and put friendly ships on the field (`friends = ["federation.sb"]`). On a `finale = true` stop, losing those friends loses the tour. A misspelt class is reported on the tour list rather than crashing the game. Check a tour's difficulty with `begin --tour-test 8`; the officers win the shipped tours roughly a third to all of the time.
+A stop can add later waves (`[[tour.stop.wave]]` with `ships`, `after_clear` and/or `at`, and `if_flag` or `unless_flag`), add or drop enemies when a flag is set (`[tour.stop.add]`, `[tour.stop.drop]`), set a flag when it is won (`win_flag`), and put friendly ships on the field (`friends = ["federation.sb"]`). Name the enemy commander with `commander = "Kor"`: they captain the heaviest enemy ship, and a returning rival (`tour/rivals.py`) takes that name's place in the briefing. On a `finale = true` stop, losing those friends loses the tour. A misspelt class is reported on the tour list rather than crashing the game. Check a tour's difficulty with `begin --tour-test 8`; the officers win the shipped tours roughly a third to all of the time, and generated tours about three in four.
 
 ## Rules
 
