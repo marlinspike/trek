@@ -159,7 +159,7 @@ Every officer is yours to shape in `config/officers.toml` (copy `config/officers
 
 ### Language models (optional)
 
-You don't need a language model to play. Without one, every system in the game works: the AI captains, the officers running their stations, the coach, named orders written as console lines, and every console command. The officers still report and answer from the battle state, in lines written for them. The bridge's everyday words work too, with no model at all: "red alert", "hard to port", "punch it", "attack the Gorkon", "target the nearest enemy", "damage report", "zoom in", or "make it so" to take an officer's proposal. "Her", "them" and "the target" mean the ship you have targeted, or the nearest enemy. `help plain-english` lists them all.
+You don't need a language model to play. Without one, every system in the game works: the AI captains, the officers running their stations, the coach, named orders written as console lines, and every console command. The officers still report and answer from the battle state, in lines written for them. The bridge's everyday words work too, with no model at all: "red alert", "hard to port", "punch it", "attack the Gorkon", "target the nearest enemy", "damage report", "zoom in", or "make it so" to take an officer's proposal. Your fleet answers the same way: "all ships, attack the Gorkon", "fleet, form up on me", or an ally by name, "Yorktown, defend me". "Her", "them" and "the target" mean the ship you have targeted, or the nearest enemy. `help plain-english` lists them all.
 
 A model only adds a little colour and convenience:
 
