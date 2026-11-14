@@ -259,7 +259,7 @@ class OwnShipPanel(Panel):
             theme.text(surf, "hover for detail · 'hud detail'", (x, yy + 1), theme.TEXT_FAINT, 11)
         yy += 18
         rp = repair_words(ship.repair_priority)
-        who = hud.session.repair_officer(ship)
+        who = hud.crew.repair_officer(ship)
         n = len(fixing) + (1 if hull_fixing else 0)
         boosting = ship.engine_boost > 0.0
         if n == 0:
@@ -678,7 +678,7 @@ class CrewPanel(Panel):
 
     def tab_label(self, hud: BattleScene) -> str:
         ship = hud.player
-        holder = hud.session.in_command()
+        holder = hud.crew.in_command()
         if holder is not None:
             return f"Crew · {holder.name.split()[0]} in command"
         n = len(ship.delegated) if ship is not None else 0
@@ -686,12 +686,12 @@ class CrewPanel(Panel):
 
     def body(self, surf: pygame.Surface, rect: pygame.Rect, y: int, hud: BattleScene) -> None:
         ship = hud.player
-        officers = hud.session.officers()
+        officers = hud.crew.officers()
         if ship is None or not officers:
             theme.text(surf, "No officers aboard.", (rect.x + 12, y), theme.TEXT_FAINT, 12)
             return
         rh = 22
-        holder = hud.session.in_command()
+        holder = hud.crew.in_command()
         theme.text(surf, "Command", (rect.x + 12, y + 3), theme.TEXT_DIM, 12)
         theme.text(surf, holder.title if holder else "Captain", (rect.x + 100, y + 3),
                    theme.CREW if holder else theme.TEXT, 12, weight="medium")
@@ -720,7 +720,7 @@ class CrewPanel(Panel):
             shown = holder if holder is not None and on else o   # the commander runs every station they hold
             theme.text(surf, shown.title, (name_r.x, ry + 3), theme.CREW if on or hover else theme.TEXT, 12)
             # how far this officer trusts the captain (crew/career.py)
-            theme.text(surf, hud.session.trust(o.id), (rect.right - 114, ry + 4), theme.TEXT_FAINT, 10, anchor="topright")
+            theme.text(surf, hud.crew.trust(o.id), (rect.right - 114, ry + 4), theme.TEXT_FAINT, 10, anchor="topright")
             hud.ui.add(name_r, partial(hud.address, o.aliases[0] if o.aliases else o.id),
                        f"Talk to {o.name} (type after the comma)")
             btn = pygame.Rect(rect.right - 106, ry, 94, rh - 3)

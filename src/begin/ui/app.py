@@ -132,7 +132,7 @@ class App:
         """The Ready Room's launch: travel to the stop, build its battle with the squadron as it is now."""
         fight = run.launch()
         scene = self.start_battle(fight.setup)
-        scene.session.join_tour(run)
+        scene.campaign.join_tour(run)
         scene.exit_label = "Return to the Ready Room"
         scene.on_exit = self.end_tour_battle
         self.tour_run = run
@@ -142,7 +142,7 @@ class App:
         """The battle is over (or left): take the squadron back to the Ready Room and write up the log."""
         scene, run = self.scene, self.tour_run
         assert isinstance(scene, BattleScene) and run is not None and self.tours is not None
-        scene.session.finish_tour(run)
+        scene.campaign.finish_tour(run)
         self._leave_battle()
         self.tour_run = None
         self.tours.after_battle(run)

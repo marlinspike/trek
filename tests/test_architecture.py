@@ -217,3 +217,54 @@ def test_a_session_plays_without_a_screen() -> None:
     assert sum(1 for n in heard if isinstance(n, Ticked) and n.stepped) == ticks
     assert all(not hasattr(n, "color") for n in heard)
     session.close()
+
+
+def _members(proto: type) -> set[str]:
+    """What a protocol declares itself: its annotated attributes, properties and methods (not what it inherits)."""
+    own = {k for k in vars(proto) if not k.startswith("_")}
+    return own | set(getattr(proto, "__annotations__", {}))
+
+
+def test_the_session_is_the_sum_of_small_roles() -> None:
+    """Every member of `Session` belongs to exactly one role, and `Session` declares nothing of its own."""
+    from begin.session.interface import ROLES, Session
+
+    seen: dict[str, str] = {}
+    for role in ROLES:
+        members = _members(role)
+        assert members, role.__name__
+        assert len(members) <= 20, f"{role.__name__} has grown to {len(members)} members: split it"
+        for m in members:
+            assert m not in seen, f"{m} is in both {seen[m]} and {role.__name__}"
+            seen[m] = role.__name__
+    assert not _members(Session), "Session should only combine the roles"
+    assert set(Session.__mro__[1:1 + len(ROLES)]) == set(ROLES)
+
+
+def test_a_battle_session_plays_every_role() -> None:
+    from begin.session.interface import ROLES
+
+    fields = _instance_fields()
+    for role in ROLES:
+        for m in _members(role):
+            assert hasattr(BattleSession, m) or m in fields, \
+                f"BattleSession lacks {role.__name__}.{m}"
+
+
+def _instance_fields() -> set[str]:
+    session = BattleSession(build_battle(default_content(), _setup()), hidden={}, llm={}, career={})
+    return set(vars(session))
+
+
+def test_screen_parts_ask_a_role_not_the_whole_session() -> None:
+    """Outside the composition root, the battle screen reaches the game by role (`self.crew.officers()`), never
+    `self.session.officers()`, so each part's reach into the game is plain to read and to type-check."""
+    offenders: list[str] = []
+    for path in _files("ui"):
+        if _module(path) in COMPOSITION_ROOT:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute) and node.value.attr == "session":
+                offenders.append(f"{path.name}:{node.lineno} .session.{node.attr}")
+    assert not offenders, offenders

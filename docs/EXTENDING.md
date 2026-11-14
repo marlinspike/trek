@@ -126,11 +126,11 @@ register(Mode(key="ambush", title="Ambush", blurb="Three raiders drop out of war
 
 ## A new front end, a network link or a replay
 
-Present a battle by talking to a `Session` (`session/interface.py`) and nothing else: read `session.obs` for what the side knows, subscribe to its news (`session/news.py`) for what to say and play, and change the game only with `submit`, `say` and the order helpers. To play over a network, keep a mirror world on each machine and exchange the orders (`wire.dumps` / `wire.loads`) for each tick; the simulation is deterministic, so both stay in step. `tests/test_architecture.py` lists the import rules a new presenter must keep.
+Present a battle by talking to a `Session` (`session/interface.py`) and nothing else (a small presenter, such as a spectator view, can take just the roles it needs, such as `Clock` and `Display`): read `session.obs` for what the side knows, subscribe to its news (`session/news.py`) for what to say and play, and change the game only with `submit`, `say` and the order helpers. To play over a network, keep a mirror world on each machine and exchange the orders (`wire.dumps` / `wire.loads`) for each tick; the simulation is deterministic, so both stay in step. `tests/test_architecture.py` lists the import rules a new presenter must keep.
 
 ## A HUD panel
 
-Subclass `Panel` in `ui/hud.py`. Override `draw(surf, rect, hud)`, or for a tab, `body(surf, rect, y, hud)` and `tab_label(hud)`. `hud` is the `BattleScene`: read `hud.obs` (the side's Observation), `hud.player` (your ship) and `hud.session` (the `Session`), and act through its methods, which submit commands. Never read the world: if a panel needs a fact the Observation lacks, add it to `sim/observation.py`. Use the widgets in `ui/widgets.py` and the colours and fonts in `ui/theme.py`. Then add the panel to `BattleScene.panels`, or as a tab to `self.side_tabs`.
+Subclass `Panel` in `ui/hud.py`. Override `draw(surf, rect, hud)`, or for a tab, `body(surf, rect, y, hud)` and `tab_label(hud)`. `hud` is the `BattleScene`: read `hud.obs` (the side's Observation), `hud.player` (your ship) and the session by role (`hud.crew`, `hud.orders`, `hud.readout`...; see `session/interface.py`), and act through its methods, which submit commands. Never read the world: if a panel needs a fact the Observation lacks, add it to `sim/observation.py`. Use the widgets in `ui/widgets.py` and the colours and fonts in `ui/theme.py`. Then add the panel to `BattleScene.panels`, or as a tab to `self.side_tabs`.
 
 ## Manual pages
 
