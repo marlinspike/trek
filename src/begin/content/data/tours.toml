@@ -636,4 +636,4 @@ Power alone will not stop it. Survey it. Find the relay. Put it to sleep, and wh
 warp core and stand clear. If its drones take the Enterprise, there will be no one left to warn Earth.
 """
 enemies = ["borg.cu"]
-enemy_center = [0, 12000]
+enemy_center = [0, 4000]

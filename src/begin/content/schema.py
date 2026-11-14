@@ -127,10 +127,15 @@ class ShipClass:
     craft: bool = False         # [E] a small craft (a shuttle): no combatant, so she never holds the field alone
     cloak_fire: bool = False    # [E] a cloak made to fire through (the Enterprise's refit): no lingering reveal
     story: bool = False         # [E] made for one story (the Enterprise's cloak refit): never offered in setups
+    tractor_range: float = 0.0  # [E] her tractor's reach, if longer than the rules' (a Borg cube's); 0: the rules'
 
     @property
     def rated_sensor_range(self) -> float:
         return self.scanner_range * self.sensor_scale
+
+    def tractor_reach(self, default: float) -> float:
+        """How far her tractor beam reaches: her own reach if she has one, else the rules' `default`."""
+        return self.tractor_range or default
 
     @property
     def is_base(self) -> bool:

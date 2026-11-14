@@ -2,7 +2,9 @@
 
 The Collective does not bargain, retreat or strike its colours, and it does not fight the way a captain does.
 It chooses whoever has hurt it most (`Mind.threat`), ignores small craft until it has noticed them, closes
-steadily, holds its prey in a tractor beam and beams drones across to take the ship rather than destroy it.
+steadily, holds its prey in a tractor beam and beams drones across to take the ship rather than destroy it. A
+cube (a ship with a long tractor) goes for the biggest prize, runs it down at her best speed and holds it in her
+beam's reach, where the beam drains its shields (sim/collective.py).
 A dormant ship (its vinculum relay cut) does nothing at all until it wakes.
 
 Everything else (firing arcs, point defense, helm) is the ordinary captain's, so a cube moves and shoots by the
@@ -14,17 +16,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
+from ..core.angles import bearing
 from ..sim.commands import (
-    Command, FireAtPoint, FirePhasers, FireSpecialRound, FireTorpedoes, SelfDestruct, Surrender, Tractor, Transport,
+    Command, FireAtPoint, FirePhasers, FireSpecialRound, FireTorpedoes, SelfDestruct, SetHelm, Surrender, Tractor,
+    Transport,
 )
 from ..sim.observation import ContactView, Observation
 from ..sim.ship import Ship
 from .captain import AICaptain
 
 THREAT_WEIGHT = 1.0 / 150.0     # each 150 points of damage a ship has done the hive doubles its claim on our attention
+PRIZE_MASS = 100.0              # a ship's mass over this many tons raises her claim in proportion: a flagship first
 CRAFT_IGNORED = 0.0             # an unnoticed small craft is beneath notice
 BEAM_MIN_PARTY = 4              # drones in the smallest party worth sending
 TRACTOR_REACH = 0.9             # × tractor range: inside it, hold the prey
+TRACTOR_WORKS = 50.0            # damage beyond which a wrecked emitter, half mended, can't hold anything yet
+HUNT_UNTIL = 0.6                # × tractor range: a ship with a long tractor runs her prey down until this close
 RIPE_HULL = 0.35                # prey this hurt is to be taken, not destroyed: hold fire and send drones
 PROVOKED_CYCLES = 3.0           # ... unless she has hurt us this recently
 FIRE = (FirePhasers, FireTorpedoes, FireAtPoint, FireSpecialRound)
@@ -42,6 +49,9 @@ class BorgCaptain(AICaptain):
             return []
         self.retreating = self.withdrawing = False    # the hive never breaks
         out = [c for c in super().think(obs) if not isinstance(c, (Surrender, SelfDestruct))]
+        if self._hunting(obs, ship):
+            course = self._helm(obs, ship, self._prey_bearing(obs, ship), self.combat_speed(ship, obs))
+            out = [c for c in out if not isinstance(c, SetHelm)] + ([course] if course is not None else [])
         if self._ripe(obs):
             out = [c for c in out if not isinstance(c, FIRE)]
         out.extend(self._assimilate(obs, ship))
@@ -69,11 +79,34 @@ class BorgCaptain(AICaptain):
         base = super()._score(obs, ship, c, probed, focused)
         m = obs.hive()
         hurt = m.threat.get(c.id, 0.0) if m is not None else 0.0
-        return base * (1.0 + hurt * THREAT_WEIGHT)
+        prize = 1.0
+        if ship.cls.tractor_range and c.cls is not None:
+            prize = max(1.0, c.cls.mass / PRIZE_MASS)       # a cube goes for the biggest prize: the flagship
+        return base * (1.0 + hurt * THREAT_WEIGHT) * prize
 
     def _subsystem_choice(self, obs: Observation, ship: Ship, c: ContactView | None) -> str | None:
         """The hive cuts the weapons that are teaching it, so the ship can be taken whole."""
         return "weapons" if c is not None else None
+
+    def _hunting(self, obs: Observation, ship: Ship) -> bool:
+        """A hive ship with a long tractor (a cube) does not stand off: she runs her prey down at her best speed
+        until it is in her grip. Once it is held, the ordinary helm keeps the range."""
+        if not ship.cls.tractor_range or not self._grip(ship):
+            return False
+        c = obs.contact(self.target) if self.target is not None else None
+        if c is None or not c.visible or c.cls is None or c.cls.is_base or ship.tractor_target == c.id:
+            return False
+        return c.distance_to(ship.x, ship.y) >= ship.cls.tractor_range * HUNT_UNTIL
+
+    @staticmethod
+    def _grip(ship: Ship) -> bool:
+        """Her tractor can hold a ship: there, and not still half wrecked from a strike."""
+        return (ship.tractor is not None and ship.tractor.intact and ship.tractor.damage < TRACTOR_WORKS
+                and ship.grip_rest <= 0.0)
+
+    def _prey_bearing(self, obs: Observation, ship: Ship) -> float:
+        c = obs.contact(self.target) if self.target is not None else None
+        return bearing(c.x - ship.x, c.y - ship.y) if c is not None else ship.course
 
     def _assimilate(self, obs: Observation, ship: Ship) -> list[Command]:
         out: list[Command] = []
@@ -82,8 +115,7 @@ class BorgCaptain(AICaptain):
         if rules is None or c is None or not c.visible or c.cls is None:
             return out
         d = c.distance_to(ship.x, ship.y)
-        if (ship.cls.has_tractor and ship.tractor is not None and ship.tractor.intact
-                and ship.tractor_target != c.id and d < obs.rules.tractor_range * TRACTOR_REACH and not c.cls.is_base):
+        if (ship.cls.has_tractor and self._grip(ship) and ship.tractor_target != c.id and d < ship.cls.tractor_reach(obs.rules.tractor_range) * TRACTOR_REACH and not c.cls.is_base):
             out.append(self._cmd(Tractor, ship, target=c.id))
         tpc = obs.rules.ticks_per_cycle
         every = rules.beam_every * (0.5 if self._ripe(obs) else 1.0)

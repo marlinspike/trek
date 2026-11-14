@@ -78,6 +78,7 @@ AI_WEAVE_AGGR_BASE = 1.1
 AI_SIDESTEP = 90.0
 AI_KNIFE_FIGHT_RANGE = 1.5       # [E] × phaser range: inside it, fight rather than reopen the range
 DANGER_CLOSE_COMPETENCE = 0.5   # [E] a captain this competent never launches a probe the target can burst on us
+SLIP_CYCLES = 4.0               # cycles a captain who cloaked to slip a tractor beam stays hidden [E]
 AI_BASE_STANDOFF = 0.6           # [E] × phaser range: the closest an attacker comes to a base
 AI_STANDOFF_OPEN_ANGLE = 70.0     # [E] degrees off dead astern when opening to torpedo standoff
 AI_FANATIC_RAM = 0.9
@@ -162,6 +163,7 @@ class AICaptain:
     style_since: int = 0       # tick the phase began
     style_mark: int = 0        # shots fired (phaser shots + torpedoes) when the phase began
     style_ready: int = 0       # tick the next run may start
+    slipped: int | None = None # tick we cloaked to slip a hive ship's tractor beam [E]
 
     def obeys_flagship(self, ship: Ship) -> bool:
         """Will this captain hold back from a kill because the flagship wants the ship disabled? [E]"""
@@ -472,10 +474,12 @@ class AICaptain:
         return score
 
     def _relay_aim(self, obs: Observation, c: ContactView | None) -> str | None:
-        """[E] A competent captain who knows where a hive ship's vinculum relay runs aims at it while she is awake:
-        it puts her whole crew to sleep."""
+        """[E] A competent captain held in a hive ship's tractor beam aims at the emitter; one who knows where her
+        vinculum relay runs aims at it while she is awake: it puts her whole crew to sleep."""
         if c is None or self.personality.competence < DANGER_CLOSE_COMPETENCE or not obs.is_hive(c.id):
             return None
+        if obs.held_by(self.ship_id) == c.id:
+            return "tractor"               # first cut the beam that holds us: fire down it gets through her shields
         return "relay" if obs.weak_point(c.id) is not None and obs.dormant(c.id) <= 0 else None
 
     def _subsystem_choice(self, obs: Observation, ship: Ship, c: ContactView | None) -> str | None:
@@ -779,6 +783,9 @@ class AICaptain:
         return []
 
     def _cloak(self, obs: Observation, ship: Ship, c: ContactView | None) -> list[Command]:
+        slip = self._slip(obs, ship)
+        if slip is not None:
+            return slip
         if ship.cloak is None or not ship.cloak.intact or self.personality.doctrine.cloak_ambush <= 0:
             return []
         if c is None:
@@ -799,6 +806,23 @@ class AICaptain:
                     self._log(obs, "decloaking to strike")
                     return [self._cmd(SetCloak, ship, on=False)]
         return []
+
+    def _slip(self, obs: Observation, ship: Ship) -> list[Command] | None:
+        """[E] Held in a hive ship's tractor beam, a competent captain with a cloak vanishes to slip it, and comes
+        back a few cycles later to fight on. None: nothing to do with the beam."""
+        if ship.cloak is None or not ship.cloak.intact or self.personality.competence < DANGER_CLOSE_COMPETENCE:
+            return None
+        holder = obs.held_by(ship.id)
+        if holder is not None and obs.is_hive(holder) and not ship.cloaked:
+            self.slipped = obs.tick
+            self._log(obs, "cloaking to slip her tractor beam")
+            return [self._cmd(SetCloak, ship, on=True)]
+        if self.slipped is not None and ship.cloaked and \
+                obs.tick - self.slipped >= SLIP_CYCLES * obs.rules.ticks_per_cycle:
+            self.slipped = None
+            self._log(obs, "out of her grip: decloaking")
+            return [self._cmd(SetCloak, ship, on=False)]
+        return [] if self.slipped is not None else None
 
     # ------------------------------------------------------------ standing orders from the flagship
 

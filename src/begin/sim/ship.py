@@ -78,6 +78,7 @@ TARGETABLE_GROUPS: dict[str, tuple[Kind, ...]] = {
     "power": (Kind.REACTOR, Kind.BATTERY),
     "sensors": (Kind.SENSORS, Kind.COMPUTER),
     "cloak": (Kind.CLOAK,),
+    "tractor": (Kind.TRACTOR,),   # [E] cut a tractor beam that holds us
     "crew": (),          # life support and the crew decks: aimed hits kill crew, not machinery [E]
     "relay": (),         # a Borg ship's vinculum relay: whichever system carries it (sim/collective.py) [E]
 }
@@ -392,6 +393,7 @@ class Ship:
     # fire control state shared by every controller of this ship
     target: int | None = None
     target_subsystem: str | None = None  # TARGETABLE_GROUPS key or a subsystem sid
+    aim_by_officer: bool = False         # [E] an officer chose that subsystem (they may change it; the captain's stays)
 
     cloaked: bool = False
     reveal_time: float = 0.0           # cycles the ship stays visible after firing/being hit
@@ -435,6 +437,8 @@ class Ship:
     duty_by: str = ""                  # who is on it (officer id)
     weak_point: str = ""               # a hive ship: the subsystem her vinculum relay runs through
     dormant: float = 0.0               # a hive ship: cycles before her drones wake
+    grip: float = 0.0                  # a cube: cycles her tractor has held her prey without a break [E]
+    grip_rest: float = 0.0             # ... and cycles before her overheated emitter can hold anything again
     cores_lost: int = 0                # a hive ship: drives and reactors already counted for chain reactions
     last_attacker: int | None = None   # who hit her last (credit for a chain reaction)
     beam_ready: float = 0.0            # a hive ship: cycles before her transporters can send more drones

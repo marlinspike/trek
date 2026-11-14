@@ -1639,7 +1639,7 @@ Fire at a narrow spread against one ship and a wide one against several objects,
 |---|---|---|---|---|---|---|---|
 | Probe (`PR`) | Borg | 9 | 3 (2,400) | 2 × bgt | 0 × - | 6 × 150 | 260 |
 | Sphere (`SP`) | Borg | 9 | 6 (2,600) | 4 × bgt | 0 × - | 6 × 240 | 1400 |
-| Cube (`CU`) | Borg | 7 | 12 (2,900) | 6 × bgt | 0 × - | 6 × 360 | 9000 |
+| Cube (`CU`) | Borg | 9.9 | 12 (2,900) | 6 × bgt | 0 × - | 6 × 360 | 9000 |
 | Shuttlecraft (`SH`) | Federation | 5 | 0 (0) | 0 × mk7 | 0 × px2 | 6 × 25 | 8 |
 | Tug (`TG`) | Federation | 4 | 0 (2,000) | 0 × - | 0 × - | 0 × 50 | 25 |
 | Interceptor (`IN`) | Federation | 12 | 6 (2,000) | 1 × mk7 | 1 × px2 | 6 × 150 | 105 |
@@ -4196,6 +4196,24 @@ While she sleeps:
 
 When the drones wake, they reroute the relay and you have to find it again.
 
+#### The cube hunts you
+
+A cube does not stand off. She goes for the biggest ship on the field, the Enterprise, and she is faster than you are: warp 9.9 against your 9.5, so you can't keep the range open for ever. Once she is within about 3,000 she locks her **tractor beam** on you. It holds you where you are, inside her beams, and drains every one of your shields, about 6% a cycle, so her cutting beams start to reach the hull. Engineering tells you the moment she has you.
+
+There are three ways out:
+
+```text
+target cube tractor
+fire all
+cloak on
+```
+
+- **Fire down the beam.** Her tractor runs out through her own shields, so fire aimed at the emitter gets through them (`target cube tractor`, or "target their tractor beam"). Wreck it, and she can't hold anything until her drones have half mended it. An officer running tactical aims at it the moment she takes hold, ahead of her relay.
+- **Cloak.** A ship that vanishes slips the beam. An officer flying the Enterprise with the refit cloak does this on their own, and comes back a few cycles later.
+- **Wait her out.** No emitter holds a starship for long. After about 8 cycles it overloads and lets go, and it needs some 20 more before it can hold anything again. By then your shields are gone and her beams are in your hull, so don't count on it.
+
+Then get the range open again, and finish the survey before she catches you twice.
+
 #### Drones aboard
 
 Drones beam through any shield that isn't tuned against them. Once aboard, every crewman they overpower becomes another drone, and once enough of them are settled in they take your systems one at a time.
@@ -4239,7 +4257,7 @@ The drones take a long time to mend what a strike wrecked, so make the salvo cou
 
 A good order of battle:
 
-1. Keep the range open and let Seven survey the cube. Tune your shields before the drones come.
+1. Keep the range open as long as you can and let Seven survey the cube. When she catches you, cut her tractor beam at once.
 2. Find the relay. Put her to sleep, and send Worf across to steal her harmonics.
 3. When she wakes, put one full salvo through the harmonics into her shields, and the next into her drives.
 4. Cloak, and finish her through the holes.
@@ -4386,7 +4404,7 @@ Type `coach` or press **H** and pick **Coach**: this page then reads your actual
 |---|---|---|---|---|---|---|---|
 | Probe (`PR`) | Borg | 9 | 3 (2,400) | 2 × bgt | 0 × - | 6 × 150 | 260 |
 | Sphere (`SP`) | Borg | 9 | 6 (2,600) | 4 × bgt | 0 × - | 6 × 240 | 1400 |
-| Cube (`CU`) | Borg | 7 | 12 (2,900) | 6 × bgt | 0 × - | 6 × 360 | 9000 |
+| Cube (`CU`) | Borg | 9.9 | 12 (2,900) | 6 × bgt | 0 × - | 6 × 360 | 9000 |
 | Shuttlecraft (`SH`) | Federation | 5 | 0 (0) | 0 × mk7 | 0 × px2 | 6 × 25 | 8 |
 | Tug (`TG`) | Federation | 4 | 0 (2,000) | 0 × - | 0 × - | 0 × 50 | 25 |
 | Interceptor (`IN`) | Federation | 12 | 6 (2,000) | 1 × mk7 | 1 × px2 | 6 × 150 | 105 |
@@ -4604,7 +4622,7 @@ Type `coach` or press **H** and pick **Coach**: this page then reads your actual
 |---|---|---|---|---|---|---|---|
 | Probe (`PR`) | Borg | 9 | 3 (2,400) | 2 × bgt | 0 × - | 6 × 150 | 260 |
 | Sphere (`SP`) | Borg | 9 | 6 (2,600) | 4 × bgt | 0 × - | 6 × 240 | 1400 |
-| Cube (`CU`) | Borg | 7 | 12 (2,900) | 6 × bgt | 0 × - | 6 × 360 | 9000 |
+| Cube (`CU`) | Borg | 9.9 | 12 (2,900) | 6 × bgt | 0 × - | 6 × 360 | 9000 |
 | Shuttlecraft (`SH`) | Federation | 5 | 0 (0) | 0 × mk7 | 0 × px2 | 6 × 25 | 8 |
 | Tug (`TG`) | Federation | 4 | 0 (2,000) | 0 × - | 0 × - | 0 × 50 | 25 |
 | Interceptor (`IN`) | Federation | 12 | 6 (2,000) | 1 × mk7 | 1 × px2 | 6 × 150 | 105 |

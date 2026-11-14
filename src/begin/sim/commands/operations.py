@@ -193,8 +193,9 @@ class Tractor(Command):
             raise Rejected("No working tractor beam.")
         t = _require_target(world, ship, self.target)
         d = math.hypot(t.x - ship.x, t.y - ship.y)
-        if d > world.rules.tractor_range:
-            raise Rejected(f"Target beyond tractor range ({d:,.0f} > {world.rules.tractor_range:,.0f}).")
+        reach = ship.cls.tractor_reach(world.rules.tractor_range)
+        if d > reach:
+            raise Rejected(f"Target beyond tractor range ({d:,.0f} > {reach:,.0f}).")
 
     def apply(self, world: World, ship: Ship) -> None:
         ship.tractor_target = self.target

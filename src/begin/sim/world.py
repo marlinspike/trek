@@ -686,9 +686,14 @@ class World:
             if t is None or not t.exists or s.tractor is None or not s.tractor.intact:
                 s.tractor_target = None
                 continue
+            if t.cloaked and t.side != s.side:
+                s.tractor_target = None            # a ship that vanishes slips the beam
+                self.say(s, f"Tractor beam lost {t.name}.", "caution")
+                continue
             d = math.hypot(t.x - s.x, t.y - s.y)
-            ratio = s.cls.tractor_strength / max(1.0, t.cls.mass) * max(0.0, 1.0 - 0.5 * d / r.tractor_range)
-            if d > r.tractor_range * 1.25 or ratio < 0.1:
+            reach = s.cls.tractor_reach(r.tractor_range)
+            ratio = s.cls.tractor_strength / max(1.0, t.cls.mass) * max(0.0, 1.0 - 0.5 * d / reach)
+            if d > reach * 1.25 or ratio < 0.1:
                 s.tractor_target = None
                 self.say(s, f"Tractor beam lost {t.name}.", "caution")
                 continue

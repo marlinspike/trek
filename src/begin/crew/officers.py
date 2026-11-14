@@ -136,9 +136,14 @@ class OfficerBrain(AICaptain):
         if captains is not None:
             best = captains
             relay = self._relay_aim(obs, best) if self.station in ("tactical", "bridge") else None
-            if relay is not None and ship.target_subsystem != relay and ship.target_subsystem in (None, self.own_aim):
-                # [E] a found relay beats whatever system the officer picked (never one the captain named)
+            mine = ship.target_subsystem in (None, self.own_aim) or ship.aim_by_officer
+            if relay is not None and ship.target_subsystem != relay and mine:
+                # [E] a found relay, or the tractor holding us, beats whatever system the officer picked (never
+                # one the captain named)
                 self.own_aim = relay
+                out.append(self._cmd(SelectTarget, ship, target=best.id, subsystem=relay))
+            elif relay != "tractor" and ship.target_subsystem == "tractor" and mine:
+                self.own_aim = relay                 # the beam is cut: back to the relay, or the whole ship
                 out.append(self._cmd(SelectTarget, ship, target=best.id, subsystem=relay))
         else:
             best, best_score = None, 0.0

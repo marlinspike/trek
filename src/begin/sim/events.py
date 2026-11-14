@@ -263,7 +263,8 @@ class HiveEvent(Event):
     chain (a destroyed core set off a chain reaction), surveyed (a scan added to what we know; detail "weak" or
     "code" when it found the weak point or cracked the code), harmonics / noticed (stolen harmonics working, and
     the moment the hive notices), remodulated (our phasers changed frequency), assimilated (a ship was taken), struck (a strike through an
-    opening in her shields wrecked a system; detail its label).
+    opening in her shields wrecked a system; detail its label), held (her tractor beam has `target` and is
+    draining its shields), released (her overheated emitter let `target` go).
     """
 
     ship_id: int

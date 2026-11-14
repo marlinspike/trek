@@ -265,3 +265,86 @@ def test_a_numbered_ship_takes_no_article() -> None:
 
     assert the("Cube 228") == "Cube 228" and the("#12") == "#12"
     assert the("Hornet") == "the Hornet" and the("Hornet", cap=True) == "The Hornet"
+
+
+def _held(content, ours: str = "federation.dn"):  # type: ignore[no-untyped-def]
+    b = build_battle(content, BattleSetup([FleetSpec(0, [ShipSpec(ours, x=0.0, y=0.0, course=0.0)], player=True),
+                                           FleetSpec(1, [ShipSpec("borg.cu", x=0.0, y=9000.0, course=180.0)])], seed=3))
+    w = b.world
+    us, cube = w.ships[b.player_ship_id], next(s for s in w.ships.values() if s.side == 1)
+    cube.x, cube.y = 0.0, 2000.0
+    cube.tractor_target = us.id
+    return b, w, us, cube
+
+
+def test_the_cube_runs_the_enterprise_down_and_holds_her_from_far_off(content) -> None:  # type: ignore[no-untyped-def]
+    """Reuben (2026-11-14): "the cube has to be scarier than that". She was slower than the Enterprise and stood
+    off, so the officers kited her for ever."""
+    cube = content.classes["borg.cu"]
+    assert cube.max_warp > content.classes["federation.dn"].max_warp
+    assert cube.tractor_reach(1000.0) >= 3000.0 > content.classes["borg.sp"].tractor_reach(1000.0)
+    _, w, us, them = _borg(content, "borg.cu")
+    them.x, them.y = 0.0, 2600.0
+    for _ in range(int(3 * w.rules.ticks_per_cycle)):
+        w.step()
+    assert them.tractor_target == us.id
+
+
+def test_her_grip_drains_our_shields_until_her_emitter_overheats(content) -> None:  # type: ignore[no-untyped-def]
+    _, w, us, cube = _held(content)
+    said = _said(type("B", (), {"world": w})())
+    for _ in range(int(6 * w.rules.ticks_per_cycle)):
+        w.step()
+    assert max(sh.strength for sh in us.shields) < 100.0 - collective.DRAIN * 4
+    for _ in range(int(collective.GRIP_CYCLES * w.rules.ticks_per_cycle)):
+        w.step()
+    assert cube.tractor_target != us.id and cube.grip_rest > 0
+    assert said is not None
+
+
+def test_fire_down_the_beam_gets_through_her_shields(content) -> None:  # type: ignore[no-untyped-def]
+    _, w, us, cube = _held(content)
+    us.target, us.target_subsystem = cube.id, "tractor"
+    assert collective.incoming(w, cube, us, "phaser")[1]
+    us.target_subsystem = "propulsion"
+    assert not collective.incoming(w, cube, us, "phaser")[1]
+
+
+def test_a_cloak_slips_the_beam(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.commands import SetCloak
+
+    _, w, us, cube = _held(content, "federation.dnc")
+    w.execute(SetCloak(ship_id=us.id, on=True))
+    for _ in range(int(3 * w.rules.ticks_per_cycle)):
+        w.step()
+        if us.cloaked:
+            break
+    w.step()
+    assert us.cloaked and cube.tractor_target is None
+
+
+def test_officers_aim_at_the_emitter_when_she_takes_hold(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.commands import TakeConn
+
+    _, w, us, cube = _held(content)
+    w.execute(TakeConn(ship_id=us.id, officer="spock"))
+    for _ in range(int(3 * w.rules.ticks_per_cycle)):
+        w.step()
+        if us.target_subsystem == "tractor":
+            break
+    assert us.target == cube.id and us.target_subsystem == "tractor"
+
+
+def test_an_officer_with_the_refit_cloak_slips_her_grip_and_comes_back(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.commands import TakeConn
+
+    _, w, us, cube = _held(content, "federation.dnc")
+    w.execute(TakeConn(ship_id=us.id, officer="spock"))
+    hid = freed = False
+    for _ in range(int(20 * w.rules.ticks_per_cycle)):
+        w.step()
+        hid = hid or us.cloaked
+        freed = freed or (hid and cube.tractor_target != us.id)
+        if hid and freed and not us.cloaked:
+            break
+    assert hid and freed and not us.cloaked

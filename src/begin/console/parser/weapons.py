@@ -202,7 +202,7 @@ class WeaponVerbs(ParserBase):
         whose = lead in ("the", "her", "its", "his") or (bool(rest) and (
             rest[0] in self._THEIR or rest[0] in self._FACTIONS or rest[0].rstrip("s") in self._FACTIONS
             or tok.toks[tok.i].endswith(("'s", "s'"))))
-        if whose and any(system_word(w) for w in rest):
+        if whose and "tractor" not in rest and any(system_word(w) for w in rest):   # "their tractor beam" is an aim
             # "target their shields", "target her engines", "target the Klingons' shields", "target all their
             # torps": an officer knocks that system out and stops there [E]
             self._disable_enemy(tok, res)

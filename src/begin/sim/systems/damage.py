@@ -133,6 +133,8 @@ def apply_damage(
     else:
         # no shield touched it: aimed at a hive ship, that is a strike through an opening [E]
         strike = collective.strike_rules(world, target, att) if aim is not None and remaining == amount else None
+        if strike is not None and att is not None and collective.down_the_beam(target, att):
+            strike = None                          # down her tractor beam: in, but no clear sight of the system
         _hull_remake(world, target, remaining, rel, attacker, aim, strike)
     if seen is not None:
         seen.hull = max(0.0, target.structure / max(1.0, target.structure_max))
