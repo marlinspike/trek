@@ -249,10 +249,12 @@ class BridgeMixin(SceneState):
     def _proposal_height(self: BattleScene) -> int:
         return 66 if isinstance(self.proposal, Proposal) and not self.console_focus else 0
 
-    def _draw_proposal(self: BattleScene, surf: pygame.Surface) -> None:
+    def _draw_proposal(self: BattleScene, surf: pygame.Surface) -> pygame.Rect | None:
+        """An officer's proposal, low on the map (or a chip above the console while the captain types). Returns
+        the area it covers."""
         p = self.proposal
         if not isinstance(p, Proposal):
-            return
+            return None
         col = STATION_COLOR.get(p.station, theme.CREW)
         left = max(0.0, 1.0 - p.age / p.life)
         if self.console_focus:
@@ -266,7 +268,7 @@ class BridgeMixin(SceneState):
             station_mark(surf, p.station, (r.x + 12, r.centery), 5, col)
             theme.text(surf, msg, (r.x + 24, r.y + 4), theme.TEXT, 12)
             theme.text(surf, keys, (r.right - 10, r.y + 5), theme.CAUTION, 11, weight="semibold", anchor="topright")
-            return
+            return None
         r = self.map_rect
         cb = self.counsel_box if self.counsel_open else None
         if cb is not None and r.right - cb.right > 300:        # the open part of the map, beside the counsel
@@ -298,6 +300,7 @@ class BridgeMixin(SceneState):
         theme.text(surf, f"→ {p.line}", (box.right - 14, box.y + 33), theme.TEXT_FAINT, 11, "mono", anchor="topright")
         bar = pygame.Rect(box.x + 6, box.bottom - 3, int((box.width - 12) * left), 2)
         gfx.draw.rect(surf, theme.dim(col, 0.8), bar)
+        return box
 
     # ------------------------------------------------------------ the Bridge setting
 

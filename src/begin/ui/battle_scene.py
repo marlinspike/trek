@@ -37,6 +37,7 @@ from .battle.common import CONTROLS, SPEEDS, TONE_COLOR, LogLine
 from .battle.comms import CommsMixin
 from .battle.input import InputMixin
 from .battle.render import RenderMixin
+from .battle.stage import Stage
 from .battle.voice import VoiceMixin
 from .camera import Camera
 from .hud import ContactsPanel, CrewPanel, FleetPanel, OwnShipPanel, Panel, TabbedPanel, TargetPanel, WeaponsPanel
@@ -113,6 +114,8 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
         self.counsel_ran: dict[str, float] = {}   # steps run from the panel: line -> when, for a moment's tick
         self.counsel_box: pygame.Rect | None = None   # where the panel was last drawn: other cards keep clear of it
         self._wheel_t: float = 0.0
+        self.stage: Stage = Stage()                   # one card on the map at a time
+        self._mission_box: pygame.Rect | None = None  # the mission card or strip, as last drawn
         self.completer: Completer = Completer()
         self._preview_key: object = None
         self._preview = None

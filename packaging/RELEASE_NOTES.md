@@ -1,3 +1,7 @@
+## What's new in 1.4
+
+**Calm big fights.** In a crowded battle every ship's name now finds a clear place beside her, keeps clear of other names, hulls and cards, and stays on the same side as ships move. Names of distant ships fade when the map is busy, and the enraged-captain flames shrink to small dots, so the fight near you stands out. The map shows one card at a time: a proposal, the comms card while someone is talking, the mission card when it has news, or a subtitle. The others fold to a single line or wait in the log.
+
 ## What's new in 1.3
 
 **The Borg.** A new enemy that can't be beaten by trading shots. Every weapon that lands teaches the whole hive, so phasers soon stop biting until you remodulate. Their hulls regrow and their drones beam aboard to take your crew. Scans find a cube's vinculum relay, then her shield harmonics, and torpedoes tuned to those harmonics pass straight through her shields. Destroy the relay and she falls asleep; hit her core then and she goes up in a chain reaction. Seven of Nine takes one duty at a time (tuning your shields against their transporters, surveying for harmonics, or watching your phasers), and away teams can take the Galileo across to a sleeping ship. There are three new battles (probe, sphere and cube) and a new tour, **The Collective**, where the hive remembers your weapons from one stop to the next.

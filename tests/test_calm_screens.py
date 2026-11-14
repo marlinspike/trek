@@ -203,3 +203,88 @@ def test_the_engineer_says_nothing_of_a_scratch_and_grows_grave_only_below_half(
 
     words = damage_words([Sub("Reactor 7", 100, True), Sub("Phaser bank 6", 26)])  # type: ignore[list-item]
     assert words == "reactor 7 is destroyed and phaser bank 6 is 26% damaged"
+
+
+# ------------------------------------------------------------------ calm big fights (2026-11-14)
+
+def test_names_on_a_crowded_map_never_cover_each_other(fresh, content) -> None:  # type: ignore[no-untyped-def]
+    from begin.battle import build_battle
+    from begin.presets import load_presets
+    from begin.ui.battle_scene import BattleScene
+
+    presets = {p.id: p for p in load_presets()}
+    found: dict[str, str] = {}
+    seen = 0
+    for size in SIZES:
+        surf = pygame.display.set_mode(size)
+        sc = BattleScene(build_battle(content, presets["fleet-action"].setup()), size, lambda: None)
+        sc.overlay = None
+        sc.paused = False
+        for step in range(900):
+            sc.update(1 / 30)
+            if step % 150 != 149:
+                continue
+            for reach in (6000, 15000, 40000):           # close in, the whole fight, and far out
+                sc.set_display_range(reach)
+                sc.draw(surf)
+                with theme.watching() as ink:
+                    sc.draw(surf)
+                names = [k for k in ink if k.kind == "label" and sc.map_rect.contains(k.rect)]
+                seen = max(seen, len(names))
+                for i, a in enumerate(names):
+                    for b in names[i + 1:]:
+                        o = a.rect.clip(b.rect)
+                        if o.width > 2 and o.height > 2:
+                            found.setdefault(f"{size} step {step} range {reach}",
+                                             f"{a.text!r} {tuple(a.rect)} over {b.text!r} {tuple(b.rect)}")
+    assert seen >= 8, seen              # it was a crowded map
+    assert not found, "\n".join(f"{k}: {v}" for k, v in sorted(found.items()))
+
+
+def test_a_name_keeps_its_side_and_the_ones_that_matter_always_show() -> None:
+    from begin.ui.labels import Ask, Placer
+
+    area = pygame.Rect(0, 0, 400, 300)
+    p = Placer()
+    asks = [Ask(1, 200, 150, 20, 60, 14, (0.0, 0.0), True), Ask(2, 205, 152, 20, 60, 14, (3.0, 500.0)),
+            Ask(3, 203, 149, 20, 60, 14, (3.0, 900.0))]
+    first = p.place(asks, area, [(1, 200, 150, 16), (2, 205, 152, 16), (3, 203, 149, 16)])
+    assert set(first) == {1, 2, 3}
+    rects = [s.rect for s in first.values()]
+    assert all(not a.colliderect(b) for i, a in enumerate(rects) for b in rects[i + 1:])
+    again = p.place(asks, area, [(1, 200, 150, 16), (2, 205, 152, 16), (3, 203, 149, 16)])
+    assert {k: s.slot for k, s in again.items()} == {k: s.slot for k, s in first.items()}    # no hopping about
+    # a pile of names on one point: the low ones give way, ours never does
+    pile = [Ask(i, 200, 150, 10, 120, 14, (3.0, float(i)), i == 0) for i in range(40)]
+    out = Placer().place(pile, area, [])
+    assert 0 in out and len(out) < 40
+    assert Placer().place([Ask(9, 900, 150, 10, 60, 14)], area, []) == {}      # off the map: no half a name
+
+
+def test_distant_names_fade_only_in_a_crowd() -> None:
+    from begin.ui.labels import FADE_MAX, fade
+
+    assert fade(4, 50000.0, False, 8000.0, 20000.0) == 0.0          # a quiet map: nothing fades
+    assert fade(20, 50000.0, True, 8000.0, 20000.0) == 0.0          # ours and the target never do
+    assert fade(20, 3000.0, False, 8000.0, 20000.0) == 0.0          # nor anything close
+    assert fade(20, 50000.0, False, 8000.0, 20000.0) == FADE_MAX
+
+
+def test_one_card_on_the_map_at_a_time() -> None:
+    from begin.ui.battle.stage import MISSION_NEWS, Stage, news_key
+
+    st = Stage()
+    news = news_key("open", "rescue", "Close to 3,000 of her (8,400 now).", "dim")
+    assert st.pick(1.0, news=news, subtitle=True) == "mission"           # the mission's news first
+    assert not st.subtitle                                                # the line waits in the log
+    assert st.pick(1.1, news=news, proposal=True, subtitle=True) == "proposal"
+    assert st.pick(1.2, news=news, comms=True, urgent=True) == "comms"
+    assert st.pick(1.3, news=news, urgent=True) == "urgent" and st.subtitle
+    t = 1.3
+    while st.pick(t, news=news, subtitle=True) == "mission":              # the card's own turn runs out
+        t += 0.2
+    assert MISSION_NEWS - 1 < t - 1.3 < MISSION_NEWS + 1 and st.shown == "subtitle"
+    closer = news_key("open", "rescue", "Close to 3,000 of her (6,100 now).", "dim")
+    assert st.pick(t + 0.1, news=closer, subtitle=True) == "subtitle"     # a closing range isn't news
+    assert st.pick(t + 0.2, news=closer, hover=True) == "mission"         # resting the pointer on the strip is
+    assert st.pick(t + 0.3, counsel=True, proposal=True) == "counsel"

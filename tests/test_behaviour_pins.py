@@ -319,6 +319,7 @@ def _map(content):  # type: ignore[no-untyped-def]
 
 
 def _flush(view) -> None:  # type: ignore[no-untyped-def]
+    view._place_names()
     for name in view._names:
         name()
     view._names = []

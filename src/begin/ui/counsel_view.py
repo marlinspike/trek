@@ -246,6 +246,30 @@ def draw_mission(surf: pygame.Surface, top_right: tuple[int, int], m: MissionVie
     return box
 
 
+def draw_mission_strip(surf: pygame.Surface, top_right: tuple[int, int], m: MissionView) -> pygame.Rect:
+    """The mission card folded to one line while another card has the map: its title, how it stands, and its
+    progress along the foot. Rest the pointer on it to see the whole card. Returns its rect."""
+    stand, _, col, frac = mission_lines(m)
+    box = pygame.Rect(top_right[0] - MISSION_W, top_right[1], MISSION_W, 26)
+    theme.shadow(surf, box, 4)
+    gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=6)
+    edge = col if m.state != "open" else theme.dim(theme.FRIEND, 0.6)
+    gfx.draw.rect(surf, edge, box, 1, border_radius=6)
+    tag = {"open": "MISSION", "done": "DONE", "failed": "FAILED"}[m.state]
+    theme.text(surf, tag, (box.x + 12, box.y + 7), theme.TEXT_DIM if m.state == "open" else col, 10, "display",
+               weight="medium")
+    x = box.x + 18 + theme.text_width(tag, 10, "display", "medium")
+    room = box.right - 12 - x
+    words = f"{m.title}  ·  {stand}" if m.state == "open" else m.title
+    if theme.text_width(words, 12) > room:
+        words = m.title                 # how it stands only when it fits whole: the card has it all
+    theme.text(surf, theme.fit(words, 12, room), (x, box.y + 5), theme.TEXT, 12)
+    if frac is not None:
+        _bar(surf, pygame.Rect(box.x + 8, box.bottom - 4, box.width - 16, 2), frac,
+             theme.GOOD if m.state != "failed" else theme.ALERT)
+    return box
+
+
 def draw_marks(surf: pygame.Surface, cam: Camera, m: MissionView, poses: dict[int, tuple[float, float, float]],
                clip: pygame.Rect, now: float) -> None:
     """A ring and a word on the ward and the runner, so the captain can find the ship the mission is about."""
@@ -273,4 +297,4 @@ def draw_marks(surf: pygame.Surface, cam: Camera, m: MissionView, poses: dict[in
     surf.set_clip(old)
 
 
-__all__ = ["STATION_ACCENT", "counsel_rect", "draw_counsel", "draw_marks", "draw_mission", "mission_lines"]
+__all__ = ["STATION_ACCENT", "counsel_rect", "draw_counsel", "draw_marks", "draw_mission", "draw_mission_strip", "mission_lines"]

@@ -6,7 +6,7 @@ aliases: missions, mission, rescue, escort, convoy, intercept, runner, ward, hun
 summary: Battles with a goal beyond holding the field: rescue a crippled ship's people, get a convoy through, stop a runner.
 see: counsel, transport, after-battle, tour, patrol, campaigns
 ---
-Some battles carry a mission. The battle still ends the old way, when one side holds the field; the mission is a second question it answers, and Starfleet's assessment judges both. The mission card at the top right of the map shows the goal and how it stands, and the ship it is about is marked on the map.
+Some battles carry a mission. The battle still ends the old way, when one side holds the field; the mission is a second question it answers, and Starfleet's assessment judges both. The mission card at the top right of the map shows the goal and how it stands, and the ship it is about is marked on the map. The card opens in full when the mission has news (it starts, asks something new of you, or ends) and then folds to one line, so it doesn't sit over the fight; rest the pointer on the line to see the whole card.
 
 ## Rescue
 
