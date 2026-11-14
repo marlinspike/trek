@@ -27,7 +27,7 @@ from typing import Any
 import moderngl
 import pygame
 
-from . import gfx
+from . import gfx, zoom
 from .present import CAPTION
 
 BLOOM_STRENGTH = 2.5      # how much of the blurred light is added back
@@ -248,7 +248,9 @@ class GLPresenter:
     why = ""
 
     def __init__(self, size: tuple[int, int], icon: pygame.Surface | None, bloom: bool = True,
-                 allow_software_gl: bool = False) -> None:
+                 allow_software_gl: bool = False, ui_scale: float = zoom.AUTO) -> None:
+        self.ui_scale = ui_scale
+        self._queued: list[pygame.event.Event] = []
         # ask for OpenGL 3.3 core: macOS gives only 2.1 to a window that doesn't, and moderngl needs 3.3
         pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
         pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 3)
@@ -288,13 +290,28 @@ class GLPresenter:
         return round(points[0] * self._ratio), round(points[1] * self._ratio)
 
     def _resize(self, points: tuple[int, int]) -> None:
+        """Fit the frame to the window: its size in points, its real pixels, and the interface size (ui/zoom.py),
+        which lays the scenes out on a smaller canvas drawn at a higher density, so text stays sharp."""
         self.points = (max(1, points[0]), max(1, points[1]))
         self.pixels = self._drawable(self.points)
-        self.density = max(1.0, round(self.pixels[0] / self.points[0], 3))
+        self.zoom = zoom.chosen(self.ui_scale, self.points[1], self.pixels[0] / self.points[0])
+        gfx.set_zoom(self.zoom)
+        self.logical = zoom.logical(self.points, self.zoom)
+        self.density = max(1.0, round(self.pixels[0] / self.logical[0], 3))
         gfx.set_scale(self.density)
-        self._screen = gfx.Canvas(self.points) if self.density > 1.0 else pygame.Surface(self.points)
-        phys = self._screen.get_physical_size() if isinstance(self._screen, gfx.Canvas) else self.points
+        self._screen = gfx.Canvas(self.logical) if self.density > 1.0 else pygame.Surface(self.logical)
+        phys = self._screen.get_physical_size() if isinstance(self._screen, gfx.Canvas) else self.logical
         self.compositor.resize(phys, self.density)
+
+    def set_ui_scale(self, setting: float) -> None:
+        """A new interface size from Settings: the scenes hear it as a resize and lay out again."""
+        self.ui_scale = setting
+        self._resize(self.points)
+        self._queued.append(self._resized())
+
+    def _resized(self) -> pygame.event.Event:
+        return pygame.event.Event(pygame.VIDEORESIZE, w=self.logical[0], h=self.logical[1], size=self.logical,
+                                  window=self.points)
 
     # ------------------------------------------------------------ the Presenter protocol
 
@@ -303,10 +320,10 @@ class GLPresenter:
         return self._screen
 
     def size(self) -> tuple[int, int]:
-        return self.points
+        return self.logical
 
     def events(self) -> list[pygame.event.Event]:
-        out: list[pygame.event.Event] = []
+        out, self._queued = self._queued, []
         for ev in pygame.event.get():
             if ev.type == pygame.WINDOWCLOSE:
                 out.append(pygame.event.Event(pygame.QUIT))
@@ -316,9 +333,9 @@ class GLPresenter:
                 size = self.window.size
                 if size != self.points or self._drawable(size) != self.pixels:
                     self._resize(size)
-                    out.append(pygame.event.Event(pygame.VIDEORESIZE, w=size[0], h=size[1], size=size))
+                    out.append(self._resized())
             else:
-                out.append(ev)
+                out.append(zoom.to_logical(ev, self.zoom))
         return out
 
     def present(self) -> None:

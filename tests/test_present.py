@@ -27,7 +27,7 @@ def test_a_gpu_failure_falls_back_with_a_reason(monkeypatch: pytest.MonkeyPatch)
     import begin.ui.glpresent as glp
     monkeypatch.setattr(glp, "GLPresenter", Broken)
     monkeypatch.setattr(present, "SoftwarePresenter",
-                        lambda size, icon, why="": type("S", (), {"name": "software", "why": why})())
+                        lambda size, icon, why="", **kw: type("S", (), {"name": "software", "why": why})())
     p = present.open_presenter("gpu", (320, 200), None)
     assert p.name == "software" and p.why == "no OpenGL 3.3"
 

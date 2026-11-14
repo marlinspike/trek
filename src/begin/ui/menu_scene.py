@@ -15,7 +15,7 @@ from ..modes import MODES, Mode
 from ..content.schema import ContentDB
 from ..help.coach import HelpContext
 from ..presets import Preset, load_presets
-from . import theme
+from . import gfx, theme
 from .showpiece import Flybys
 from .starfield import Starfield
 from .manual import ManualView
@@ -113,7 +113,7 @@ class MenuScene:
         self.hub.update(dt)
         self.flybys.update(dt, self.size)
         self._swallow = False
-        self.ui.mouse = pygame.mouse.get_pos()
+        self.ui.mouse = gfx.mouse_pos()
 
     def handle(self, ev: pygame.event.Event) -> None:
         if self.page == "settings" and self.hub.handle(ev):

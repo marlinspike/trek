@@ -10,7 +10,7 @@ Choose **Settings** on the main menu (or press **S** there). The sections are do
 
 Every change is saved the moment you make it, to the same plain text files the game has always read, so you can still edit them by hand: `config/settings.json` for everything except the officers, and `config/officers.toml` for them. A box you type in (a model's name, a server's address) keeps what you typed when you press **Enter**, **Tab** or click elsewhere; **Esc** puts back what was there. **Ctrl+V** (or **⌘V**) pastes.
 
-- **Display**: the renderer (automatic, graphics card or software) and *Light and glow*. **D** on the main menu opens this section. See [[display]].
+- **Display**: the renderer (automatic, graphics card or software), the *Interface size* and *Light and glow*. **D** on the main menu opens this section. See [[display]].
 - **Sound**: sound on or off, the volume and the engine hum (drag the slider; **Hear it** plays a sample), and which version of the phaser and torpedo launch you hear: each letter plays it as you pick it. See [[sound]].
 - **Battle**: the [[difficulty]] (Ensign, Captain or Admiral), the speed a battle starts at, your officers' chatter, and the map's jolt when the ship takes a heavy blow.
 - **Bridge**: the bridge style (full, quiet or classic) and each of its parts. The same choices as `hud bridge` in battle. See [[bridge]].

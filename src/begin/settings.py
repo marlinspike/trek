@@ -22,6 +22,7 @@ class Settings:
     fullscreen: bool = False
     renderer: str = "auto"                                     # auto (GPU if it can), gpu, or software (see ui/present.py)
     bloom: bool = True                                         # GPU only: soft glow round weapon light, a calm map edge
+    ui_scale: float = 0.0                                      # interface size (ui/zoom.py): 0 follows the window
     speed: float = 1.0
     difficulty: str = "captain"                                # how hard the enemy fights: ensign, captain, admiral
     custom: dict[str, object] = field(default_factory=dict)

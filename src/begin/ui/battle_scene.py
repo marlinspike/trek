@@ -30,7 +30,7 @@ from ..session.prefs import BridgePrefs
 from ..sim.commands import Command
 from ..sim.events import PhaserFired
 from ..sim.ship import Ship
-from . import theme
+from . import gfx, theme
 from .audio import HUM_LEVEL as HUM_DEFAULT, Audio
 from .battle.bridge import BridgeMixin
 from .battle.common import CONTROLS, SPEEDS, TONE_COLOR, LogLine
@@ -386,7 +386,7 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, SpeechMixin, 
 
     def update(self, dt: float) -> None:
         self.tweens.update(dt)
-        self.ui.mouse = pygame.mouse.get_pos()
+        self.ui.mouse = gfx.mouse_pos()
         s = self.session
         s.captain_typing = self.console_focus
         s.busy_elsewhere = self.overlay is not None
