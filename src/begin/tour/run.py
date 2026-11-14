@@ -31,6 +31,7 @@ from ..sim.commands import FirePhasers, FireTorpedoes, SelectTarget
 from ..sim.rules import DEFAULT_RULES, Rules
 from ..sim.ship import Ship, ShipStatus
 from .log import draft_entry
+from . import squadrons
 from .model import Stop, TourDef
 from .state import LogEntry, ShipRecord, StopResult, TourState, apply_record, fleet_cost, harvest, record_of, refit, resupply, transit
 
@@ -74,16 +75,18 @@ class TourRun:
 
     @staticmethod
     def new(tour: TourDef, content: ContentDB, escorts: list[str], seed: int = 1,
-            flagship_name: str = "Enterprise") -> TourRun:
-        """A fresh tour: the flagship and the escorts you picked, every ship named and crewed."""
+            flagship_name: str = "Enterprise", squadron: squadrons.Squadron | None = None) -> TourRun:
+        """A fresh tour: the flagship and the escorts you picked, every ship named and crewed. A starting squadron
+        (tour/squadrons.py), if one was picked, brings its perks."""
         rng = random.Random(seed)
         used = {flagship_name}
         captains: set[str] = set()
-        squadron = [ShipRecord(tour.flagship, flagship_name, role="flagship")]
+        ships = [ShipRecord(tour.flagship, flagship_name, role="flagship")]
         for cid in escorts:
-            squadron.append(ShipRecord(cid, _name(content, cid, used, rng), role="escort",
-                                       captain=_captain(content, cid, rng, captains)))
-        state = TourState(tour.id, squadron, calls_left=tour.reinforcement_calls, seed=seed)
+            ships.append(ShipRecord(cid, _name(content, cid, used, rng), role="escort",
+                                    captain=_captain(content, cid, rng, captains)))
+        state = TourState(tour.id, ships, calls_left=tour.reinforcement_calls, seed=seed)
+        squadrons.apply(squadron, state, content)
         return TourRun(tour, state, content)
 
     @staticmethod
@@ -145,7 +148,8 @@ class TourRun:
                 refit(r, self.content)
             else:
                 transit(r, self.content, self.rules, cycles)
-                resupply(r, self.content, self.tour.resupply)
+                resupply(r, self.content, self.tour.resupply + squadrons.resupply_bonus(self.state))
+        squadrons.settle(self.state, self.content, recs)
 
     def lesson_lines(self) -> list[str]:
         """What the enemy knows about us, as the briefing puts it."""

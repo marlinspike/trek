@@ -26,7 +26,8 @@ import pygame
 from ..content.schema import ContentDB
 from ..paths import config_dir
 from ..tour.log import OFFICER_ORDER, OFFICER_TITLES, read_markdown_edits, voice_request, write_markdown
-from ..tour import generate
+from ..crew.career import Career
+from ..tour import generate, squadrons
 from ..tour.model import TourDef, check_tour, load_tours
 from ..tour.ready import ReadyView, ready_counsel
 from ..tour.run import TourRun
@@ -80,6 +81,7 @@ class TourScene:
         self._ready_key: tuple[object, ...] | None = None   # what the officers' view was last worked out for
         self._ready_cache: list[ReadyView] = []
         self.gen_seed: int | None = None        # [E] the generated tour on offer (tour/generate.py)
+        self.group_key = ""                     # [E] the starting squadron picked (tour/squadrons.py)
         self.refresh()
 
     # ------------------------------------------------------------ tours and saving
@@ -128,6 +130,7 @@ class TourScene:
 
     def new_tour(self) -> None:
         self.escorts = []
+        self.group_key = ""
         self.page = "squadron"
         self.confirm_new = False
 
@@ -136,7 +139,7 @@ class TourScene:
         if tour is None:
             return
         seed = (pygame.time.get_ticks() * 7919 + len(self.escorts)) % 100000 + 1
-        self.run = TourRun.new(tour, self.content, list(self.escorts), seed=seed)
+        self.run = TourRun.new(tour, self.content, list(self.escorts), seed=seed, squadron=self.group())
         self.save()
         self.note = ""
         self.glide = 0.0
@@ -146,6 +149,7 @@ class TourScene:
         """Back from a stop's battle: save, open the new log page, and have the officers write it up."""
         self.run = run
         self.save()
+        self._count_win(run)
         self.log_i = len(run.state.log) - 1
         self.log_scroll = 0
         self.glide = 0.0
@@ -153,7 +157,21 @@ class TourScene:
         self.note = ""
         self._ask_voices(self.log_i)
 
-    # ------------------------------------------------------------ the officers' voices
+    def _count_win(self, run: TourRun) -> None:
+        """[E] A tour brought home goes on the captain's record; it may earn a starting squadron."""
+        if run.state.over != "won":
+            return
+        before = Career(dict(self.settings.career))
+        if squadrons.record_win(Career(self.settings.career), run.tour.id, run.state.seed):
+            new = squadrons.newly_unlocked(before, Career(self.settings.career))
+            try:
+                self.settings.save()
+            except OSError:
+                pass
+            if new:
+                self.note = f"Starfleet has assigned you a new starting squadron: {new[0].name}."
+
+        # ------------------------------------------------------------ the officers' voices
 
     def _ask_voices(self, idx: int) -> None:
         """With a language model configured, each writer puts their entry in their own voice, in the background."""
@@ -486,7 +504,7 @@ class TourScene:
                   theme.GOOD if left > 0 else theme.CAUTION)
         theme.text(surf, f"{left} of {tour.budget}", (br.right - 14, y), theme.TEXT, 14, "mono", anchor="topright")
         # the yard: classes to add
-        yr = pygame.Rect(40, 186, 360, 70 + 48 * len(self._classes(tour)))
+        yr = pygame.Rect(40, 186, 360, 46 + 48 * len(self._classes(tour)))
         y = self._glass(surf, yr, "Starfleet yard")
         for cid in self._classes(tour):
             cls = self.content.classes[cid]
@@ -497,10 +515,15 @@ class TourScene:
             self.ui.button(surf, pygame.Rect(yr.x + 14, y, yr.width - 28, 40), f"{cls.name}  ·  {cost} points",
                            partial(self.escorts.append, cid), tip, enabled=ok, size=14, face="ui")
             y += 48
+        self._groups_panel(surf, tour, pygame.Rect(40, yr.bottom + 14, 360, 0))
         # the squadron: the flagship and the escorts, lit and turning
         sx = 430
         sr = pygame.Rect(sx, 100, w - sx - 40, h - 200)
-        self._glass(surf, sr, "The squadron", theme.FRIEND, alpha=150)
+        group = self.group()
+        self._glass(surf, sr, group.name if group is not None else "The squadron", theme.FRIEND, alpha=150)
+        if group is not None and group.perks:
+            perks = "  ·  ".join(squadrons.PERKS[p] for p in group.perks)
+            theme.text(surf, theme.fit(perks, 12, sr.width - 40), (sr.x + 20, sr.bottom - 26), theme.CREW, 12)
         ships = [(tour.flagship, "Enterprise (flagship)", None)] + [
             (cid, self.content.classes[cid].name, i) for i, cid in enumerate(self.escorts)]
         cols = 3
@@ -522,6 +545,46 @@ class TourScene:
         self.ui.button(surf, pygame.Rect(w - 300, h - 80, 260, 44), "Begin the tour", self.commission, size=15,
                        accent=theme.GOOD)
         self.ui.button(surf, pygame.Rect(w - 460, h - 80, 140, 44), "Back", lambda: setattr(self, "page", "tours"), size=13)
+
+    def _groups_panel(self, surf: pygame.Surface, tour: TourDef, r: pygame.Rect) -> None:
+        """[E] Starting squadrons (tour/squadrons.py): earned ones fill the escorts and bring a perk."""
+        groups = squadrons.offered(self.content, tour.faction)
+        if not groups:
+            return
+        career = Career(self.settings.career)
+        r.height = 40 + 36 * len(groups)
+        y = self._glass(surf, r, "Starting squadrons", theme.CREW)
+        current = self.group()
+        for sq in groups:
+            earned = sq.unlocked(career)
+            cost = sq.cost(self.content)
+            perks = "; ".join(squadrons.PERKS[p] for p in sq.perks)
+            if not earned:
+                tip = f"Earned with {sq.requirement()}. {sq.blurb}"
+            elif cost > tour.budget:
+                tip = f"{sq.describe(self.content).capitalize()}: {cost} points, more than this tour's budget"
+            else:
+                tip = f"{sq.describe(self.content).capitalize()}, {cost} points. {perks + '. ' if perks else ''}{sq.blurb}"
+            label = sq.name if earned else f"{sq.name}  ·  locked"
+            self.ui.button(surf, pygame.Rect(r.x + 14, y, r.width - 28, 30), label, partial(self.pick_group, sq), tip,
+                           enabled=earned and cost <= tour.budget, active=current is sq, size=13, face="ui")
+            y += 36
+
+    def group(self) -> squadrons.Squadron | None:
+        """The starting squadron picked, while all its ships are still among the escorts."""
+        sq = squadrons.BY_KEY.get(self.group_key)
+        if sq is None:
+            return None
+        left = list(self.escorts)
+        for c in sq.escorts:
+            if c not in left:
+                return None
+            left.remove(c)
+        return sq
+
+    def pick_group(self, sq: squadrons.Squadron) -> None:
+        self.escorts = list(sq.escorts)
+        self.group_key = sq.key
 
     # ---- the Ready Room
 
@@ -687,7 +750,9 @@ class TourScene:
         return "Sensors: " + ", ".join(parts) + more if parts else ""
 
     def _squadron_panel(self, surf: pygame.Surface, run: TourRun, r: pygame.Rect) -> None:
-        y = self._glass(surf, r, "Squadron, as Geordi expects it to arrive", theme.FRIEND)
+        sq = squadrons.BY_KEY.get(run.state.squadron_key)
+        title = f"{sq.name}, as Geordi expects it" if sq else "Squadron, as Geordi expects it to arrive"
+        y = self._glass(surf, r, theme.fit(title.upper(), 12, r.width - 24, "display", weight="medium"), theme.FRIEND)
         projected = {p.name: p for p in run.projected()}
         recs = [x for x in run.state.squadron if not x.lost] + [x for x in run.state.squadron if x.lost]
         row_h = max(64, min(96, (r.height - 90) // max(1, len(recs))))
@@ -709,7 +774,9 @@ class TourScene:
             role = {"flagship": "flagship", "prize": "prize", "reinforcement": "from Starfleet"}.get(rec.role, "")
             title = f"USS {rec.name}" if cls.faction == run.tour.faction else rec.name
             col = theme.TEXT_FAINT if rec.lost else theme.FRIEND
-            theme.text(surf, title, (tx, box.y + 6), col, 15, "display", weight="medium")
+            room = box.right - (10 if rec.role == "flagship" else 126) - tx      # clear of Keep at base
+            theme.text(surf, theme.fit(title, 15, room, "display", weight="medium"), (tx, box.y + 6), col, 15, "display",
+                       weight="medium")
             sub = f"{cls.name}{'  ·  ' + role if role else ''}{'  ·  ' + rec.captain if rec.captain else ''}"
             theme.text(surf, theme.fit(sub, 12, box.right - (10 if rec.role == "flagship" else 126) - tx), (tx, box.y + 26),
                        theme.TEXT_DIM, 12)
