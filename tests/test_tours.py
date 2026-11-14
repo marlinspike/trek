@@ -376,3 +376,14 @@ def test_the_enterprise_is_a_dreadnought_by_default(content) -> None:  # type: i
     for setup in [p.setup() for p in load_presets()] + [quick_battle(content, s, size=n) for s in range(1, 6) for n in (1, 3)]:
         player = next(f for f in setup.fleets if f.player)
         assert player.ships[0].class_id == "federation.dn"
+
+
+def test_a_briefing_is_in_the_voice_of_the_officer_who_gives_it() -> None:
+    """The briefing is spoken by its officer, so it never names them in the third person ("Worf will show you")."""
+    from begin.tour import load_tours
+
+    names = {"spock": ("Spock",), "worf": ("Worf",), "seven": ("Seven",), "geordi": ("Geordi", "La Forge")}
+    for t in load_tours()[0]:
+        for s in t.stops:
+            for n in names.get(s.officer, ()):
+                assert n not in s.briefing, (t.id, s.id, n)

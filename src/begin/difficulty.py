@@ -6,7 +6,8 @@ carried out). It never touches the player's own squadron: the Enterprise is a Dr
 
 * Ensign: about a third fewer enemy ships (never fewer than one a side), and slower, less able captains.
 * Captain: the game as designed. Nothing changes.
-* Admiral: about a third more enemy ships, and sharper, quicker captains.
+* Admiral: about a third more enemy ships (more of the escorts, never a second flagship), and sharper, quicker
+  captains.
 
 Fleet sizes change in quick battles, presets and tours. A custom battle is fought with exactly the fleets the captain
 chose (`BattleSetup.fixed_fleets`); only its captains' skill follows the difficulty. Starbases are never added or
@@ -69,15 +70,19 @@ def scaled(n: int, bases: set[int], d: Difficulty, keep: int = 1, named: set[int
     """Which of a fleet's `n` ships come at this difficulty, as indices into it (an index twice is a second ship of
     that kind). Starbases (`bases`) stay as they are; ships come off the end, keeping at least the first `keep` that
     can move and never one under a `named` captain (a tour's commander or rival), or are added by repeating the
-    fleet's own ships in order."""
+    fleet's escorts from the end of its list (its first ship, the flagship, only when it has nothing else)."""
     mobile = [i for i in range(n) if i not in bases]
     delta = change(len(mobile), d.fleet)
     out = list(range(n))
     if delta < 0:
         for i in sorted((i for i in mobile[max(1, keep):] if i not in (named or set())), reverse=True)[:-delta]:
             out.remove(i)
-    elif delta > 0 and mobile:
-        out += [mobile[i % len(mobile)] for i in range(delta)]
+    elif delta > 0:
+        # the extra ships are more of the escorts, the last-listed first: the same ships Ensign takes away, so the
+        # two levels move the threat by about the same amount, and a flagship is never doubled
+        free = [i for i in reversed(mobile) if i not in (named or set())]
+        spare = [i for i in free if i != mobile[0]] or free
+        out += [spare[i % len(spare)] for i in range(delta)] if spare else []
     return out
 
 

@@ -23,7 +23,10 @@ def test_a_third_more_or_fewer_and_never_none() -> None:
     assert scaled(3, set(), level("ensign")) == [0, 1]
     assert scaled(3, {0}, level("ensign")) == [0, 1, 2] or len(scaled(3, {0}, level("ensign"))) == 2
     assert scaled(4, {0}, level("ensign")) == [0, 1, 2]          # the starbase stays; a ship comes off the end
-    assert scaled(3, set(), level("admiral")) == [0, 1, 2, 0]
+    assert scaled(3, set(), level("admiral")) == [0, 1, 2, 2]       # more escorts, never a second flagship
+    assert scaled(6, set(), level("admiral")) == [0, 1, 2, 3, 4, 5, 5, 4]
+    assert scaled(2, set(), level("admiral"), named={1}) == [0, 1, 0]  # a named captain's ship is never repeated
+    assert scaled(3, set(), level("admiral"), named={2}) == [0, 1, 2, 1]
     assert scaled(2, set(), level("ensign"), keep=2) == [0, 1]   # a runner is never the ship taken away
     assert level("nonsense").key == "captain" and level(None).key == "captain"
     assert LEVELS == tuple(DIFFICULTIES)

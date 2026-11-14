@@ -137,6 +137,7 @@ class RivalBook:
             if ship is not None:
                 rival.met += 1
                 rival.place, rival.tour, rival.last_run = place, tour, run
+                rival.ship_class, rival.ship_name = ship.cls.id, ship.name     # the ship they commanded this time
                 news = self._settle(rival, _status(ship, side), w.outcome.winner == side)
         else:
             boss = max(enemies, key=lambda s: s.cls.mass)

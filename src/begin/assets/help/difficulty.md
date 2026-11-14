@@ -18,7 +18,7 @@ Difficulty only changes the other side. Your own ship is the same at every level
 
 ## What changes, exactly
 
-- **How many.** Each enemy fleet loses or gains a third of its ships, rounded: one ship stays one ship, three become two or four, six become four or eight. Ships are taken from the end of the fleet's list and added by repeating the fleet's own kinds, so a Klingon squadron is still Klingon. Waves that warp in later are scaled the same way. Starbases are never added or taken away, an intercept mission always keeps the ship that runs, and a battle never goes past the ship limit.
+- **How many.** Each enemy fleet loses or gains a third of its ships, rounded: one ship stays one ship, three become two or four, six become four or eight. Ships are taken from the end of the fleet's list, and added by repeating the same ships from the end of the list: more escorts, never a second flagship. So Ensign and Admiral move the threat by about the same amount, and a Klingon squadron is still Klingon. Waves that warp in later are scaled the same way. Starbases are never added or taken away, an intercept mission always keeps the ship that runs, and a battle never goes past the ship limit.
 - **How well.** Every enemy captain's competence (reading the situation, timing, aim, dodging torpedoes) and crew competence (how fast orders are carried out) moves down at Ensign and up at Admiral. A Klingon captain is still hot-headed at Ensign and still proud at Admiral: temper, bravery and doctrine don't change.
 
 ## Where it applies

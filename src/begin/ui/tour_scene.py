@@ -92,6 +92,7 @@ class TourScene:
         self.size = (1600, 900)
         self.page = "tours"
         self._panes: list[pygame.Rect] = []     # last frame's glass panels: the chart writes no names under them
+        self._route: pygame.Rect | None = None  # last frame's open water in the Ready Room: the stops are spread there
         self.t = 0.0
         self.glide = 1.0
         self.tours: list[TourDef] = []
@@ -412,7 +413,10 @@ class TourScene:
             current = st.stop if st is not None else 0
             glide = self.glide if st is not None else 0.0
             dim = {"tours": 0.25, "squadron": 0.45, "log": 0.5, "end": 0.45}.get(self.page, 0.0)
-            draw_chart(surf, surf.get_rect(), tour, [], outcomes, current, glide, self.t, dim, tuple(self._panes))
+            ready = self.page == "ready" and self.run is not None and not self.run.over
+            titles = {current: self.run.briefing()[0]} if ready and self.run is not None else None
+            draw_chart(surf, surf.get_rect(), tour, [], outcomes, current, glide, self.t, dim, tuple(self._panes),
+                       spread=self._route if ready else None, titles=titles)
         self._panes = []
         if self.page == "tours":
             self._tours(surf)
@@ -708,9 +712,10 @@ class TourScene:
                 yy = box.bottom + 8
             y = cr.bottom + 14
         if self.note:
-            note = wrap(self.note, 13, bw)
-            for k, ln in enumerate(note[:max(1, (h - 90 - y) // 18)]):
+            note = wrap(self.note, 13, bw)[:max(1, (h - 90 - y) // 18)]
+            for k, ln in enumerate(note):
                 theme.text(surf, ln, (42, y + 18 * k), theme.GOOD, 13)
+            self._panes.append(pygame.Rect(40, y, bw, 18 * len(note)))
         # the squadron, as Geordi expects it to arrive, and between the two each officer's view of the stop; on a
         # narrow window there is no room between them, so the officers speak under the squadron instead
         mid = pygame.Rect(br.right + 16, 100, min(560, sq.x - br.right - 32), h - 200)   # lines a reader can follow
@@ -725,6 +730,7 @@ class TourScene:
                 self._officers_view(surf, run, below)
         # the buttons along the bottom: as wide as they like on a big window, sharing the row on a small one
         by = h - 76
+        self._route = self._open_water(sq, by)
         launch_tip = "Make your decision first" if run.needs_choice() else f"{run.transit_cycles():.0f} cycles to {stop.system}"
         calls, held = st.calls_left, st.prisoners
         row: list[tuple[int, tuple[str, str], Callable[[], object], str, bool, int, dict[str, Any]]] = [
@@ -757,6 +763,14 @@ class TourScene:
         for (_, labels, act, tip, on, size, kw), bx, bw_ in zip(row, xs, widths):
             label = labels[0] if theme.text_width(labels[0], size, "ui") <= bw_ - 20 else labels[1]
             self.ui.button(surf, pygame.Rect(bx, by, bw_, 46), label, act, tip, enabled=on, size=size, **kw)
+
+    def _open_water(self, sq: pygame.Rect, bottom: int) -> pygame.Rect | None:
+        """The chart's room between the Ready Room's panels: left of the squadron, under everything else, above the
+        buttons. The whole patrol, its last stop included, is drawn there. None (the whole window) when too small."""
+        right = sq.x - 16
+        top = max((p.bottom for p in self._panes if p.x < right), default=100) + 16
+        area = pygame.Rect(0, top, right, bottom - 12 - top)
+        return area if area.height >= 150 and area.width >= 360 else None
 
     @staticmethod
     def _choices_height(stop: Stop, bw: int) -> int:

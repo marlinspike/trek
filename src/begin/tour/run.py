@@ -64,6 +64,7 @@ class Fight:
     called: list[Arrival] = field(default_factory=list)
     rival: Rival | None = None            # [E] a returning enemy captain at this stop (tour/rivals.py)
     enemy_ids: set[int] = field(default_factory=set)   # the ships that fought against us, waves included
+    title: str = ""                       # the stop's title as fought: a returning rival's name in the commander's
 
 
 class TourRun:
@@ -307,12 +308,13 @@ class TourRun:
                                          for c in stop.friends], center=stop.friends_center))
         rival = self.rival()
         fleets.append(FleetSpec(1, self._enemy_specs(stop, flags, rival), center=stop.enemy_center))
+        title = self._named(stop.title)
         arrivals = []
         for wv in stop.active_waves(flags):
             cx, cy = wv.center
             arrivals.append(Arrival(side=1, ships=wv.ships, kind="wave", at=wv.at, after_clear=wv.after_clear,
                                     at_x=cx, at_y=cy, heading=math.degrees(math.atan2(-cx, -cy)) % 360.0,
-                                    message=wv.message))
+                                    message=self._named(wv.message)))
         # reinforcements asked for in the Ready Room: there at the start, or partway in if the trip was short
         late = max(0.0, stop.eta - self.transit_cycles())
         rng = random.Random(self.state.seed * 13 + self.state.stop)
@@ -339,13 +341,13 @@ class TourRun:
             lean["caution"] = self.state.lessons["caution"]
         if self._low_magazine():
             lean["press"] = 0.6
-        setup = BattleSetup(fleets, seed=self.state.seed * 1000 + stop.seed, title=stop.title,
+        setup = BattleSetup(fleets, seed=self.state.seed * 1000 + stop.seed, title=title,
                             description=f"{stop.system}: {self.tour.title}, stop {self.state.stop + 1} of "
                                         f"{len(self.tour.stops)}.",
                             arrivals=arrivals + called, personalities={1: lean} if lean else {},
                             mission=stop.mission, reserved_captains=self.rivals.names() if self.rivals else (),
                             fixed_fleets=bool(stop.lesson))   # a lesson is fought as written
-        self.fight = Fight(stop, setup, active, rival=rival)
+        self.fight = Fight(stop, setup, active, rival=rival, title=title)
         self.fight.called.extend(called)
         return self.fight
 
@@ -354,8 +356,8 @@ class TourRun:
     def rival(self) -> Rival | None:
         """The enemy captain who comes back at the next stop, if any."""
         stop = self.stop
-        if self.rivals is None or stop is None:
-            return None
+        if self.rivals is None or stop is None or stop.lesson:
+            return None          # a lesson is fought as written: no old enemy turns up to teach it
         rival = self.rivals.for_stop(stop, self.content, self.flags(), self.run_key())
         if rival is not None and not stop.commander and any(
                 s.commander and s.enemies and self.content.classes[s.enemies[0]].faction == rival.faction
@@ -373,20 +375,42 @@ class TourRun:
         if stop is None:
             return "", ""
         rival = self.rival()
-        title, text = stop.title, stop.briefing
-        if rival is not None and stop.commander:
-            title, text = title.replace(stop.commander, rival.name), text.replace(stop.commander, rival.name)
+        title, text = self._named(stop.title), self._named(stop.briefing)
         if rival is not None:
             again = "again" if rival.met == 1 else f"for the {_ordinal(rival.met + 1)} time"
             text += f"\n\n{rival.name} commands the {self.content.factions[rival.faction].name} flagship here: we meet {again}."
         return title, text
+
+    def commander(self) -> str:
+        """Who commands the enemy at the next stop, if the stop names anyone: a returning rival in the place of the
+        stop's commander, and never a rival already finished (destroyed or taken) under their old name."""
+        stop = self.stop
+        if stop is None:
+            return ""
+        rival = self.rival()
+        if rival is not None:
+            return rival.name
+        if not stop.commander or self.rivals is None or stop.commander not in self.rivals.names():
+            return stop.commander
+        faction = self.content.classes[stop.enemies[0]].faction if stop.enemies else ""
+        taken = set(self.rivals.names())
+        free = [n for n in (self.content.factions[faction].captain_names if faction else ()) if n not in taken]
+        return random.Random(f"{self.run_key()}:{stop.id}").choice(free) if free else stop.commander
+
+    def _named(self, text: str) -> str:
+        """Text written for the next stop, with whoever really commands there in the stop's commander's place."""
+        stop = self.stop
+        if stop is None or not stop.commander or not text:
+            return text
+        who = self.commander()
+        return text.replace(stop.commander, who) if who != stop.commander else text
 
     def _enemy_specs(self, stop: Stop, flags: set[str], rival: Rival | None) -> list[ShipSpec]:
         """The enemy ships, the heaviest under the stop's named commander or a returning rival."""
         specs = [ShipSpec(c) for c in stop.enemy_ships(flags)]
         if specs and (rival is not None or stop.commander):
             i = max(range(len(specs)), key=lambda k: self.content.classes[specs[k].class_id].mass)
-            specs[i].captain = rival.name if rival is not None else stop.commander
+            specs[i].captain = self.commander()
             if rival is not None:
                 specs[i].personality = personality(rival)
         return specs
