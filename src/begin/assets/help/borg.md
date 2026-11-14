@@ -38,19 +38,13 @@ duty off
 
 ## Seven's advancements
 
-On **The Collective** tour, every Borg ship you beat gives Seven technology to turn on the next one. Win at the probes and she can build **Borg sensors** and **Borg-tuned torpedo guidance**. Win at the sphere and she can build **adaptive shields**. Each one takes her a few seconds to bring online at the start of a Borg battle, and lasts until the battle ends.
+On **The Collective** tour the Enterprise carries three of Seven's advancements, built from Borg technology. They come online the moment a Borg battle begins, and Seven tells you when they are up:
 
-```console
-design sensors
-design guided
-design adaptive
-```
+- **Borg sensors**: every scan of a Borg ship counts twice, so she finds the relay and the harmonics in half the time.
+- **Borg-tuned torpedoes**: your torpedoes fly half as fast again at a Borg ship. A sphere is as fast as the Enterprise but can't outrun them.
+- **Adaptive shields**: your shields are tuned against their transporters from the first moment, and they tune three times as fast. When the hive shifts its beams you keep most of your tuning, and you never lose the block on their transporters.
 
-- **Borg sensors** (`design sensors`): every scan of a Borg ship counts twice, so she finds the relay and the harmonics in half the time.
-- **Borg-tuned torpedoes** (`design guided`): your torpedoes fly half as fast again at a Borg ship. A sphere is as fast as the Enterprise but can't outrun them.
-- **Adaptive shields** (`design adaptive`): your shields are tuned against their transporters the moment they come online, and they tune three times as fast. When the hive shifts its beams you keep most of your tuning, and you never lose the block on their transporters.
-
-You don't have to remember them. When a Borg battle starts with any of them in hand, Seven tells you what she can build and what to order. While any are still offline, she offers them one at a time (press **Y** to agree), and the officers' counsel puts them first. If you delegate science to her ("Seven, take science"), she brings them all online herself.
+A tour you write yourself can hand them out too: from the start (`advances` on the tour) or as the prize for winning a stop (`advances` on the stop). Either way they come online at the start of each Borg battle. If one is ever offline, `design sensors`, `design guided` or `design adaptive` brings it back, and Seven offers to do that herself.
 
 ## The weak point
 
@@ -106,7 +100,7 @@ The drones take a long time to mend what a strike wrecked, so make the salvo cou
 
 A good order of battle:
 
-1. Bring Seven's advancements online if you have them. Keep the range open and let Seven survey the cube. Tune your shields before the drones come.
+1. Keep the range open and let Seven survey the cube. Tune your shields before the drones come.
 2. Find the relay. Put her to sleep, and send Worf across to steal her harmonics.
 3. When she wakes, put one full salvo through the harmonics into her shields, and the next into her drives.
 4. Cloak, and finish her through the holes.

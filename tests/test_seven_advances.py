@@ -110,36 +110,60 @@ def test_seven_offers_her_advancements_and_the_counsel_plans_them(content, tmp_p
     s.close()
 
 
-def test_a_win_at_the_probes_gives_seven_sensors_and_guidance_and_she_says_how_to_ask(content, tmp_path) -> None:  # type: ignore[no-untyped-def]
-    t = _collective()
-    colony = t.stops[0]
-    assert set(colony.advances) == {"sensors", "guided"} and t.stops[1].advances == ("adaptive",)
-    run = TourRun.new(t, content, _default_escorts(t, content), seed=2, difficulty="captain")
-    battle = start(content, run.launch().setup, run.difficulty)
-    run.prepare(battle)
-    w = battle.world
-    for s in list(w.ships.values()):
-        if s.side != w.player_side:
-            w.destroy_ship(s, "test", None)
-    w.step()
-    entry = run.finish(battle)
-    assert run.state.advances == ["sensors", "guided"]
-    assert "design sensors" in entry.stations["seven"]
-    again = TourState.from_json(run.state.to_json())
-    assert again.advances == ["sensors", "guided"]
-    # the next Borg battle: the insight carries them, and Seven tells a new captain how to ask
+def _said(battle) -> list[str]:  # type: ignore[no-untyped-def]
     said: list[str] = []
-    battle = start(content, run.launch().setup, run.difficulty)
     orig = battle.world.emit
 
     def emit(ev):  # type: ignore[no-untyped-def]
         if isinstance(ev, Message):
             said.append(ev.text)
         return orig(ev)
-    battle.world.emit = emit  # type: ignore[method-assign]
+    battle.world.emit = emit
+    return said
+
+
+def test_the_collective_has_all_three_online_from_the_first_borg_battle(content) -> None:  # type: ignore[no-untyped-def]
+    """Reuben (2026-11-14): "the Enterprise obviously needs its upgrades immediately"."""
+    t = _collective()
+    assert set(t.advances) == set(collective.ADVANCES)
+    run = TourRun.new(t, content, _default_escorts(t, content), seed=2, difficulty="captain")
+    assert run.state.advances == list(t.advances)
+    battle = start(content, run.launch().setup, run.difficulty)
+    said = _said(battle)
     run.prepare(battle)
-    assert collective.insight(battle.world, battle.world.player_side).advances == {"sensors", "guided"}
-    assert any("'design sensors'" in x and "'design guided'" in x for x in said)
+    me = battle.world.ships[battle.player_ship_id]
+    assert me.borg_tech == set(collective.ADVANCES)
+    assert me.tuning >= collective.TUNE_BLOCKS_BEAMING
+    assert any("advancements are online" in x for x in said)
+    obs = battle.world.observe(me.side)
+    assert not any(p.line.startswith("design") for p in candidates(obs, me, {}))   # nothing left to offer
+    # a tour saved before the upgrades existed gets them too
+    old = TourState.from_json({k: v for k, v in run.state.to_json().items() if k != "advances"})
+    run2 = TourRun(t, old, content)
+    battle = start(content, run2.launch().setup, run2.difficulty)
+    run2.prepare(battle)
+    assert battle.world.ships[battle.player_ship_id].borg_tech == set(collective.ADVANCES)
+
+
+def test_a_stop_can_still_give_an_advancement_for_a_win(content) -> None:  # type: ignore[no-untyped-def]
+    t = _collective()
+    stops = (dataclasses.replace(t.stops[0], advances=("sensors",)),) + t.stops[1:]
+    t = dataclasses.replace(t, advances=(), stops=stops)
+    run = TourRun.new(t, content, _default_escorts(t, content), seed=2, difficulty="captain")
+    battle = start(content, run.launch().setup, run.difficulty)
+    run.prepare(battle)
+    assert not battle.world.ships[battle.player_ship_id].borg_tech
+    w = battle.world
+    for s in list(w.ships.values()):
+        if s.side != w.player_side:
+            w.destroy_ship(s, "test", None)
+    w.step()
+    entry = run.finish(battle)
+    assert run.state.advances == ["sensors"]
+    assert "design sensors" in entry.stations["seven"]
+    battle = start(content, run.launch().setup, run.difficulty)
+    run.prepare(battle)
+    assert battle.world.ships[battle.player_ship_id].borg_tech == {"sensors"}
 
 
 def test_old_saves_load_with_no_advancements() -> None:
