@@ -345,26 +345,13 @@ class TacticalView:
             return
         self._draw(surf, obs, prev, now, alpha, player_id, target_id, selected_sub, selected_ally, (0.0, 0.0))
 
-    def _draw(self, surf: pygame.Surface, obs: Observation, prev: Snapshot | None, now: Snapshot, alpha: float,  # noqa: C901
+    def _draw(self, surf: pygame.Surface, obs: Observation, prev: Snapshot | None, now: Snapshot, alpha: float,
               player_id: int | None, target_id: int | None, selected_sub: str | None, selected_ally: int | None,
               jolt: tuple[float, float]) -> None:
         cam = self.cam
         r = cam.rect
         gfx.set_stage(r)
-        self._lights = self.effects.lights(cam) if gfx.LIGHTING else []
-        if self._overlay is None or self._overlay.get_size() != surf.get_size():
-            self._overlay = gfx.Surface(surf.get_size(), pygame.SRCALPHA)
-            gfx.track(self._overlay)
-            self._overlay_used = pygame.Rect(r)
-        overlay = self._overlay
-        # the overlay is mostly empty: only what was drawn on it last frame is cleared, only what is drawn now is added
-        if self._overlay_used is not None:
-            overlay.fill((0, 0, 0, 0), self._overlay_used.clip(r))
-        gfx.take_dirty(overlay)
-        self._label_rects = []
-        self._range_tag = None
-        self._names = []
-        self._burning = []
+        overlay = self._begin_frame(surf, r)
         clip = surf.get_clip()
         surf.set_clip(r)
 
@@ -389,8 +376,51 @@ class TacticalView:
             p = pose(me.id)
             if p:
                 self._ranges(surf, overlay, me, p)
+        self._all_ordnance(surf, overlay, obs, prev, now, alpha)
 
-        # ordnance
+        names = {s.id: s.name for s in obs.own_ships(alive_only=False)}
+        names.update({c.id: c.label if c.identified else f"#{c.id}" for c in obs.contacts().values()})
+        self._links(surf, overlay, obs, pose, player_id, selected_ally)
+        self._all_ships(surf, overlay, obs, pose, player_id, target_id, selected_sub, selected_ally, names)
+        self._countdowns(surf, overlay, obs)
+
+        # target link
+        if me is not None and target_id is not None:
+            pm, pt = pose(me.id), pose(target_id)
+            if pm and pt:
+                self._dashed(surf, theme.dim(theme.HOSTILE, 0.75), cam.to_screen(pm[0], pm[1]), cam.to_screen(pt[0], pt[1]), 6, 6)
+
+        self._ripples(obs, pose)
+        self._shots(surf, r, overlay)
+        self._fire(surf, pose)
+        self._overlay_used = used = gfx.take_dirty(overlay)
+        if used is not None and (used := used.clip(r)).w > 0:
+            surf.blit(overlay, used.topleft, area=used)
+        self._scale_bar(surf)
+        gfx.draw.rect(surf, theme.border(), r, 1)
+        surf.set_clip(clip)
+
+    def _begin_frame(self, surf: pygame.Surface, r: pygame.Rect) -> pygame.Surface:
+        """This frame's lights, and the overlay cleared of what was drawn on it last frame."""
+        self._lights = self.effects.lights(self.cam) if gfx.LIGHTING else []
+        if self._overlay is None or self._overlay.get_size() != surf.get_size():
+            self._overlay = gfx.Surface(surf.get_size(), pygame.SRCALPHA)
+            gfx.track(self._overlay)
+            self._overlay_used = pygame.Rect(r)
+        overlay = self._overlay
+        # the overlay is mostly empty: only what was drawn on it last frame is cleared, only what is drawn now is added
+        if self._overlay_used is not None:
+            overlay.fill((0, 0, 0, 0), self._overlay_used.clip(r))
+        gfx.take_dirty(overlay)
+        self._label_rects = []
+        self._range_tag = None
+        self._names = []
+        self._burning = []
+        return overlay
+
+    def _all_ordnance(self, surf: pygame.Surface, overlay: pygame.Surface, obs: Observation, prev: Snapshot | None,
+                      now: Snapshot, alpha: float) -> None:
+        """Torpedoes and probes in flight, with their trails and the warning of one coming at us."""
         live: set[int] = set()
         for o in obs.ordnance():
             b = now.ordnance.get(o.id)
@@ -413,11 +443,10 @@ class TacticalView:
             del self.torp_trails[oid]
         self._warned &= live
 
-        names = {s.id: s.name for s in obs.own_ships(alive_only=False)}
-        names.update({c.id: c.label if c.identified else f"#{c.id}" for c in obs.contacts().values()})
-        self._links(surf, overlay, obs, pose, player_id, selected_ally)
-
-        # ships
+    def _all_ships(self, surf: pygame.Surface, overlay: pygame.Surface, obs: Observation,
+                   pose: Callable[[int], Pose | None], player_id: int | None, target_id: int | None,
+                   selected_sub: str | None, selected_ally: int | None, names: dict[int, str]) -> None:
+        """Our ships, then the contacts, then every name on top of all the hulls."""
         self._label_more, self._label_quiet, self._label_reach = {}, set(), {}
         allies = [(s.id, pose(s.id)) for s in obs.own_ships(alive_only=False) if s.exists and s.alive and not s.cloaked]
         self._group_labels([(sid, p) for sid, p in allies if p], {player_id, selected_ally})
@@ -436,21 +465,20 @@ class TacticalView:
             name()
         self._names = []
         self._range_label(surf)
-        for sid, x, y, left, reach in obs.countdowns():      # a ship about to go up: how far the blast will reach
+
+    def _countdowns(self, surf: pygame.Surface, overlay: pygame.Surface, obs: Observation) -> None:
+        """A ship about to go up: how far the blast will reach."""
+        cam = self.cam
+        for sid, x, y, left, reach in obs.countdowns():
             if cam.visible(x, y, reach + 100):
                 sx, sy = cam.to_screen(x, y)
                 critical_ring(surf, overlay, sx, sy, reach * cam.zoom, left, self.clock,
                               "CORE CRITICAL" if obs.is_hive(sid) else "SELF-DESTRUCT")
 
-        # target link
-        if me is not None and target_id is not None:
-            pm, pt = pose(me.id), pose(target_id)
-            if pm and pt:
-                self._dashed(surf, theme.dim(theme.HOSTILE, 0.75), cam.to_screen(pm[0], pm[1]), cam.to_screen(pt[0], pt[1]), 6, 6)
-
-        self._ripples(obs, pose)
+    def _shots(self, surf: pygame.Surface, r: pygame.Rect, overlay: pygame.Surface) -> None:
+        """The weapon effects, and the soft light of the shots in flight added on in one go."""
         glow = None
-        if self.effects.beams:            # soft light of the shots in flight, added on in one go
+        if self.effects.beams:
             if self._glow is None or self._glow.get_size() != surf.get_size():
                 self._glow = gfx.Surface(surf.get_size())
                 gfx.track(self._glow)
@@ -459,19 +487,12 @@ class TacticalView:
             if self._glow_used is not None:
                 glow.fill((0, 0, 0), self._glow_used.clip(r))
             gfx.take_dirty(glow)
-        self.effects.draw(surf, cam, overlay, glow)
+        self.effects.draw(surf, self.cam, overlay, glow)
         if glow is not None:
             self._glow_used = lit = gfx.take_dirty(glow)
             if lit is not None and (lit := lit.clip(r)).w > 0:
                 surf.blit(glow, lit.topleft, area=lit, special_flags=pygame.BLEND_RGB_ADD)
                 gfx.offer_light(glow, lit)
-        self._fire(surf, pose)
-        self._overlay_used = used = gfx.take_dirty(overlay)
-        if used is not None and (used := used.clip(r)).w > 0:
-            surf.blit(overlay, used.topleft, area=used)
-        self._scale_bar(surf)
-        gfx.draw.rect(surf, theme.border(), r, 1)
-        surf.set_clip(clip)
 
     def _fire(self, surf: pygame.Surface, pose: Callable[[int], Pose | None]) -> None:
         """Ships blowing up and blows landing on hulls: burning pieces, then their light added onto the map."""
@@ -897,7 +918,7 @@ class TacticalView:
             gfx.draw.polygon(overlay, (*col, alpha), pts)
         gfx.draw.line(overlay, (*col, 200), a, b, 1)
 
-    def _own_ship(self, surf: pygame.Surface, overlay: pygame.Surface, s: Ship, p: Pose, is_player: bool,  # noqa: C901
+    def _own_ship(self, surf: pygame.Surface, overlay: pygame.Surface, s: Ship, p: Pose, is_player: bool,
                   obs: Observation, selected: bool = False, names: dict[int, str] | None = None) -> None:
         cam = self.cam
         if not cam.visible(p[0], p[1], 200):
@@ -911,7 +932,29 @@ class TacticalView:
             color = theme.ALLY
         if s.cloaked:
             color = theme.dim(color, 0.5)
-        # velocity leader
+        art = self._own_ship_art(surf, overlay, s, p, sx, sy, k, color, is_player)
+        op = next((o for o in obs.away_ops() if o.shuttle == s.id), None) if s.alive and s.cls.craft else None
+        if op is not None and op.phase == "aboard":
+            return                     # latched to the hive ship's hull: the activity panel tells their story
+        label = s.name if s.alive else f"{s.name} — {s.status.value}"
+        if s.alive and s.docked_to is not None:
+            label += " · docked"
+        if s.id in self._label_more:
+            label += f"  +{self._label_more[s.id]}"
+        if s.id in self._label_quiet:
+            return                     # named by her group's label (never the selected ship: she keeps her own)
+        self._own_ship_label(surf, s, label, sx, sy, k, art, color, is_player, obs, selected, names, op)
+        if selected:
+            b = 62 * k + 8
+            for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+                cx, cy = sx + dx * b, sy + dy * b
+                gfx.draw.line(surf, theme.ALLY, (cx, cy), (cx - dx * 7, cy), 1)
+                gfx.draw.line(surf, theme.ALLY, (cx, cy), (cx, cy - dy * 7), 1)
+
+    def _own_ship_art(self, surf: pygame.Surface, overlay: pygame.Surface, s: Ship, p: Pose, sx: float, sy: float,
+                      k: float, color: theme.Color, is_player: bool) -> bool:
+        """Her heading and course marks, her hull (or her shimmer under a cloak), her shields and her fires. True
+        when her art was drawn, rather than an outline."""
         if s.warp > 0.05:
             self._velocity_leader(surf, sx, sy, p[2], s.warp, k, theme.dim(color, 0.5))
         if is_player and abs(norm180(s.desired_course - s.course)) > 1:
@@ -933,59 +976,57 @@ class TacticalView:
         self._shield_ring(surf, s.id, sx, sy, p[2], 62 * k, strengths, overlay)
         if s.alive and s.structure < s.structure_max * SMOULDER_BELOW:
             self._burning.append((p[0], p[1], s.structure / s.structure_max))
-        op = next((o for o in obs.away_ops() if o.shuttle == s.id), None) if s.alive and s.cls.craft else None
-        if op is not None and op.phase == "aboard":
-            return                     # latched to the hive ship's hull: the activity panel tells their story
-        label = s.name if s.alive else f"{s.name} — {s.status.value}"
-        if s.alive and s.docked_to is not None:
-            label += " · docked"
-        if s.id in self._label_more:
-            label += f"  +{self._label_more[s.id]}"
-        if s.id in self._label_quiet:
-            return                     # named by her group's label (never the selected ship: she keeps her own)
+        return art
+
+    def _own_ship_label(self, surf: pygame.Surface, s: Ship, label: str, sx: float, sy: float, k: float, art: bool,
+                        color: theme.Color, is_player: bool, obs: Observation, selected: bool,
+                        names: dict[int, str] | None, op: AwayOp | None) -> None:
+        """Her name beside her, clear of her art and of other names, and the lines under it."""
+        cam = self.cam
         lx = max(sx, self._label_reach.get(s.id, sx)) + (62 * k + 12 if art else 34 * k + 6)   # clear of her art (and her group's)
         lw = theme.text_width(label, 12, weight="medium")
         if lx + lw > cam.rect.right - 6:                    # no room on the right: her name goes on the left
             lx = sx - (62 * k + 12 if art else 34 * k + 6) - lw
         place = self._label_x(sx, sy, lx, lw)
-        if place is not None:
-            lx = place
-            # our own ship's name carries her warp (and a cloak or a leak) on a line below: room is kept for it
-            tall = 26 + (12 if obs.leaking(s.id) else 0) if is_player else 26 if op is not None else 14
-            top = self._free_label_y(lx, sy - 8, max(lw, 90) if is_player else lw, tall)
-            if art:
-                self._leader(surf, sx, sy, 62 * k, lx if lx > sx else lx + lw, top, color)
-            self._later(theme.label, surf, label, (lx, top), color, 12)
-            ly = top + 14
-            room = int(cam.rect.right - 4 - lx)
-            if is_player:
-                self._later(theme.text, surf, f"w{s.warp:.1f}", (lx, ly), theme.TEXT_DIM, 10, "mono")
-                if s.alive and s.cloaked:
-                    self._later(theme.text, surf, "CLOAKED", (lx + theme.text_width(f"w{s.warp:.1f}", 10, "mono") + 8, ly),
-                               theme.CLOAK, 10, weight="semibold")
+        if place is None:
+            return
+        lx = place
+        # our own ship's name carries her warp (and a cloak or a leak) on a line below: room is kept for it
+        tall = 26 + (12 if obs.leaking(s.id) else 0) if is_player else 26 if op is not None else 14
+        top = self._free_label_y(lx, sy - 8, max(lw, 90) if is_player else lw, tall)
+        if art:
+            self._leader(surf, sx, sy, 62 * k, lx if lx > sx else lx + lw, top, color)
+        self._later(theme.label, surf, label, (lx, top), color, 12)
+        ly = top + 14
+        room = int(cam.rect.right - 4 - lx)
+        if is_player:
+            ly = self._own_ship_readout(surf, s, obs, lx, ly, room)
+        elif op is not None:
+            self._shuttle_lines(surf, op, lx, ly, room, names or {})
+            ly += 12
+        elif s.alive:
+            st = obs.ally_order(s.id)
+            mission = st.summary(names or {}) if st is not None else ""
+            if mission:
+                self._later(theme.text, surf, theme.fit(mission, 10, room), (lx, ly),
+                           theme.TEXT_FAINT if not selected else theme.TEXT_DIM, 10)
                 ly += 12
-                if obs.leaking(s.id):
-                    self._later(theme.text, surf, theme.fit("venting plasma", 10, room), (lx, ly), theme.EXHAUST, 10)
-                    ly += 12
-            elif op is not None:
-                self._shuttle_lines(surf, op, lx, ly, room, names or {})
-                ly += 12
-            elif s.alive:
-                st = obs.ally_order(s.id)
-                mission = st.summary(names or {}) if st is not None else ""
-                if mission:
-                    self._later(theme.text, surf, theme.fit(mission, 10, room), (lx, ly),
-                               theme.TEXT_FAINT if not selected else theme.TEXT_DIM, 10)
-                    ly += 12
-            if s.alive and s.boarders > 0 and s.boarder_side != s.side:
-                self._later(theme.text, surf, theme.fit(f"boarders aboard: {s.boarders}", 10, room, weight="medium"), (lx, ly),
-                           theme.ALERT, 10, weight="medium")
-        if selected:
-            b = 62 * k + 8
-            for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
-                cx, cy = sx + dx * b, sy + dy * b
-                gfx.draw.line(surf, theme.ALLY, (cx, cy), (cx - dx * 7, cy), 1)
-                gfx.draw.line(surf, theme.ALLY, (cx, cy), (cx, cy - dy * 7), 1)
+        if s.alive and s.boarders > 0 and s.boarder_side != s.side:
+            self._later(theme.text, surf, theme.fit(f"boarders aboard: {s.boarders}", 10, room, weight="medium"), (lx, ly),
+                       theme.ALERT, 10, weight="medium")
+
+    def _own_ship_readout(self, surf: pygame.Surface, s: Ship, obs: Observation, lx: float, ly: float, room: int) -> float:
+        """Under our own ship's name: her warp, her cloak, and plasma venting from a damaged drive. Returns the next
+        line's height."""
+        self._later(theme.text, surf, f"w{s.warp:.1f}", (lx, ly), theme.TEXT_DIM, 10, "mono")
+        if s.alive and s.cloaked:
+            self._later(theme.text, surf, "CLOAKED", (lx + theme.text_width(f"w{s.warp:.1f}", 10, "mono") + 8, ly),
+                       theme.CLOAK, 10, weight="semibold")
+        ly += 12
+        if obs.leaking(s.id):
+            self._later(theme.text, surf, theme.fit("venting plasma", 10, room), (lx, ly), theme.EXHAUST, 10)
+            ly += 12
+        return ly
 
     def _under_cloak(self, surf: pygame.Surface, overlay: pygame.Surface, s: Ship, sx: float, sy: float, course: float,
                  k: float, color: theme.Color) -> bool:
@@ -1021,7 +1062,7 @@ class TacticalView:
                     continue
             placed.append((sid, x, y))
 
-    def _contact(self, surf: pygame.Surface, c: ContactView, p: Pose, targeted: bool, sub: str | None,  # noqa: C901
+    def _contact(self, surf: pygame.Surface, c: ContactView, p: Pose, targeted: bool, sub: str | None,
                  overlay: pygame.Surface | None = None, hive: HiveMark | None = None) -> None:
         cam = self.cam
         if not cam.visible(p[0], p[1], 200):
@@ -1035,30 +1076,45 @@ class TacticalView:
         color = theme.HOSTILE if c.identified else theme.UNKNOWN
         if not c.visible:
             color = theme.dim(color, 0.45)
-        if c.cls is not None:
-            k = hull_pixel_scale(c.cls.hull, cam.zoom)
-            if c.warp > 0.05 and c.visible:
-                self._velocity_leader(surf, sx, sy, p[2], c.warp, k, theme.dim(color, 0.45))
-            light = self._light_on(sx, sy, 100 * k) if c.visible else None
-            drawn = (self._sprite(surf, c.cls, sx, sy, p[2], k) if c.visible and c.identified and k >= SPRITE_MIN_K
-                     else None)
-            art = drawn is not None
-            if drawn is None and not c.exhaust:        # placed only by her plasma: no outline, only the fix
-                drawn = draw_hull(surf, c.cls.hull, sx, sy, p[2], k, color, fill_alpha=0.22 if c.visible else 0.08)
-            if drawn is not None:
-                self._light_art(surf, drawn, light)
-            self._shield_ring(surf, c.id, sx, sy, p[2], 62 * k, None, overlay)
-            hurt = (c.assessed.hull if c.assessed is not None and c.assessed.hull is not None
-                    else c.scan.structure_frac if c.scan is not None else None)
-            if c.visible and hurt is not None and hurt < SMOULDER_BELOW:
-                self._burning.append((p[0], p[1], hurt))   # we've seen how badly she's hurt
-            rad = 62 * k + 4 if art else 40 * k
-        else:
-            art = False
+        art, rad = self._contact_art(surf, c, p, sx, sy, color, overlay)
+        color = self._contact_marks(surf, c, sx, sy, rad, color, overlay, hive)
+        self._contact_label(surf, c, sx, sy, rad, art, color, targeted, hive)
+        if targeted:
+            self._target_brackets(surf, c, p, sx, sy, rad, sub, overlay)
+
+    def _contact_art(self, surf: pygame.Surface, c: ContactView, p: Pose, sx: float, sy: float, color: theme.Color,
+                     overlay: pygame.Surface | None) -> tuple[bool, float]:
+        """Her hull as far as we know it (a diamond and a question mark when we don't know her class). Returns
+        whether her art was drawn, and the radius her marks keep clear of."""
+        if c.cls is None:
             rad = 10
             pts = [(sx, sy - rad), (sx + rad, sy), (sx, sy + rad), (sx - rad, sy)]
             gfx.draw.polygon(surf, color, pts, 1)
             theme.text(surf, "?", (sx, sy), color, 12, anchor="center")
+            return False, rad
+        k = hull_pixel_scale(c.cls.hull, self.cam.zoom)
+        if c.warp > 0.05 and c.visible:
+            self._velocity_leader(surf, sx, sy, p[2], c.warp, k, theme.dim(color, 0.45))
+        light = self._light_on(sx, sy, 100 * k) if c.visible else None
+        drawn = (self._sprite(surf, c.cls, sx, sy, p[2], k) if c.visible and c.identified and k >= SPRITE_MIN_K
+                 else None)
+        art = drawn is not None
+        if drawn is None and not c.exhaust:        # placed only by her plasma: no outline, only the fix
+            drawn = draw_hull(surf, c.cls.hull, sx, sy, p[2], k, color, fill_alpha=0.22 if c.visible else 0.08)
+        if drawn is not None:
+            self._light_art(surf, drawn, light)
+        self._shield_ring(surf, c.id, sx, sy, p[2], 62 * k, None, overlay)
+        hurt = (c.assessed.hull if c.assessed is not None and c.assessed.hull is not None
+                else c.scan.structure_frac if c.scan is not None else None)
+        if c.visible and hurt is not None and hurt < SMOULDER_BELOW:
+            self._burning.append((p[0], p[1], hurt))   # we've seen how badly she's hurt
+        return art, (62 * k + 4 if art else 40 * k)
+
+    def _contact_marks(self, surf: pygame.Surface, c: ContactView, sx: float, sy: float, rad: float,
+                       color: theme.Color, overlay: pygame.Surface | None, hive: HiveMark | None) -> theme.Color:
+        """What we know round her: the hive's adaptation, a firing solution, a rough fix from her exhaust, how far
+        off her reported position may be. Returns the colour her name takes."""
+        cam = self.cam
         if hive is not None and c.visible and overlay is not None:
             if hive.dormant > 0:
                 dormant_veil(overlay, sx, sy, rad, hive.dormant, self.clock)
@@ -1077,6 +1133,12 @@ class TacticalView:
             # beyond rated sensor range: the ring shows how far off the reported position may be
             ring = max(rad + 6, c.uncertainty * cam.zoom)
             self._dashed_circle(surf, theme.dim(color, 0.6), (sx, sy), int(ring), seg=12)
+        return color
+
+    def _contact_label(self, surf: pygame.Surface, c: ContactView, sx: float, sy: float, rad: float, art: bool,
+                       color: theme.Color, targeted: bool, hive: HiveMark | None) -> None:
+        """Her name, clear of her marks and of other names, and one line under it."""
+        cam = self.cam
         label = c.label if c.identified else f"#{c.id}"
         if (c.visible and c.haze > 0) or c.exhaust:
             label = "~" + label
@@ -1095,44 +1157,49 @@ class TacticalView:
             self._leader(surf, sx, sy, rad - 4, lx if lx > sx else lx + lw, top, color)
         if not quiet:
             self._later(theme.label, surf, label, (lx, top), color, 12)
-        if c.solution > 0 and place is not None:
+        if place is None:
+            return
+        if c.solution > 0:
             self._later(theme.text, surf, f"FIRING SOLUTION · {c.solution:.0f}s", (lx, top + 14),
                        theme.mix(theme.EXHAUST, (255, 255, 255), 0.45), 10, weight="semibold")
-        elif c.exhaust and place is not None:
+        elif c.exhaust:
             self._later(theme.text, surf, "EXHAUST · rough fix", (lx, top + 14), theme.EXHAUST, 10, weight="semibold")
-        elif hive is not None and c.visible and place is not None and not quiet:
+        elif hive is not None and c.visible and not quiet:
             note = self._hive_note(hive, targeted)
             if note:
                 room = int(cam.rect.right - 4 - lx)
                 self._later(theme.text, surf, theme.fit(note, 10, room), (lx, top + 14),
                            theme.HIVE if hive.dormant > 0 else theme.dim(theme.HIVE, 0.85), 10, weight="medium")
-        elif lost and place is not None:
+        elif lost:
             self._later(theme.text, surf, f"lost {c.age:.0f}s", (lx, top + 14), theme.TEXT_FAINT, 10)
-        if targeted:
-            if self._lock[0] != c.id:
-                self._lock = (c.id, self.clock)             # a new target: the brackets close in on it
-                self._sounds.append(("lock", p[0], p[1]))
-            t = min(1.0, (self.clock - self._lock[1]) / LOCK_TIME)
-            ease = 1 - (1 - t) ** 3
-            b = rad + 10 + 46 * (1 - ease)
-            col = theme.mix(theme.BG, theme.CAUTION, 0.35 + 0.65 * ease)
-            if t >= 1.0:                                      # locked: a slow breath of light
-                col = theme.mix(theme.CAUTION, (255, 240, 200), 0.25 * (0.5 + 0.5 * math.sin(self.clock * 3)))
-            spin = math.radians(90 * (1 - ease))
-            for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
-                ox, oy = dx * b, dy * b
-                rx = ox * math.cos(spin) - oy * math.sin(spin)
-                ry = ox * math.sin(spin) + oy * math.cos(spin)
-                cx, cy = sx + rx, sy + ry
-                ax, ay = -dx * 8, -dy * 8                     # the two arms of the bracket, turned with it
-                a1 = (cx + ax * math.cos(spin), cy + ax * math.sin(spin))
-                a2 = (cx - ay * math.sin(spin), cy + ay * math.cos(spin))
-                gfx.draw.line(surf, col, (cx, cy), a1, 2)
-                gfx.draw.line(surf, col, (cx, cy), a2, 2)
-            if t < 1.0 and overlay is not None:
-                gfx.draw.circle(overlay, (*theme.CAUTION, int(60 * (1 - t))), (int(sx), int(sy)), int(b), 1)
-            if sub:
-                theme.text(surf, f"⌖ {sub}", (sx, sy + b + 6), col, 11, anchor="midtop")
+
+    def _target_brackets(self, surf: pygame.Surface, c: ContactView, p: Pose, sx: float, sy: float, rad: float,
+                         sub: str | None, overlay: pygame.Surface | None) -> None:
+        """The target's brackets: they close in and turn when she is picked, then breathe once locked."""
+        if self._lock[0] != c.id:
+            self._lock = (c.id, self.clock)             # a new target: the brackets close in on it
+            self._sounds.append(("lock", p[0], p[1]))
+        t = min(1.0, (self.clock - self._lock[1]) / LOCK_TIME)
+        ease = 1 - (1 - t) ** 3
+        b = rad + 10 + 46 * (1 - ease)
+        col = theme.mix(theme.BG, theme.CAUTION, 0.35 + 0.65 * ease)
+        if t >= 1.0:                                      # locked: a slow breath of light
+            col = theme.mix(theme.CAUTION, (255, 240, 200), 0.25 * (0.5 + 0.5 * math.sin(self.clock * 3)))
+        spin = math.radians(90 * (1 - ease))
+        for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+            ox, oy = dx * b, dy * b
+            rx = ox * math.cos(spin) - oy * math.sin(spin)
+            ry = ox * math.sin(spin) + oy * math.cos(spin)
+            cx, cy = sx + rx, sy + ry
+            ax, ay = -dx * 8, -dy * 8                     # the two arms of the bracket, turned with it
+            a1 = (cx + ax * math.cos(spin), cy + ax * math.sin(spin))
+            a2 = (cx - ay * math.sin(spin), cy + ay * math.cos(spin))
+            gfx.draw.line(surf, col, (cx, cy), a1, 2)
+            gfx.draw.line(surf, col, (cx, cy), a2, 2)
+        if t < 1.0 and overlay is not None:
+            gfx.draw.circle(overlay, (*theme.CAUTION, int(60 * (1 - t))), (int(sx), int(sy)), int(b), 1)
+        if sub:
+            theme.text(surf, f"⌖ {sub}", (sx, sy + b + 6), col, 11, anchor="midtop")
 
     @staticmethod
     def _hive_note(m: HiveMark, targeted: bool) -> str:

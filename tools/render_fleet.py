@@ -202,17 +202,38 @@ def build_borg(hull: HullDef, px: float, seed: int) -> Baked:
     return Baked(px, x, y, H, ship, base, em, mat.rim, parts)
 
 
-def build(hull: HullDef, faction: str, px: float, seed: int) -> Baked:  # noqa: C901
+def build(hull: HullDef, faction: str, px: float, seed: int) -> Baked:
     if faction == "borg":
         return build_borg(hull, px, seed)
     mat = MATERIALS.get(faction, MATERIALS["federation"])
     R = _extent(hull)
     step = 1.0 / (px * SS)
     x, y = np.meshgrid(np.arange(-R, R, step), np.arange(R, -R, -step))
+    H, part, parts, station = _height_field(hull, x, y, px)
+
+    ship = part > 0
+    H = np.where(ship, H, 0.0)
+    kind = np.array([""] + [p.kind for p in parts])[part]
+    hullish = ship & (kind != "nacelle") & (kind != "engine")
+
+    base = _plating(mat, x, y, part, parts, kind, ship, seed)
+    _markings(base, faction, x, y, part, parts, kind, hullish, px)
+    H = _details(hull, H, base, x, y, ship, px, mat)
+
+    # emissives
+    em = np.zeros(x.shape + (3,))
+    _windows(em, hull, x, y, px, part, parts, kind, hullish, mat, seed, station)
+    _engine_glow(em, x, y, part, parts, mat, faction)
+    _hull_lights(em, x, y, parts, hullish, mat, faction)
+    return Baked(px, x, y, H, ship, base, em, mat.rim, parts)
+
+
+def _height_field(hull: HullDef, x: np.ndarray, y: np.ndarray, px: float) -> tuple[np.ndarray, np.ndarray, list[Part], bool]:
+    """The hull's shapes and nacelles as one height field: the height, which part each point belongs to (0 for
+    none, else its index in `parts` plus one), the parts, and whether she is a station (no nacelles)."""
     H = np.full(x.shape, -1e9)
     part = np.zeros(x.shape, np.int16)
     parts: list[Part] = []
-    rng = np.random.default_rng(seed)
 
     def put(mask: np.ndarray, h: np.ndarray, p: Part) -> None:
         nonlocal H
@@ -253,13 +274,13 @@ def build(hull: HullDef, faction: str, px: float, seed: int) -> Baked:  # noqa: 
         else:
             q = dx ** 2 + np.abs(dy) ** 6
             put(q < 1, 6.5 + 0.95 * rx * np.sqrt(np.clip(1 - q, 0, 1)), Part("nacelle", s))
+    return H, part, parts, station
 
-    ship = part > 0
-    H = np.where(ship, H, 0.0)
-    kind = np.array([""] + [p.kind for p in parts])[part]
-    hullish = ship & (kind != "nacelle") & (kind != "engine")
 
-    # plating: polar panels on saucers, a grid elsewhere, two-tone
+def _plating(mat: Material, x: np.ndarray, y: np.ndarray, part: np.ndarray, parts: list[Part], kind: np.ndarray,
+             ship: np.ndarray, seed: int) -> np.ndarray:
+    """Plating: polar panels on saucers, a grid elsewhere, two-tone. Returns the base colour."""
+    rng = np.random.default_rng(seed)
     base = np.zeros(x.shape + (3,))
     base[:] = mat.hull
     base[(kind == "nacelle") | (kind == "engine")] = mat.engine
@@ -288,8 +309,12 @@ def build(hull: HullDef, faction: str, px: float, seed: int) -> Baked:  # noqa: 
             base[on & (np.abs(x - cx) < 0.1 * rx + 0.12)] *= 0.82                  # a spine
     base *= (1.0 + tones[pid % 20000])[..., None]
     base[line] *= 0.72
+    return base
 
-    # faction markings
+
+def _markings(base: np.ndarray, faction: str, x: np.ndarray, y: np.ndarray, part: np.ndarray, parts: list[Part],
+              kind: np.ndarray, hullish: np.ndarray, px: float) -> None:
+    """Faction markings, painted onto the base colour."""
     if faction == "klingon":
         chev = hullish & (kind == "slab") & (np.abs(((y + np.abs(x) * 0.5) / 2.2) % 1.0 - 0.5) < 0.12) & (np.abs(x) > 6)
         base[chev] *= 0.78
@@ -311,7 +336,10 @@ def build(hull: HullDef, faction: str, px: float, seed: int) -> Baked:  # noqa: 
     elif faction == "federation":
         base[hullish & (kind == "dome") & (np.abs(x) < 0.5)] *= 0.86
 
-    # details: tiers and domes raised, grooves cut
+
+def _details(hull: HullDef, H: np.ndarray, base: np.ndarray, x: np.ndarray, y: np.ndarray, ship: np.ndarray, px: float,
+             mat: Material) -> np.ndarray:
+    """Details: tiers and domes raised, grooves cut. Returns the height field with them."""
     for s in hull.shapes:
         if s.role != "detail":
             continue
@@ -334,9 +362,12 @@ def build(hull: HullDef, faction: str, px: float, seed: int) -> Baked:  # noqa: 
             H += np.where(ship, 0.7 * np.sqrt(_bevel(m, 1.0, px)), 0.0)
             edge = m & (_bevel(m, 0.35, px) < 0.5)
             base[edge & ship] *= 0.62
+    return H
 
-    # emissives
-    em = np.zeros(x.shape + (3,))
+
+def _windows(em: np.ndarray, hull: HullDef, x: np.ndarray, y: np.ndarray, px: float, part: np.ndarray, parts: list[Part],
+             kind: np.ndarray, hullish: np.ndarray, mat: Material, seed: int, station: bool) -> None:
+    """Windows along the hull's edge band and round a saucer's rim, ports down long plates, a station's beacons."""
     edge = _bevel(hullish, 2.4, px)
     band = hullish & (edge > 0.35) & (edge < 0.8)
     sx, sy = 1.25, 1.9
@@ -378,6 +409,10 @@ def build(hull: HullDef, faction: str, px: float, seed: int) -> Baked:  # noqa: 
                     bx, by = vx * (d - 1.6) / d, vy * (d - 1.6) / d
                     em[hullish & (np.hypot(x - bx, y - by) < 0.6)] = mat.cap
 
+
+def _engine_glow(em: np.ndarray, x: np.ndarray, y: np.ndarray, part: np.ndarray, parts: list[Part], mat: Material,
+                 faction: str) -> None:
+    """Nacelle caps and the glowing grilles along them, or an engine block's exhaust."""
     for p in parts:
         if p.kind not in ("nacelle", "engine"):
             continue
@@ -405,6 +440,10 @@ def build(hull: HullDef, faction: str, px: float, seed: int) -> Baked:  # noqa: 
         else:
             em[on & (dy > -0.6) & (dy < 0.6) & seg & (np.abs(dx) < w)] = np.array(mat.glow) * 0.7
 
+
+def _hull_lights(em: np.ndarray, x: np.ndarray, y: np.ndarray, parts: list[Part], hullish: np.ndarray, mat: Material,
+                 faction: str) -> None:
+    """Impulse engines, navigation lights, the deflector, and a Klingon's torpedo tube aglow at the nose."""
     # impulse engines at the stern of the main hull, unless a nacelle sits there
     col = hullish & (np.abs(x) < 0.6)
     if col.any():
@@ -431,8 +470,6 @@ def build(hull: HullDef, faction: str, px: float, seed: int) -> Baked:  # noqa: 
         y_nose = float(y[col].max())
         k = np.clip(1 - (x / 1.6) ** 2 - ((y - (y_nose - 1.2)) / 0.9) ** 2, 0, 1)
         em[hullish & (k > 0)] = np.array(mat.cap)[None, :] * k[hullish & (k > 0), None] * 1.1
-
-    return Baked(px, x, y, H, ship, base, em, mat.rim, parts)
 
 
 def shade(b: Baked, heading: float) -> pygame.Surface:

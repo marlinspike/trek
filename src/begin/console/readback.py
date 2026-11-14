@@ -14,7 +14,7 @@ to `Command.describe()`.
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Any, Callable
 
 from ..sim.objectives import STRIKE_GROUPS
 from ..sim.commands import (
@@ -54,128 +54,179 @@ def _at(target: int | None, name_of: NameOf, system: str | None = None) -> str:
     return f" at the {name_of(target)}{aim}"
 
 
-def readback(cmd: Command, name_of: NameOf) -> str:  # noqa: C901
+# One phrase per kind of order. Each takes the command and `name_of`; they are tried in this order with
+# isinstance, so a subclass listed before its base (FireBait before FireTorpedoes) keeps its own phrase.
+
+
+def _set_helm(cmd: SetHelm, name_of: NameOf) -> str:
+    if cmd.warp == 0.0 and cmd.course is None:
+        return "All stop."
+    bits = []
+    if cmd.course is not None:
+        bits.append(f"Course {_course(cmd.course)}")
+    if cmd.warp is not None:
+        bits.append(f"warp {_warp(cmd.warp)}")
+    s = ", ".join(bits) or "Holding course"
+    return s[0].upper() + s[1:] + "."
+
+
+def _pursue(cmd: Pursue, name_of: NameOf) -> str:
+    how = "Breaking away from" if cmd.elude else "Pursuing"
+    warp = f" at warp {_warp(cmd.warp)}" if cmd.warp is not None else ""
+    return f"{how} the {name_of(cmd.target)}{warp}."
+
+
+def _evasive(cmd: Evasive, name_of: NameOf) -> str:
+    return "Evasive manoeuvres; I'll dodge their torpedoes." if cmd.on else "Evasive manoeuvres ended."
+
+
+def _dock(cmd: Dock, name_of: NameOf) -> str:
+    return f"Docking with the {name_of(cmd.host)}." if cmd.host is not None else "Undocking."
+
+
+def _fire_phasers(cmd: FirePhasers, name_of: NameOf) -> str:
+    if cmd.at_bearing is not None:
+        return f"Firing {mounts(cmd.banks, 'phaser', 'phasers')} on bearing {_course(cmd.at_bearing)}."
+    spread = f", spread {cmd.spread:g}" if cmd.spread is not None else ""
+    return f"Firing {mounts(cmd.banks, 'phaser', 'phasers')}{_at(cmd.target, name_of, cmd.subsystem)}{spread}."
+
+
+def _fire_bait(cmd: FireBait, name_of: NameOf) -> str:
+    return f"One torpedo as bait{_at(cmd.target, name_of)}, the rest to follow."
+
+
+def _fire_torpedoes(cmd: FireTorpedoes, name_of: NameOf) -> str:
+    what = mounts(cmd.tubes, "tube", "tubes")
+    if cmd.count is not None:
+        what = f"{cmd.count} torpedo{'es' if cmd.count != 1 else ''}"
+    fan = f", fanned {cmd.fan:g}°" if cmd.fan else ""
+    return f"Firing {what}{_at(cmd.target, name_of, cmd.subsystem)}{fan}."
+
+
+def _launch_probe(cmd: LaunchProbe, name_of: NameOf) -> str:
+    where = f" on course {_course(cmd.course)}" if cmd.course is not None else _at(cmd.target, name_of)
+    n = f"{cmd.count} probes" if cmd.count > 1 else "a probe"
+    return f"Launching {n}{where}."
+
+
+def _select_target(cmd: SelectTarget, name_of: NameOf) -> str:
+    if cmd.target is None:
+        return "Target cleared."
+    aim = f", aiming for her {cmd.subsystem}" if cmd.subsystem and cmd.subsystem != "hull" else ""
+    lock = "; weapons locked" if cmd.lock_weapons else ""
+    return f"Targeting the {name_of(cmd.target)}{aim}{lock}."
+
+
+def _lock_weapons(cmd: LockWeapons, name_of: NameOf) -> str:
+    parts = []
+    if cmd.phasers:
+        parts.append(mounts(cmd.banks, "phaser", "phasers"))
+    if cmd.torpedoes:
+        parts.append(mounts(cmd.tubes, "tube", "tubes"))
+    what = " and ".join(parts) or "weapons"
+    on = f"on the {name_of(cmd.target)}" if cmd.target is not None else "on the target"
+    return f"{what[0].upper() + what[1:]} locked {on}."
+
+
+def _set_banks(cmd: SetBanks, name_of: NameOf) -> str:
+    if cmd.role is not None:
+        return f"{mounts(cmd.banks, 'Phaser', 'Phasers')} set to {cmd.role.value}."
+    return f"{mounts(cmd.banks, 'Phaser', 'Phasers')} {'enabled' if cmd.enabled else 'disabled'}."
+
+
+def _load_tubes(cmd: LoadTubes, name_of: NameOf) -> str:
+    noun, plural = ("launcher", "launchers") if cmd.weapon == "launcher" else ("tube", "tubes")
+    return f"{'Unloading' if cmd.unload else 'Loading'} {mounts(cmd.tubes, noun, plural)}."
+
+
+def _autoload(cmd: ConfigureAutoload, name_of: NameOf) -> str:
+    state = "off" if cmd.enabled is False else "on"
+    kind = f" with {cmd.ordnance.upper()}" if cmd.ordnance else ""
+    return f"Autoload {state} for the {cmd.weapon}s{kind}."
+
+
+def _set_shields(cmd: SetShields, name_of: NameOf) -> str:
+    which = "all shields" if cmd.sectors is None else mounts(cmd.sectors, "shield", "shields")
+    return f"{'Raising' if cmd.up else 'Lowering'} {which}."
+
+
+def _repair_priority(cmd: SetRepairPriority, name_of: NameOf) -> str:
+    kind = str(getattr(cmd.kind, "value", cmd.kind))
+    return "Repair crews spread across the ship." if cmd.kind is None else f"Repair crews to the {kind} first."
+
+
+def _set_objective(cmd: SetObjective, name_of: NameOf) -> str:
+    many = len(cmd.targets)
+    ships = f"the {name_of(cmd.targets[0])}" if many == 1 else f"{many} ships"
+    if cmd.goal == "disable":
+        return f"Knocking out the {cmd.group} on {ships}, then sparing her." if many == 1 else \
+            f"Knocking out the {cmd.group} on {ships}."
+    if cmd.goal == "hunt":
+        return f"Hunting for {ships}."
+    if cmd.goal == "strike":
+        what = "" if cmd.group == "hull" else f"'s {STRIKE_GROUPS.get(cmd.group, cmd.group)}"
+        return f"Sweep and strike: the moment the seeker lands, a salvo into {ships}{what}."
+    return f"Standing order: {cmd.goal} {ships}."
+
+
+def _delegate(cmd: DelegateStation, name_of: NameOf) -> str:
+    title = STATION_TITLES.get(cmd.station, cmd.station.title())
+    return f"{title} is mine, Captain." if cmd.on else f"{title} is yours, Captain."
+
+
+def _ally_order(cmd: AllyOrder, name_of: NameOf) -> str:
+    on = f" on the {name_of(cmd.target)}" if cmd.target is not None else ""
+    return f"Signalling the {name_of(cmd.ally)}: {cmd.order}{on}."
+
+
+_PHRASES: tuple[tuple[type[Command], Callable[[Any, NameOf], str]], ...] = (
+    (SetHelm, _set_helm),
+    (Pursue, _pursue),
+    (Evasive, _evasive),
+    (Dock, _dock),
+    (FirePhasers, _fire_phasers),
+    (FireBait, _fire_bait),
+    (FireTorpedoes, _fire_torpedoes),
+    (LaunchProbe, _launch_probe),
+    (SelectTarget, _select_target),
+    (LockWeapons, _lock_weapons),
+    (TurnMounts, lambda cmd, name_of: f"Turning mounts to mark {cmd.mark:g}."),
+    (SetPhaserSpread, lambda cmd, name_of: f"Phaser spread {cmd.spread:g}."),
+    (SetBanks, _set_banks),
+    (LoadTubes, _load_tubes),
+    (ConfigureAutoload, _autoload),
+    (SetPointDefense, lambda cmd, name_of: f"Point defense {cmd.doctrine.value}."),
+    (SetShields, _set_shields),
+    (ReinforceShield, lambda cmd, name_of: "Shield reinforcement off." if cmd.sector is None
+        else f"Reinforcing shield {cmd.sector + 1}."),
+    (SetRepairPriority, _repair_priority),
+    (ManageRepairs, lambda cmd, name_of: "Repairs are mine, Captain." if cmd.officer
+        else "Repair crews answer to you, Captain."),
+    (SetCloak, lambda cmd, name_of: "Cloaking." if cmd.on else "Decloaking."),
+    (Scan, lambda cmd, name_of: f"Scanning the {name_of(cmd.target)}."),
+    (SetObjective, _set_objective),
+    (EndObjective, lambda cmd, name_of: "Standing order ended."),
+    (StartProject, lambda cmd, name_of: f"Starting work on the {cmd.project}."),
+    (DeflectorPulse, lambda cmd, name_of: "Pulsing the deflector."),
+    (EngineBoost, lambda cmd, name_of: "A team to the engines. Other repairs slow while they work." if cmd.on
+        else "Engine team back to repairs."),
+    (CeaseFire, lambda cmd, name_of: "Ceasing fire. Point defense stays on."),
+    (OpenFire, lambda cmd, name_of: "Weapons free."),
+    (StandDown, lambda cmd, name_of: "Standing down. Every station is yours."),
+    (DelegateStation, _delegate),
+    (TakeConn, lambda cmd, name_of: "I have the bridge." if cmd.officer else "You have the bridge, Captain."),
+    (Tractor, lambda cmd, name_of: f"Tractor beam on the {name_of(cmd.target)}." if cmd.target is not None
+        else "Tractor beam released."),
+    (Transport, lambda cmd, name_of: f"Beaming {cmd.count} to the {name_of(cmd.target)}."),
+    (AllyOrder, _ally_order),
+)
+
+
+def readback(cmd: Command, name_of: NameOf) -> str:
     """One sentence that says exactly what this order will do."""
-    if isinstance(cmd, SetHelm):
-        if cmd.warp == 0.0 and cmd.course is None:
-            return "All stop."
-        bits = []
-        if cmd.course is not None:
-            bits.append(f"Course {_course(cmd.course)}")
-        if cmd.warp is not None:
-            bits.append(f"warp {_warp(cmd.warp)}")
-        s = ", ".join(bits) or "Holding course"
-        return s[0].upper() + s[1:] + "."
-    if isinstance(cmd, Pursue):
-        how = "Breaking away from" if cmd.elude else "Pursuing"
-        warp = f" at warp {_warp(cmd.warp)}" if cmd.warp is not None else ""
-        return f"{how} the {name_of(cmd.target)}{warp}."
-    if isinstance(cmd, Evasive):
-        return "Evasive manoeuvres; I'll dodge their torpedoes." if cmd.on else "Evasive manoeuvres ended."
-    if isinstance(cmd, Dock):
-        return f"Docking with the {name_of(cmd.host)}." if cmd.host is not None else "Undocking."
-    if isinstance(cmd, FirePhasers):
-        if cmd.at_bearing is not None:
-            return f"Firing {mounts(cmd.banks, 'phaser', 'phasers')} on bearing {_course(cmd.at_bearing)}."
-        spread = f", spread {cmd.spread:g}" if cmd.spread is not None else ""
-        return f"Firing {mounts(cmd.banks, 'phaser', 'phasers')}{_at(cmd.target, name_of, cmd.subsystem)}{spread}."
-    if isinstance(cmd, FireBait):
-        return f"One torpedo as bait{_at(cmd.target, name_of)}, the rest to follow."
-    if isinstance(cmd, FireTorpedoes):
-        what = mounts(cmd.tubes, "tube", "tubes")
-        if cmd.count is not None:
-            what = f"{cmd.count} torpedo{'es' if cmd.count != 1 else ''}"
-        fan = f", fanned {cmd.fan:g}°" if cmd.fan else ""
-        return f"Firing {what}{_at(cmd.target, name_of, cmd.subsystem)}{fan}."
-    if isinstance(cmd, LaunchProbe):
-        where = f" on course {_course(cmd.course)}" if cmd.course is not None else _at(cmd.target, name_of)
-        n = f"{cmd.count} probes" if cmd.count > 1 else "a probe"
-        return f"Launching {n}{where}."
-    if isinstance(cmd, SelectTarget):
-        if cmd.target is None:
-            return "Target cleared."
-        aim = f", aiming for her {cmd.subsystem}" if cmd.subsystem and cmd.subsystem != "hull" else ""
-        lock = "; weapons locked" if cmd.lock_weapons else ""
-        return f"Targeting the {name_of(cmd.target)}{aim}{lock}."
-    if isinstance(cmd, LockWeapons):
-        parts = []
-        if cmd.phasers:
-            parts.append(mounts(cmd.banks, "phaser", "phasers"))
-        if cmd.torpedoes:
-            parts.append(mounts(cmd.tubes, "tube", "tubes"))
-        what = " and ".join(parts) or "weapons"
-        on = f"on the {name_of(cmd.target)}" if cmd.target is not None else "on the target"
-        return f"{what[0].upper() + what[1:]} locked {on}."
-    if isinstance(cmd, TurnMounts):
-        return f"Turning mounts to mark {cmd.mark:g}."
-    if isinstance(cmd, SetPhaserSpread):
-        return f"Phaser spread {cmd.spread:g}."
-    if isinstance(cmd, SetBanks):
-        if cmd.role is not None:
-            return f"{mounts(cmd.banks, 'Phaser', 'Phasers')} set to {cmd.role.value}."
-        return f"{mounts(cmd.banks, 'Phaser', 'Phasers')} {'enabled' if cmd.enabled else 'disabled'}."
-    if isinstance(cmd, LoadTubes):
-        noun, plural = ("launcher", "launchers") if cmd.weapon == "launcher" else ("tube", "tubes")
-        return f"{'Unloading' if cmd.unload else 'Loading'} {mounts(cmd.tubes, noun, plural)}."
-    if isinstance(cmd, ConfigureAutoload):
-        state = "off" if cmd.enabled is False else "on"
-        kind = f" with {cmd.ordnance.upper()}" if cmd.ordnance else ""
-        return f"Autoload {state} for the {cmd.weapon}s{kind}."
-    if isinstance(cmd, SetPointDefense):
-        return f"Point defense {cmd.doctrine.value}."
-    if isinstance(cmd, SetShields):
-        which = "all shields" if cmd.sectors is None else mounts(cmd.sectors, "shield", "shields")
-        return f"{'Raising' if cmd.up else 'Lowering'} {which}."
-    if isinstance(cmd, ReinforceShield):
-        return "Shield reinforcement off." if cmd.sector is None else f"Reinforcing shield {cmd.sector + 1}."
-    if isinstance(cmd, SetRepairPriority):
-        kind = str(getattr(cmd.kind, "value", cmd.kind))
-        return "Repair crews spread across the ship." if cmd.kind is None else f"Repair crews to the {kind} first."
-    if isinstance(cmd, ManageRepairs):
-        return "Repairs are mine, Captain." if cmd.officer else "Repair crews answer to you, Captain."
-    if isinstance(cmd, SetCloak):
-        return "Cloaking." if cmd.on else "Decloaking."
-    if isinstance(cmd, Scan):
-        return f"Scanning the {name_of(cmd.target)}."
-    if isinstance(cmd, SetObjective):
-        many = len(cmd.targets)
-        ships = f"the {name_of(cmd.targets[0])}" if many == 1 else f"{many} ships"
-        if cmd.goal == "disable":
-            return f"Knocking out the {cmd.group} on {ships}, then sparing her." if many == 1 else \
-                f"Knocking out the {cmd.group} on {ships}."
-        if cmd.goal == "hunt":
-            return f"Hunting for {ships}."
-        if cmd.goal == "strike":
-            what = "" if cmd.group == "hull" else f"'s {STRIKE_GROUPS.get(cmd.group, cmd.group)}"
-            return f"Sweep and strike: the moment the seeker lands, a salvo into {ships}{what}."
-        return f"Standing order: {cmd.goal} {ships}."
-    if isinstance(cmd, EndObjective):
-        return "Standing order ended."
-    if isinstance(cmd, StartProject):
-        return f"Starting work on the {cmd.project}."
-    if isinstance(cmd, DeflectorPulse):
-        return "Pulsing the deflector."
-    if isinstance(cmd, EngineBoost):
-        return ("A team to the engines. Other repairs slow while they work." if cmd.on else
-                "Engine team back to repairs.")
-    if isinstance(cmd, CeaseFire):
-        return "Ceasing fire. Point defense stays on."
-    if isinstance(cmd, OpenFire):
-        return "Weapons free."
-    if isinstance(cmd, StandDown):
-        return "Standing down. Every station is yours."
-    if isinstance(cmd, DelegateStation):
-        title = STATION_TITLES.get(cmd.station, cmd.station.title())
-        return f"{title} is mine, Captain." if cmd.on else f"{title} is yours, Captain."
-    if isinstance(cmd, TakeConn):
-        return "I have the bridge." if cmd.officer else "You have the bridge, Captain."
-    if isinstance(cmd, Tractor):
-        return f"Tractor beam on the {name_of(cmd.target)}." if cmd.target is not None else "Tractor beam released."
-    if isinstance(cmd, Transport):
-        return f"Beaming {cmd.count} to the {name_of(cmd.target)}."
-    if isinstance(cmd, AllyOrder):
-        on = f" on the {name_of(cmd.target)}" if cmd.target is not None else ""
-        return f"Signalling the {name_of(cmd.ally)}: {cmd.order}{on}."
+    for kind, phrase in _PHRASES:
+        if isinstance(cmd, kind):
+            return phrase(cmd, name_of)
     d = cmd.describe()
     return d[0].upper() + d[1:] + "."
 

@@ -17,9 +17,14 @@ from __future__ import annotations
 
 import argparse
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .ui.app import App
+    from .ui.battle_scene import BattleScene
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: C901
+def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="begin", description="Begin: a tactical starship simulation (remake)")
     ap.add_argument("--preset")
     ap.add_argument("--quick", type=int)
@@ -40,8 +45,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     ap.add_argument("--llm-test", nargs="?", const="Spock, what do you recommend?", metavar="QUESTION")
     ap.add_argument("--llm-usage", action="store_true")
     ap.add_argument("--llm-voice-test", nargs="?", const="klingon", metavar="FACTION")
-    args = ap.parse_args(argv)
+    return ap
 
+
+def _llm_tools(args: argparse.Namespace) -> int | None:
+    """The language-model commands, or None when none was asked for."""
     if args.llm_usage:
         from .tools.llm import usage
 
@@ -60,7 +68,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         except LLMError as e:
             print(e, file=sys.stderr)
             return 2
+    return None
 
+
+def _headless_runs(args: argparse.Namespace) -> int | None:
+    """Balance, tour and tournament runs with no window, or None when none was asked for."""
     if args.balance:
         from .tools.balance import run_balance
 
@@ -78,6 +90,71 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
 
         run_tournament(args.tournament)
         return 0
+    return None
+
+
+def _first_battle(app: App, args: argparse.Namespace) -> tuple[BattleScene | None, int | None]:
+    """The battle the command line asked to start in, if any; (None, 2) for a preset that doesn't exist."""
+    if args.preset:
+        from .presets import load_presets
+
+        match = [p for p in load_presets() if p.id == args.preset]
+        if not match:
+            print(f"Unknown preset '{args.preset}'.", file=sys.stderr)
+            return None, 2
+        return app.start_battle(match[0].setup()), None
+    if args.quick is not None:
+        from .battle import quick_battle
+
+        return app.start_battle(quick_battle(app.content, args.quick)), None
+    if args.patrol is not None:
+        from .battle import patrol_battle
+
+        return app.start_battle(patrol_battle(app.content, args.patrol, situation=args.situation)), None
+    return None, None
+
+
+def _stage(scene: BattleScene, args: argparse.Namespace) -> None:
+    """Set a battle up for a screenshot: run its console lines and cycles, then open the overlay asked for."""
+    scene.overlay = None
+    for cmd in (args.console or "").split(";"):
+        cmd = cmd.strip()
+        if cmd.startswith("@"):  # '@5' lets 5 cycles pass before the next command
+            scene.paused = False
+            for _ in range(int(float(cmd[1:]) * 60)):
+                scene.update(1 / 60)
+        elif cmd:
+            scene.run_console(cmd)
+    scene.paused = False
+    steps = int(args.cycles * 60)
+    for _ in range(steps):
+        scene.update(1 / 60)
+    scene.paused = True if args.cycles <= 0 else scene.paused
+    if args.overlay and args.overlay.startswith("manual"):
+        scene.open_manual(args.overlay.partition(":")[2] or None)
+    elif args.overlay and args.overlay.startswith("fleet"):
+        allies = scene.allies()
+        want = args.overlay.partition(":")[2].lower()
+        pick = next((a for a in allies if a.name.lower().startswith(want)), allies[0] if allies else None)
+        if pick is not None:
+            scene.select_ally(pick.id)
+    elif args.overlay == "crew":
+        from .ui.hud import CrewPanel
+
+        scene.side_tabs.show(CrewPanel)
+    elif args.overlay:
+        scene.overlay = args.overlay
+    if args.zoom:
+        scene.cam.zoom = args.zoom
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    done = _llm_tools(args)
+    if done is None:
+        done = _headless_runs(args)
+    if done is not None:
+        return done
 
     size = None
     if args.size:
@@ -87,58 +164,15 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     from .ui.app import App
 
     app = App(size=size, headless=bool(args.screenshot), renderer=args.renderer)
-    scene = None
-    if args.preset:
-        from .presets import load_presets
-
-        match = [p for p in load_presets() if p.id == args.preset]
-        if not match:
-            print(f"Unknown preset '{args.preset}'.", file=sys.stderr)
-            return 2
-        scene = app.start_battle(match[0].setup())
-    elif args.quick is not None:
-        from .battle import quick_battle
-
-        scene = app.start_battle(quick_battle(app.content, args.quick))
-    elif args.patrol is not None:
-        from .battle import patrol_battle
-
-        scene = app.start_battle(patrol_battle(app.content, args.patrol, situation=args.situation))
+    scene, failed = _first_battle(app, args)
+    if failed is not None:
+        return failed
 
     if args.screenshot:
         import pygame
 
         if scene is not None:
-            scene.overlay = None
-            for cmd in (args.console or "").split(";"):
-                cmd = cmd.strip()
-                if cmd.startswith("@"):  # '@5' lets 5 cycles pass before the next command
-                    scene.paused = False
-                    for _ in range(int(float(cmd[1:]) * 60)):
-                        scene.update(1 / 60)
-                elif cmd:
-                    scene.run_console(cmd)
-            scene.paused = False
-            steps = int(args.cycles * 60)
-            for _ in range(steps):
-                scene.update(1 / 60)
-            scene.paused = True if args.cycles <= 0 else scene.paused
-            if args.overlay and args.overlay.startswith("manual"):
-                scene.open_manual(args.overlay.partition(":")[2] or None)
-            elif args.overlay and args.overlay.startswith("fleet"):
-                allies = scene.allies()
-                want = args.overlay.partition(":")[2].lower()
-                pick = next((a for a in allies if a.name.lower().startswith(want)), allies[0] if allies else None)
-                if pick is not None:
-                    scene.select_ally(pick.id)
-            elif args.overlay == "crew":
-                from .ui.hud import CrewPanel
-
-                scene.side_tabs.show(CrewPanel)
-            elif args.overlay:
-                scene.overlay = args.overlay
-            if args.zoom:
-                scene.cam.zoom = args.zoom
+            _stage(scene, args)
         app.scene.update(0.0)
         app.scene.draw(app.screen)
         pygame.image.save(app.screen, args.screenshot)
