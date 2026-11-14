@@ -18,8 +18,9 @@ The hive answers: once our tuning has turned aside `shift_after` damage, they sh
 the tuning falls back.
 
 **What scans teach us.** Each scan of a hive ship by our side adds to a `Survey` of her: Seven learns most from
-each, the captain least. Half way, we know her weak point: an innocent-looking system that carries her vinculum
-relay. All the way, we hold her shield harmonics, and harmonic torpedoes go straight through her shields.
+each, the captain least, and a ship heavier than `SURVEY_MASS` (a cube) takes longer in proportion. Half way,
+we know her weak point: an innocent-looking system that carries her vinculum relay. All the way, we hold her
+shield harmonics, and harmonic torpedoes go straight through her shields.
 
 **The weak point.** Destroy it and her drones fall dormant for `sleep_cycles`: no weapons, no shields, no
 helm, no regeneration, no learning. Then she can be boarded (sim/away.py) or taken apart: a drive or reactor
@@ -60,6 +61,7 @@ FAMILIES = ("phaser", "torpedo", "harmonic", "probe")
 THRESHOLDS = (0.5, 0.85)                  # adaptation levels the officers call out
 SKILL = {"seven": 1.0, "spock": 0.75}     # how much an officer gets from the hive's tricks; anyone else 0.5
 SURVEY_STEP = 0.2                         # survey per scan, × skill × experience
+SURVEY_MASS = 600.0                       # a hive ship heavier than this takes longer to survey, in proportion
 WEAK_AT = 0.5                             # survey at which we know her weak point
 CODE_AT = 1.0                             # ... and hold her shield harmonics
 TUNE_CYCLES = 24.0                        # cycles for Seven to tune the shields from nothing to full
@@ -278,6 +280,7 @@ def on_scan(world: World, ship: Ship, target: Ship, by: str) -> None:
     if sv.progress >= CODE_AT:
         return
     gain = SENSOR_GAIN if "sensors" in ship.borg_tech else 1.0
+    gain *= min(1.0, SURVEY_MASS / max(1.0, target.cls.mass))      # a cube is a great deal of ship to read
     sv.progress = min(CODE_AT, sv.progress + SURVEY_STEP * skill(by) * ins.experience * gain)
     found = ""
     if sv.progress >= WEAK_AT and not sv.weak_told and target.weak_point:

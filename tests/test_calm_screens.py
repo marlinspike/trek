@@ -107,6 +107,13 @@ def test_no_words_drawn_over_words_on_the_battle_screen_and_its_pages(fresh, con
                 sc.draw(surf)
             for b in collisions(ink, surf, skip=sc.map_rect):
                 found.setdefault(f"{pid} battle", f"{size}: {b}")
+            for i, tab in enumerate(sc.side_tabs.tabs):        # every tab of the column (the bridge crew's names)
+                sc.side_tabs.active = i
+                with theme.watching() as ink:
+                    sc.draw(surf)
+                for b in collisions(ink, surf, skip=sc.map_rect):
+                    found.setdefault(f"{pid} tab {tab.title}", f"{size}: {b}")
+            sc.side_tabs.active = 0
             for overlay in ("help", "damage", "scan", "debrief", "debrief_details"):
                 sc.overlay = overlay
                 with theme.watching() as ink:
