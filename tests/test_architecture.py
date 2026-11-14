@@ -148,7 +148,7 @@ def _sample(hint: Any, name: str) -> Any:
 @pytest.mark.parametrize("name", sorted(wire.command_types()))
 def test_every_order_survives_the_wire(name: str) -> None:
     cls = wire.command_types()[name]
-    hints = typing.get_type_hints(cls, vars(__import__("begin.sim.commands", fromlist=["x"])))
+    hints = typing.get_type_hints(cls)
     kwargs = {f.name: _sample(hints[f.name], f.name) for f in dataclasses.fields(cls)
               if f.init and hints[f.name] is not object}
     cmd = cls(**kwargs)
