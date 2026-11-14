@@ -19,6 +19,7 @@ import pygame
 from ..content.schema import Faction
 from ..core.angles import norm180
 from ..content.schema import HullDef, ShipClass
+from ..sim.commands import split_locks
 from ..sim.events import CloakFlash, Detonation, Event, HullHit, SeekerLock, ShieldHit, ShipArrived, ShipStatusChanged
 from ..sim.ship import SHIELD_FACINGS
 from ..sim.observation import ContactView, Observation, OrdnanceView
@@ -470,9 +471,11 @@ class TacticalView:
                 self._own_ship(surf, overlay, s, p, s.id == player_id, obs, s.id == selected_ally, names)
         contacts = [(c, p) for c in obs.contacts().values() if (p := pose(c.id))]
         self._group_labels([(c.id, p) for c, p in contacts if c.visible], {target_id})
+        me = obs.own(player_id) if player_id is not None else None
+        also = set(split_locks(me)) - {target_id} if me is not None else set()    # the other ship of a split [E]
         for c, p in contacts:
             mark = hive_mark(obs, c.id, player_id) if c.identified else None
-            self._contact(surf, c, p, c.id == target_id, selected_sub, overlay, mark)
+            self._contact(surf, c, p, c.id == target_id, selected_sub, overlay, mark, c.id in also)
 
     def _draw_names(self, surf: pygame.Surface) -> None:
         """Every name on the map, last of all, so no hull, round or glow covers one."""
@@ -1104,7 +1107,7 @@ class TacticalView:
             placed.append((sid, x, y))
 
     def _contact(self, surf: pygame.Surface, c: ContactView, p: Pose, targeted: bool, sub: str | None,
-                 overlay: pygame.Surface | None = None, hive: HiveMark | None = None) -> None:
+                 overlay: pygame.Surface | None = None, hive: HiveMark | None = None, split: bool = False) -> None:
         cam = self.cam
         if not cam.visible(p[0], p[1], 200):
             return
@@ -1124,6 +1127,8 @@ class TacticalView:
         self._contact_label(surf, c, sx, sy, rad, art, color, targeted, hive, self._rank(p[0], p[1], 1 if targeted else 3))
         if targeted:
             self._target_brackets(surf, c, p, sx, sy, rad, sub, overlay)
+        elif split and c.visible:
+            self._split_brackets(surf, sx, sy, rad)
 
     def _contact_art(self, surf: pygame.Surface, c: ContactView, p: Pose, sx: float, sy: float, color: theme.Color,
                      overlay: pygame.Surface | None) -> tuple[bool, float]:
@@ -1256,6 +1261,17 @@ class TacticalView:
             gfx.draw.circle(overlay, (*theme.CAUTION, int(60 * (1 - t))), (int(sx), int(sy)), int(b), 1)
         if sub:
             theme.text(surf, f"⌖ {sub}", (sx, sy + b + 6), col, 11, anchor="midtop")
+
+    @staticmethod
+    def _split_brackets(surf: pygame.Surface, sx: float, sy: float, rad: float) -> None:
+        """Some of our banks or tubes are locked on her too (split fire): small, still brackets in the colour of
+        her letter in the Weapons panel."""
+        b = rad + 10
+        col = theme.mix(theme.BG, theme.CREW, 0.7)       # the colour of her letter in the Weapons panel
+        for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+            cx, cy = sx + dx * b, sy + dy * b
+            gfx.draw.line(surf, col, (cx, cy), (cx - dx * 6, cy), 1)
+            gfx.draw.line(surf, col, (cx, cy), (cx, cy - dy * 6), 1)
 
     @staticmethod
     def _hive_note(m: HiveMark, targeted: bool) -> str:

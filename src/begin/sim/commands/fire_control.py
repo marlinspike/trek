@@ -86,13 +86,16 @@ class SetObjective(Command):
             ship.spared.difference_update(self.targets)    # a new order about her: the officer may fire on her again
             ship.hold_fire = False      # a new order to attack lifts an earlier cease fire, or the officer never shoots
         ship.objectives.append(Objective(self.goal, self.group, tuple(self.targets), self.officer, world.tick))
-        if self.goal in ("disable", "capture") and self.issuer >= Authority.CAPTAIN:
+        if self.goal in ("disable", "capture", "engage") and self.issuer >= Authority.CAPTAIN:
             # [E] the captain hands the weapons to the officer: her own earlier target and fire orders no longer pin them
             for prefix in ("tactical", "phasers", "torpedoes"):
                 world.release_holds(ship.id, prefix)
 
     def describe(self) -> str:
-        return f"{self.goal} {self.group} on {len(self.targets)} ship{'s' if len(self.targets) != 1 else ''}"
+        n = f"{len(self.targets)} ship{'s' if len(self.targets) != 1 else ''}"
+        if self.goal == "engage":
+            return f"engage {n}, the weapons divided between them"
+        return f"{self.goal} {self.group} on {n}"
 
 
 @dataclass(kw_only=True)

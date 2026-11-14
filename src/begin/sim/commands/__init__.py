@@ -28,7 +28,7 @@ from .operations import SWEEP_CYCLES, Dock, FireSeeker, Hail, Scan, SetCloak, Sw
 from .phasers import FirePhasers, SetBanks, SetPhaserSpread
 from .probes import ControlProbe, LaunchProbe, SetFireMode, SetPointDefense
 from .shields import ReinforceShield, SetShields
-from .targeting import LockWeapons, SelectTarget, TurnMounts
+from .targeting import LockWeapons, SelectTarget, SplitFire, TurnMounts, split_locks
 from .torpedoes import ConfigureAutoload, EngineBoost, FireSpecialRound, FireTorpedoes, LoadTubes, SetTubes, StartProject
 
 __all__ = [
@@ -59,6 +59,7 @@ __all__ = [
     "LaunchProbe",
     "LoadTubes",
     "LockWeapons",
+    "SplitFire",
     "ManageRepairs",
     "OpenFire",
     "Pursue",
@@ -94,4 +95,5 @@ __all__ = [
     "fire_target",
     "in_mount_arc",
     "offensive_fire",
+    "split_locks",
 ]

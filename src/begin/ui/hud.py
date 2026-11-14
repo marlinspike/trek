@@ -18,7 +18,7 @@ import pygame
 from ..core.angles import bearing, in_arc, norm180, norm360
 from ..sim.commands import (
     ConfigureAutoload, ControlProbe, DelegateStation, Dock, Scan, SelectTarget, SetFireMode, SetPhaserSpread,
-    SetPointDefense, SetShields, Tractor, Transport,
+    SetPointDefense, SetShields, Tractor, Transport, split_locks,
 )
 from ..sim.ship import SHIELD_FACINGS
 from ..sim.ship import BankRole, FireMode, Kind, PDDoctrine, Ship, repair_words
@@ -99,6 +99,29 @@ def torpedo_summary(ship: Ship) -> tuple[int, int, str]:
         if mark and st in ("loaded", "arming") and mark not in marks:
             marks.append(mark)
     return sum(st == "loaded" for st, _ in states), len(states), "/".join(marks)
+
+
+SPLIT_COLORS = (theme.CAUTION, theme.CREW)     # the target's tag (amber, as her brackets), the other ship's (lavender)
+
+
+def split_tags(hud: BattleScene, ship: Ship) -> dict[int, tuple[str, str, theme.Color]]:
+    """When our weapons are divided between ships (split fire): {ship: (tag, name, colour)}, the target first.
+    The tag is the fewest leading letters of her name that tell the ships apart ("H", "W"; "Ma", "Mo")."""
+    groups = split_locks(ship)
+    if not groups:
+        return {}
+    order = sorted(groups, key=lambda t: (t != ship.target, min([*groups[t][1], *(100 + i for i in groups[t][0])])))
+
+    def name(t: int) -> str:
+        c = hud.obs.contact(t)
+        return c.label.split(" (")[0] if c is not None and c.identified else f"#{t}"
+
+    names = {t: name(t) for t in order}
+    n = 1
+    while n < 3 and len({names[t][:n].lower() for t in order}) < len(order):
+        n += 1
+    return {t: (names[t][:n].title() if not names[t].startswith("#") else names[t], names[t],
+                SPLIT_COLORS[min(k, len(SPLIT_COLORS) - 1)]) for k, t in enumerate(order)}
 
 
 def pd_button(surf: pygame.Surface, hud: BattleScene, ship: Ship, r: pygame.Rect, short: bool = False) -> None:
@@ -602,14 +625,36 @@ class WeaponsPanel(Panel):
 
     accent: ClassVar[theme.Color] = theme.PHASER
 
+    def tab_label(self, hud: BattleScene) -> str:
+        return "Weapons · split" if hud.player is not None and split_locks(hud.player) else self.title
+
+    def draw(self, surf: pygame.Surface, rect: pygame.Rect, hud: BattleScene) -> None:
+        super().draw(surf, rect, hud)
+        tags = split_tags(hud, hud.player) if hud.player is not None else {}
+        if tags:      # split fire: a quiet key beside the title, "H Hydra  W Wraith" in the tags' colours
+            _split_key(surf, tags, rect.x + 10 + theme.text_width(self.title.upper(), 11, "display", "medium") + 14,
+                       rect.y + 5, rect.right - 10)
+
     def body(self, surf: pygame.Surface, rect: pygame.Rect, y: int, hud: BattleScene) -> None:
         ship = hud.player
         if ship is None:
             return
         obs = hud.obs
         tgt = obs.contact(ship.target) if ship.target is not None else None
-        brg = bearing(tgt.x - ship.x, tgt.y - ship.y) if tgt else None
         x0 = rect.x + 12
+        tags = split_tags(hud, ship)     # split fire: each cell tagged with the ship it is on
+
+        def aim(lock: int | None) -> tuple[ContactView | None, float | None]:
+            """The ship a mount works on (its own lock when the fire is split, else the target) and her bearing."""
+            c = obs.contact(lock) if tags and lock is not None else tgt
+            return (c, bearing(c.x - ship.x, c.y - ship.y)) if c is not None else (None, None)
+
+        def tag(surf: pygame.Surface, r: pygame.Rect, lock: int | None) -> bool:
+            if not tags or lock not in tags:
+                return False
+            t, _, col = tags[lock]
+            theme.text(surf, t, (r.right - 4, r.y + 2), col, 10, "mono", anchor="topright")
+            return True
         # phasers
         theme.text(surf, "Phasers", (x0, y), theme.TEXT_DIM, 12, weight="medium")
         # one cell per bank or tube, as wide as fits: a Dreadnought's eight tubes in a 1440-point window too
@@ -618,7 +663,8 @@ class WeaponsPanel(Panel):
         for i, b in enumerate(ship.banks):
             r = pygame.Rect(x0 + 64 + i * (bw + 4), y - 2, bw, 30)
             frac = b.charge / ship.cls.banks_charge
-            bears = brg is not None and bank_bears(ship, b, brg)
+            aimed, on_brg = aim(b.lock)
+            bears = on_brg is not None and bank_bears(ship, b, on_brg)
             edge = theme.GOOD if bears else theme.BORDER
             gfx.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
             gfx.draw.rect(surf, edge, r, 1, border_radius=3)
@@ -631,11 +677,14 @@ class WeaponsPanel(Panel):
             theme.bar(surf, pygame.Rect(r.x + 4, r.bottom - 8, r.width - 8, 4), frac if b.intact else 0, col)
             role = {BankRole.OFFENSE: "O", BankRole.FLEX: "", BankRole.DEFENSE: "PD"}[b.role]
             theme.text(surf, f"{i + 1}", (r.x + 5, r.y + 3), theme.TEXT if b.intact else theme.ALERT, 11, "mono")
-            theme.text(surf, MODE_LETTER[b.fire_mode] + (" " + role if role else ""), (r.right - 4, r.y + 3),
-                       theme.TEXT_DIM, 10, anchor="topright")
+            if not tag(surf, r, b.lock if b.role != BankRole.DEFENSE else None):
+                theme.text(surf, MODE_LETTER[b.fire_mode] + (" " + role if role else ""), (r.right - 4, r.y + 3),
+                           theme.TEXT_DIM, 10, anchor="topright")
             hud.ui.add(r, partial(hud.fire_phasers, (i,)),
                        f"Bank {i + 1}: {b.charge:.1f}/{ship.cls.banks_charge:.0f} · arc {b.mount.arc_width:.0f}° · "
-                       f"{b.fire_mode.value} · {b.role.value}. Click fires, right-click toggles PD reserve.",
+                       f"{b.fire_mode.value} · {b.role.value}"
+                       + (f" · on the {tags[b.lock][1]}" if tags and b.lock in tags else "")
+                       + ". Click fires, right-click toggles PD reserve.",
                        right=partial(hud.toggle_reserve, i))
         yy = y + 34
         inner = rect.right - 12 - x0
@@ -665,8 +714,9 @@ class WeaponsPanel(Panel):
         for i, t in enumerate(ship.tubes):
             r = pygame.Rect(x0 + 64 + i * (bw + 4), yy, bw, 30)
             bears = False
-            if tgt is not None and brg is not None:
-                rel = norm360(brg - ship.course)
+            aimed, on_brg = aim(t.lock)
+            if aimed is not None and on_brg is not None:
+                rel = norm360(on_brg - ship.course)
                 bears = not hud.obs.rules.tube_arcs or in_arc(rel, t.mount.arc_center, t.mount.arc_width)
             state, mark = tube_state(ship, i)
             gfx.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
@@ -674,7 +724,7 @@ class WeaponsPanel(Panel):
             frac = 1.0 if state == "loaded" else max(0.0, min(1.0, t.charge / 100.0)) if state == "arming" else 0.0
             if state == "loaded":
                 # loaded but the target is outside this tube's arc: dimmed, so it's clear why it won't fire
-                lab, col = mark[:4], theme.GOOD if bears or tgt is None else theme.TEXT_DIM
+                lab, col = mark[:4], theme.GOOD if bears or aimed is None else theme.TEXT_DIM
             elif state == "damaged":
                 lab, col = "DMG", theme.ALERT
             elif state == "dry":
@@ -684,6 +734,7 @@ class WeaponsPanel(Panel):
             else:
                 lab, col = mark[:4] or f"{t.charge:.0f}%", theme.CAUTION
             theme.text(surf, f"{i + 1}", (r.x + 4, r.y + 2), theme.TEXT_DIM, 10, "mono")
+            tag(surf, r, t.lock)
             theme.text(surf, lab, (r.centerx, r.y + 17), col, 10, "mono", anchor="center")
             if state in ("loaded", "arming"):    # the same bar as a phaser bank's: full and green when loaded
                 theme.bar(surf, pygame.Rect(r.x + 4, r.bottom - 5, r.width - 8, 3), frac,
@@ -695,7 +746,8 @@ class WeaponsPanel(Panel):
             hud.ui.add(r, partial(hud.fire_torpedoes, (i,)),
                        f"Tube {i + 1}: {what} · autoload {'on' if t.autoload else 'off'} {t.load_ordnance.upper()}"
                        + (f" · arc {t.mount.arc_width:.0f}°" if hud.obs.rules.tube_arcs else "")
-                       + (" · target outside its arc" if tgt is not None and not bears else "") + ". Click fires it.")
+                       + (f" · on the {tags[t.lock][1]}" if tags and t.lock in tags else "")
+                       + (" · target outside its arc" if aimed is not None and not bears else "") + ". Click fires it.")
             n_bear += bool(t.loaded and bears)
         if ship.tubes:
             theme.text(surf, f"{loaded}/{n}", (x0, yy + 18),
@@ -731,6 +783,21 @@ class WeaponsPanel(Panel):
         hud.ui.button(surf, pygame.Rect(px + lw + 4, yy, dw, 22), f"Detonate {len(mine)}" if mine else "Detonate",
                       lambda: hud.issue(ControlProbe(ship_id=ship.id, detonate=True)), "Detonate all our probes",
                       enabled=bool(mine), accent=theme.ALERT)
+        if tags and self in hud.side_tabs.folded and yy + 44 <= rect.bottom:     # in a tab there is no title to key
+            theme.text(surf, "Split", (x0, yy + 30), theme.TEXT_DIM, 12, weight="medium")
+            _split_key(surf, tags, x0 + 64, yy + 30, x0 + inner)
+
+
+def _split_key(surf: pygame.Surface, tags: dict[int, tuple[str, str, theme.Color]], x: int, y: int, right: int) -> None:
+    """ "H Hydra  W Wraith": which tag is which ship, as far as fits before `right`."""
+    for t, nm, col in tags.values():
+        if right - x < 30:
+            break
+        theme.text(surf, t, (x, y), col, 11, "mono")
+        x += theme.text_width(t, 11, "mono") + 4
+        words = theme.fit(nm, 11, right - x)
+        theme.text(surf, words, (x, y), theme.TEXT_DIM, 11)
+        x += theme.text_width(words, 11) + 12
 
 
 # ------------------------------------------------------------------ contacts
@@ -1034,5 +1101,5 @@ class TabbedPanel(Panel):
 
 __all__ = [
     "ContactsPanel", "CrewPanel", "FLEET_ORDERS", "FleetPanel", "OwnShipPanel", "Panel", "TabbedPanel", "TargetPanel",
-    "WeaponsPanel", "hull_diagram", "pd_button", "torpedo_summary", "tube_state",
+    "WeaponsPanel", "hull_diagram", "pd_button", "split_tags", "torpedo_summary", "tube_state",
 ]

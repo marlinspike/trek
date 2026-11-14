@@ -424,15 +424,17 @@ class World:
             if other.helm_target == ship.id and status in (ShipStatus.DESTROYED, ShipStatus.ESCAPED):
                 other.helm_target = None
                 other.helm_mode = HelmMode.COURSE
-            if other.target == ship.id and status in (ShipStatus.DESTROYED, ShipStatus.ESCAPED):
-                other.target = None
-                other.target_subsystem = None
+            if status in (ShipStatus.DESTROYED, ShipStatus.ESCAPED):
+                if other.target == ship.id:
+                    other.target = None
+                    other.target_subsystem = None
+                # [E] weapons locked on her (a split between ships) swing to the ship's own target, if she has one
                 for b in other.banks:
                     if b.lock == ship.id:
-                        b.lock = None
+                        b.lock = other.target
                 for t in other.tubes:
                     if t.lock == ship.id:
-                        t.lock = None
+                        t.lock = other.target
 
     def _credit(self, ship: Ship, attacker: int | None) -> None:
         att = self.ships.get(attacker) if attacker is not None else None

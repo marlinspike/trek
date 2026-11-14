@@ -735,6 +735,9 @@ COMMAND_SYNTAX = """\
   hunt <ship> (a standing order to find a cloaked or lost ship and target her) | hunt off
   strike <ship> [shields|weapons|warp|sensors|cloak|hull] (sweep and strike: seeker down her plasma trail, then an aimed salvo the instant it hits) | strike off
   disable <shields|phasers|torpedoes|weapons|engines|sensors> <ships|all> | disable off   (a standing objective)
+  split tubes 1-4 on <ship>, rest on <ship> [phasers on <ship>] [now] | split <ship> <ship> | split off
+  (split fire: some tubes or banks on one ship, the rest on another; "now" fires each group at its ship)
+  engage <ship> and <ship> | engage off   (a standing objective: divide the fire between two ships and keep at it)
   delegate <helm|tactical|engineering|science> | assume <station>   (hand a station to its officer, or take it back)
   stand down   (cease fire, every objective ends, every station and the bridge back to the captain)"""
 

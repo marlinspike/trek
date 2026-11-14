@@ -4,7 +4,7 @@ category: Weapons
 order: 2
 aliases: tor, torp, torps, torpedo, torpedoes, tubes, tube, envelope, proximity
 summary: Long-range warheads with proximity fuses. Types differ in speed, punch and reach.
-see: fire, loading, lock, weapons-guide, coach
+see: fire, loading, lock, weapons-guide, coach, split-fire
 ---
 Torpedoes are fired from **tubes**. They fly in a straight line at a fixed speed (plasma torpedoes home in) and explode when they pass within their **proximity** distance of a ship. Unlike phasers, their warhead does not weaken with range, apart from plasma, which fades as it travels.
 
@@ -68,6 +68,8 @@ lock all tubes on gorkon
 lock tubes 1 2 on gorkon 0
 lock all tubes on gorkon with a dispersion of 30
 ```
+
+To put some tubes on one ship and the rest on another, `split tubes 1-4 on gorkon, rest on talon`; see [[split-fire]].
 
 You can also fan a single salvo as you fire it, without changing the locks. The angle is the whole width of the fan, centred on the lead point, with the torpedoes evenly spaced across it:
 

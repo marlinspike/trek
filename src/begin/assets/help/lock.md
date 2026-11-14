@@ -4,7 +4,7 @@ category: Weapons
 order: 4
 aliases: lock, turn, mark, dispersion, unlock
 summary: Point banks and tubes at a ship, or at a fixed angle.
-see: phasers, torpedoes, targeting
+see: phasers, torpedoes, targeting, split-fire
 ---
 Weapons fire in the direction they point. A **locked** mount follows its target. Tubes also lead it: they aim where the target will be when the torpedo arrives. Each mount can be locked on a different ship. If the target is destroyed, the mount returns to manual control.
 
@@ -36,3 +36,7 @@ turn tubes to 0
 ```
 
 Probes are steered by course instead. See [[probes]].
+
+## Two ships at once
+
+Locking some mounts on one ship and the rest on another is a split. `split tubes 1-4 on gorkon, rest on talon` does it in one order, and `engage gorkon and talon` hands it to your tactical officer. See [[split-fire]].

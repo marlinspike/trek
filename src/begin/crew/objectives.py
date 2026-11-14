@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING
 from ..core.angles import bearing, norm360
 from ..sim.commands import (
     Authority, Command, DeflectorPulse, EndObjective, FireAtPoint, FireBait, FirePhasers, FireSeeker, FireSpecialRound,
-    Pursue, Scan, SelectTarget, SetHelm, SetShields, StartProject, Sweep, Transport,
+    FireTorpedoes, Pursue, Scan, SelectTarget, SetHelm, SetShields, SplitFire, StartProject, Sweep, Transport,
 )
 from ..sim.factory import SHIELD_FACINGS
 from ..sim.objectives import Objective, baitable
@@ -48,6 +48,8 @@ from ..sim.ship import TARGETABLE_GROUPS, Ship
 from ..sim.systems.ordnance import blast_radius
 from ..sim.ship import bank_ready
 from ..sim.systems.phasers import bank_bears_point
+from ..sim.commands import in_mount_arc
+from .split_fire import divide, hull_left, runs, torpedo_reach
 
 if TYPE_CHECKING:
     from .officers import OfficerBrain
@@ -103,6 +105,11 @@ class Planner:
     tally_for: tuple[object, ...] = ()
     tally_since: int = 0
     scent: int = -10 ** 9          # sweep and strike [E]: when we last had her trail or her in sight
+    # engaging several ships [E]: the division last set, one waiting to settle, and each ship's last salvo
+    split_key: tuple[object, ...] | None = None
+    split_pending: tuple[object, ...] | None = None
+    split_since: int = 0
+    salvo_at: dict[int, int] = field(default_factory=dict)
 
     def note(self, obs: Observation, kind: str, text: str) -> None:
         if kind != self.step_kind or text != self.step:
@@ -248,12 +255,16 @@ def progress(obs: Observation, o: Objective, names: dict[int, str] | None = None
         if o.goal == "strike":
             parts.append(_strike_progress(obs, o, c, name))
             continue
+        if o.goal == "engage" and (c is None or c.scan is None):
+            hull = hull_left(c)
+            parts.append(f"{name} hull {hull * 100:.0f}%" if hull is not None else f"{name} engaged")
+            continue
         if c is None or c.scan is None:
             parts.append(f"{name} not scanned yet")
             continue
         age = (obs.tick - c.scan.tick) / obs.rules.ticks_per_cycle
         stale = f", scan {age:.0f}s old" if age > SCAN_STALE else ""
-        if o.goal == "destroy":
+        if o.goal in ("destroy", "engage"):
             parts.append(f"{name} hull {c.scan.structure_frac * 100:.0f}%{stale}")
             continue
         if o.goal == "capture":
@@ -679,11 +690,95 @@ def plan_hunt(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: Off
     return out
 
 
+ENGAGE_SETTLE = 2.0       # cycles a new division of the weapons must hold before the officer re-divides them [E]
+ENGAGE_SALVO_GAP = 2.0    # cycles between salvos at the same ship
+
+
+def plan_engage(p: Planner, obs: Observation, ship: Ship, o: Objective, brain: OfficerBrain | None) -> list[Command]:
+    """[E] Engage several ships at once ("Worf, engage the Talon and the Wraith"): divide the weapons between the two
+    most pressing (crew/split_fire.py `divide`), lock each bank and tube on its ship, and fire each group at its own
+    ship when it bears: phasers whenever charged and in range, torpedoes as a full salvo inside the torpedo window.
+    The division is re-made as the ships move, but only once a new one has held for a moment, so the weapons don't
+    flick between them. The helm stays with the captain or the helm officer. Done when none of them is left."""
+    tpc = obs.rules.ticks_per_cycle
+    alive = [t for t in o.targets if _alive(obs, t)]
+    if not alive:
+        return [p._cmd(EndObjective, ship, group=o.group, outcome="done")]
+    if not ship.weapons_operational():
+        return [p._cmd(EndObjective, ship, group=o.group, outcome="impossible", reason="we have no working weapons")]
+    out: list[Command] = []
+    d = divide(obs, ship, alive)
+    if d is None:
+        if brain is not None:
+            out.extend(brain._collaborate(obs, ship))
+        p.note(obs, "hunt", "Searching for " + " and ".join(label(obs, t) for t in alive[:2]))
+        return out
+    locked_as = all(ship.banks[i].lock == t for t, idx in d.banks.items() for i in idx) and \
+        all(ship.tubes[i].lock == t for t, idx in d.tubes.items() for i in idx)
+    if not locked_as:
+        key = d.key()
+        if key != p.split_pending:
+            p.split_pending, p.split_since = key, obs.tick
+        stale = any(m.lock is not None and m.lock not in alive for m in ship.tubes) or \
+            any(b.lock is not None and b.lock not in alive for b in ship.banks) or ship.target not in alive
+        if p.split_key is None or stale or obs.tick - p.split_since >= ENGAGE_SETTLE * tpc:
+            out.append(p._cmd(SplitFire, ship, banks=tuple(d.banks.items()), tubes=tuple(d.tubes.items()),
+                              primary=d.primary))
+            p.split_key = d.key()
+            p.count("splits")
+            p.note(obs, "split", d.words(lambda t: label(obs, t)))
+    fired = False
+    split_said = p.step_kind == "split" and p.step_tick == obs.tick    # the new split is the news this moment
+    for t, idx in d.banks.items():
+        c = obs.contact(t)
+        if c is None or not c.visible:
+            continue
+        dist = c.distance_to(ship.x, ship.y)
+        if dist > ship.cls.banks_range:
+            continue
+        ready = tuple(i for i in idx if bank_ready(ship, ship.banks[i]) and bank_bears_point(ship, ship.banks[i], c.x, c.y))
+        if ready:
+            out.append(p._cmd(FirePhasers, ship, banks=ready, target=t, spread=10.0 if dist < ship.cls.banks_range * 0.5 else 20.0))
+            p.count("phasers")
+            fired = True
+            if p.step_kind not in ("split", "salvo") or obs.tick - p.step_tick > tpc:
+                p.note(obs, "phasers", f"Phaser{'s' * (len(ready) > 1)} {runs(ready)} on {label(obs, t)}")
+    for t, idx in d.tubes.items():
+        c = obs.contact(t)
+        if c is None or not c.visible or obs.tick - p.salvo_at.get(t, -10 ** 9) < ENGAGE_SALVO_GAP * tpc:
+            continue
+        lo, hi = torpedo_reach(obs, ship, c)
+        dist = c.distance_to(ship.x, ship.y)
+        if hi <= 0 or not lo * 1.05 <= dist <= hi * 0.6:
+            continue
+        usable = [i for i in idx if ship.tubes[i].intact and ship.tubes[i].enabled]
+        loaded = [i for i in usable if ship.tubes[i].loaded is not None]
+        if not loaded or len(loaded) < len(usable) or obs.torpedo_pressure(t) > 25:
+            continue       # a full salvo, and not onto torpedoes already on their way
+        bears = tuple(i for i in loaded if not obs.rules.tube_arcs or in_mount_arc(
+            ship, ship.tubes[i].mount.arc_center, ship.tubes[i].mount.arc_width, bearing(c.x - ship.x, c.y - ship.y)))
+        if not bears:
+            continue
+        out.append(p._cmd(FireTorpedoes, ship, tubes=bears, target=t))
+        p.salvo_at[t] = obs.tick
+        p.count("salvos")
+        p.count("rounds", len(bears))
+        fired = True
+        if not split_said:
+            p.note(obs, "salvo", f"Tube{'s' * (len(bears) > 1)} {runs(bears)} at {label(obs, t)}")
+    if not fired and (obs.tick - p.step_tick > 2 * tpc or p.step_kind in ("", "hunt")):
+        near = obs.contact(d.primary)
+        if near is not None:
+            p.note(obs, *_waiting(obs, ship, near.distance_to(ship.x, ship.y), label(obs, d.primary)))
+    return out
+
+
 PLANNERS: dict[str, Plan] = {"disable": plan_disable, "destroy": plan_disable, "capture": plan_capture, "hunt": plan_hunt,
-                             "strike": plan_strike}
+                             "strike": plan_strike, "engage": plan_engage}
 
 
 __all__ = [
-    "PLANNERS", "Planner", "baitable", "disabled", "group_state", "label", "open_shields", "plan_capture", "plan_disable", "plan_hunt", "plan_strike",
+    "PLANNERS", "Planner", "baitable", "disabled", "group_state", "label", "open_shields", "plan_capture", "plan_disable",
+    "plan_engage", "plan_hunt", "plan_strike",
     "progress", "summary",
 ]

@@ -17,7 +17,7 @@ from .ship import TARGETABLE_GROUPS
 if TYPE_CHECKING:
     from .observation import ContactView, Observation
 
-GOALS = ("disable", "destroy", "capture", "hunt", "strike")
+GOALS = ("disable", "destroy", "capture", "hunt", "strike", "engage")
 
 # what the captain can ask to have disabled, and how each is spoken of
 DISABLE_GROUPS: dict[str, str] = {
@@ -26,6 +26,7 @@ DISABLE_GROUPS: dict[str, str] = {
 }
 DESTROY_GROUP = "hull"   # the group a destroy objective is filed under
 CAPTURE_GROUP = "crew"   # and a capture: her crew are what stands between us and her
+ENGAGE_GROUP = "split"   # [E] and an engagement of several ships at once, the weapons divided between them
 HUNT_GROUP = "hunt"      # and a hunt for a ship we've lost (most often cloaked): no weapon is fired for it
 # [E] sweep and strike: sweep for her plasma trail, fire a seeker down it, and the moment it hits put an aimed salvo
 # into one of her systems, or her hull. The group is what the salvo is aimed at.
@@ -50,6 +51,9 @@ class Objective:
             return f"sweep and strike {who}" + ("" if self.group == DESTROY_GROUP else f"'s {STRIKE_GROUPS.get(self.group, self.group)}")
         if self.goal in ("destroy", "capture"):
             return f"{self.goal} {who}"
+        if self.goal == "engage":
+            ns = [(names or {}).get(t, f"#{t}") for t in self.targets]
+            return "engage " + (" and ".join(ns) if len(ns) < 3 else ", ".join(ns[:-1]) + " and " + ns[-1])
         return f"{self.goal} {DISABLE_GROUPS.get(self.group, self.group)} on {who}"
 
 

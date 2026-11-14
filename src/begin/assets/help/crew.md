@@ -31,6 +31,7 @@ crew
 - `crew` lists your officers, who is running what, and how each of them feels about you.
 - To let one officer command the whole ship, say "Seven, take the bridge". See [[conn|Giving an officer the bridge]].
 - To have Seven knock out an enemy's shields, phasers or torpedoes, say "Seven, disable the Klingons' shields". See [[disable|Disabling enemy systems]].
+- To fight two ships at once, say "Worf, engage the Talon and the Wraith": he divides the tubes and banks between them and keeps them divided as the ships move. See [[split-fire|Split fire]].
 
 ## You stay in command
 
