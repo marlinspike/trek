@@ -35,7 +35,7 @@ from ..sim.away import TASKS
 from ..sim.collective import CODE_AT, TUNE_BLOCKS_BEAMING
 from ..sim.commands import (
     Authority, Command, ConfigureAutoload, Remodulate, SetDuty, ControlProbe, DeflectorPulse, Dock, EndObjective, EngineBoost, Evasive, FireAtPoint, FirePhasers,
-    FireSpecialRound, FireTorpedoes, LaunchProbe, LoadTubes, LockWeapons, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak,
+    FireSpecialRound, FireTorpedoes, LaunchProbe, LoadTubes, LockWeapons, SplitFire, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak,
     SetFireMode, SetHelm, SetObjective, SetPhaserSpread, SetPointDefense, SetRepairPriority, SetShields, SetTubes, StartProject, TurnMounts,
     offensive_fire,
 )
@@ -49,7 +49,7 @@ from .objectives import Planner, label, progress
 
 STATION_COMMANDS: dict[str, tuple[type[Command], ...]] = {
     "helm": (SetHelm, Pursue, Evasive, Dock),
-    "tactical": (SelectTarget, LockWeapons, TurnMounts, FirePhasers, SetPhaserSpread, SetBanks, FireTorpedoes, FireAtPoint,
+    "tactical": (SelectTarget, LockWeapons, SplitFire, TurnMounts, FirePhasers, SetPhaserSpread, SetBanks, FireTorpedoes, FireAtPoint,
                  ConfigureAutoload, LoadTubes, SetTubes, LaunchProbe, ControlProbe, SetFireMode, SetPointDefense,
                  FireSpecialRound, Remodulate),
     "engineering": (SetShields, ReinforceShield, SetRepairPriority, SetCloak, EngineBoost),
@@ -691,7 +691,7 @@ class Crew:
             steering = any(isinstance(c, (SetHelm, Pursue)) for c in out)
             # (probes too: Worf's attack probes used to finish off a ship Seven was only told to disable)
             routine = [c for c in routine
-                       if not isinstance(c, (SelectTarget, LockWeapons, ConfigureAutoload, ControlProbe))
+                       if not isinstance(c, (SelectTarget, LockWeapons, SplitFire, ConfigureAutoload, ControlProbe))
                        and not offensive_fire(c)
                        and not (steering and isinstance(c, (SetHelm, Pursue)))]
         return out + routine

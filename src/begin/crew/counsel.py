@@ -445,6 +445,19 @@ def _sword(s: Situation) -> Iterator[Move]:
         yield Move("focus", f"Mass fire on the {m.name}", reason, steps, 0.55 + 0.35 * share,
                    {**T, "helm": 0.3, "science": 0.25}, "target",
                    voice={"tactical": f"Strike the {m.name}: all weapons"})
+    reach = sorted((e for e in live if not e.hive and (e.range < s.phaser_range or _in_env(s, e))),
+                   key=lambda e: e.range)
+    if len(reach) >= 2 and "engage" not in s.objectives and not s.hold_fire and (s.tubes >= 2 or s.banks >= 2):
+        e1, e2 = reach[:2]
+        how = ("phasers on the one in phaser range, torpedoes on the other"
+               if (e1.range < s.phaser_range) != (e2.range < s.phaser_range)
+               else "the tubes and banks divided between them by where each bears")
+        yield Move("engage", f"Divide our fire: the {e1.name} and the {e2.name}",
+                   f"Both are in reach ({_rng(e1.range)} and {_rng(e2.range)}). Rather than leave one free to shoot at "
+                   f"us, I'll split the weapons: {how}, and keep it divided as they move.",
+                   [Step(f"engage {e1.handle} and {e2.handle}", "fire divided between them")],
+                   0.5 + 0.1 * min(3, len(reach)), {**T, "helm": 0.2}, "target",
+                   voice={"tactical": f"Engage both: the {e1.name} and the {e2.name}"})
     for e in live:
         if e.style == "charge" and e.closing > 150 and s.tubes_loaded >= max(2, s.tubes // 2) and _in_env(s, e):
             yield Move("meet-charge", f"Meet the {e.name}'s charge with a full salvo",

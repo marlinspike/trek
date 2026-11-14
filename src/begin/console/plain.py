@@ -112,7 +112,7 @@ _REWRITES: tuple[tuple[re.Pattern[str], str], ...] = _HIVE_REWRITES + (
                 r"move\s+in|go\s+in)\W*$"), "pursue target"),
     (re.compile(r"^(?:attack|engage|go\s+after|charge|intercept)\s*(?:the\s+)?(?:pattern\s+\w+)?\W*$"),
      "target nearest and pursue target and open fire"),
-    (re.compile(r"^(?:attack|engage|go\s+after|charge)\s+(?!pattern\b)(.+?)\W*$"), r"target \1 and pursue \1 and open fire"),
+    (re.compile(r"^(?:attack|engage|go\s+after|charge)\s+(?!pattern\b|off\b|cancel\b)(.+?)\W*$"), r"target \1 and pursue \1 and open fire"),
     (re.compile(r"^(?:keep|continue)\s+(?:firing|shooting|it\s+up)\W*$"), "open fire"),
     # reports and questions the computer can answer on its own
     (re.compile(r"^(?:damage\s+report|how\s+bad(?:\s+is\s+it)?|what'?s\s+(?:the\s+)?damage)\W*$"), "damage"),
@@ -172,6 +172,40 @@ _ALLY_WORDS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+# [E] the weapons divided between two ships, in a captain's words
+_WEAPON_W = r"(?:phasers?|banks?|torp(?:edo(?:e?s)?|s)?|tubes?)"
+_NUM_W = r"(?:\d|one|two|three|four|five|six|seven|eight)"
+# "torpedoes 1 and 2 at the Talon, the rest at the Wraith", "tubes 1-4 on X and 5-8 on Y", "phasers on X, torpedoes on Y"
+_SPLIT_CLAUSES = re.compile(
+    r"^(?:(fire|launch|shoot)\s+|(?:target|lock|put|aim|assign|point|train|set|give|move|send)\s+)?(?:(?:the|our|all)\s+)?"
+    + _WEAPON_W + r"\b[^,;]*?\b(?:at|on|onto|to|against|for)\s+[^,;]+?\s*(?:[,;]|\band\b|\bthen\b)\s*(?:then\s+|and\s+)?"
+    r"(?:the\s+|our\s+|all\s+)?(?:" + _WEAPON_W + r"|rest|others|remaining|remainder|other|" + _NUM_W + r")\b.*$")
+# "split fire between the Talon and the Wraith", "divide the torpedoes between them"
+_SPLIT_PHRASE = re.compile(r"^(?:split|divide)\s+(?:up\s+)?(?:our\s+|the\s+)?(?:fire|weapons|firepower)?\s*"
+                           r"(?:between|on|at|across|among|amongst)?\s*(.+?)\W*$")
+# "engage the Talon and the Wraith", "take on both the Hydra and the Wraith", "attack the Talon, the Wraith"
+_ENGAGE_BOTH = re.compile(r"^(?:attack|engage|take\s+on|fight|go\s+after|deal\s+with|hit|fire\s+on)"
+                          r"\s+(?:both\s+)?(?:the\s+)?(.+?)\s*(?:,|\band\b|&|\bplus\b|\bas\s+well\s+as\b)\s*(?:the\s+)?(.+?)\W*$")
+
+
+def split_line(text: str) -> str | None:
+    """[E] A line that divides the weapons between ships, as the console's `split` or `engage`; else None."""
+    low = _THEIR_TYPOS.sub("their", text.strip().lower())
+    low = re.sub(r"(\d)\s*,\s*(?=\d)", r"\1 ", low)          # "tubes 1,2": one list, not two orders
+    m = _ENGAGE_BOTH.match(low)
+    if m is not None and not any(system_word(w) for w in low.split()[1:]) and not _starts_order(m.group(2)):
+        return f"engage {m.group(1)} {m.group(2)}"
+    m = _SPLIT_CLAUSES.match(low)
+    if m is not None:
+        body = low[m.end(1):] if m.group(1) else re.sub(
+            r"^(?:target|lock|put|aim|assign|point|train|set|give|move|send)\s+", "", low)
+        return f"split {body.strip()}" + (" now" if m.group(1) else "")
+    m = _SPLIT_PHRASE.match(low)
+    if m is not None and m.group(1) and not low.startswith(("split off", "divide off")) or low in ("unsplit", "split off"):
+        return low if m is None else f"split {m.group(1)}"
+    return None
+
+
 def ally_words(text: str) -> str:
     """What an ally (or the whole squadron) is told, in the words `tell` reads: 'fall back' is 'run', 'form up on me'
     is 'escort me', 'take out the Wraith' is 'attack wraith'. Anything else is passed on as it was said."""
@@ -202,6 +236,8 @@ def plain_order(text: str) -> str:
         return text          # a message, a hail or a macro: the captain's own words, untouched
     low = _THEIR_TYPOS.sub("their", low)
     fleet = fleet_order(low)
+    if fleet is None and (split := split_line(low)) is not None:
+        return split
     if fleet is not None:
         return fleet
     for pat, repl in _REWRITES:
@@ -246,7 +282,7 @@ def _starts_order(piece: str) -> bool:
 def split_orders(text: str) -> list[str]:
     """The separate orders in a line, where each after the first plainly starts a new one; else the line."""
     low = text.strip()
-    if not low or _SPOKEN.match(low.lower()) or is_strike(low):
+    if not low or _SPOKEN.match(low.lower()) or is_strike(low) or split_line(low) is not None:
         return [low]
     pieces: list[str] = []
     start = 0
@@ -264,4 +300,5 @@ def split_orders(text: str) -> list[str]:
     return [plain_order(p) for p in pieces] if len(pieces) > 1 else [low]
 
 
-__all__ = ["STOP_ALL", "STOP_FIRE", "STRIKE_REWRITES", "ally_words", "fleet_order", "is_strike", "plain_order", "split_orders"]
+__all__ = ["STOP_ALL", "STOP_FIRE", "STRIKE_REWRITES", "ally_words", "fleet_order", "is_strike", "plain_order", "split_line",
+           "split_orders"]

@@ -5,18 +5,195 @@ from __future__ import annotations
 import re
 
 from ...sim.commands import (
-    ConfigureAutoload, ControlProbe, FirePhasers, FireTorpedoes, LaunchProbe, LoadTubes, LockWeapons, SelectTarget,
-    SetBanks, SetFireMode, SetPhaserSpread, SetPointDefense, SetTubes, TurnMounts,
+    ConfigureAutoload, ControlProbe, EndObjective, FirePhasers, FireTorpedoes, LaunchProbe, LoadTubes, LockWeapons,
+    OpenFire, Pursue, SelectTarget, SetBanks, SetFireMode, SetObjective, SetPhaserSpread, SetPointDefense, SetTubes,
+    SplitFire, TurnMounts,
 )
+from ...sim.objectives import ENGAGE_GROUP
 from ...sim.ship import BankRole, FireMode, PDDoctrine
 from ..tokens import ParseError, Tokens, aim_ahead, take_aim
 from ..vocab import AIM_FIRST, AIM_HELP, FILLER, WEAPONS, is_num, match_word, system_word
 from .base import ParserBase, ParseResult
 
 
+# [E] splitting the weapons between ships: the words for "the rest", and numbers as they are spoken
+_REST = ("rest", "others", "remaining", "remainder", "other", "everything", "else")
+_NUMBER_WORDS = {"one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6", "seven": "7",
+                 "eight": "8", "nine": "9", "ten": "10", "eleven": "11", "twelve": "12", "won": "1", "too": "2",
+                 "for": "4", "ate": "8"}
+_REST_MARK = (-1,)      # a clause's mounts: whatever of that weapon no other clause named
+
+
+def spoken_mounts(toks: list[str]) -> list[str]:
+    """'tubes one through four' -> 'tubes 1-4'; 'one and two' -> '1 and 2'. A homophone ('for', 'too') becomes a
+    number only between numbers or right after a weapon, so 'four on the Talon' and 'the rest for' stay as said."""
+    out: list[str] = []
+    for i, t in enumerate(toks):
+        prev = out[-1] if out else ""
+        nxt = toks[i + 1] if i + 1 < len(toks) else ""
+        if t in _NUMBER_WORDS and (t in ("won", "too", "for", "ate")) and not (
+                is_num(prev) or match_word(prev, WEAPONS) is not None or prev == "and" and len(out) > 1 and is_num(out[-2])):
+            out.append(t)
+            continue
+        if t in _NUMBER_WORDS:
+            t = _NUMBER_WORDS[t]
+        if t in ("through", "thru", "to") and is_num(prev) and (is_num(nxt) or nxt in _NUMBER_WORDS) and out:
+            out[-1] = prev + "-"
+            continue
+        if out and out[-1].endswith("-") and is_num(t):
+            out[-1] = out[-1] + t
+            continue
+        out.append(t)
+    return out
+
+
 class WeaponVerbs(ParserBase):
+    def _v_split(self, tok: Tokens, res: ParseResult) -> None:
+        """[E] `split <ship> <ship>`: divide the weapons between two ships, as the weapons officer would judge it.
+        `split tubes 1-4 <ship> rest <ship>`, `split phasers <ship> torpedoes <ship>`: the captain's own division.
+        `split off` puts everything back on the target. A trailing `now` fires each group at its ship at once."""
+        from ...crew.split_fire import divide
+
+        words = spoken_mounts([w for w in tok.rest() if w not in ("fire", "our", "weapons", "between", "across",
+                                                                  "among", "amongst", "up")])
+        sub = Tokens(" ".join(words))
+        sub.max_mount = max(12, len(self.ship.banks), len(self.ship.tubes))
+        if sub.take_word("off", "clear", "none", "cancel", "undo") or (sub.done() and tok.toks and tok.toks[0] == "unsplit"):
+            if self.ship.target is None:
+                raise ParseError("Nothing to put back together: no target is selected.")
+            res.commands.append(self._cmd(SelectTarget, target=self.ship.target, subsystem=self.ship.target_subsystem))
+            return
+        now = False
+        clauses: list[tuple[str | None, tuple[int, ...] | None, int]] = []
+        weapon: str | None = None
+        mounts: tuple[int, ...] | None = None
+        while not sub.done():
+            t = sub.peek() or ""
+            w = match_word(t, WEAPONS)
+            if w is not None and w != "launcher" and len(t) >= 3:
+                sub.next()
+                weapon, mounts = w, None
+                while sub.peek() is not None and match_word(sub.peek() or "", WEAPONS) == w:
+                    sub.next()
+            elif sub.is_mount(t):
+                mounts = sub.mount_list()
+            elif t in _REST:
+                sub.next()
+                mounts = _REST_MARK
+            elif t in ("now", "fire", "go") and sub.peek(1) is None:
+                sub.next()
+                now = True
+            elif t in FILLER or t in ("then", "and", "onto", "against", "of", "them", "all", "both", "us"):
+                sub.next()
+            else:
+                sid = self.resolve_ship(sub)
+                assert sid is not None
+                clauses.append((weapon, mounts, sid))
+                mounts = None
+        if not clauses or all(w is None and m is None for w, m, _ in clauses) and len({c[2] for c in clauses}) < 2:
+            # "split fire", "divide the torpedoes between them": the target and the nearest other enemy
+            named = {c[2] for c in clauses}
+            first = next(iter(named)) if named else self.ship.target
+            others = sorted((c for c in self.obs.hostile_contacts() if c.id != first and c.visible
+                             and c.id not in self.obs.gone()), key=lambda c: c.distance_to(self.ship.x, self.ship.y))
+            if first is None or not others:
+                raise ParseError("Split between which ships? e.g. 'split talon wraith' or "
+                                 "'split tubes 1-4 talon rest wraith'.")
+            only_w = next((w for w, _, _ in clauses), weapon)
+            clauses = [(only_w, None, first), (only_w, None, others[0].id)]
+        hostile = {c.id for c in self.obs.hostile_contacts()}
+        for _, _, sid in clauses:
+            if sid not in hostile:
+                raise ParseError(f"The {self._name(sid)} is not an enemy.")
+        if all(m is None for _, m, _ in clauses) and len({w for w, _, _ in clauses}) == 1:
+            # only ships named (and perhaps one weapon): divided as the weapons officer would judge it
+            only = clauses[0][0]
+            ships = tuple(dict.fromkeys(sid for _, _, sid in clauses))
+            if len(ships) < 2:
+                raise ParseError("Split between which two ships? e.g. 'split talon wraith'.")
+            d = divide(self.obs, self.ship, ships)
+            if d is None:
+                raise ParseError("Neither ship is on sensors.")
+            banks_on = d.banks if only in (None, "phaser") else {}
+            tubes_on = d.tubes if only in (None, "tube") else {}
+            if not banks_on and not tubes_on:
+                raise ParseError("The ship has none of those to divide.")
+            res.commands.append(self._cmd(SplitFire, banks=tuple(banks_on.items()), tubes=tuple(tubes_on.items()),
+                                          primary=d.primary if only is None else None))
+        else:
+            banks_on, tubes_on = self._divide_as_told(clauses)
+            res.commands.append(self._cmd(SplitFire, banks=tuple(banks_on.items()), tubes=tuple(tubes_on.items()),
+                                          primary=clauses[0][2]))
+        if now:      # each group at its own ship, so the readback says where every one went
+            for sid, g in banks_on.items():
+                res.commands.append(self._cmd(FirePhasers, banks=tuple(g), target=sid))
+            for sid, g in tubes_on.items():
+                res.commands.append(self._cmd(FireTorpedoes, tubes=tuple(g), target=sid))
+
+    def _name(self, sid: int) -> str:
+        c = self.obs.contact(sid)
+        return c.label.split(" (")[0] if c is not None else f"#{sid}"
+
+    def _divide_as_told(self, clauses: list[tuple[str | None, tuple[int, ...] | None, int]]
+                        ) -> tuple[dict[int, tuple[int, ...]], dict[int, tuple[int, ...]]]:
+        """The captain's own division: numbered mounts first, then each 'rest' (or a weapon named without numbers)
+        takes what is left of that weapon. Numbers with no weapon named are tubes (and so is the rest). A ship named alone, after
+        others were given weapons, takes the rest of everything."""
+        n = {"phaser": len(self.ship.banks), "tube": len(self.ship.tubes)}
+        given: dict[str, dict[int, list[int]]] = {"phaser": {}, "tube": {}}
+        taken: dict[str, set[int]] = {"phaser": set(), "tube": set()}
+        later: list[tuple[str, int]] = []
+        # numbers with no weapon named anywhere in the line are tubes, and so is 'the rest' of them
+        tubes_only = all(w is None for w, _, _ in clauses) and any(m not in (None, _REST_MARK) for _, m, _ in clauses)
+        for w, m, sid in clauses:
+            kinds = [w] if w is not None else (["tube"] if tubes_only or m not in (None, _REST_MARK) else ["phaser", "tube"])
+            for k in kinds:
+                if m is None or m == _REST_MARK:
+                    later.append((k, sid))
+                    continue
+                bad = [i + 1 for i in m if i >= n[k]]
+                if bad:
+                    what = "phaser bank" if k == "phaser" else "torpedo tube"
+                    raise ParseError(f"{what.capitalize()} {bad[0]} does not exist: the {self.ship.cls.name} has {n[k]}.")
+                clash = [i + 1 for i in m if i in taken[k]]
+                if clash:
+                    raise ParseError(f"{'Bank' if k == 'phaser' else 'Tube'} {clash[0]} is named twice.")
+                given[k].setdefault(sid, []).extend(m)
+                taken[k].update(m)
+        for k, sid in later:
+            rest = [i for i in range(n[k]) if i not in taken[k]
+                    and not (k == "phaser" and self.ship.banks[i].role == BankRole.DEFENSE)]
+            if rest:
+                given[k].setdefault(sid, []).extend(rest)
+                taken[k].update(rest)
+        if not given["phaser"] and not given["tube"]:
+            raise ParseError("Nothing left to give that ship: every bank and tube is already named.")
+        return ({sid: tuple(v) for sid, v in given["phaser"].items()}, {sid: tuple(v) for sid, v in given["tube"].items()})
+
+    def _v_engage(self, tok: Tokens, res: ParseResult) -> None:
+        """`engage <ship>`: target her, close and open fire. `engage <ship> and <ship>`: the weapons officer fights
+        both at once, dividing the weapons between them as the battle moves (a standing objective) [E]."""
+        words = [w.strip(".!?;'\"").removesuffix("'s").removesuffix("s'") for w in tok.rest()]
+        words = [w for w in words if w and w not in ("and", "with", "both")]
+        if any(w in ("off", "cancel", "stop", "belay", "abort") for w in words):
+            res.commands.append(self._cmd(EndObjective, group=ENGAGE_GROUP, outcome="cancelled"))
+            return
+        if not words:
+            raise ParseError("Engage which ships? e.g. 'engage talon and wraith'.")
+        targets = self._enemy_targets(words)
+        if len(targets) == 1:
+            res.commands.append(self._cmd(SelectTarget, target=targets[0]))
+            res.commands.append(self._cmd(Pursue, target=targets[0]))
+            res.commands.append(self._cmd(OpenFire))
+            return
+        res.commands.append(self._cmd(SetObjective, goal="engage", group=ENGAGE_GROUP, targets=targets))
+
     def _v_target(self, tok: Tokens, res: ParseResult) -> None:
         lead = tok.peek()
+        w0 = match_word(lead or "", WEAPONS)
+        if w0 in ("phaser", "tube") and len(lead or "") >= 3 and not tok.is_word("their", "her", k=1):
+            self._v_split(tok, res)     # "target tubes 1 2 on the Talon, the rest on the Wraith" [E]
+            return
         if tok.take_word("off", "none", "clear"):
             res.commands.append(self._cmd(SelectTarget, target=None))
             return

@@ -75,6 +75,71 @@ class LockWeapons(Command):
 
 
 @dataclass(kw_only=True)
+class SplitFire(Command):
+    """Divide the weapons between ships [E]: each bank and tube is locked on the ship it was given, in one order.
+
+    It rests on Begin's own per-mount locks (`lock tubes 1 2 on <ship>`), so F, T and the console's `fire` with no
+    ship named send every bank and tube at its own target, and assisted fire does the same. `primary` becomes the
+    fire-control target (the Target panel's ship) without re-locking anything; None keeps the current one.
+    """
+
+    banks: tuple[tuple[int, tuple[int, ...]], ...] = ()    # (target id, bank indices), zero-based
+    tubes: tuple[tuple[int, tuple[int, ...]], ...] = ()    # (target id, tube indices)
+    primary: int | None = None
+    name: ClassVar[str] = "split"
+
+    def channels(self) -> tuple[str, ...]:
+        return ("tactical.target",)
+
+    def targets(self) -> list[int]:
+        return list(dict.fromkeys([t for t, _ in self.banks] + [t for t, _ in self.tubes]))
+
+    def validate(self, world: World, ship: Ship) -> None:
+        if not any(idx for _, idx in self.banks) and not any(idx for _, idx in self.tubes):
+            raise Rejected("Split which weapons? e.g. 'split tubes 1-4 on the Talon, the rest on the Wraith'.")
+        for t in self.targets():
+            target = _require_target(world, ship, t)
+            if target.side == ship.side:
+                raise Rejected(f"The {target.name} is one of ours.")
+        for _, idx in self.banks:
+            bad = [i + 1 for i in idx if not 0 <= i < len(ship.banks)]
+            if bad:
+                raise Rejected(f"Phaser bank {bad[0]} does not exist: the {ship.cls.name} has {len(ship.banks)}.")
+        for _, idx in self.tubes:
+            bad = [i + 1 for i in idx if not 0 <= i < len(ship.tubes)]
+            if bad:
+                raise Rejected(f"Torpedo tube {bad[0]} does not exist: the {ship.cls.name} has {len(ship.tubes)}.")
+
+    def apply(self, world: World, ship: Ship) -> None:
+        for t, idx in self.banks:
+            for i in idx:
+                ship.banks[i].lock = t
+        for t, idx in self.tubes:
+            for i in idx:
+                ship.tubes[i].lock = t
+                ship.tubes[i].dispersion = 0.0
+        if self.primary is not None and self.primary != ship.target:
+            ship.target = self.primary
+            ship.target_subsystem = None
+
+    def describe(self) -> str:
+        return f"split fire between {len(self.targets())} ships"
+
+
+def split_locks(ship: Ship) -> dict[int, tuple[list[int], list[int]]]:
+    """Where each weapon is locked, when they are divided between ships: {target: (banks, tubes)}; empty when
+    every bank and tube is on one ship (or none). Point-defense banks don't count: they guard us, not a target."""
+    out: dict[int, tuple[list[int], list[int]]] = {}
+    for i, b in enumerate(ship.banks):
+        if b.lock is not None and b.role != BankRole.DEFENSE:
+            out.setdefault(b.lock, ([], []))[0].append(i)
+    for i, t in enumerate(ship.tubes):
+        if t.lock is not None:
+            out.setdefault(t.lock, ([], []))[1].append(i)
+    return out if len(out) > 1 else {}
+
+
+@dataclass(kw_only=True)
 class TurnMounts(Command):
     """Point banks or tubes at a fixed relative bearing (unlocks them)."""
 

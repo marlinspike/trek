@@ -206,6 +206,9 @@ def system_prompt(brief: str) -> str:
         '"fire all phasers"], "say": "", "clarify": ""} (with a ship name from the situation)',
         'attack him -> {"commands": [], "say": "", "clarify": "Which ship: <name> or <name>?"} when two enemies '
         "are in range",
+        'half the torpedoes on each of them -> {"commands": ["split tubes 1-4 on <ship>, rest on <ship>"], "say": "", '
+        '"clarify": ""} (an 8-tube ship; with two enemies in range)',
+        'take on both of them -> {"commands": ["engage <ship> and <ship>"], "say": "", "clarify": ""}',
         STABLE_END,
         "What the ship knows right now:",
         brief,

@@ -21,7 +21,7 @@
 - Getting started: [Welcome aboard](#topic-index), [Keyboard and mouse](#topic-controls), [Shakedown Cruise](#topic-shakedown), [The command console](#topic-console), [Your first battle](#topic-first-battle), [Orders in plain English](#topic-plain-english), [The bridge](#topic-bridge), [Speaking orders](#topic-voice-orders), [Officers' voices](#topic-speech)
 - Coach: [Coach](#topic-coach), [Choosing weapons](#topic-weapons-guide), [Tactics](#topic-tactics)
 - Helm: [Course and speed](#topic-helm), [Pursue and elude](#topic-pursue)
-- Weapons: [Fire](#topic-fire), [Phasers](#topic-phasers), [Torpedoes](#topic-torpedoes), [Cease fire](#topic-ceasefire), [Probes](#topic-probes), [Lock and turn](#topic-lock), [Loading and autoload](#topic-loading), [Fire control and point defense](#topic-firecontrol), [Targeting](#topic-targeting), [Who fired what](#topic-weapon-colors)
+- Weapons: [Fire](#topic-fire), [Phasers](#topic-phasers), [Torpedoes](#topic-torpedoes), [Cease fire](#topic-ceasefire), [Probes](#topic-probes), [Lock and turn](#topic-lock), [Loading and autoload](#topic-loading), [Split fire: two ships at once](#topic-split-fire), [Fire control and point defense](#topic-firecontrol), [Targeting](#topic-targeting), [Who fired what](#topic-weapon-colors)
 - Defense: [Shields](#topic-shields)
 - Sensors and status: [Status displays](#topic-status), [Chart](#topic-chart), [Display range](#topic-range), [Scan](#topic-scan), [Library computer](#topic-library)
 - Ship systems: [Repair](#topic-repair), [Engine boost](#topic-boost), [Tractor beam](#topic-tractor), [Docking](#topic-dock), [Cloaking device](#topic-cloak), [Tachyon detector torpedo](#topic-tachyon), [Transporters and boarding](#topic-transport), [Deflector tachyon pulse](#topic-deflector), [Self-destruct and surrender](#topic-destruct)
@@ -1911,7 +1911,7 @@ role banks 5 6 defense
 banks
 ```
 
-See also: [Fire](#topic-fire), [Lock and turn](#topic-lock), [Fire control and point defense](#topic-firecontrol), [Shields](#topic-shields).
+See also: [Fire](#topic-fire), [Lock and turn](#topic-lock), [Fire control and point defense](#topic-firecontrol), [Shields](#topic-shields), [Split fire: two ships at once](#topic-split-fire).
 
 <a id="topic-torpedoes"></a>
 
@@ -1991,6 +1991,8 @@ lock tubes 1 2 on gorkon 0
 lock all tubes on gorkon with a dispersion of 30
 ```
 
+To put some tubes on one ship and the rest on another, `split tubes 1-4 on gorkon, rest on talon`; see [Split fire: two ships at once](#topic-split-fire).
+
 You can also fan a single salvo as you fire it, without changing the locks. The angle is the whole width of the fan, centred on the lead point, with the torpedoes evenly spaced across it:
 
 ```text
@@ -2008,7 +2010,7 @@ tubes
 
 The table shows each tube's charge, lock, mark, contents and proximity. A tube shown at 100% loads its torpedo on the next cycle.
 
-See also: [Fire](#topic-fire), [Loading and autoload](#topic-loading), [Lock and turn](#topic-lock), [Choosing weapons](#topic-weapons-guide), [Coach](#topic-coach).
+See also: [Fire](#topic-fire), [Loading and autoload](#topic-loading), [Lock and turn](#topic-lock), [Choosing weapons](#topic-weapons-guide), [Coach](#topic-coach), [Split fire: two ships at once](#topic-split-fire).
 
 <a id="topic-ceasefire"></a>
 
@@ -2151,7 +2153,11 @@ turn tubes to 0
 
 Probes are steered by course instead. See [Probes](#topic-probes).
 
-See also: [Phasers](#topic-phasers), [Torpedoes](#topic-torpedoes), [Targeting](#topic-targeting).
+#### Two ships at once
+
+Locking some mounts on one ship and the rest on another is a split. `split tubes 1-4 on gorkon, rest on talon` does it in one order, and `engage gorkon and talon` hands it to your tactical officer. See [Split fire: two ships at once](#topic-split-fire).
+
+See also: [Phasers](#topic-phasers), [Torpedoes](#topic-torpedoes), [Targeting](#topic-targeting), [Split fire: two ships at once](#topic-split-fire).
 
 <a id="topic-loading"></a>
 
@@ -2193,6 +2199,84 @@ The words after `autoload` are, in any order: the weapon (`tor` or `probe`), the
 > **Note** Proximity limits depend on the ordnance type. If you ask for more than a type allows, the order is refused and the limit is shown. See the tables in [Choosing weapons](#topic-weapons-guide).
 
 See also: [Torpedoes](#topic-torpedoes), [Probes](#topic-probes).
+
+<a id="topic-split-fire"></a>
+
+### Split fire: two ships at once
+
+*Some tubes or banks on one ship and the rest on another, by number or by the tactical officer's judgement.*
+
+When two enemies are on you at once, you don't have to leave one of them free to shoot. Split your fire: some tubes on one ship and the rest on the other, phasers on whichever ship they bear on, or let your tactical officer divide them and keep them divided as the ships move.
+
+#### Saying how to split
+
+```text
+split tubes 1-4 on talon, rest on wraith
+split tubes 1 2 on talon, rest on wraith, phasers on talon
+split banks 1-3 on talon, rest on wraith
+split tubes 1-4 on talon, 5-8 on wraith now
+split off
+```
+
+- Name the tubes or banks by number (`1 2`, `1-4`, `one through four`), then the ship. `rest` (or `the rest`) gives that ship every mount you haven't named yet.
+- Numbers with no weapon named are tubes, and so is `rest` after them: `split 1 2 on talon, rest on wraith` divides only the tubes.
+- `now` fires each group at its own ship straight away. Without it, the tubes and banks are locked and wait for your fire order.
+- `split off` puts every weapon back on your target.
+
+Your officer reads the division back ("Splitting fire. Tubes 1-4 on the Talon, 5-8 on the Wraith; phasers on the Talon."). A tube the ship doesn't have, or one you named twice, is refused before anything changes.
+
+#### Letting your officer divide them
+
+```text
+split talon wraith
+split torpedoes talon wraith
+divide the torpedoes between them
+```
+
+Name only the ships, and the tactical officer chooses. Name one weapon too (`split torpedoes ...`) and only that weapon is divided. "Them" means your target and the nearest other enemy. The officer weighs the same things every time:
+
+- **Who comes first:** a ship already crippled (a third of her hull gone or worse) so she is finished off, otherwise the nearer.
+- **Both in reach of everything:** the banks go to the ship each one bears on, and the tubes are divided between them. A ship half again as heavy as the other gets three quarters of the tubes; otherwise they are shared equally.
+- **One in phaser range, the other only in torpedo range:** phasers on the near one, every tube on the far one.
+- **Only one in reach:** everything on her, until the other comes in.
+
+A tube or bank is given to the ship its arc covers; the rest make up the numbers.
+
+#### Engage both
+
+```text
+engage talon and wraith
+worf, engage the talon and the wraith
+engage off
+```
+
+`engage` with two ships is a standing order. The tactical officer divides the fire as above and keeps re-dividing it as the ships move (waiting a moment so the weapons don't flick back and forth), fires phasers at each ship as they bear, and sends a full salvo at each ship inside the torpedo window. The helm stays with you or the helm officer. When one ship is destroyed or escapes, her tubes and banks swing to your target; the order ends when neither is left. `engage` with one ship targets her, closes in and opens fire, as before.
+
+#### In plain words
+
+No language model is needed for these:
+
+- "torpedoes 1 through 4 on the Talon and the rest on the Wraith"
+- "target tubes 1, 2 on the Talon, the rest on the Wraith"
+- "phasers on the Talon and torpedoes on the Wraith"
+- "fight both the Talon and the Wraith", "take on the Talon and the Wraith"
+- "Worf, engage the Talon and the Wraith"
+
+With a model on, looser words work too ("half the torpedoes on each of them").
+
+#### Firing a split
+
+Once the weapons are divided, **F** and **T** (and `fire phasers`, `fire torpedoes` with no ship named) send each bank and tube at the ship it is locked on. Assisted fire does the same: each group fires at its own ship when it has a good shot. Clicking a ship or pressing **Tab** puts everything back on that one ship.
+
+#### Seeing it
+
+While the fire is split, each cell in the Weapons panel carries a small letter for its ship, and the panel's title keys the letters ("H Hydra  W Wraith"); in a tab, the key sits under the buttons. The letter is amber for your target and lavender for the other ship. A cell's green edge means it bears on its own ship. On the map the other ship wears small, still lavender brackets, quieter than your target's.
+
+#### When your officers suggest it
+
+With two enemies in reach and every weapon on one of them, the tactical officer may propose dividing the fire ("The Talon and the Wraith are both in reach, Captain. Divide our fire between them?"); Y runs `engage`. Turning it down quiets that suggestion for a while, whichever pair of ships it named. In counsel (**O**), Worf's plan may lead with "Divide our fire" when two ships are in reach.
+
+See also: [Lock and turn](#topic-lock), [Torpedoes](#topic-torpedoes), [Phasers](#topic-phasers), [Bridge officers](#topic-crew).
 
 <a id="topic-firecontrol"></a>
 
@@ -2271,7 +2355,7 @@ Press **R** to cycle through them, or click them in the Target panel. Aimed fire
 
 > **Tip** `capture <ship>` hands the whole job to an officer (see [Disabling or taking out enemy ships](#topic-disable)). To do it yourself: aim at her **shields** until a generator is destroyed, then at her **life support** until her crew is gone, and [board](#topic-transport) her. Spare her **engines** if you mean to keep her: warp drives are the slowest system to repair, and a destroyed one has to be rebuilt from nothing.
 
-See also: [Lock and turn](#topic-lock), [Scan](#topic-scan), [Fire](#topic-fire).
+See also: [Lock and turn](#topic-lock), [Scan](#topic-scan), [Fire](#topic-fire), [Split fire: two ships at once](#topic-split-fire).
 
 <a id="topic-weapon-colors"></a>
 
@@ -3042,6 +3126,7 @@ crew
 - `crew` lists your officers, who is running what, and how each of them feels about you.
 - To let one officer command the whole ship, say "Seven, take the bridge". See [Giving an officer the bridge](#topic-conn).
 - To have Seven knock out an enemy's shields, phasers or torpedoes, say "Seven, disable the Klingons' shields". See [Disabling enemy systems](#topic-disable).
+- To fight two ships at once, say "Worf, engage the Talon and the Wraith": he divides the tubes and banks between them and keeps them divided as the ships move. See [Split fire](#topic-split-fire).
 
 #### You stay in command
 
@@ -4410,6 +4495,7 @@ Type `coach` or press **H** and pick **Coach**: this page then reads your actual
 | `duty` | `tune`, `retune` | [Fighting the Borg](#topic-borg) |
 | `elude` | `evade`, `flee` | [Pursue and elude](#topic-pursue) |
 | `enable` | - | [Phasers](#topic-phasers) |
+| `engage` | - | [Split fire: two ships at once](#topic-split-fire) |
 | `evasive` | `evasion`, `jink` | [Course and speed](#topic-helm) |
 | `execute` | `exec` | [Named tactical orders](#topic-orders) |
 | `fire` | `f`, `shoot` | [Fire](#topic-fire) |
@@ -4459,6 +4545,7 @@ Type `coach` or press **H** and pick **Coach**: this page then reads your actual
 | `shields` | `shield` | [Shields](#topic-shields) |
 | `sound` | `volume`, `audio`, `mute` | [Sound](#topic-sound) |
 | `speak` | `aloud`, `spoken` | [Officers' voices](#topic-speech) |
+| `split` | `divide`, `unsplit` | [Split fire: two ships at once](#topic-split-fire) |
 | `spread` | `sp` | [Phasers](#topic-phasers) |
 | `status` | `st` | [Status displays](#topic-status) |
 | `stop` | `allstop`, `halt` | [Course and speed](#topic-helm) |
@@ -4603,6 +4690,7 @@ Damage per bank for a Dreadnought (charge 10, range 2,000) before shields:
 | `duty` | `tune`, `retune` | [Fighting the Borg](#topic-borg) |
 | `elude` | `evade`, `flee` | [Pursue and elude](#topic-pursue) |
 | `enable` | - | [Phasers](#topic-phasers) |
+| `engage` | - | [Split fire: two ships at once](#topic-split-fire) |
 | `evasive` | `evasion`, `jink` | [Course and speed](#topic-helm) |
 | `execute` | `exec` | [Named tactical orders](#topic-orders) |
 | `fire` | `f`, `shoot` | [Fire](#topic-fire) |
@@ -4652,6 +4740,7 @@ Damage per bank for a Dreadnought (charge 10, range 2,000) before shields:
 | `shields` | `shield` | [Shields](#topic-shields) |
 | `sound` | `volume`, `audio`, `mute` | [Sound](#topic-sound) |
 | `speak` | `aloud`, `spoken` | [Officers' voices](#topic-speech) |
+| `split` | `divide`, `unsplit` | [Split fire: two ships at once](#topic-split-fire) |
 | `spread` | `sp` | [Phasers](#topic-phasers) |
 | `status` | `st` | [Status displays](#topic-status) |
 | `stop` | `allstop`, `halt` | [Course and speed](#topic-helm) |

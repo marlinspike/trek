@@ -28,6 +28,7 @@ from ..sim.ship import Ship
 from ..sim.ship import bank_bears, bank_ready
 from .characters import OfficerProfile
 from .helm import incoming
+from .split_fire import worth_splitting
 
 LIFE = 8.0                  # seconds a proposal waits for Y or N
 URGENT_LIFE = 6.0
@@ -105,6 +106,11 @@ def candidates(obs: Observation, ship: Ship, officers: dict[str, OfficerProfile]
         # tactical: no target while an enemy is in sight
         if tgt is None and nearest is not None:
             say("tactical", f"The {_name(obs, nearest.id)} is the closest, Captain. Target her?", f"target {_name(obs, nearest.id)}")
+        elif tgt is not None and not any(o.goal == "engage" for o in ship.objectives) and \
+                (pair := worth_splitting(obs, ship)) is not None:
+            a, b = (_name(obs, i) for i in pair)
+            say("tactical", f"The {a} and the {b} are both in reach, Captain. Divide our fire between them?",
+                f"engage {a} and {b}")
         elif tgt is not None:
             d = tgt.distance_to(ship.x, ship.y)
             brg = bearing(tgt.x - ship.x, tgt.y - ship.y)
@@ -143,7 +149,7 @@ class Proposer:
         for p in candidates(obs, ship, officers):
             if typing and not p.urgent and not (typing_ok is not None and typing_ok(p.officer)):
                 continue
-            if now - self.belayed.get(p.line, -1e9) < BELAY_MEMORY:
+            if now - self.belayed.get(_belay_key(p.line), -1e9) < BELAY_MEMORY:
                 continue
             if now - self.last_by.get(p.officer, -1e9) < COOLDOWN[mode]:
                 continue
@@ -155,7 +161,12 @@ class Proposer:
         return None
 
     def belay(self, p: Proposal, now: float) -> None:
-        self.belayed[p.line] = now
+        self.belayed[_belay_key(p.line)] = now
+
+
+def _belay_key(line: str) -> str:
+    """What a belay silences: the line, or every split of fire however the pair of ships changes."""
+    return "engage" if line.startswith("engage ") else line
 
 
 __all__ = ["Proposal", "Proposer", "candidates"]

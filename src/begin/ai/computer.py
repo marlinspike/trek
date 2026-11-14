@@ -23,13 +23,13 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from ..core.angles import ang_dist, bearing, norm360
 from ..core.rng import Rng
 from ..sim.commands import Authority, Command, FirePhasers, FireTorpedoes
 from ..sim.observation import Observation, OrdnanceView
-from ..sim.ship import BankRole, FireMode, PDDoctrine, Ship
+from ..sim.ship import BankRole, FireMode, PDDoctrine, PhaserBank, Ship, Tube
 from ..sim.ship import bank_bears, bank_ready
 from ..sim.systems.phasers import bank_origin
 from .trace import Trace
@@ -220,15 +220,29 @@ class ShipComputer:
             if hostile:
                 auto_target = min(hostile, key=lambda c: c.distance_to(ship.x, ship.y)).id
         soph = ship.sophistication
+
+        def jobs(mounts: Sequence[PhaserBank | Tube]) -> list[tuple[FireMode, int | None, list[int]]]:
+            """(mode, target, mounts) to fire: assisted mounts at the ship each is locked on (a split between ships
+            [E]) or else the captain's target; automatic ones at the computer's choice."""
+            out: list[tuple[FireMode, int | None, list[int]]] = []
+            groups: dict[int | None, list[int]] = {}
+            for i, m in enumerate(mounts):
+                if m.fire_mode == FireMode.ASSISTED:
+                    groups.setdefault(m.lock if m.lock is not None else target, []).append(i)
+            out.extend((FireMode.ASSISTED, t, idx) for t, idx in groups.items())
+            auto = [i for i, m in enumerate(mounts) if m.fire_mode == FireMode.AUTOMATIC]
+            if auto:
+                out.append((FireMode.AUTOMATIC, auto_target, auto))
+            return out
+
         # phasers: fire when the shot is good (well inside range, all chosen banks charged)
-        for mode, tgt in ((FireMode.ASSISTED, target), (FireMode.AUTOMATIC, auto_target)):
+        for mode, tgt, idx in jobs(ship.banks):
             if tgt is None or "phasers" in holds:
                 continue
             c = obs.contact(tgt)
             if c is None:
                 continue
-            banks = tuple(i for i, b in enumerate(ship.banks)
-                          if b.fire_mode == mode and b.role != BankRole.DEFENSE and bank_ready(ship, b))
+            banks = tuple(i for i in idx if ship.banks[i].role != BankRole.DEFENSE and bank_ready(ship, ship.banks[i]))
             if not banks:
                 continue
             d = c.distance_to(ship.x, ship.y)
@@ -245,13 +259,13 @@ class ShipComputer:
             self.trace.add(obs.tick, f"FC: phasers {','.join(str(i + 1) for i in bearing_ok)} at {c.label} ({d:,.0f})")
             self.last_offense_tick = obs.tick
         # torpedoes: fire inside the torpedo envelope
-        for mode, tgt in ((FireMode.ASSISTED, target), (FireMode.AUTOMATIC, auto_target)):
+        for mode, tgt, idx in jobs(ship.tubes):
             if tgt is None or "torpedoes" in holds:
                 continue
             c = obs.contact(tgt)
             if c is None:
                 continue
-            tubes = tuple(i for i, t in enumerate(ship.tubes) if t.fire_mode == mode and t.loaded is not None)
+            tubes = tuple(i for i in idx if ship.tubes[i].loaded is not None)
             if not tubes:
                 continue
             spec = obs.content.torpedoes[ship.tubes[tubes[0]].loaded.ordnance]  # type: ignore[union-attr]
@@ -261,7 +275,7 @@ class ShipComputer:
             if not (lo <= d <= hi * (0.35 + 0.3 * soph)):
                 continue
             # magazine discipline: wait for the full salvo and don't pile onto torpedoes already inbound
-            mode_tubes = [t for t in ship.tubes if t.fire_mode == mode and t.intact]
+            mode_tubes = [ship.tubes[i] for i in idx if ship.tubes[i].intact]
             if len(tubes) < len(mode_tubes) or obs.torpedo_pressure(tgt) > 25:
                 continue
             out.append(FireTorpedoes(ship_id=ship.id, tubes=tubes, target=tgt, issuer=Authority.COMPUTER,
