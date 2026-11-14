@@ -45,9 +45,10 @@ class VoicesMixin(SessionState):
     # ------------------------------------------------------------ voices
 
     def _voice(self: BattleSession, speaker: str, text: str, tone: str, station: str | None = None,
-               officer: str | None = None, urgent: bool = False) -> None:
-        """Someone says a line aloud; the presentation decides how much of it to show (its subtitles setting)."""
-        self._emit(Voice(speaker, text, tone, station, officer, urgent))
+               officer: str | None = None, urgent: bool = False, kind: str = "report",
+               faction: str | None = None) -> None:
+        """Someone says a line aloud; the presentation decides how much of it to show and to speak."""
+        self._emit(Voice(speaker, text, tone, station, officer, urgent, kind, faction))
 
     def _readback(self: BattleSession, cmd: Command) -> None:
         """The officer at the order's station says back exactly what they will do."""
@@ -60,7 +61,7 @@ class VoicesMixin(SessionState):
         line = readback(cmd, self.ship_name)
         self._log(f"  {name + ': ' if name else ''}{line}", "readback", channel="bridge")
         if mode == "voiced":
-            self._voice(name, line, "crew" if name else "dim", station, oid)
+            self._voice(name, line, "crew" if name else "dim", station, oid, kind="readback")
 
     # ------------------------------------------------------------ officers' proposals
 

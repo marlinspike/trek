@@ -481,12 +481,14 @@ class RenderMixin(SceneState):
                 theme.text(surf, v, (r.x + 250, y), theme.TEXT, 13)
                 y += 22
         elif o == "menu":
-            r = self._modal(surf, 360, 190, "Battle")
+            r = self._modal(surf, 360, 234, "Battle")
             self.ui.button(surf, pygame.Rect(r.x + 30, r.y + 44, r.width - 60, 34), "Resume",
                            lambda: setattr(self, "overlay", None), size=14)
             self.ui.button(surf, pygame.Rect(r.x + 30, r.y + 88, r.width - 60, 34), "Manual",
                            lambda: self.open_manual(), size=14)
-            self.ui.button(surf, pygame.Rect(r.x + 30, r.y + 132, r.width - 60, 34), "Leave battle",
+            self.ui.button(surf, pygame.Rect(r.x + 30, r.y + 132, r.width - 60, 34), "Bridge voices",
+                           lambda: setattr(self, "overlay", "speech"), size=14)
+            self.ui.button(surf, pygame.Rect(r.x + 30, r.y + 176, r.width - 60, 34), "Leave battle",
                            self.on_exit, size=14, accent=theme.ALERT)
         elif o == "manual":
             w, h = surf.get_size()
@@ -501,6 +503,8 @@ class RenderMixin(SceneState):
             self._debrief(surf)
         elif o == "voice":
             self._voice_page(surf)
+        elif o == "speech":
+            self._speech_page(surf)
 
     def _damage_view(self: BattleScene, surf: pygame.Surface) -> None:
         p = self.player

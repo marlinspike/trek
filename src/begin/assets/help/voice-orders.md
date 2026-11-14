@@ -2,7 +2,7 @@
 title: Speaking orders
 category: Getting started
 order: 6
-aliases: voice, voice orders, speaking, speak, microphone, mic, push to talk, whisper, whisper.cpp, speech, mac speech, dictation
+aliases: voice, voice orders, speaking, microphone, mic, push to talk, whisper, whisper.cpp, speech, mac speech, dictation
 summary: Hold Right Alt (Option), say the order, let go. Mac speech, Whisper on this computer, a Whisper server or the cloud.
 see: bridge, console, plain-english, llm
 ---

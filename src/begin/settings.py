@@ -35,6 +35,7 @@ class Settings:
     jolt: bool = True                                          # the map jolts when our ship takes a heavy blow
     bridge: dict[str, object] = field(default_factory=dict)    # the Bridge setting: full|quiet|classic and its parts
     voice: dict[str, object] = field(default_factory=dict)     # speaking orders: engine, push-to-talk key, models
+    speech: dict[str, object] = field(default_factory=dict)    # officers' spoken voices: on, what, volume, casting
     career: dict[str, object] = field(default_factory=dict)    # officers' trust and command-style ribbons, across battles
 
     @staticmethod
