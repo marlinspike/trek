@@ -49,7 +49,8 @@ class App:
         w, h = self.settings.window
         self.size: tuple[int, int] = size or (w, h)
         gfx.set_lighting(self.settings.bloom)
-        self.presenter: Presenter = open_presenter(chosen, self.size, _window_icon(), bloom=self.settings.bloom)
+        self.presenter: Presenter = open_presenter(chosen, self.size, _window_icon(), bloom=self.settings.bloom,
+                                                   ui_scale=self.settings.ui_scale)
         if not headless:
             print(f"Begin: {self.presenter.note}")
         self.clock = pygame.time.Clock()
@@ -82,6 +83,12 @@ class App:
     def set_bloom(self, on: bool) -> None:
         self.settings.bloom = self.presenter.bloom = on
         gfx.set_lighting(on)
+        self.settings.save()
+
+    def set_ui_scale(self, setting: float) -> None:
+        """A new interface size: every scene lays out again on the next frame."""
+        self.settings.ui_scale = setting
+        self.presenter.set_ui_scale(setting)
         self.settings.save()
 
     def restart(self) -> None:
@@ -166,7 +173,8 @@ class App:
             if ev.type == pygame.QUIT:
                 self.running = False
             elif ev.type == pygame.VIDEORESIZE:
-                self.settings.window = (ev.w, ev.h)
+                w, h = getattr(ev, "window", (ev.w, ev.h))        # the window's own size, not the logical one
+                self.settings.window = (w, h)
                 self.scene.handle(ev)
             else:
                 self.scene.handle(ev)

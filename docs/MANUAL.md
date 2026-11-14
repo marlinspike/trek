@@ -3689,7 +3689,7 @@ Choose **Settings** on the main menu (or press **S** there). The sections are do
 
 Every change is saved the moment you make it, to the same plain text files the game has always read, so you can still edit them by hand: `config/settings.json` for everything except the officers, and `config/officers.toml` for them. A box you type in (a model's name, a server's address) keeps what you typed when you press **Enter**, **Tab** or click elsewhere; **Esc** puts back what was there. **Ctrl+V** (or **⌘V**) pastes.
 
-- **Display**: the renderer (automatic, graphics card or software) and *Light and glow*. **D** on the main menu opens this section. See [Display and sharpness](#topic-display).
+- **Display**: the renderer (automatic, graphics card or software), the *Interface size* and *Light and glow*. **D** on the main menu opens this section. See [Display and sharpness](#topic-display).
 - **Sound**: sound on or off, the volume and the engine hum (drag the slider; **Hear it** plays a sample), and which version of the phaser and torpedo launch you hear: each letter plays it as you pick it. See [Sound](#topic-sound).
 - **Battle**: the [Difficulty](#topic-difficulty) (Ensign, Captain or Admiral), the speed a battle starts at, your officers' chatter, and the map's jolt when the ship takes a heavy blow.
 - **Bridge**: the bridge style (full, quiet or classic) and each of its parts. The same choices as `hud bridge` in battle. See [The bridge](#topic-bridge).
@@ -4123,11 +4123,13 @@ Open **Settings** from the main menu and choose **Display** (or press **D** on t
 
 A window can't change renderer while it is open, so after you pick a different one the page offers **Restart now**. Or the change simply applies the next time you start the game.
 
+**Interface size** makes the whole screen larger: text, panels, buttons and the map's labels together. On **Auto** (the default) it follows the window. Up to 1,000 points tall nothing changes, since every screen is designed for that. Past it, the interface grows, so a window filling a 27-inch 2560x1440 monitor reads like a 1900x1070 one (135%), up to 150% at most. A Retina Mac or a Windows display already set to 150% or more is sized by the system, so Auto leaves it alone. Pick **100%**, **115%**, **130%** or **150%** to fix the size yourself. It takes effect at once. With the graphics card drawing, the larger interface is drawn at the screen's real pixels, so text stays sharp. Software drawing scales the finished picture up, which is a little softer.
+
 **Light and glow** makes weapon fire feel physical. A phaser hit, a launch or a torpedo blast briefly lights the hulls next to it in its own colour, and panels and cards cast a soft shadow so they sit above the map. With the graphics card drawing, phaser beams, disruptor bolts and blasts also get a soft halo, and the very edge of the map is slightly darker, like a viewscreen. Text is never touched. It takes effect at once; turn it off for the flattest, quickest picture.
 
-The **Now** box says what is drawing at the moment: the graphics card and the screen's density, or software drawing and why the graphics card isn't being used.
+The **Now** box says what is drawing at the moment: the graphics card and the screen's density, or software drawing and why the graphics card isn't being used, and the interface size when it isn't 100%.
 
-The choices are saved as `renderer` and `bloom` in `settings.json` in your config folder. `begin --renderer software` (or `gpu`, or `auto`) overrides them for one run.
+The choices are saved as `renderer`, `ui_scale` (0 for Auto) and `bloom` in `settings.json` in your config folder. `begin --renderer software` (or `gpu`, or `auto`) overrides them for one run.
 
 See also: [Who fired what](#topic-weapon-colors), [Sound](#topic-sound).
 

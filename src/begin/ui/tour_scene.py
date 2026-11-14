@@ -279,7 +279,7 @@ class TourScene:
     def update(self, dt: float) -> None:
         self.t += dt
         self.glide = min(1.0, self.glide + dt / GLIDE_SECONDS)
-        self.ui.mouse = pygame.mouse.get_pos()
+        self.ui.mouse = gfx.mouse_pos()
         self._poll_voices()
 
     def handle(self, ev: pygame.event.Event) -> None:

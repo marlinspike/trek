@@ -33,6 +33,21 @@ def set_scale(s: float) -> None:
     SCALE = max(1.0, float(s))
 
 
+ZOOM = 1.0             # the interface size (ui/zoom.py): window points per logical pixel
+
+
+def set_zoom(z: float) -> None:
+    """The presenter says how large the interface is drawn, so the pointer can be read in logical pixels."""
+    global ZOOM
+    ZOOM = max(1.0, float(z))
+
+
+def mouse_pos() -> tuple[int, int]:
+    """Where the pointer is, in the logical pixels the scenes lay out in."""
+    x, y = pygame.mouse.get_pos()
+    return (int(x / ZOOM + 1e-6), int(y / ZOOM + 1e-6)) if ZOOM != 1.0 else (x, y)
+
+
 def set_lighting(on: bool) -> None:
     global LIGHTING
     LIGHTING = bool(on)
@@ -443,5 +458,5 @@ class _Transform:
 transform = _Transform()
 
 
-__all__ = ["Canvas", "SCALE", "Surface", "adopt", "draw", "hires", "mark", "offer_light", "set_lighting", "set_scale", "set_stage",
-           "take_dirty", "take_light", "track", "transform"]
+__all__ = ["Canvas", "SCALE", "Surface", "ZOOM", "adopt", "draw", "hires", "mark", "mouse_pos", "offer_light", "set_lighting",
+           "set_scale", "set_stage", "set_zoom", "take_dirty", "take_light", "track", "transform"]

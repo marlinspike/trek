@@ -22,7 +22,7 @@ from typing import Protocol
 
 import pygame
 
-from . import gfx
+from . import gfx, zoom
 
 CAPTION = "Begin : Trek — tactical starship simulation"
 RENDERERS = ("auto", "gpu", "software")
@@ -31,6 +31,8 @@ RENDERERS = ("auto", "gpu", "software")
 class Presenter(Protocol):
     name: str                  # "gpu" or "software"
     density: float             # physical pixels per logical pixel
+    zoom: float                # the interface size (ui/zoom.py): window points per logical pixel
+    ui_scale: float            # the Settings choice it follows (0: auto)
     note: str                  # what is drawing, for the terminal
     why: str                   # why the graphics card isn't drawing, when it was tried and failed ("" otherwise)
     bloom: bool                # glow round weapon light and the vignette (GPU only)
@@ -41,40 +43,77 @@ class Presenter(Protocol):
     def events(self) -> list[pygame.event.Event]: ...
     def present(self) -> None: ...
     def close(self) -> None: ...
+    def set_ui_scale(self, setting: float) -> None: ...
 
 
 class SoftwarePresenter:
-    """pygame's display window at one pixel per logical pixel."""
+    """pygame's display window at one pixel per logical pixel (or, at a larger interface size, a smaller logical
+    frame scaled up to the window as it is shown)."""
 
     name = "software"
     density = 1.0
     bloom = False
 
-    def __init__(self, size: tuple[int, int], icon: pygame.Surface | None, why: str = "") -> None:
+    def __init__(self, size: tuple[int, int], icon: pygame.Surface | None, why: str = "",
+                 ui_scale: float = zoom.AUTO) -> None:
         gfx.set_scale(1.0)
         if icon is not None:
             pygame.display.set_icon(icon)
-        self._screen = pygame.display.set_mode(size, pygame.RESIZABLE)
+        self._window = pygame.display.set_mode(size, pygame.RESIZABLE)
         pygame.display.set_caption(CAPTION)
         self.why = why
         self.note = f"software rendering: the graphics card isn't drawing ({why})" if why else "software rendering"
+        self.ui_scale = ui_scale
+        self._queued: list[pygame.event.Event] = []
+        self._fit()
+
+    def _fit(self) -> None:
+        win = pygame.display.get_surface() or self._window
+        self.points = win.get_size()
+        self.zoom = zoom.chosen(self.ui_scale, self.points[1])
+        gfx.set_zoom(self.zoom)
+        self._frame = pygame.Surface(zoom.logical(self.points, self.zoom)) if self.zoom != 1.0 else None
+
+    def set_ui_scale(self, setting: float) -> None:
+        """A new interface size from Settings: the scenes hear it as a resize and lay out again."""
+        self.ui_scale = setting
+        self._fit()
+        self._queued.append(_resized(self.size(), self.points))
 
     @property
     def screen(self) -> pygame.Surface:
-        return pygame.display.get_surface() or self._screen
+        if self._frame is not None:
+            return self._frame
+        return pygame.display.get_surface() or self._window
 
     def size(self) -> tuple[int, int]:
         return self.screen.get_size()
 
     def events(self) -> list[pygame.event.Event]:
-        return pygame.event.get()
+        out, self._queued = self._queued, []
+        for ev in pygame.event.get():
+            if ev.type == pygame.VIDEORESIZE:
+                self._fit()
+                out.append(_resized(self.size(), self.points))
+            else:
+                out.append(zoom.to_logical(ev, self.zoom))
+        return out
 
     def present(self) -> None:
         gfx.take_light()                     # no bloom here: the light is already in the frame
+        if self._frame is not None:
+            win = pygame.display.get_surface()
+            if win is not None:
+                pygame.transform.smoothscale(self._frame, win.get_size(), win)
         pygame.display.flip()
 
     def close(self) -> None:
         pass
+
+
+def _resized(logical: tuple[int, int], window: tuple[int, int]) -> pygame.event.Event:
+    """The resize the scenes lay out by (their logical size), carrying the window's own size to remember."""
+    return pygame.event.Event(pygame.VIDEORESIZE, w=logical[0], h=logical[1], size=logical, window=window)
 
 
 class DisplayControl(Protocol):
@@ -86,6 +125,7 @@ class DisplayControl(Protocol):
     @property
     def started_with(self) -> str: ...
     def set_bloom(self, on: bool) -> None: ...
+    def set_ui_scale(self, setting: float) -> None: ...
     def restart(self) -> None: ...
 
 
@@ -127,17 +167,17 @@ def prepare(renderer: str) -> None:
 
 
 def open_presenter(renderer: str, size: tuple[int, int], icon: pygame.Surface | None,
-                   bloom: bool = True) -> Presenter:
+                   bloom: bool = True, ui_scale: float = zoom.AUTO) -> Presenter:
     renderer = renderer if renderer in RENDERERS else "auto"
     if renderer == "software" or os.environ.get("SDL_VIDEODRIVER") == "dummy":
-        return SoftwarePresenter(size, icon)
+        return SoftwarePresenter(size, icon, ui_scale=ui_scale)
     try:
         from .glpresent import GLPresenter
 
-        return GLPresenter(size, icon, bloom=bloom, allow_software_gl=renderer == "gpu")
+        return GLPresenter(size, icon, bloom=bloom, allow_software_gl=renderer == "gpu", ui_scale=ui_scale)
     except Exception as e:  # noqa: BLE001 - any failure to get a GPU window means software, never a crash
         why = str(e) if isinstance(e, RuntimeError) and str(e) else f"{type(e).__name__}: {e}"
-        return SoftwarePresenter(size, icon, why=why)
+        return SoftwarePresenter(size, icon, why=why, ui_scale=ui_scale)
 
 
 __all__ = ["CAPTION", "DisplayControl", "Presenter", "RENDERERS", "RENDERER_INFO", "SoftwarePresenter",

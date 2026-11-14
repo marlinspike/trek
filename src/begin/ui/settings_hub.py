@@ -33,6 +33,7 @@ from ..difficulty import DIFFICULTIES, level
 from ..speech import CAST, OFFICERS, RACES, SPEAK, SPEAK_TITLES, Speaker, SpeechSettings, choices
 from ..speech.settings import RATE_MAX, RATE_MIN
 from . import gfx, theme
+from . import zoom
 from .present import RENDERER_INFO, RENDERERS, DisplayControl
 from .widgets import UI, TextField
 
@@ -51,8 +52,17 @@ class Section:
     hotkey: str = ""
 
 
+_SIZE_TIPS = {
+    zoom.AUTO: "Follows the window: larger on a big screen that isn't Retina",
+    1.0: "As designed: one point of text per point of screen",
+    1.15: "A little larger",
+    1.3: "Larger, for a big monitor",
+    1.5: "Largest",
+}
+
+
 SECTIONS = (
-    Section("display", "Display", "How the game is drawn: sharpness on Retina and 4K screens, light and glow.", "D"),
+    Section("display", "Display", "How the game is drawn: interface size, sharpness on Retina and 4K screens, light and glow.", "D"),
     Section("sound", "Sound", "How loud, which phaser and torpedo you hear, and the ship's hum."),
     Section("battle", "Battle", "How hard the enemy fights, the speed battles start at, chatter, and the map's jolt."),
     Section("bridge", "Bridge", "How the bridge talks to you: subtitles, read-backs, the command wheel, proposals."),
@@ -351,6 +361,12 @@ class SettingsHub:
         cx = self._label(surf, x, y, "Renderer")
         self._choice(surf, (cx, y), [(r, RENDERER_INFO[r][0], RENDERER_INFO[r][1]) for r in RENDERERS], choice, pick)
         y = self._hint(surf, cx, y + 44, RENDERER_INFO[choice][1], width - LABEL_W) + 14
+        if choice != d.started_with:
+            theme.text(surf, theme.fit(f"{RENDERER_INFO[choice][0]} takes over when the game starts again.", 14,
+                                       x + width - 196 - cx), (cx, y + 10), theme.CAUTION, 14)
+            self.ui.button(surf, pygame.Rect(x + width - 180, y, 180, 36), "Restart now", d.restart,
+                           "Close and reopen the game with the new renderer", size=14, accent=theme.GOOD)
+            y += 50
         gpu = pr.name == "gpu"
         cx = self._label(surf, x, y, "Light and glow")
         self.ui.toggle(surf, (cx, y), st.bloom, lambda: d.set_bloom(not st.bloom),
@@ -358,12 +374,20 @@ class SettingsHub:
                        "get a soft halo. Never on text.")
         y = self._hint(surf, cx, y + 44, "Takes effect at once." if gpu else
                        "Takes effect at once. The halo round weapon light needs the graphics card.", width - LABEL_W) + 18
+        cx = self._label(surf, x, y, "Interface size")
+        self._choice(surf, (cx, y), [(f"{v:g}", zoom.label(v), _SIZE_TIPS[v]) for v in zoom.CHOICES],
+                     f"{float(st.ui_scale or 0.0):g}", lambda v: d.set_ui_scale(float(v)))
+        sharp = "" if gpu else " Larger sizes are a little soft without the graphics card."
+        y = self._hint(surf, cx, y + 44, f"Now {round(pr.zoom * 100)}%. Auto grows the text and panels on a big "
+                       f"window that isn't Retina, from 1,000 points tall up.{sharp}", width - LABEL_W) + 18
 
         r = pygame.Rect(x, y, width, 96)
         gfx.draw.rect(surf, theme.BG_INPUT, r, border_radius=4)
         gfx.draw.rect(surf, theme.BORDER, r, 1, border_radius=4)
         theme.text(surf, "NOW", (r.x + 16, r.y + 12), theme.TEXT_FAINT, 11, "display")
         now = f"Graphics card at {pr.density:g}x" if gpu else "Software drawing"
+        if pr.zoom != 1.0:
+            now += f", interface at {round(pr.zoom * 100)}%"
         theme.text(surf, now, (r.x + 16, r.y + 32), theme.GOOD if gpu else theme.TEXT, 16, weight="medium")
         if gpu:
             detail = pr.note.split("(", 1)[-1].rstrip(")")
@@ -373,12 +397,6 @@ class SettingsHub:
             detail = "As chosen above."
         self._hint(surf, r.x + 16, r.y + 60, detail, r.width - 32, theme.CAUTION if pr.why else theme.TEXT_DIM)
         y = r.bottom + 18
-        if choice != d.started_with:
-            theme.text(surf, f"{RENDERER_INFO[choice][0]} takes over when the game starts again.", (x, y + 10),
-                       theme.CAUTION, 14)
-            self.ui.button(surf, pygame.Rect(x + width - 180, y, 180, 36), "Restart now", d.restart,
-                           "Close and reopen the game with the new renderer", size=14, accent=theme.GOOD)
-            y += 50
         return y
 
     # ------------------------------------------------------------ Sound
