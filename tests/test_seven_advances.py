@@ -1,0 +1,177 @@
+"""Seven's advancements (2026-11-14): Borg technology won on The Collective tour, which the officers offer to bring
+online against the Borg, and the captain can order with `design sensors`, `design guided` or `design adaptive`."""
+
+from __future__ import annotations
+
+import dataclasses
+from pathlib import Path
+
+from begin.ai.captain import AICaptain
+from begin.ai.personality import Personality
+from begin.battle import BattleSetup, FleetSpec, ShipSpec, build_battle, start
+from begin.crew.proposals import candidates
+from begin.core.rng import Rng
+from begin.presets import load_presets
+from begin.session.battle import BattleSession
+from begin.sim import collective
+from begin.sim.commands import LaunchProbe, Scan, StartProject
+from begin.sim.events import Message
+from begin.sim.ship import LoadedTorpedo
+from begin.sim.systems.ordnance import launch_torpedoes
+from begin.tools.tours import _default_escorts
+from begin.tour import TourRun, load_tours
+from begin.tour.state import TourState
+
+
+def _borg(content, enemy: str = "borg.sp"):  # type: ignore[no-untyped-def]
+    b = build_battle(content, BattleSetup([FleetSpec(0, [ShipSpec("federation.dn", x=0.0, y=0.0, course=0.0)], player=True),
+                                           FleetSpec(1, [ShipSpec(enemy, x=0.0, y=9000.0, course=180.0)])], seed=3))
+    w = b.world
+    return b, w, w.ships[b.player_ship_id], next(s for s in w.ships.values() if s.side == 1)
+
+
+def _design(w, us, project: str) -> None:  # type: ignore[no-untyped-def]
+    w.execute(StartProject(ship_id=us.id, project=project))
+    for _ in range(int(30 * w.rules.ticks_per_cycle)):
+        if project in us.borg_tech:
+            return
+        w.step()
+
+
+def _collective():  # type: ignore[no-untyped-def]
+    return next(t for t in load_tours()[0] if t.id == "the-collective")
+
+
+def test_seven_can_build_nothing_until_the_tour_gives_her_borg_technology(content) -> None:  # type: ignore[no-untyped-def]
+    _, w, us, _ = _borg(content)
+    w.execute(StartProject(ship_id=us.id, project="sensors"))
+    assert "sensors" not in us.projects
+    collective.insight(w, us.side).advances = {"sensors"}
+    w.execute(StartProject(ship_id=us.id, project="sensors"))
+    assert "sensors" in us.projects
+
+
+def test_borg_sensors_double_what_each_scan_tells_us(content) -> None:  # type: ignore[no-untyped-def]
+    _, w, us, them = _borg(content)
+    collective.on_scan(w, us, them, "seven")
+    plain = collective.insight(w, us.side).survey(them.id).progress
+    collective.insight(w, us.side).surveys.clear()
+    us.borg_tech.add("sensors")
+    collective.on_scan(w, us, them, "seven")
+    assert collective.insight(w, us.side).survey(them.id).progress == plain * collective.SENSOR_GAIN
+
+
+def test_borg_tuned_torpedoes_fly_faster_at_a_hive_ship(content) -> None:  # type: ignore[no-untyped-def]
+    def speed(guided: bool) -> float:
+        _, w, us, them = _borg(content)
+        if guided:
+            us.borg_tech.add("guided")
+        tube = us.tubes[0]
+        spec = w.content.torpedoes[us.cls.torpedo]
+        tube.loaded = LoadedTorpedo(spec.id, spec.max_prox)
+        spec_speed = spec.velocity
+        launch_torpedoes(w, us, [tube], them.id)
+        return w.torpedoes[-1].velocity / spec_speed
+    assert speed(True) > speed(False) * 1.3
+
+
+def test_adaptive_shields_stop_their_transporters_at_once_and_survive_a_shift(content) -> None:  # type: ignore[no-untyped-def]
+    _, w, us, them = _borg(content)
+    collective.insight(w, us.side).advances = {"adaptive"}
+    assert us.tuning == 0.0
+    _design(w, us, "adaptive")
+    assert "adaptive" in us.borg_tech
+    assert us.tuning >= collective.TUNE_BLOCKS_BEAMING
+    assert collective.can_beam_through(w, them, us) is not None
+    rules = collective.rules_of(w, them)
+    assert rules is not None
+    collective.mind(w, them.faction).blocked = rules.shift_after * 10      # the hive shifts its beams
+    collective.learn(w, us, them, "phaser", 10.0, 5.0)
+    assert us.tuning >= collective.TUNE_BLOCKS_BEAMING
+
+
+def test_seven_offers_her_advancements_and_the_counsel_plans_them(content, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    setup = next(p for p in load_presets() if p.id == "borg-cube").setup()
+    s = BattleSession(build_battle(content, setup), chatter=False, config=tmp_path)
+    s.paused = False
+    w = s.world
+    me = w.ships[s.battle.player_ship_id]
+    officers = {o.station: o for o in s.bridge.officers()}
+    obs = w.observe(me.side)
+    assert not any(p.line.startswith("design sensors") for p in candidates(obs, me, officers))
+    collective.insight(w, me.side).advances = {"sensors", "guided", "adaptive"}
+    obs = w.observe(me.side)
+    offer = next(p for p in candidates(obs, me, officers) if p.line.startswith("design"))
+    assert offer.station == "science" and offer.line == "design sensors"
+    lines = [st.line for p in s.counsel(force=True) for st in p.steps]
+    assert "design sensors" in lines
+    s.run_console(offer.line)                              # what Y on the proposal runs
+    assert "sensors" in me.projects
+    s.close()
+
+
+def test_a_win_at_the_probes_gives_seven_sensors_and_guidance_and_she_says_how_to_ask(content, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    t = _collective()
+    colony = t.stops[0]
+    assert set(colony.advances) == {"sensors", "guided"} and t.stops[1].advances == ("adaptive",)
+    run = TourRun.new(t, content, _default_escorts(t, content), seed=2, difficulty="captain")
+    battle = start(content, run.launch().setup, run.difficulty)
+    run.prepare(battle)
+    w = battle.world
+    for s in list(w.ships.values()):
+        if s.side != w.player_side:
+            w.destroy_ship(s, "test", None)
+    w.step()
+    entry = run.finish(battle)
+    assert run.state.advances == ["sensors", "guided"]
+    assert "design sensors" in entry.stations["seven"]
+    again = TourState.from_json(run.state.to_json())
+    assert again.advances == ["sensors", "guided"]
+    # the next Borg battle: the insight carries them, and Seven tells a new captain how to ask
+    said: list[str] = []
+    battle = start(content, run.launch().setup, run.difficulty)
+    orig = battle.world.emit
+
+    def emit(ev):  # type: ignore[no-untyped-def]
+        if isinstance(ev, Message):
+            said.append(ev.text)
+        return orig(ev)
+    battle.world.emit = emit  # type: ignore[method-assign]
+    run.prepare(battle)
+    assert collective.insight(battle.world, battle.world.player_side).advances == {"sensors", "guided"}
+    assert any("'design sensors'" in x and "'design guided'" in x for x in said)
+
+
+def test_old_saves_load_with_no_advancements() -> None:
+    d = TourState("the-collective").to_json()
+    d.pop("advances")
+    assert TourState.from_json(d).advances == []
+
+
+def test_a_careful_captain_never_launches_a_probe_their_beams_can_burst_on_us(content) -> None:  # type: ignore[no-untyped-def]
+    """At the Kerrigan Rift the officers fired probes at a sphere 2,500 out: her beams burst them beside the
+    Enterprise, and the blasts killed her. A competent captain keeps probes for targets that can't do that."""
+    launched = {}
+    for competence in (0.9, 0.2):
+        b = build_battle(content, BattleSetup([FleetSpec(0, [ShipSpec("federation.dn", x=0.0, y=0.0, course=0.0)], player=True),
+                                               FleetSpec(1, [ShipSpec("klingon.bc", x=0.0, y=2600.0, course=180.0)])], seed=3))
+        w = b.world
+        us = w.ships[b.player_ship_id]
+        them = next(s for s in w.ships.values() if s.side == 1)
+        p = dataclasses.replace(Personality.roll(content.factions["federation"], Rng(1)), competence=competence,
+                                aggression=1.0)
+        cap = AICaptain(us.id, us.side, p, Rng(2))
+        n = 0
+        for k in range(200):
+            if k % 40 == 0:
+                w.execute(Scan(ship_id=us.id, target=them.id))
+            for bank in them.banks:
+                bank.charge = 0.0                          # no charged banks: Begin's cue to launch a probe
+            them.desired_warp = 0.0
+            them.x, them.y = 0.0, us.y + 2600.0            # inside her beams' reach of the probe's blast
+            for c in cap.think(w.observe(us.side)):
+                n += isinstance(c, LaunchProbe)
+                w.execute(c)
+            w.step()
+        launched[competence] = n
+    assert launched[0.9] == 0 and launched[0.2] > 0

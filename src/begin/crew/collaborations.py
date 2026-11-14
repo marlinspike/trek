@@ -105,6 +105,53 @@ COLLABORATIONS: tuple[Collaboration, ...] = (
             ("seven", "The drones aboard are cut off from the Collective. Alone, they are slow, and they cannot learn."),
         ),
     ),
+    # Seven's advancements [E]: Borg technology the tour has given her, brought online for one battle
+    Collaboration(
+        id="sensors",
+        project="sensors",
+        first=True,
+        officers=("seven", "spock", "geordi"),
+        trigger=re.compile(r"\bborg\s+sensors?\b|\b(?:sensor|scanner)\s+array\b"),
+        start=(
+            ("seven", "The probes' sensor nodes. I will splice them into our array: the Collective's own eyes, "
+                      "turned on the Collective."),
+            ("geordi", "I'll route the power. Just don't let them talk back to the hive, Seven."),
+        ),
+        done=(
+            ("seven", "The Borg sensor array is online. Every scan of a Borg ship now tells us twice as much."),
+        ),
+    ),
+    Collaboration(
+        id="guided",
+        project="guided",
+        first=True,
+        officers=("seven", "worf", "spock"),
+        trigger=re.compile(r"\b(?:borg[- ]tuned|guided|guidance|faster)\b.*\b(?:torpedo|torp)s?\b"
+                           r"|\b(?:torpedo|torp)\s+guidance\b"),
+        start=(
+            ("seven", "The probes' targeting matrix. Fitted to our torpedoes, they will read a Borg hull the way "
+                      "the hive does, and close on it faster."),
+            ("worf", "I will recalibrate the launchers to take it."),
+        ),
+        done=(
+            ("seven", "Borg-tuned guidance is in every tube. At a Borg ship our torpedoes fly half as fast again."),
+        ),
+    ),
+    Collaboration(
+        id="adaptive",
+        project="adaptive",
+        first=True,
+        officers=("seven", "geordi", "spock"),
+        trigger=re.compile(r"\badaptive\s+(?:shields?|harmonics)\b|\bborg\s+shields?\b|\badaptive\s+shield\s+harmonics\b"),
+        start=(
+            ("seven", "The sphere's shield emitters adapted to everything we fired. Ours can learn the same way."),
+            ("geordi", "Tying them into the shield grid now. It'll take a few seconds to settle."),
+        ),
+        done=(
+            ("seven", "Adaptive shield harmonics are online. Their transporters cannot lock on, and when the hive "
+                      "shifts its beams we keep most of our tuning."),
+        ),
+    ),
     Collaboration(
         id="deflector",
         project="deflector",

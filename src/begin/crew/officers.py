@@ -32,7 +32,7 @@ from ..content.schema import ContentDB
 from ..core.rng import Rng
 from ..sim.allies import AllyStanding
 from ..sim.away import TASKS
-from ..sim.collective import CODE_AT, TUNE_BLOCKS_BEAMING
+from ..sim.collective import ADVANCES, CODE_AT, TUNE_BLOCKS_BEAMING
 from ..sim.commands import (
     Authority, Command, ConfigureAutoload, Remodulate, SetDuty, ControlProbe, DeflectorPulse, Dock, EndObjective, EngineBoost, Evasive, FireAtPoint, FirePhasers,
     FireSpecialRound, FireTorpedoes, LaunchProbe, LoadTubes, LockWeapons, SplitFire, Pursue, ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak,
@@ -314,6 +314,15 @@ def repair_priority(ship: Ship, obs: Observation) -> RepairTarget | None:
     return None
 
 
+def unfitted(obs: Observation, ship: Ship) -> list[str]:
+    """Seven's advancements [E] our side has earned that this ship hasn't brought online (or begun to) against the
+    hive ships in sight; empty when there are none to fight."""
+    if not any(c.visible and obs.is_hive(c.id) for c in obs.hostile_contacts()):
+        return []
+    have = obs.insight().advances
+    return [a for a in ADVANCES if a in have and a not in ship.borg_tech and a not in ship.projects]
+
+
 def _system(sid: str) -> str:
     """'battery8' -> 'battery 8'."""
     stem = sid.rstrip("0123456789")
@@ -457,6 +466,9 @@ class Crew:
                 out.append(cmd(SetDuty, sci, duty="harmonics", by=sci.id))
             elif ship.duty == "harmonics" and not unsurveyed and ship.shields:
                 out.append(cmd(SetDuty, sci, duty="shields", by=sci.id))   # harmonics done: tune the shields
+            offline = unfitted(obs, ship)
+            if offline:                                 # her own advancements: she brings them online unasked
+                out.append(cmd(StartProject, sci, project=offline[0]))
         if ship.duty == "harmonics" and unsurveyed and obs.tick - self.hive_at >= HIVE_SCAN_CYCLES * tpc:
             reach = ship.sensor_range() * obs.rules.scan_range_fraction
             near = [c for c in unsurveyed if c.distance_to(ship.x, ship.y) <= reach]
@@ -707,5 +719,6 @@ def default_crew(officers: dict[str, OfficerProfile]) -> dict[str, OfficerProfil
 
 
 __all__ = [
+    "unfitted",
     "Crew", "OfficerBrain", "STATION_COMMANDS", "STATION_NAMES", "default_crew", "repair_priority", "station_of",
 ]

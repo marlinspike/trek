@@ -22,6 +22,7 @@ from ..sim.observation import ContactView, Observation
 from ..sim.ship import Ship
 from ..sim.systems.disposition import Reading
 from ..help.coach import HelpContext, Tip, tips as coach_tips
+from .officers import unfitted
 
 SHIELD_FACINGS = (0.0, 60.0, 300.0, 120.0, 240.0, 180.0)   # an enemy's shield sectors as scans number them
 NEAR = 8000.0                     # ordnance this close is "inbound"
@@ -164,6 +165,7 @@ class Situation:
     conn: str
     objectives: tuple[str, ...]   # goals under way
     projects: frozenset[str]
+    offline: tuple[str, ...]      # Seven's advancements earned but not brought online here [E] (crew/officers.unfitted)
     deflector: bool               # the deflector pulse is built and charged
     boost: bool
     target: int | None
@@ -443,6 +445,7 @@ def build(obs: Observation, ship: Ship, calls_left: int = 0, eta: float = 0.0) -
         transporters=sum(1 for t in s.transporters if not t.destroyed), beam_cap=s.cls.beam_cap,
         delegated=frozenset(s.delegated), conn=s.conn or "",
         objectives=tuple(o.goal for o in s.objectives), projects=frozenset(s.projects),
+        offline=tuple(unfitted(obs, s)),
         deflector=bool(s.deflector_ready) and s.deflector_cooldown <= 0, boost=s.engine_boost > 0,
         target=s.target, hold_fire=s.hold_fire, duty=s.duty or "", tuning=s.tuning, remodulating=s.remodulating > 0,
         pd=s.pd_doctrine.value, evacuees=s.evacuees, prisoners=s.prisoners,

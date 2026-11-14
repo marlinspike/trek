@@ -96,6 +96,7 @@ def launch_torpedoes(
     n = len(tubes)
     fired = 0
     salvo: dict[tuple[str, float], Torpedo] = {}
+    guided = _guided(world, ship, target_id)
     for k, tube in enumerate(tubes):
         loaded = tube.loaded
         if loaded is None:
@@ -119,7 +120,7 @@ def launch_torpedoes(
         if fan <= 0 and key in salvo:
             salvo[key].salvo += 1  # Begin torpedo group [R]
             continue
-        vel = spec.velocity * (1.0 + rng.uniform(-spec.speed_variance, spec.speed_variance))
+        vel = spec.velocity * (1.0 + rng.uniform(-spec.speed_variance, spec.speed_variance)) * guided
         torp = Torpedo(
             id=world.new_id(), owner=ship.id, side=ship.side, spec=spec, x=ox, y=oy, course=aim,
             velocity=vel, prox=loaded.prox, arm=spec.arm_time, fuse=spec.max_time_fuse,
@@ -137,6 +138,16 @@ def launch_torpedoes(
             world.note_torpedo_pressure(target_id, fired)
             _mark_blind(world, ship, list(salvo.values()) if fan <= 0 else world.torpedoes[-fired:], target_id)
     return fired
+
+
+def _guided(world: World, ship: Ship, target_id: int | None) -> float:
+    """[E] × torpedo speed: Seven's Borg-tuned guidance drives a round at a hive ship faster."""
+    if "guided" not in ship.borg_tech or target_id is None:
+        return 1.0
+    from .. import collective
+
+    target = world.ships.get(target_id)
+    return collective.GUIDED_SPEED if target is not None and collective.is_hive(world, target) else 1.0
 
 
 def _mark_blind(world: World, ship: Ship, torps: list[Torpedo], target_id: int | None) -> None:

@@ -42,6 +42,8 @@ A ship charging at you shrinks the minimum. A ship running away stretches it. Fi
 
 Probes are slow, but most of them home in on their target, and their warheads are large. A ship slower than the probe can't outrun it, which makes probes the weapon for bases, cripples and big cruisers. After launch you can steer one, re-target it or detonate it by its control code (`status probes` lists them).
 
+Never launch one at a ship close by. Any beam that touches a probe sets it off at full warhead, so a probe your target shoots down just off your bow bursts on your own hull. Your officers won't launch one while the target's beams could reach it that close to you.
+
 **Data probes** carry little or no warhead, but they fly fast and see far. Wherever one flies, your whole side sees what it sees.
 
 {{probe_table}}
@@ -67,6 +69,7 @@ Your officers can build rounds no armoury carries:
 - **The deflector pulse** (`design deflector`). Not a round: the main dish set up to sweep a 60° cone ahead of your bow, out to 15,000 units. It is reusable every 30 cycles. See [[deflector]].
 - **The plasma-seeker** (`design seeker`, Seven and Spock). A torpedo that flies a damaged ship's plasma trail, every turn she made, and homes on her at the end of it. When it hits, you have a six-second firing solution on her, cloak or no cloak: `strike <ship> <system>` has Seven fire it and spend that window for you. See [[cloak]].
 - **Harmonic torpedoes** (`design harmonic`). Against a Borg ship whose shield harmonics Seven has learned, they pass straight through her shields. See [[borg]].
+- **Borg-tuned torpedo guidance** (`design guided`). Seven's advancement from The Collective tour: your torpedoes fly half as fast again at any Borg ship. Her **Borg sensors** (`design sensors`) and **adaptive shields** (`design adaptive`) come the same way. See [[borg]].
 
 ## Other tools
 

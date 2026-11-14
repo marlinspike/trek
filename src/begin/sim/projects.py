@@ -127,6 +127,33 @@ def _sever(world: World, ship: Ship, proj: ProjectDef) -> int | None:
     return None
 
 
+def _earned(advance: str, what: str) -> Callable[[World, Ship], str | None]:
+    """Seven can bring an advancement online only once the tour has given her the Borg technology for it [E]."""
+    def check(world: World, ship: Ship) -> str | None:
+        from . import collective
+
+        ins = world.insight.get(ship.side)
+        if ins is None or advance not in ins.advances:
+            return (f"Seven has nothing to build {what} from yet, Captain. She needs Borg technology taken in "
+                    f"battle: on The Collective tour, the probes give her sensors and torpedo guidance, the sphere "
+                    f"adaptive shields.")
+        if not any(collective.is_hive(world, s) for s in world.ships.values() if s.side != ship.side and s.alive):
+            return "There are no Borg here, Captain: Seven's advancements are tuned to the Collective."
+        return None
+    return check
+
+
+def _fit(advance: str) -> Callable[[World, Ship, ProjectDef], int | None]:
+    def finish(world: World, ship: Ship, proj: ProjectDef) -> int | None:
+        from . import collective
+
+        ship.borg_tech.add(advance)
+        if advance == "adaptive":                      # her transporters can't lock on from the moment it's up
+            ship.tuning = max(ship.tuning, collective.TUNE_BLOCKS_BEAMING)
+        return None
+    return finish
+
+
 PROJECTS: dict[str, ProjectDef] = {
     "deflector": ProjectDef("deflector", "deflector tachyon pulse", 12.0, configure_deflector,
                             hint="Sweep ahead of the ship with 'pulse'.", use="pulse",
@@ -151,6 +178,21 @@ PROJECTS: dict[str, ProjectDef] = {
     "sever": ProjectDef("sever", "link to the hive cut", 6.0, lambda w, s, p: _sever(w, s, p),
                         can_start=_needs_drones_aboard, is_ready=lambda ship: ship.severed,
                         hint="The drones aboard fight alone now: slower, and they seize nothing."),
+    # Seven's advancements [E]: earned on The Collective tour, brought online one battle at a time
+    "sensors": ProjectDef("sensors", "Borg sensor array", 10.0, _fit("sensors"),
+                          can_start=_earned("sensors", "a Borg sensor array"),
+                          is_ready=lambda ship: "sensors" in ship.borg_tech,
+                          hint="Every scan of a Borg ship now tells us twice as much: her relay and her harmonics "
+                               "come in half the time."),
+    "guided": ProjectDef("guided", "Borg-tuned torpedo guidance", 12.0, _fit("guided"),
+                         can_start=_earned("guided", "Borg-tuned torpedo guidance"),
+                         is_ready=lambda ship: "guided" in ship.borg_tech,
+                         hint="Our torpedoes fly half as fast again at any Borg ship: a sphere can't outrun them."),
+    "adaptive": ProjectDef("adaptive", "adaptive shield harmonics", 14.0, _fit("adaptive"),
+                           can_start=_earned("adaptive", "adaptive shield harmonics"),
+                           is_ready=lambda ship: "adaptive" in ship.borg_tech,
+                           hint="The shields are tuned against their transporters now, tune three times as fast, "
+                                "and keep most of their tuning when the hive shifts its beams."),
 }
 
 

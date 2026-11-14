@@ -77,6 +77,7 @@ AI_WEAVE_AMP_MAX = 31.0
 AI_WEAVE_AGGR_BASE = 1.1
 AI_SIDESTEP = 90.0
 AI_KNIFE_FIGHT_RANGE = 1.5       # [E] × phaser range: inside it, fight rather than reopen the range
+DANGER_CLOSE_COMPETENCE = 0.5   # [E] a captain this competent never launches a probe the target can burst on us
 AI_BASE_STANDOFF = 0.6           # [E] × phaser range: the closest an attacker comes to a base
 AI_STANDOFF_OPEN_ANGLE = 70.0     # [E] degrees off dead astern when opening to torpedo standoff
 AI_FANATIC_RAM = 0.9
@@ -707,7 +708,12 @@ class AICaptain:
             slow = c.cls is not None and c.cls.max_warp < pspec.velocity
             sc = c.scan
             no_banks = sc is not None and sc.charged_banks == 0
-            want = (d < reach and chasing <= p.aggression * 6 and
+            # [E] danger close: a probe shot down near us bursts on us. A competent captain launches only
+            # when the target's beams can't reach the probe inside its own blast of our hull.
+            blast = pspec.damage * obs.rules.splash_mult * obs.rules.splash_radius_per_damage
+            close = d < blast + (c.cls.banks_range if c.cls is not None else 0.0)
+            careful = p.competence >= DANGER_CLOSE_COMPETENCE
+            want = (d < reach and chasing <= p.aggression * 6 and not (close and careful) and
                     (no_banks or (slow and self.rng.unit() < p.doctrine.probe_use * (0.5 + p.creativity) * 0.25)))
             if st is not None and st.weapon == "probe":
                 # ordered to probe: release only with a good chance of a hit (manual p. 24)

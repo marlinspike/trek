@@ -2,7 +2,7 @@
 title: Fighting the Borg
 category: Game
 order: 20
-aliases: borg, collective, cube, sphere, strike, opening, open shields, wreck, adapt, adaptation, remodulate, remod, modulate, rotate, duty, tune, retune, tune shields, harmonics, harmonic, vinculum, relay, weak point, dormant, drones, assimilation, repel, security, intruders, seal, vent
+aliases: borg, collective, advancements, advances, seven's advancements, borg sensors, sensor array, guided, guidance, borg-tuned, adaptive, adaptive shields, cube, sphere, strike, opening, open shields, wreck, adapt, adaptation, remodulate, remod, modulate, rotate, duty, tune, retune, tune shields, harmonics, harmonic, vinculum, relay, weak point, dormant, drones, assimilation, repel, security, intruders, seal, vent
 summary: The Borg learn your weapons, take your crew and regrow their hulls. Learn them first, open the way, then strike hard.
 see: away-team, scan, crew, tactics, transport, tour, cloak
 ---
@@ -35,6 +35,22 @@ duty off
 - **Shields** (`tune shields`): she tunes your shield harmonics against their cutting beams. Tuned past halfway, their transporters can't lock on, so no drones come aboard. In time they shift frequency and she has to start again.
 - **Harmonics** (`duty harmonics`): she keeps scanning their ships. Halfway through the survey she finds the ship's **vinculum relay**. When it is complete she has the ship's **shield harmonics**, and `design harmonic` builds torpedoes that pass straight through her shields. When Seven runs the science station on her own, she takes this duty herself and reports her progress. The gauge in the Borg panel shows how far she has got.
 - If Seven is away or hurt, Spock takes the science station and the duties, a little more slowly.
+
+## Seven's advancements
+
+On **The Collective** tour, every Borg ship you beat gives Seven technology to turn on the next one. Win at the probes and she can build **Borg sensors** and **Borg-tuned torpedo guidance**. Win at the sphere and she can build **adaptive shields**. Each one takes her a few seconds to bring online at the start of a Borg battle, and lasts until the battle ends.
+
+```console
+design sensors
+design guided
+design adaptive
+```
+
+- **Borg sensors** (`design sensors`): every scan of a Borg ship counts twice, so she finds the relay and the harmonics in half the time.
+- **Borg-tuned torpedoes** (`design guided`): your torpedoes fly half as fast again at a Borg ship. A sphere is as fast as the Enterprise but can't outrun them.
+- **Adaptive shields** (`design adaptive`): your shields are tuned against their transporters the moment they come online, and they tune three times as fast. When the hive shifts its beams you keep most of your tuning, and you never lose the block on their transporters.
+
+You don't have to remember them. When a Borg battle starts with any of them in hand, Seven tells you what she can build and what to order. While any are still offline, she offers them one at a time (press **Y** to agree), and the officers' counsel puts them first. If you delegate science to her ("Seven, take science"), she brings them all online herself.
 
 ## The weak point
 
@@ -90,7 +106,7 @@ The drones take a long time to mend what a strike wrecked, so make the salvo cou
 
 A good order of battle:
 
-1. Keep the range open and let Seven survey the cube. Tune your shields before the drones come.
+1. Bring Seven's advancements online if you have them. Keep the range open and let Seven survey the cube. Tune your shields before the drones come.
 2. Find the relay. Put her to sleep, and send Worf across to steal her harmonics.
 3. When she wakes, put one full salvo through the harmonics into her shields, and the next into her drives.
 4. Cloak, and finish her through the holes.
