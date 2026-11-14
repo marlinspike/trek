@@ -29,6 +29,8 @@ from ..session.prefs import FOCUS, MODES as BRIDGE_STYLES, PRESETS as BRIDGE_PRE
     SUBTITLES, BridgePrefs
 from ..settings import Settings
 from ..voice.settings import ENGINES, MODELS as WHISPER_MODELS, PTT_KEYS, VoiceSettings
+from ..speech import CAST, OFFICERS, RACES, SPEAK, SPEAK_TITLES, Speaker, SpeechSettings, choices
+from ..speech.settings import RATE_MAX, RATE_MIN
 from . import gfx, theme
 from .present import RENDERER_INFO, RENDERERS, DisplayControl
 from .widgets import UI, TextField
@@ -53,6 +55,7 @@ SECTIONS = (
     Section("sound", "Sound", "How loud, which phaser and torpedo you hear, and the ship's hum."),
     Section("battle", "Battle", "The speed battles start at, your officers' chatter, and the map's jolt."),
     Section("bridge", "Bridge", "How the bridge talks to you: subtitles, read-backs, the command wheel, proposals."),
+    Section("speech", "Officers' voices", "Your officers speak aloud: what they say, how loud, and who sounds like whom."),
     Section("voice", "Speaking orders", "Hold a key and say the order: what hears you, and which key."),
     Section("model", "Language model", "The model your officers think with, and that reads plain-English orders."),
     Section("voices", "Character voices", "A second model for alien captains and officers: more Klingon, more Romulan.",
@@ -85,12 +88,14 @@ def _words(raw: object) -> list[str]:
 
 class SettingsHub:
     def __init__(self, settings: Settings, content: ContentDB, close: Callable[[], None],
-                 display: DisplayControl | None = None, audio: Callable[[], Any] = lambda: None) -> None:
+                 display: DisplayControl | None = None, audio: Callable[[], Any] = lambda: None,
+                 speaker: Speaker | None = None) -> None:
         self.settings = settings
         self.content = content
         self.close = close
         self.display = display
         self.audio = audio
+        self.speaker = speaker if speaker is not None else Speaker.silent()
         self.sections = [s for s in SECTIONS if s.key != "display" or display is not None]
         self.section = self.sections[0].key
         self.t = 0.0
@@ -317,12 +322,12 @@ class SettingsHub:
         return y + 34
 
     def _level(self, surf: pygame.Surface, x: int, y: int, value: float, set_: Callable[[float], None],
-               enabled: bool = True) -> None:
-        """A 0 to 100% slider with its value beside it; click or drag."""
+               enabled: bool = True, shown: str | None = None) -> None:
+        """A 0 to 100% slider with its value beside it (or `shown`); click or drag."""
         r = pygame.Rect(x + 10, y + 8, max(120, min(260, self._right - x - 190)), 18)
         hit = self.ui.slider(surf, r, value, enabled)
-        theme.text(surf, f"{round(value * 100)}%", (r.right + 22, y + 8), theme.TEXT if enabled else theme.TEXT_FAINT,
-                   14, "mono")
+        theme.text(surf, shown or f"{round(value * 100)}%", (r.right + 22, y + 8),
+                   theme.TEXT if enabled else theme.TEXT_FAINT, 14, "mono")
         if enabled:
             self._sliders.append((hit, lambda px: set_(round(max(0.0, min(1.0, (px - r.x) / r.width)) * 20) / 20)))
 
@@ -470,6 +475,103 @@ class SettingsHub:
                        "The map jolts when our ship takes a heavy blow")
         y = self._hint(surf, cx, y + 42, "The map shakes a little when our ship takes a heavy blow.", width - LABEL_W)
         return y + 6
+
+    # ------------------------------------------------------------ Officers' voices
+
+    def _speech_store(self, s: SpeechSettings) -> None:
+        self.settings.speech.clear()               # in place: the speaker reads this same dict
+        self.settings.speech.update(s.to_dict())
+        self._save()
+
+    def _speech(self, surf: pygame.Surface, x: int, y: int, width: int) -> int:
+        s = SpeechSettings.from_dict(self.settings.speech)
+
+        def put(**kw: object) -> None:
+            for k, v in kw.items():
+                setattr(s, k, v)
+            self._speech_store(s)
+            if not s.enabled:
+                self.speaker.stop()
+
+        cx = self._label(surf, x, y, "Officers speak")
+        self.ui.toggle(surf, (cx, y), s.enabled, lambda: put(enabled=not s.enabled),
+                       "Your officers say their lines aloud (subtitles show them either way)")
+        why = self.speaker.problem() if s.enabled else None
+        engine = self.speaker.engine.title if self.speaker.engine is not None else ""
+        theme.text(surf, theme.fit(f"{engine}: ready" if why is None else why, 13, self._right - cx - 120),
+                   (cx + 120, y + 11), theme.GOOD if why is None else theme.CAUTION, 13)
+        y += ROW
+        cx = self._label(surf, x, y, "What they say")
+        self._choice(surf, (cx, y), [(m, SPEAK_TITLES[m], {"all": "Every line an officer says aloud",
+                                                            "orders": "Readbacks, proposals and warnings",
+                                                            "urgent": "Only warnings"}[m]) for m in SPEAK],
+                     s.speak, lambda m: put(speak=m), enabled=s.enabled)
+        y += ROW
+        cx = self._label(surf, x, y, "Enemy captains")
+        self.ui.toggle(surf, (cx, y), s.captains, lambda: put(captains=not s.captains),
+                       "Enemy captains speak their hails too, in a voice cast by race", enabled=s.enabled)
+        y += ROW
+        cx = self._label(surf, x, y, "Volume")
+        self._level(surf, cx, y, s.volume, lambda v: put(volume=v), s.enabled)
+        y += ROW
+        cx = self._label(surf, x, y, "Pace")
+        span = RATE_MAX - RATE_MIN
+        self._level(surf, cx, y, (s.rate - RATE_MIN) / span, lambda v: put(rate=round(RATE_MIN + v * span, 2)), s.enabled,
+                    f"{s.rate:.2f}×")
+        y += ROW
+        cx = self._label(surf, x, y, "Speech engine")
+        self._choice(surf, (cx, y), [("auto", "Best there is", "Piper's voices if they are set up, else the system's"),
+                                     ("system", "System voices", "The voices your computer already has"),
+                                     ("piper", "Piper", "Piper's neural voices, from config/speech/piper/")],
+                     s.engine if s.engine != "off" else "auto", lambda e: put(engine=e), enabled=s.enabled)
+        y += ROW + 8
+        y = self._heading(surf, x, y, "Who sounds like whom", width)
+        for part in OFFICERS + RACES:
+            y = self._cast_row(surf, x, y, part, s)
+        y = self._hint(surf, x, y + 6, "Each officer is cast from the voices your computer has, to suit the part: "
+                       "accent, pitch and pace, never an actor's own voice. More voices make a better cast. On a Mac, "
+                       "System Settings, Accessibility, Spoken Content, System voice, Manage Voices (Daniel, Evan, "
+                       "Allison, Ava, Nathan, Yuri). On Windows, Settings, Time & language, Speech. On Linux, install "
+                       "espeak-ng. For the most natural voices, put Piper and its voices in config/speech/piper/ "
+                       "(see the manual's Officers' voices page).", width)
+        return y + 6
+
+    def _cast_row(self, surf: pygame.Surface, x: int, y: int, part: str, s: SpeechSettings) -> int:
+        cast = CAST[part]
+        theme.text(surf, cast.title, (x, y + 6), theme.TEXT_DIM, 14)
+        theme.text(surf, theme.fit(cast.manner, 11, LABEL_W - 16), (x, y + 25), theme.TEXT_FAINT, 11)
+        voice = self.speaker.voice_for(part) or "the engine's own"
+        cx = x + LABEL_W
+        vw = max(160, min(260, self._right - cx - 150))
+
+        def recast(step: int) -> None:
+            voices = choices(part, self.speaker.voices())
+            if not voices:
+                return
+            now = self.speaker.voice_for(part)
+            i = voices.index(now) if now in voices else -1
+            s.cast[part] = voices[(i + step) % len(voices)]
+            self._speech_store(s)
+            self.speaker.hear(part)
+
+        def reset() -> None:
+            s.cast.pop(part, None)
+            self._speech_store(s)
+            self.speaker.hear(part)
+
+        on = s.enabled
+        self.ui.button(surf, pygame.Rect(cx, y + 6, 28, 28), "◀", partial(recast, -1), "The voice before", enabled=on,
+                       size=11)
+        theme.text(surf, theme.fit(voice, 13, vw - 72), (cx + vw // 2, y + 12), theme.CREW if part in s.cast else theme.TEXT,
+                   13, anchor="midtop")
+        self.ui.button(surf, pygame.Rect(cx + vw - 28, y + 6, 28, 28), "▶", partial(recast, 1), "The voice after",
+                       enabled=on, size=11)
+        self.ui.button(surf, pygame.Rect(cx + vw + 8, y + 6, 62, 28), "Hear", partial(self.speaker.hear, part),
+                       f"{cast.title}: {cast.manner}", enabled=on, size=12)
+        if part in s.cast:
+            self.ui.button(surf, pygame.Rect(cx + vw + 76, y + 6, 70, 28), "Recast", reset,
+                           "Back to the voice cast for the part", enabled=on, size=12)
+        return y + 44
 
     # ------------------------------------------------------------ Bridge
 

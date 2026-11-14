@@ -162,7 +162,8 @@ class CommsMixin(SessionState):
                 o = self.bridge.find(u.officer) if self.bridge is not None and u.officer else None
                 name = o.name if o is not None else u.speaker
                 self._voice(name, u.text, col, o.station if o is not None else None, o.id if o is not None else None,
-                            urgent=u.tone == "caution")
+                            urgent=u.tone == "caution", kind="hail" if u.tone == "enemy" else "report",
+                            faction=u.faction)
 
     def _crew_react(self: BattleSession, events: list[Event]) -> None:
         self._speak(self.comms.react(events, self.player))

@@ -290,7 +290,7 @@ class Comms:
             ch.status = "closed"
             text = self.line(t, "silence", player.name)
             ch.add("note", text, self.world.tick)
-            return [Utterance("", self.speaker(t), text, "enemy")] + self.read(player, t, ev)
+            return [Utterance("", self.speaker(t), text, "enemy", faction=t.faction)] + self.read(player, t, ev)
         ch.status = "open"
         if ev.outcome in ("surrender", "withdraw"):
             text = j.accept or self.line(t, ev.outcome, player.name)
@@ -301,7 +301,7 @@ class Comms:
         else:
             text = self.line(t, ev.outcome, player.name)
         ch.add("them", text, self.world.tick)
-        return [Utterance("", self.speaker(t), text, "enemy")] + self.read(player, t, ev)
+        return [Utterance("", self.speaker(t), text, "enemy", faction=t.faction)] + self.read(player, t, ev)
 
     # ------------------------------------------------------------ the officers' read
 
@@ -490,7 +490,7 @@ class Comms:
                 self._voicing[rid] = (s.id, w.tick, canned)
                 continue
             ch.add("them", canned, w.tick)
-            out.append(Utterance("", self.speaker(s), canned, "enemy"))
+            out.append(Utterance("", self.speaker(s), canned, "enemy", faction=s.faction))
         return out
 
     def _voiced(self, rid: int, text: str | None) -> list[Utterance]:
@@ -506,7 +506,7 @@ class Comms:
         if not said or len(said) > 280:
             said = canned
         self.channel(s).add("them", said, self.world.tick)
-        return [Utterance("", self.speaker(s), said, "enemy")]
+        return [Utterance("", self.speaker(s), said, "enemy", faction=s.faction)]
 
     def dismiss(self) -> None:
         self.focus = None

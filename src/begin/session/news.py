@@ -41,13 +41,15 @@ class Notice:
 
 @dataclass(frozen=True, slots=True)
 class Voice:
-    """Someone on the bridge says a line aloud (subtitles, and one day speech)."""
+    """Someone says a line aloud: subtitles, and the officers' spoken voices."""
     speaker: str
     text: str
     tone: str = "crew"
     station: str | None = None
     officer: str | None = None
     urgent: bool = False
+    kind: str = "report"           # readback | proposal | report | hail: what a spoken-voice setting may skip
+    faction: str | None = None     # an enemy captain's race, so the voice can be cast by it
 
 
 @dataclass(frozen=True, slots=True)
