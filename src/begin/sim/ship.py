@@ -443,6 +443,7 @@ class Ship:
     inoculated: bool = False           # the Doctor's counter-nanoprobes: beaten crew die rather than turn
     encrypted: bool = False            # Spock's lockout: drones can't seize systems
     severed: bool = False              # Seven cut the drones aboard off from the hive: they fight alone
+    borg_tech: set[str] = field(default_factory=set)  # Seven's advancements brought online this battle [E]
     security: float = 0.0              # cycles of security teams sweeping the decks
     seal_ready: float = 0.0            # cycles before another section can be sealed
     away: set[str] = field(default_factory=set)      # officers off the ship (on an away team) [E]

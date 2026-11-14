@@ -98,6 +98,7 @@ class TourState:
     squadron_key: str = ""                          # [E] the starting squadron picked (tour/squadrons.py), if any
     perks: list[str] = field(default_factory=list)  # [E] its perks: veteran, tender, liaison
     difficulty: str = ""                            # [E] fixed when the tour is commissioned ("" in older saves)
+    advances: list[str] = field(default_factory=list)   # [E] Seven's advancements the tour has given her
 
     # ------------------------------------------------------------ queries
 

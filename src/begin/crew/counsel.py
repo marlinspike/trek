@@ -77,6 +77,14 @@ class Move:
 Check = Callable[[str], "str | None"]
 
 
+ADVANCE_STEPS = {"sensors": "Borg sensor array", "guided": "Borg-tuned torpedoes", "adaptive": "adaptive shields"}
+ADVANCE_GAINS = {      # what each of Seven's advancements [E] buys (sim/projects.py)
+    "sensors": "Borg sensors find her relay and her harmonics in half the scans",
+    "guided": "Borg-tuned guidance drives our torpedoes at her half as fast again",
+    "adaptive": "adaptive shields stop her transporters at once and shrug off her shifts",
+}
+
+
 # ------------------------------------------------------------------ helpers
 
 def _pct(x: float | None) -> str:
@@ -765,6 +773,13 @@ def _knowledge(s: Situation) -> Iterator[Move]:
     for e in s.fighting:
         if not (e.hive and e.visible):
             continue
+        if s.offline:
+            yield Move("advance", "Bring Seven's advancements online",
+                       "What we took from the Borg on this tour, I can turn on them: "
+                       + "; ".join(ADVANCE_GAINS[a] for a in s.offline) + ". Each takes a few seconds to bring "
+                       "online, and lasts the battle.",
+                       [Step(f"design {a}", ADVANCE_STEPS[a]) for a in s.offline], 0.9,
+                       {**S, "tactical": 0.5, "engineering": 0.5}, "borg-advance")
         if e.weak_point:
             yield Move("relay", f"Hit the {e.name}'s vinculum relay",
                        f"I have found her relay in her {e.weak_point}. Destroy it and every drone aboard goes dormant.",

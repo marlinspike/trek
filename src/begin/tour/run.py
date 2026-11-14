@@ -34,7 +34,7 @@ from ..sim.ship import Ship, ShipStatus
 from .log import draft_entry
 from . import squadrons
 from .model import Stop, TourDef
-from .rivals import Rival, RivalBook, personality
+from .rivals import OFFICER_NAMES, Rival, RivalBook, personality
 from .state import LogEntry, ShipRecord, StopResult, TourState, apply_record, fleet_cost, harvest, record_of, refit, resupply, transit
 
 CAUTION_PER_AIMED = 0.25      # how much warier the enemy gets for each fight in which we aimed at their systems
@@ -49,6 +49,10 @@ PRESS_LOW_MAGAZINE = 0.35     # our flagship's magazine below this share: the en
 REINFORCEMENT_EDGE = 16000.0  # how far from the battle Starfleet's ship drops out of warp
 REINFORCEMENT_MIN = 15.0      # the soonest one can arrive, cycles
 HIVE_RECALL = 0.6             # [E] share of what a hive learned of our weapons that it still knows at the next stop
+ADVANCE_NAMES = {"sensors": "Borg sensors", "guided": "Borg-tuned torpedo guidance",
+                 "adaptive": "adaptive shield harmonics"}
+SEVEN_EARNED = ("From the wreckage I have recovered what I need for {what}. When we next face the Borg, order "
+                "{orders} and I will bring it online.")
 HIVE_KEY = "hive:"            # lessons kept as "hive:<faction>|<weapon key>"
 CLOAK_QUESTION = ("Starfleet Command asks why the flagship is running under a cloak. "
                   "The question goes in the log.")
@@ -470,6 +474,25 @@ class TourRun:
         ins = collective.insight(w, w.player_side)
         ins.experience = self.state.lessons.get("insight:experience", ins.experience)
         ins.vigilance = self.state.lessons.get("insight:vigilance", ins.vigilance)
+        ins.advances = set(self.state.advances)
+        self._offer_advances(battle)
+
+    def _offer_advances(self, battle: Battle) -> None:
+        """[E] Facing the Borg with advancements in hand, Seven says what she can do and how to ask for it: a new
+        captain has no other way to know."""
+        w = battle.world
+        fight = self.fight
+        me = w.ships.get(fight.ship_ids[0]) if fight is not None and fight.ship_ids else None
+        if me is None or not self.state.advances:
+            return
+        if not any(collective.is_hive(w, s) for s in w.ships.values() if s.side != w.player_side):
+            return
+        have = [a for a in collective.ADVANCES if a in self.state.advances]
+        words = ("Captain, from what we have taken from the Borg I can give us "
+                 + _listed([ADVANCE_NAMES[a] for a in have]) + ". Order "
+                 + _listed([f"'design {a}'" for a in have], "or")
+                 + " and I will bring it online, or delegate science to me and I will see to all of it.")
+        w.say(me, words, "crew", speaker=OFFICER_NAMES["seven"])
 
     def _remember_hive(self, battle: Battle) -> None:
         w = battle.world
@@ -536,6 +559,8 @@ class TourRun:
             them = fight.enemy_ids | {i for a in w.arrivals if a.side != side for i in a.ship_ids}
             self.rival_news = self.rivals.after_battle(battle, stop.system, self.tour.title, fight.rival,
                                                        self.run_key(), them)
+        earned = [a for a in stop.advances if a not in self.state.advances] if outcome == "victory" else []
+        self.state.advances.extend(earned)         # [E] Seven's share of the win: Borg technology to turn on them
         if outcome == "victory" and stop.win_flag and stop.win_flag not in self.state.flags:
             self.state.flags.append(stop.win_flag)
         m = w.mission
@@ -552,6 +577,11 @@ class TourRun:
             if r.active and r.morale is not None:
                 r.morale = max(0.0, min(100.0, r.morale + (5.0 if outcome == "victory" else -5.0) - 6.0 * len(lost)))
         entry = draft_entry(self, battle, fight, outcome, captured, lost, standout)
+        if earned:
+            entry.stations["seven"] = (entry.stations.get("seven", "") + " " + SEVEN_EARNED.format(
+                what=_listed([ADVANCE_NAMES[a] for a in earned]),
+                orders=_listed([f"'design {a}'" for a in earned], "and"))).strip()
+            entry.facts["seven_advances"] = ", ".join(ADVANCE_NAMES[a] for a in earned)
         self.state.log.append(entry)
         if outcome in ("lost", "base lost", "assimilated"):
             self.state.over = "lost"
@@ -645,4 +675,13 @@ def _captain(content: ContentDB, cid: str, rng: random.Random, used: set[str] | 
     return name
 
 
+
+def _listed(items: list[str], last: str = "and") -> str:
+    """'a', 'a and b', 'a, b and c'."""
+    if len(items) <= 1:
+        return "".join(items)
+    return ", ".join(items[:-1]) + f" {last} " + items[-1]
+
+
 __all__ = ["Fight", "TourRun"]
+

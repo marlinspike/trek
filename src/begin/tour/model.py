@@ -39,7 +39,8 @@ A stop can name the enemy commander (`commander = "Kor"`): the captain of the he
 returning rival (tour/rivals.py) takes that name's place in the briefing. A stop can also set `win_flag` (a flag set when you win it), list friendly ships already
 there (`friends`, e.g. the starbase), drop enemies when a flag is set
 (`[tour.stop.drop] dreadnought-beaten = ["klingon.dr"]`) or add them
-(`[tour.stop.add] refit = ["klingon.bc"]`).
+(`[tour.stop.add] refit = ["klingon.bc"]`). A win can give Seven Borg technology [E] (`advances = ["sensors"]`, any
+of sim/collective.ADVANCES): from then on the officers offer to bring it online against the Borg.
 
 A stop can carry a mission [E] (sim/mission.py), a goal beyond holding the field:
 
@@ -121,6 +122,7 @@ class Stop:
     lesson: tuple[Step, ...] = ()       # [E] a stop that teaches: the officer's steps (tour/drill.py)
     lesson_title: str = ""
     shields_down: bool = False          # [E] the flagship arrives with her shields down (a lesson in raising them)
+    advances: tuple[str, ...] = ()      # [E] Seven's advancements a win here gives her (sim/collective.ADVANCES)
 
     def enemy_ships(self, flags: set[str]) -> list[str]:
         ships = list(self.enemies)
@@ -203,6 +205,7 @@ def parse_tour(t: dict[str, Any], source: str = "shipped") -> TourDef:
             seed=int(s.get("seed", 1000 + i)),
             mission=MissionDef.from_dict(s["mission"]) if "mission" in s else None,
             lesson=tuple(Step.from_dict(x) for x in s.get("lesson", [])), lesson_title=str(s.get("lesson_title", "")),
+            advances=tuple(str(a) for a in s.get("advances", ())),
             shields_down=bool(s.get("shields_down", False)),
         ))
     return TourDef(

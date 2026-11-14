@@ -64,6 +64,13 @@ WEAK_AT = 0.5                             # survey at which we know her weak poi
 CODE_AT = 1.0                             # ... and hold her shield harmonics
 TUNE_CYCLES = 24.0                        # cycles for Seven to tune the shields from nothing to full
 TUNE_BLOCKS_BEAMING = 0.5                 # tuning at which their transporters can't lock on
+# Seven's advancements [E]: what she builds from the Collective's own technology, once a tour has given her some
+ADVANCES = ("sensors", "guided", "adaptive")
+SENSOR_GAIN = 2.0                         # × each scan's worth, with her Borg sensor array online
+GUIDED_SPEED = 1.5                        # × a torpedo's speed at a hive ship, with her Borg-tuned guidance
+ADAPTIVE_RATE = 3.0                       # × how fast the shields tune, with her adaptive shield harmonics
+ADAPTIVE_KEEP = 0.7                       # of the tuning kept when the hive shifts its beams (0.35 without them)
+SHIFT_KEEP = 0.35
 SECURITY_CYCLES = 20.0
 SEAL_COOLDOWN = 40.0
 REMODULATE_CYCLES = 1.5
@@ -120,6 +127,7 @@ class Insight:
     experience: float = 1.0                                     # × each scan's worth (a tour's learning)
     heists: int = 0                                             # times an away team has got aboard this battle
     vigilance: float = 0.0                                      # how hard the hive watches small craft (a tour's crossings)
+    advances: set[str] = field(default_factory=set)             # Seven's advancements this side has earned [E]
 
     def survey(self, ship_id: int) -> Survey:
         return self.surveys.setdefault(ship_id, Survey())
@@ -228,7 +236,10 @@ def learn(world: World, target: Ship, attacker: Ship | None, family: str, raw: f
             m.blocked = 0.0
             for s in world.ships.values():
                 if s.side == target.side and s.tuning > 0:
-                    s.tuning *= 0.35
+                    if "adaptive" in s.borg_tech:      # Seven's adaptive harmonics re-tune: her transporters stay out
+                        s.tuning = max(min(s.tuning, TUNE_BLOCKS_BEAMING), s.tuning * ADAPTIVE_KEEP)
+                    else:
+                        s.tuning *= SHIFT_KEEP
             world.emit(HiveEvent(world.tick, attacker.id, "shift", target.id, target.duty_by))
 
 
@@ -263,7 +274,8 @@ def on_scan(world: World, ship: Ship, target: Ship, by: str) -> None:
     sv = ins.survey(target.id)
     if sv.progress >= CODE_AT:
         return
-    sv.progress = min(CODE_AT, sv.progress + SURVEY_STEP * skill(by) * ins.experience)
+    gain = SENSOR_GAIN if "sensors" in ship.borg_tech else 1.0
+    sv.progress = min(CODE_AT, sv.progress + SURVEY_STEP * skill(by) * ins.experience * gain)
     found = ""
     if sv.progress >= WEAK_AT and not sv.weak_told and target.weak_point:
         sv.weak_told = True
@@ -406,7 +418,8 @@ def _our_ship(world: World, ship: Ship, dt: float) -> None:
     ship.security = max(0.0, ship.security - dt)
     ship.seal_ready = max(0.0, ship.seal_ready - dt)
     if ship.duty == "shields" and ship.alive and ship.duty_by not in ship.away:
-        ship.tuning = min(1.0, ship.tuning + dt / TUNE_CYCLES * skill(ship.duty_by))
+        rate = ADAPTIVE_RATE if "adaptive" in ship.borg_tech else 1.0
+        ship.tuning = min(1.0, ship.tuning + dt / TUNE_CYCLES * skill(ship.duty_by) * rate)
 
 
 # ------------------------------------------------------------------ drones
@@ -537,7 +550,7 @@ def dormant_or_dark(ship: Ship) -> bool:
 
 
 __all__ = [
-    "CODE_AT", "FAMILIES", "Insight", "Mind", "SKILL", "Survey", "TUNE_BLOCKS_BEAMING", "WEAK_AT", "board_round",
+    "ADVANCES", "CODE_AT", "FAMILIES", "Insight", "Mind", "SKILL", "Survey", "TUNE_BLOCKS_BEAMING", "WEAK_AT", "board_round",
     "can_beam_through", "chain_reaction", "commission", "fresh", "incoming", "insight", "is_hive", "learn", "mind", "on_scan", "strike_rules", "struck",
     "release", "rules_of", "seal_section", "skill", "survey_of", "update", "weapon_key",
 ]

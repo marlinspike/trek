@@ -44,7 +44,7 @@ def play(run: TourRun, officer: str = "spock", call: bool = True, guile: bool = 
     scripted captain of tools/guile.py instead of the officer with the conn."""
     while not run.over:
         if run.needs_choice():
-            run.choose(0)
+            run.choose(_cloak_choice(run) if guile else 0)
         fight = run.launch()
         battle = start(run.content, fight.setup, run.difficulty)
         run.prepare(battle)
@@ -63,6 +63,13 @@ def play(run: TourRun, officer: str = "spock", call: bool = True, guile: bool = 
         if not w.outcome.over:
             w.end_simulation("The engagement was broken off.")
         run.finish(battle)
+
+
+def _cloak_choice(run: TourRun) -> int:
+    """The guile captain fits the cloak when a stop offers it (the manual's advice against a cube), else the first
+    choice."""
+    stop = run.tour.stops[run.state.stop]
+    return next((i for i, c in enumerate(stop.choices) if "cloak" in c.flags), 0)
 
 
 def run_tours(n: int, officer: str = "spock", difficulty: str | None = None) -> list[TourResult]:

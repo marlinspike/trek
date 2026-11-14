@@ -5,7 +5,7 @@ officers alone fight with power, which a cube is built to beat.
 The captain gives the orders a player would type, through a battle session, and reads only what the player's
 side can see:
 
-1. Tune the shields against boarders, put Seven on the harmonics survey, and hold the range at torpedo reach,
+1. Bring Seven's advancements online (when the tour has given her any), tune the shields against boarders, put Seven on the harmonics survey, and hold the range at torpedo reach,
    outside her beams and her tractor, at a cube's own best warp.
 2. When the survey finds her vinculum relay and no hostile round is near the ship, send the away team to put it
    out. Once the team is aboard, keep torpedoes landing on her so the hive watches the ship, not the shuttle
@@ -52,6 +52,12 @@ class GuileCaptain:
         return _quarry(battle) is not None
 
     def begin(self) -> None:
+        """Seven's advancements first, as the officers advise, then the survey and the shields."""
+        from ..crew.officers import unfitted
+
+        me = self.session.battle.world.ships.get(self.session.battle.player_ship_id or -1)
+        if me is not None:
+            self.order(*(f"design {a}" for a in unfitted(self.session.obs, me)))
         self.order("tune shields", "duty harmonics")
 
     def order(self, *lines: str) -> None:

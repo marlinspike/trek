@@ -28,6 +28,7 @@ from ..sim.ship import Ship
 from ..sim.ship import bank_bears, bank_ready
 from .characters import OfficerProfile
 from .helm import incoming
+from .officers import unfitted
 from .split_fire import worth_splitting
 
 LIFE = 8.0                  # seconds a proposal waits for Y or N
@@ -55,6 +56,15 @@ class Proposal:
     @property
     def life(self) -> float:
         return (URGENT_LIFE if self.urgent else LIFE) + self.bonus
+
+
+ADVANCE_OFFERS = {      # what Seven says when she offers one of her advancements [E] (sim/projects.py)
+    "sensors": "I can bring the Borg sensor array online, Captain: our scans of them would tell us twice as much. "
+               "Shall I?",
+    "guided": "I can fit Borg-tuned guidance to our torpedoes, Captain: half as fast again at a Borg ship. Shall I?",
+    "adaptive": "I can bring the adaptive shield harmonics online, Captain: their transporters could not lock on, and "
+                "a shift in their beams would cost us little. Shall I?",
+}
 
 
 def _name(obs: Observation, sid: int) -> str:
@@ -99,6 +109,10 @@ def candidates(obs: Observation, ship: Ship, officers: dict[str, OfficerProfile]
         if hot.temp > obs.rules.temp_limit * HOT_SHARE and hot.temp_rate > 0.0:
             say("engineering", "The drives are running hot, Captain. Want me to put a team on them? "
                                "Other repairs will slow.", "boost")
+    # science: Seven's advancements [E], earned on the tour and not yet online against these Borg
+    offline = unfitted(obs, ship)
+    if offline:
+        say("science", ADVANCE_OFFERS[offline[0]], f"design {offline[0]}")
     tgt = obs.contact(ship.target) if ship.target is not None else None
     if tgt is not None and (not tgt.visible or tgt.id in obs.gone()):
         tgt = None

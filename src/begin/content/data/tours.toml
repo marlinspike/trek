@@ -573,6 +573,7 @@ them. Scan them first, let me find the relay, and only then strike. What we lear
 """
 enemies = ["borg.pr", "borg.pr"]
 enemy_center = [0, 9000]
+advances = ["sensors", "guided"]       # Seven builds Borg sensors and torpedo guidance from the probes
 
 [[tour.stop]]
 id = "rift"
@@ -590,6 +591,7 @@ tuning the shields before the drones come aboard, and sending an away team only 
 """
 enemies = ["borg.sp", "borg.pr"]
 enemy_center = [0, 10000]
+advances = ["adaptive"]                 # and adaptive shields from the sphere
 
 [[tour.stop]]
 id = "graveyard"
