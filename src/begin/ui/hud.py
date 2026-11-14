@@ -583,12 +583,13 @@ class TargetPanel(Panel):
         """Tractor and boarding (Begin 2.0): buttons plus how close we are to each range."""
         rules = hud.obs.rules
         x = rect.x + 12
+        reach = ship.cls.tractor_reach(rules.tractor_range)
         has_tractor = ship.cls.has_tractor and ship.tractor is not None
         holding = ship.tractor_target == tid
         tractor_ok = has_tractor and ship.tractor is not None and ship.tractor.intact
         hud.ui.button(surf, pygame.Rect(x, yy, 92, 22), "Release" if holding else "Tractor",
                       (lambda: hud.issue(Tractor(ship_id=ship.id, target=None if holding else tid))),
-                      f"Tractor beam: holds and drags the target (range {rules.tractor_range:,.0f}). Console: 'tractor'"
+                      f"Tractor beam: holds and drags the target (range {reach:,.0f}). Console: 'tractor'"
                       if has_tractor else "This ship has no tractor beam.",
                       active=holding, enabled=tractor_ok or holding, accent=theme.SHIELD)
         n = ship.boarding_party()
@@ -604,10 +605,10 @@ class TargetPanel(Panel):
                       "say (demand surrender, order them off, threaten...). Console: 'hail <ship> <words>'",
                       accent=theme.HAIL)
         yy += 26
-        if d <= rules.tractor_range:
+        if d <= reach:
             note, col = "in tractor and transporter range", theme.GOOD
         elif d <= rules.beam_range:
-            note, col = f"in transporter range · tractor at {rules.tractor_range:,.0f}", theme.GOOD
+            note, col = f"in transporter range · tractor at {reach:,.0f}", theme.GOOD
         else:
             note, col = f"close to {rules.beam_range:,.0f} to board", theme.TEXT_FAINT
         aboard = hud.obs.our_boarders(tid)

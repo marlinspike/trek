@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from ...core.angles import norm360
 from ..ship import TARGETABLE_GROUPS, BankRole, Ship
-from .base import Command, Rejected, _indices, _require_target
+from .base import Authority, Command, Rejected, _indices, _require_target
 
 if TYPE_CHECKING:
     from ..world import World
@@ -39,6 +39,7 @@ class SelectTarget(Command):
     def apply(self, world: World, ship: Ship) -> None:
         ship.target = self.target
         ship.target_subsystem = self.subsystem if self.target is not None else None
+        ship.aim_by_officer = self.issuer == Authority.OFFICER
         if self.lock_weapons:
             for b in ship.banks:
                 if b.role != BankRole.DEFENSE:

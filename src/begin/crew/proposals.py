@@ -88,6 +88,12 @@ def candidates(obs: Observation, ship: Ship, officers: dict[str, OfficerProfile]
     hostile = [c for c in obs.hostile_contacts() if c.visible and c.id not in obs.gone()]
     nearest = min(hostile, key=lambda c: c.distance_to(ship.x, ship.y), default=None)
     d_near = nearest.distance_to(ship.x, ship.y) if nearest is not None else math.inf
+    # tactical: a hive ship's tractor beam holds us and drains our shields; fire down it gets through [E]
+    holder = obs.held_by(ship.id)
+    if holder is not None and ship.target_subsystem != "tractor":
+        name = _name(obs, holder)
+        say("tactical", f"{the(name, cap=True)} has us in her tractor beam! Fire down it at her emitter?",
+            f"target {name} tractor", True)
     # helm: torpedoes on the way in
     threats = incoming(obs, ship)
     if threats and not ship.evasive:

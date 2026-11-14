@@ -360,6 +360,11 @@ class Observation:
             return "stolen"
         return "harmonic" if ins.has_code(ship_id) else ""
 
+    def held_by(self, ship_id: int) -> int | None:
+        """The enemy ship whose tractor beam holds our ship `ship_id`, if one does (you feel the grip)."""
+        return next((s.id for s in self._w.ships.values() if s.tractor_target == ship_id and s.side != self.side
+                     and s.alive), None)
+
     def dormant(self, ship_id: int) -> float:
         """Cycles before a dark Borg ship's drones wake (0: awake). Anyone can see a ship go dark."""
         s = self._w.ships.get(ship_id)

@@ -115,6 +115,12 @@ def hive_remarks(b: Bridge, events: Iterable[Event], s: Ship, obs: Observation) 
         elif ev.kind == "critical" and obs.contact(ev.ship_id) is not None:
             say(eng or sci, "critical", "{target}'s core has gone critical! {n} cycles. Get us clear, Captain!",
                 target=name, n=ev.detail or "a few")
+        elif ev.kind == "held" and ev.target == s.id:
+            say(eng or tac, "held", "{target} has us in a tractor beam, Captain! It's draining our shields. Cut the "
+                "beam: target their tractor, or cloak.", target=name)
+        elif ev.kind == "released" and ev.target == s.id:
+            say(eng or tac, "released", "We're free of her tractor beam, Captain! Her emitter overloaded. It won't "
+                "be long before she tries again.")
         elif ev.kind == "shuttle" and ev.target is not None and (op := _op(obs, ev.target)) is not None:
             say(b.find(op.members[0]) if op.members else None, "away", "We are on our way, Captain.")
     _aboard(b, s, obs, say, talk, sci, eng, doctor)

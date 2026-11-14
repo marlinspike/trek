@@ -35,6 +35,10 @@ against a cube when guile opens the way first: find the harmonics or batter one 
 into her shields, her drives or her crew decks. Under a cloak she can neither beam drones to us nor lock her beams
 on, so cloak, strike and cloak again finishes a crippled ship.
 
+**A cube's grip.** A cube's tractor reaches far (`ShipClass.tractor_range`). While it holds her prey she drains
+its shields (`DRAIN`), until the emitter overheats after `GRIP_CYCLES` and must rest. Fire aimed back down the
+beam at her emitter passes her shields (`down_the_beam`), and a ship that cloaks slips it (world._tow).
+
 **Stolen harmonics.** An away team that takes the hive's shield harmonics (sim/away.py) lets every weapon of our
 side pass their shields untouched and unlearned, for `grace` hits; then they notice, and the theft is spent.
 
@@ -78,6 +82,10 @@ SHIFT_KEEP = 0.35
 SECURITY_CYCLES = 20.0
 SEAL_COOLDOWN = 40.0
 REMODULATE_CYCLES = 1.5
+DRAIN = 6.0                               # % of each shield a hive ship's tractor drains from her prey, per cycle
+GRIP_CYCLES = 8.0                         # cycles a cube's tractor can hold a ship before its emitter overheats
+GRIP_REST = 20.0                          # ... and cycles it then needs before it can hold anything again
+HELD_CALLOUT = 30.0                       # cycles between the bridge's warnings that she has us in her grip
 CHAIN_FUSE = 5.0                          # cycles from a core going critical to the ship breaking up
 CHAIN_RADIUS = 1.2                        # × an ordinary blast's reach: a cube's core going is seen for light-years
 CHAIN_HULL = 0.5                          # awake, only a ship this badly hurt can go up from one lost core
@@ -188,11 +196,17 @@ def incoming(world: World, target: Ship, attacker: Ship | None, family: str) -> 
             family = "torpedo"                      # a harmonic round tuned to someone else: just a torpedo
         lvl = mind(world, target.faction).level(weapon_key(family, attacker))
         tuned = GUIDED_DAMAGE if family == "torpedo" and "guided" in attacker.borg_tech else 1.0
-        return (1.0 - (1.0 - rules.floor) * lvl) * tuned, pierce
+        return (1.0 - (1.0 - rules.floor) * lvl) * tuned, pierce or down_the_beam(target, attacker)
     att_rules = rules_of(world, attacker)
     if att_rules is not None and target.tuning > 0.0:
         return 1.0 - att_rules.tune_cut * target.tuning, False
     return 1.0, False
+
+
+def down_the_beam(target: Ship, attacker: Ship) -> bool:
+    """Her tractor beam runs out through her own shields: fire aimed back down it at the emitter gets through them.
+    It is no strike through an opening, only a way in: the emitter takes an ordinary aimed hit."""
+    return target.tractor_target == attacker.id and attacker.target_subsystem == "tractor"
 
 
 def learn(world: World, target: Ship, attacker: Ship | None, family: str, raw: float, landed: float) -> None:
@@ -359,6 +373,7 @@ def _hive_ship(world: World, ship: Ship, rules: CollectiveRules, dt: float) -> N
                     sv.code_told = sv.code_told and sv.progress >= CODE_AT
             world.emit(HiveEvent(world.tick, ship.id, "waking"))
     else:
+        _drain(world, ship, dt)
         m = world.minds.get(ship.faction)
         hurt = max(m.last_hurt.values(), default=-10 ** 9) if m is not None else -10 ** 9
         rate = rules.regen_hull * (rules.regen_hurt if (world.tick - hurt) * world.rules.dt < rules.regen_quiet else 1.0)
@@ -380,6 +395,25 @@ def _hive_ship(world: World, ship: Ship, rules: CollectiveRules, dt: float) -> N
             world.emit(HiveEvent(world.tick, ship.id, "critical", ship.last_attacker, f"{CHAIN_FUSE:.0f}"))
     elif cores < ship.cores_lost:
         ship.cores_lost = cores       # the drones repaired one
+
+
+def _drain(world: World, ship: Ship, dt: float) -> None:
+    """A cube's long tractor beam holds her prey still and drains its shields, so her beams can cut the hull."""
+    prey = world.ships.get(ship.tractor_target) if ship.tractor_target is not None else None
+    ship.grip_rest = max(0.0, ship.grip_rest - dt)
+    if not ship.cls.tractor_range or prey is None or not prey.alive or is_hive(world, prey):
+        ship.grip = 0.0
+        return                                    # only a great hive ship's long tractor (a cube's) drains
+    ship.grip += dt
+    if ship.grip >= GRIP_CYCLES:                  # no emitter holds a starship for long: it lets go to cool
+        ship.tractor_target, ship.grip, ship.grip_rest = None, 0.0, GRIP_REST
+        world.emit(HiveEvent(world.tick, ship.id, "released", prey.id))
+        return
+    for sh in prey.shields:
+        sh.strength = max(0.0, sh.strength - DRAIN * dt)
+        sh.effective = min(sh.effective, sh.strength)
+    if fresh(world, prey.id, "held", HELD_CALLOUT):
+        world.emit(HiveEvent(world.tick, ship.id, "held", prey.id))
 
 
 def _dark(ship: Ship) -> None:
