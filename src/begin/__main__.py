@@ -153,6 +153,13 @@ def _stage(scene: BattleScene, args: argparse.Namespace) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    from .paths import NoConfigHome, config_dir
+
+    try:
+        config_dir()                      # settings live in the game's own folder, never the home folder
+    except NoConfigHome as e:
+        print(e, file=sys.stderr)
+        return 2
     done = _llm_tools(args)
     if done is None:
         done = _headless_runs(args)

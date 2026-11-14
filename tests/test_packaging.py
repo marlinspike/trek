@@ -68,3 +68,18 @@ def test_checkout_still_uses_the_project_config_folder(monkeypatch: pytest.Monke
     root = paths.project_root()
     if root is not None:
         assert paths.config_dir() == root / "config"
+
+
+def test_without_a_folder_of_its_own_the_game_refuses_to_start_rather_than_write_home(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """A bare pip install has no project folder: no settings go in ~, the game says how to run it instead."""
+    from begin.__main__ import main
+
+    monkeypatch.delenv("BEGIN_HOME", raising=False)
+    monkeypatch.setattr(paths, "project_root", lambda: None)
+    monkeypatch.setattr(paths, "LEGACY_DIR", tmp_path / "home" / ".begin-remake")
+    with pytest.raises(paths.NoConfigHome):
+        paths.config_dir()
+    assert main(["--balance", "1"]) == 2
+    assert "project folder" in capsys.readouterr().err
+    assert not (tmp_path / "home").exists()
