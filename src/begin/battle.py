@@ -216,6 +216,12 @@ def at_difficulty(content: ContentDB, setup: BattleSetup, key: str | None) -> Ba
     return dataclasses.replace(setup, fleets=fleets, arrivals=arrivals)
 
 
+def start(content: ContentDB, setup: BattleSetup, difficulty: str | None) -> Battle:
+    """A battle at a difficulty (difficulty.py): the one way any front end, window or headless, starts a fight, so
+    the enemy is scaled the same everywhere. A tour passes its own difficulty, fixed when it was commissioned."""
+    return build_battle(content, at_difficulty(content, setup, difficulty))
+
+
 def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
     total = sum(len(f.ships) for f in setup.fleets)
     if total > MAX_OBJECTS:

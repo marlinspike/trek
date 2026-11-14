@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, Callable
 import pygame
 
 from ..content.schema import ContentDB
+from ..difficulty import level
 from ..paths import config_dir
 from ..tour.log import OFFICER_ORDER, OFFICER_TITLES, read_markdown_edits, voice_request, write_markdown
 from ..crew.career import Career
@@ -152,6 +153,8 @@ class TourScene:
         if state is None:
             return
         read_markdown_edits(state, tours_dir())      # your edits to the Markdown log, between sessions
+        if not state.difficulty:                     # saved before tours kept their own: the one it was played at
+            state.difficulty = level(self.settings.difficulty).key
         self.run = self._keep_rivals(TourRun(tour, state, self.content))
         self.save()
         self.note = ""
@@ -170,7 +173,7 @@ class TourScene:
             return
         seed = (pygame.time.get_ticks() * 7919 + len(self.escorts)) % 100000 + 1
         self.run = self._keep_rivals(TourRun.new(tour, self.content, list(self.escorts), seed=seed,
-                                                 squadron=self.group()))
+                                                 squadron=self.group(), difficulty=self.settings.difficulty))
         self.save()
         self.note = ""
         self.glide = 0.0
@@ -647,7 +650,7 @@ class TourScene:
         w, h = surf.get_size()
         st = run.state
         self._heading(surf, "Ready Room", f"{run.tour.title}  ·  stop {st.stop + 1} of {len(run.tour.stops)}  ·  "
-                                          f"stardate {st.stardate()}")
+                                          f"stardate {st.stardate()}  ·  {level(run.difficulty).title}")
         # the briefing, from the officer who gives it: beside the portrait, then the panel's full width under it.
         # Where the window is short or narrow, the briefing takes the room between it and the squadron (the officers
         # then speak under the squadron), then a smaller hand, so that it and the decision fit above the buttons
@@ -1026,8 +1029,8 @@ class TourScene:
                 "The flagship has been assimilated" if last is not None and last.outcome == "assimilated" else
                 f"{run.tour.starbase} has fallen" if last is not None and last.outcome == "base lost" else "Tour failed")
         theme.text(surf, head.upper(), (r.centerx, y + 8), theme.TEXT, 28, "display", weight="semibold", anchor="midtop")
-        theme.text(surf, grade, (r.centerx, y + 52), theme.CAUTION if won else theme.ALERT, 17, weight="medium",
-                   anchor="midtop")
+        theme.text(surf, f"{grade}  ·  {level(run.difficulty).title}", (r.centerx, y + 52),
+                   theme.CAUTION if won else theme.ALERT, 17, weight="medium", anchor="midtop")
         y += 96
         for ln in lines:
             theme.text(surf, ln, (r.x + 40, y), theme.TEXT, 15)

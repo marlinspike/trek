@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 
 from ..battle import Battle, BattleSetup, FleetSpec, ShipSpec
 from ..content.schema import ContentDB
+from ..difficulty import level
 from ..sim import collective
 from ..sim.arrivals import Arrival
 from ..sim.commands import FirePhasers, FireTorpedoes, SelectTarget
@@ -81,9 +82,10 @@ class TourRun:
 
     @staticmethod
     def new(tour: TourDef, content: ContentDB, escorts: list[str], seed: int = 1,
-            flagship_name: str = "Enterprise", squadron: squadrons.Squadron | None = None) -> TourRun:
+            flagship_name: str = "Enterprise", squadron: squadrons.Squadron | None = None,
+            difficulty: str | None = None) -> TourRun:
         """A fresh tour: the flagship and the escorts you picked, every ship named and crewed. A starting squadron
-        (tour/squadrons.py), if one was picked, brings its perks."""
+        (tour/squadrons.py), if one was picked, brings its perks. The difficulty is fixed for the whole tour."""
         rng = random.Random(seed)
         used = {flagship_name}
         captains: set[str] = set()
@@ -91,7 +93,8 @@ class TourRun:
         for cid in escorts:
             ships.append(ShipRecord(cid, _name(content, cid, used, rng), role="escort",
                                     captain=_captain(content, cid, rng, captains)))
-        state = TourState(tour.id, ships, calls_left=tour.reinforcement_calls, seed=seed)
+        state = TourState(tour.id, ships, calls_left=tour.reinforcement_calls, seed=seed,
+                          difficulty=level(difficulty).key)
         squadrons.apply(squadron, state, content)
         return TourRun(tour, state, content)
 
@@ -109,6 +112,11 @@ class TourRun:
     @property
     def over(self) -> bool:
         return bool(self.state.over)
+
+    @property
+    def difficulty(self) -> str:
+        """The tour's difficulty, fixed when it was commissioned (Captain if a save has none)."""
+        return level(self.state.difficulty).key
 
     def flags(self) -> set[str]:
         return set(self.state.flags)

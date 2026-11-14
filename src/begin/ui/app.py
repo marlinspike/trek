@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pygame
 
-from ..battle import BattleSetup, at_difficulty, build_battle
+from ..battle import BattleSetup, start
 from ..content import default_content
 from ..tour.run import TourRun
 from .battle_scene import BattleScene
@@ -101,8 +101,9 @@ class App:
         except OSError as e:
             print(f"Begin: couldn't restart ({e}); start the game again to use the new renderer")
 
-    def start_battle(self, setup: BattleSetup) -> BattleScene:
-        battle = build_battle(self.content, at_difficulty(self.content, setup, self.settings.difficulty))
+    def start_battle(self, setup: BattleSetup, difficulty: str | None = None) -> BattleScene:
+        """A battle at the difficulty in Settings, or at `difficulty` (a tour's own, fixed when it began)."""
+        battle = start(self.content, setup, difficulty or self.settings.difficulty)
         scene = BattleScene(battle, self.screen.get_size(), self.back_to_menu, keys=self.settings.keys,
                             hidden=self.settings.hidden, llm=self.settings.llm, chatter=self.settings.chatter,
                             volume=self.settings.volume, muted=self.settings.muted,
@@ -136,7 +137,7 @@ class App:
     def start_tour_battle(self, run: TourRun) -> BattleScene:
         """The Ready Room's launch: travel to the stop, build its battle with the squadron as it is now."""
         fight = run.launch()
-        scene = self.start_battle(fight.setup)
+        scene = self.start_battle(fight.setup, run.difficulty)
         scene.campaign.join_tour(run)
         scene.exit_label = "Return to the Ready Room"
         scene.on_exit = self.end_tour_battle

@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 from ..ai.captain import AICaptain
 from ..ai.personality import Personality
-from ..battle import build_battle
+from ..battle import start
 from ..content import default_content
 from ..presets import load_presets
 
@@ -39,18 +39,19 @@ class PresetResult:
                 f"stalemates {self.stalemates:2d}  avg {avg:5.0f} cycles{base}")
 
 
-def run_preset(preset_id: str, seed: int, max_cycles: float = 1500.0) -> tuple[str, float]:
+def run_preset(preset_id: str, seed: int, max_cycles: float = 1500.0, difficulty: str | None = None) -> tuple[str, float]:
     """One battle; returns ('win' | 'loss' | 'stalemate', cycles fought) from the player's side."""
-    result, cycles, _ = run_preset_detail(preset_id, seed, max_cycles)
+    result, cycles, _ = run_preset_detail(preset_id, seed, max_cycles, difficulty)
     return result, cycles
 
 
-def run_preset_detail(preset_id: str, seed: int, max_cycles: float = 1500.0) -> tuple[str, float, bool | None]:
+def run_preset_detail(preset_id: str, seed: int, max_cycles: float = 1500.0,
+                      difficulty: str | None = None) -> tuple[str, float, bool | None]:
     """One battle: the result, the cycles fought, and whether the player's base (if any) survived."""
     content = default_content()
     preset = next(p for p in load_presets() if p.id == preset_id)
     setup = dataclasses.replace(preset.setup(), seed=seed)
-    b = build_battle(content, setup)
+    b = start(content, setup, difficulty)
     w = b.world
     me = b.player_ship_id
     assert me is not None
@@ -68,14 +69,15 @@ def run_preset_detail(preset_id: str, seed: int, max_cycles: float = 1500.0) -> 
     return ("win" if w.outcome.winner == ship.side else "loss"), w.time, held
 
 
-def run_balance(n: int, presets: list[str] | None = None, max_cycles: float = 1500.0) -> list[PresetResult]:
+def run_balance(n: int, presets: list[str] | None = None, max_cycles: float = 1500.0,
+                difficulty: str | None = None) -> list[PresetResult]:
     ids = presets or [p.id for p in load_presets()]
     out: list[PresetResult] = []
     t0 = time.perf_counter()
     for pid in ids:
         r = PresetResult(pid)
         for seed in range(1, n + 1):
-            result, cycles, held = run_preset_detail(pid, seed, max_cycles)
+            result, cycles, held = run_preset_detail(pid, seed, max_cycles, difficulty)
             r.cycles.append(cycles)
             if held is not None:
                 r.has_base = True

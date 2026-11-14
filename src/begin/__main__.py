@@ -7,6 +7,7 @@ Extra options exist for development and testing:
   --tournament N         run N headless AI-vs-AI quick battles and print a summary
   --balance N            fight every preset N times, AI on both sides, and print win rates
   --tour-test N          fly every tour of duty N times with the officers in command, and print how they went
+  --difficulty LEVEL     with --balance or --tour-test: ensign, captain (default) or admiral
   --llm KEY=VALUE ...    save the officers' language model settings (e.g. provider=ollama model=lfm3 think=off)
   --llm-test             ask Spock one question through the configured model and print the answer
   --llm-usage            print the language model's token totals (with log_tokens=on)
@@ -41,6 +42,8 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--tournament", type=int)
     ap.add_argument("--balance", type=int)
     ap.add_argument("--tour-test", type=int, metavar="N")
+    ap.add_argument("--difficulty", choices=("ensign", "captain", "admiral"), default=None,
+                    help="with --balance or --tour-test: the enemy's difficulty (default Captain)")
     ap.add_argument("--llm", nargs="+", metavar="KEY=VALUE")
     ap.add_argument("--llm-test", nargs="?", const="Spock, what do you recommend?", metavar="QUESTION")
     ap.add_argument("--llm-usage", action="store_true")
@@ -76,13 +79,13 @@ def _headless_runs(args: argparse.Namespace) -> int | None:
     if args.balance:
         from .tools.balance import run_balance
 
-        run_balance(args.balance)
+        run_balance(args.balance, difficulty=args.difficulty)
         return 0
 
     if args.tour_test:
         from .tools.tours import run_tours
 
-        run_tours(args.tour_test)
+        run_tours(args.tour_test, difficulty=args.difficulty)
         return 0
 
     if args.tournament:

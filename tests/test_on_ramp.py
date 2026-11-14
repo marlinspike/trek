@@ -135,6 +135,36 @@ def test_a_lesson_is_fought_as_written_whatever_the_difficulty(content) -> None:
     assert [len(f.ships) for f in s.fleets] == [len(f.ships) for f in fight.setup.fleets]
 
 
+
+def test_every_front_end_starts_a_battle_through_one_door(content) -> None:  # type: ignore[no-untyped-def]
+    """battle.start is how the window, --balance and --tour-test all start a fight, so they scale it alike."""
+    from begin.battle import start
+    p = next(p for p in load_presets() if not p.setup().fixed_fleets)
+    for key in LEVELS:
+        b = start(content, p.setup(), key)
+        want = at_difficulty(content, p.setup(), key)
+        assert len(b.world.ships) == sum(len(f.ships) for f in want.fleets), key
+
+
+def test_a_tour_keeps_the_difficulty_it_was_commissioned_at(content, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from begin.tour import TourState
+    from begin.tour.log import markdown
+    t = next(t for t in load_tours()[0] if t.id == "border-patrol")
+    run = TourRun.new(t, content, [], seed=5, difficulty="admiral")
+    assert run.difficulty == "admiral"
+    fight = run.launch()
+    assert fight.setup.fleets and run.difficulty == "admiral"
+    run.state.save(tmp_path)
+    back = TourState.load(tmp_path, t.id)
+    assert back is not None and TourRun(t, back, content).difficulty == "admiral"
+    assert "Difficulty: Admiral, fixed when the tour began." in markdown(run)
+    old = run.state.to_json()
+    del old["difficulty"]                                   # a save from before tours kept their own
+    assert TourRun(t, TourState.from_json(old), content).difficulty == "captain"
+    assert TourRun.new(t, content, [], seed=5).difficulty == "captain"
+    assert TourRun.new(t, content, [], seed=5, difficulty="Ensign ").difficulty == "ensign"
+
+
 pygame = pytest.importorskip("pygame")
 
 
@@ -228,3 +258,37 @@ def test_a_lesson_keeps_the_officers_suggestions_back_unless_it_teaches_them(con
         if s.proposal is not None:
             offered.append(s.proposal)
     assert all(p.urgent for p in offered), [p.text for p in offered]
+
+
+def test_the_ready_room_shows_the_tour_difficulty_and_changing_settings_leaves_it(content) -> None:  # type: ignore[no-untyped-def]
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    pygame.init()
+    from begin.settings import Settings
+    from begin.ui import theme
+    from begin.ui.tour_scene import TourScene, tours_dir
+    from begin.tour import TourState
+
+    st = Settings()
+    st.difficulty = "ensign"
+    surf = pygame.display.set_mode((1280, 800))
+    ts = TourScene(content, st, lambda run: None, lambda: None)
+    ts.open()
+    ts.layout((1280, 800))
+    ts.tour_i = next(i for i, t in enumerate(ts.tours) if t.id == "border-patrol")
+    ts.escorts = []
+    ts.commission()
+    assert ts.run is not None and ts.run.difficulty == "ensign"
+    st.difficulty = "admiral"                               # changing the setting mid-tour changes nothing
+    ts.update(0.1)
+    with theme.watching() as ink:
+        ts.draw(surf)
+    assert any("Ensign" in k.text for k in ink)
+    tour = ts.tour
+    assert tour is not None
+    ts.resume(tour)
+    assert ts.run.difficulty == "ensign"
+    d = ts.run.state.to_json()
+    d["difficulty"] = ""                                    # an older save takes the setting it was played at
+    TourState.from_json(d).save(tours_dir())
+    ts.resume(tour)
+    assert ts.run.difficulty == "admiral"

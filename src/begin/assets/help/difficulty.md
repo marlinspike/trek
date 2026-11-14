@@ -6,7 +6,7 @@ aliases: difficulty, ensign, admiral, easy, hard, harder, easier, how hard, chal
 summary: Ensign, Captain or Admiral: how many ships the enemy brings and how well their captains fight. The Enterprise never changes.
 see: tour, settings, first-battle, shakedown
 ---
-The enemy can fight at three levels. Change it on the main menu (the **Difficulty** button under the side switch) or in **Settings › Battle**. It takes effect from the next battle.
+The enemy can fight at three levels. Change it on the main menu (the **Difficulty** button under the side switch) or in **Settings › Battle**. It takes effect from the next battle, except in a tour of duty already under way (see below).
 
 | Level | Enemy ships | Enemy captains and crews |
 |---|---|---|
@@ -23,6 +23,6 @@ Difficulty only changes the other side. Your own ship is the same at every level
 
 ## Where it applies
 
-Quick battles, patrols, preset battles and tours of duty follow the difficulty. A **custom battle** is fought with exactly the fleets you chose, so only its enemy captains' skill follows the difficulty. The **[[shakedown|Shakedown Cruise]]** teaches with the fleets it was written with; its captains follow the difficulty too.
+Quick battles, patrols and preset battles follow the difficulty. A **tour of duty** keeps the difficulty it was commissioned at for every stop, even if you change the setting halfway through: the Ready Room heading and the captain's log say which it is, and the tour's end card names it beside your grade. To fly a tour at another level, start it again. (A tour saved by an earlier version takes the setting it is resumed at, once, and keeps it from then on.) A **custom battle** is fought with exactly the fleets you chose, so only its enemy captains' skill follows the difficulty. The **[[shakedown|Shakedown Cruise]]** teaches with the fleets it was written with; its captains follow the difficulty too.
 
 > **Tip** Start at Ensign while you learn the controls, play Captain for the game as designed, and try Admiral once a preset feels easy. Tours are long: their later stops at Admiral are a real test.
