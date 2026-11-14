@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from ..battle import build_battle
+from ..battle import start
 from ..content import default_content
 from ..sim.commands import TakeConn
 from ..tour import TourRun, check_tour, load_tours
@@ -39,7 +39,7 @@ def play(run: TourRun, officer: str = "spock", call: bool = True) -> None:
         if run.needs_choice():
             run.choose(0)
         fight = run.launch()
-        battle = build_battle(run.content, fight.setup)
+        battle = start(run.content, fight.setup, run.difficulty)
         run.prepare(battle)
         w = battle.world
         me = battle.player_ship_id
@@ -55,7 +55,7 @@ def play(run: TourRun, officer: str = "spock", call: bool = True) -> None:
         run.finish(battle)
 
 
-def run_tours(n: int, officer: str = "spock") -> list[TourResult]:
+def run_tours(n: int, officer: str = "spock", difficulty: str | None = None) -> list[TourResult]:
     content = default_content()
     tours, problems = load_tours()
     for p in problems:
@@ -68,7 +68,7 @@ def run_tours(n: int, officer: str = "spock") -> list[TourResult]:
         r = TourResult(tour.id)
         for seed in range(1, n + 1):
             escorts = _default_escorts(tour, content)
-            run = TourRun.new(tour, content, escorts, seed=seed)
+            run = TourRun.new(tour, content, escorts, seed=seed, difficulty=difficulty)
             play(run, officer)
             r.won += run.state.over == "won"
             r.lost += run.state.over != "won"
@@ -77,17 +77,17 @@ def run_tours(n: int, officer: str = "spock") -> list[TourResult]:
                 tour.stops[-1].finale and len(run.state.results) == len(tour.stops)
         print(r.line(), flush=True)
         out.append(r)
-    out.append(_generated(n, content, officer))
+    out.append(_generated(n, content, officer, difficulty))
     print(f"\n{sum(x.won + x.lost for x in out)} tours in {time.perf_counter() - t0:.0f}s")
     return out
 
 
-def _generated(n: int, content, officer: str) -> TourResult:  # type: ignore[no-untyped-def]
+def _generated(n: int, content, officer: str, difficulty: str | None = None) -> TourResult:  # type: ignore[no-untyped-def]
     """Generated tours [E] (tour/generate.py): one fresh tour per run, seeds 1..N."""
     r = TourResult("generated")
     for seed in range(1, n + 1):
         tour = generate_tour(content, seed)
-        run = TourRun.new(tour, content, _default_escorts(tour, content), seed=seed)
+        run = TourRun.new(tour, content, _default_escorts(tour, content), seed=seed, difficulty=difficulty)
         play(run, officer)
         r.won += run.state.over == "won"
         r.lost += run.state.over != "won"

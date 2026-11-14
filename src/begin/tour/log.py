@@ -19,6 +19,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ..difficulty import level
 from ..sim.events import ObjectiveEnded
 from ..sim.ship import ShipStatus
 from .state import LogEntry, TourState
@@ -64,7 +65,7 @@ def facts_of(run: TourRun, battle: Battle, fight: Fight, outcome: str, captured:
     disabled = sum(s.stats.subsystems_disabled for s in ours)
     objectives = [ev for ev in battle.deeds if isinstance(ev, ObjectiveEnded)]
     f: dict[str, Any] = {
-        "stop": fight.title or fight.stop.title, "system": fight.stop.system, "outcome": outcome,
+        "stop": fight.title or fight.stop.title, "difficulty": run.difficulty, "system": fight.stop.system, "outcome": outcome,
         "cycles": round(w.time), "stardate": run.state.stardate(),
         "enemy": _force(kinds) or "no enemy",
         "destroyed": destroyed, "escaped": escaped, "surrendered": surrendered, "captured": captured, "lost": lost,
@@ -327,6 +328,7 @@ def markdown(run: TourRun) -> str:
     st, tour = run.state, run.tour
     out = [f"# {tour.title}: captain's log", "",
            f"_{tour.description}_" if tour.description else "", "",
+           f"Difficulty: {level(run.difficulty).title}, fixed when the tour began.", "",
            "Edit the text between the `captain` markers to change your entries; the game reads them back "
            "the next time you open this tour. Everything else here is rewritten by the game.", ""]
     for e in st.log:

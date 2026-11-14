@@ -3709,7 +3709,7 @@ See also: [Display and sharpness](#topic-display), [Sound](#topic-sound), [The b
 
 *Ensign, Captain or Admiral: how many ships the enemy brings and how well their captains fight. The Enterprise never changes.*
 
-The enemy can fight at three levels. Change it on the main menu (the **Difficulty** button under the side switch) or in **Settings › Battle**. It takes effect from the next battle.
+The enemy can fight at three levels. Change it on the main menu (the **Difficulty** button under the side switch) or in **Settings › Battle**. It takes effect from the next battle, except in a tour of duty already under way (see below).
 
 | Level | Enemy ships | Enemy captains and crews |
 |---|---|---|
@@ -3726,7 +3726,7 @@ Difficulty only changes the other side. Your own ship is the same at every level
 
 #### Where it applies
 
-Quick battles, patrols, preset battles and tours of duty follow the difficulty. A **custom battle** is fought with exactly the fleets you chose, so only its enemy captains' skill follows the difficulty. The **[Shakedown Cruise](#topic-shakedown)** teaches with the fleets it was written with; its captains follow the difficulty too.
+Quick battles, patrols and preset battles follow the difficulty. A **tour of duty** keeps the difficulty it was commissioned at for every stop, even if you change the setting halfway through: the Ready Room heading and the captain's log say which it is, and the tour's end card names it beside your grade. To fly a tour at another level, start it again. (A tour saved by an earlier version takes the setting it is resumed at, once, and keeps it from then on.) A **custom battle** is fought with exactly the fleets you chose, so only its enemy captains' skill follows the difficulty. The **[Shakedown Cruise](#topic-shakedown)** teaches with the fleets it was written with; its captains follow the difficulty too.
 
 > **Tip** Start at Ensign while you learn the controls, play Captain for the game as designed, and try Admiral once a preset feels easy. Tours are long: their later stops at Admiral are a real test.
 
@@ -4004,7 +4004,7 @@ See also: [Counsel from the bridge](#topic-counsel), [Transporters and boarding]
 
 *Linked battles with a squadron you choose: damage, crews, torpedoes and prizes carry from one stop to the next.*
 
-A tour of duty is a patrol of several stops, each one a battle. Open one from the main menu (**Tour of duty**, or **T**). New to the game? The first tour on the list, the **[Shakedown Cruise](#topic-shakedown)**, teaches one part of the ship at each stop. Every tour follows the [Difficulty](#topic-difficulty) you chose.
+A tour of duty is a patrol of several stops, each one a battle. Open one from the main menu (**Tour of duty**, or **T**). New to the game? The first tour on the list, the **[Shakedown Cruise](#topic-shakedown)**, teaches one part of the ship at each stop. Every tour is fought at the [Difficulty](#topic-difficulty) you chose when you commissioned it, and keeps it to the end; the Ready Room heading shows it.
 
 Your squadron carries everything that matters from one fight to the next: hull and system damage, casualties, torpedoes and probes fired, morale, and the ships you take as prizes. Shields, batteries, heat and positions start fresh each time. A ship that is destroyed, abandoned, surrendered or boarded is gone for the rest of the tour. If the flagship is lost, the tour is over; at a starbase, so is losing the starbase. Against the Borg, if their drones take the flagship, the tour ends there.
 
