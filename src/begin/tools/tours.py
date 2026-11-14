@@ -1,4 +1,5 @@
-"""Headless tours: `begin --tour-test N` plays every tour N times with AI captains on every ship.
+"""Headless tours: `begin --tour-test N` plays every tour N times with AI captains on every ship,
+and N generated tours (seeds 1..N).
 
 The player's flagship is flown by its officers (Spock has the conn), every choice takes the first
 option, and one reinforcement is called in the finale. It measures the tours, not the player.
@@ -13,6 +14,7 @@ from ..battle import build_battle
 from ..content import default_content
 from ..sim.commands import TakeConn
 from ..tour import TourRun, check_tour, load_tours
+from ..tour.generate import generate_tour
 
 MAX_CYCLES = 1500.0
 
@@ -75,8 +77,23 @@ def run_tours(n: int, officer: str = "spock") -> list[TourResult]:
                 tour.stops[-1].finale and len(run.state.results) == len(tour.stops)
         print(r.line(), flush=True)
         out.append(r)
+    out.append(_generated(n, content, officer))
     print(f"\n{sum(x.won + x.lost for x in out)} tours in {time.perf_counter() - t0:.0f}s")
     return out
+
+
+def _generated(n: int, content, officer: str) -> TourResult:  # type: ignore[no-untyped-def]
+    """Generated tours [E] (tour/generate.py): one fresh tour per run, seeds 1..N."""
+    r = TourResult("generated")
+    for seed in range(1, n + 1):
+        tour = generate_tour(content, seed)
+        run = TourRun.new(tour, content, _default_escorts(tour, content), seed=seed)
+        play(run, officer)
+        r.won += run.state.over == "won"
+        r.lost += run.state.over != "won"
+        r.stops.append(sum(1 for x in run.state.results if x.outcome == "victory"))
+    print(r.line(), flush=True)
+    return r
 
 
 def _default_escorts(tour, content) -> list[str]:  # type: ignore[no-untyped-def]

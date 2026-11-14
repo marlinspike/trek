@@ -23,11 +23,11 @@ class CommsMixin(SceneState):
         pygame.key.start_text_input()
 
     def hail(self: BattleScene, target: int | None, words: str) -> None:
-        self.session.hail(target, words)
+        self.channels.hail(target, words)
 
     def open_channel(self: BattleScene, sid: int) -> None:
         """The Hail button: open a channel (they answer), then the console waits for the captain's words."""
-        self.session.open_channel(sid)
+        self.channels.open_channel(sid)
 
     def _comms_button(self: BattleScene, line: str) -> None:
         if line.startswith("\0type:"):

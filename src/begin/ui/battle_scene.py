@@ -24,7 +24,7 @@ from ..help.coach import HelpContext
 from ..paths import config_dir
 from ..session.battle import BattleSession
 from ..session.common import CHART
-from ..session.interface import Session
+from ..session.interface import Campaign, Channels, Clock, Crew, Display, Orders, Session
 from ..session.news import Commanding, Cue, Line, News, Notice, Printout, Prompt, Request, Show, Ticked, Voice
 from ..session.prefs import BridgePrefs
 from ..sim.commands import Command
@@ -71,6 +71,12 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
                                          prefs=BridgePrefs.from_dict(self.bridge_store), career=career)
         else:
             self.session = battle
+        self.clock: Clock = self.session
+        self.orders: Orders = self.session
+        self.crew: Crew = self.session
+        self.channels: Channels = self.session
+        self.readout: Display = self.session
+        self.campaign: Campaign = self.session
         self.on_exit: Callable[[], None] = on_exit
         self.exit_label: str = "Return to menu"
         self.ui: UI = UI()
@@ -124,7 +130,7 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
         self.fired_at: dict[int, float] = {}   # our phaser banks: when each last fired
         self.layout(size)
         self._frame_all()
-        self.session.subscribe(self._hear_session)
+        self.clock.subscribe(self._hear_session)
         for problem in self.audio.problems:
             self._log(f"Couldn't use your sound {problem}", theme.TEXT_DIM)
 
@@ -174,55 +180,55 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
 
     @property
     def player(self) -> Ship | None:
-        return self.session.player
+        return self.clock.player
 
     def issue(self, cmd: Command) -> str | None:
-        return self.session.submit(cmd)
+        return self.orders.submit(cmd)
 
     def run_console(self, text: str) -> None:
-        self.session.say(text)
+        self.orders.say(text)
 
     def fire_phasers(self, banks: tuple[int, ...] | None) -> None:
-        self.session.fire_phasers(banks)
+        self.orders.fire_phasers(banks)
 
     def fire_torpedoes(self, tubes: tuple[int, ...] | None) -> None:
-        self.session.fire_torpedoes(tubes)
+        self.orders.fire_torpedoes(tubes)
 
     def launch_probe(self) -> None:
-        self.session.launch_probe()
+        self.orders.launch_probe()
 
     def toggle_reserve(self, i: int) -> None:
-        self.session.toggle_reserve(i)
+        self.orders.toggle_reserve(i)
 
     def order_ally(self, ally: int, order: str, target: int | None = None, value: float | None = None) -> None:
-        self.session.order_ally(ally, order, target, value)
+        self.orders.order_ally(ally, order, target, value)
 
     def ally_report(self, sid: int) -> None:
-        self.session.ally_report(sid)
+        self.channels.ally_report(sid)
 
     def take_command(self, sid: int) -> None:
-        self.session.take_command(sid)
+        self.orders.take_command(sid)
 
     def allies(self) -> list[Ship]:
-        return self.session.allies()
+        return self.readout.allies()
 
     def nearest_base(self, ally: Ship) -> Ship | None:
-        return self.session.nearest_base(ally)
+        return self.readout.nearest_base(ally)
 
     def accept_proposal(self) -> bool:
-        return self.session.accept_proposal()
+        return self.orders.accept_proposal()
 
     def belay_proposal(self) -> bool:
-        return self.session.belay_proposal()
+        return self.orders.belay_proposal()
 
     def style_check(self, cmd: Command | None = None, why: str | None = None) -> None:
-        self.session.style_check(cmd, why)
+        self.orders.style_check(cmd, why)
 
     def ship_name(self, sid: int) -> str:
-        return self.session.ship_name(sid)
+        return self.readout.ship_name(sid)
 
     def _help_context(self) -> HelpContext:
-        return self.session.help_context()
+        return self.readout.help_context()
 
     def toggle_counsel(self, on: bool | None = None) -> None:
         """Open or close the officers' counsel over the map."""
@@ -231,11 +237,11 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
         if self.counsel_open:
             if self.overlay == "help_brief":
                 self.overlay = None
-            self.session.counsel(force=True)
+            self.crew.counsel(force=True)
 
     def follow_plan(self, i: int) -> bool:
         """Keys 1 to 4 while the counsel is open: go all in on that officer's plan."""
-        plans = self.session.counsel()
+        plans = self.crew.counsel()
         if not self.counsel_open or not 0 <= i < len(plans):
             return False
         self._follow(plans[i], None)
@@ -246,7 +252,7 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
         now = time.monotonic()
         for ln in lines:
             self.counsel_ran[ln] = now
-        self.session.follow(plan, lines if line is not None else None)
+        self.crew.follow(plan, lines if line is not None else None)
         if line is None:
             self.counsel_open = False      # all in: the orders are given, the battle runs on at your speed
 
@@ -399,7 +405,7 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
             return
         self.printout_tick = self.obs.tick
         if self.printout_cmd:
-            lines = self.session.display(self.printout_cmd)
+            lines = self.readout.display(self.printout_cmd)
             if lines is not None:
                 self.printout = lines
 
@@ -423,7 +429,7 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
 
     def close(self) -> None:
         """Leaving the battle: the session remembers how the officers feel and stops its LLM requests."""
-        self.session.close()
+        self.clock.close()
         self.audio.stop()
 
     # ------------------------------------------------------------ sound

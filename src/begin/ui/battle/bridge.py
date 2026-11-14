@@ -104,7 +104,7 @@ class BridgeMixin(SceneState):
         key = (text, self.obs.tick // 5, sid)
         if self._preview_key != key:
             self._preview_key = key
-            res = self.session.preview(self._with_pointing(text, sid))
+            res = self.orders.preview(self._with_pointing(text, sid))
             self._preview = res if res is not None and res.error is None and res.commands else None
         return self._preview
 
@@ -122,8 +122,8 @@ class BridgeMixin(SceneState):
         for c in self.obs.contacts().values():
             if c.identified:
                 names.append(c.label.split(" (")[0])
-        officers = [o.name.split()[0] for o in self.session.officers().values()]
-        self.console = self.completer.complete(self.console, names, officers, list(self.session.named_orders()))
+        officers = [o.name.split()[0] for o in self.crew.officers().values()]
+        self.console = self.completer.complete(self.console, names, officers, list(self.orders.named_orders()))
 
     def _draw_completions(self: BattleScene, surf: pygame.Surface) -> None:
         opts = self.completer.options

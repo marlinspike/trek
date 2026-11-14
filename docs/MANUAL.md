@@ -921,6 +921,7 @@ After every stop your officers write up their stations, each captain in the squa
 - **Neutral Zone Watch** (The Romulan Neutral Zone). Four stops along the Neutral Zone. The Romulans cloak, strike and vanish; Starbase 47 is the line they must not cross. About forty minutes. *Stops:* Silence at Outpost 4 → Frigate screen → The Bird of Prey → The line at Starbase 47.
 - **The Orion Run** (The Orion trade routes). A short hunt for an Orion raiding band: three stops, about twenty minutes. A good first tour. *Stops:* Raid on a convoy → Saboteurs → The Armadillo.
 - **The Collective** (Beyond the Federation's edge). Something is taking whole colonies along the frontier and leaving nothing behind. Find it, learn it, and stop it before it reaches the core worlds. Four stops, about forty-five minutes. *Stops:* The empty colony → The sphere at the rift → The graveyard → The cube.
+- **A generated patrol** (a new sector each time). One adversary, four stops built from the patrol situations with the threat rising, two choices, and their commander's flagship at the end. See [Tours of duty](#topic-tour).
 
 See [Tours of duty](#topic-tour). You can write your own tours in `config/tours/`.
 
@@ -3830,6 +3831,17 @@ After each stop your officers write up their stations, each captain in the squad
 
 The log is also kept as Markdown in `config/tours/<tour>-log.md`. Edit the captain's entries there between sessions and the game reads them back. At the end of the tour you get a rating: stops won, kills and prizes, ships lost and crews brought home.
 
+#### A fresh patrol every time
+
+The last tour on the list is made for you: a generated patrol, different each time. Pick it and press **Another patrol** until one appeals, or take what you're given. Each one has a sector, one adversary for the whole tour (Klingons, Romulans or Orions) and five stops:
+
+- **Four stops built from the patrol situations** ([Patrols](#topic-patrol)): an ambush, a wolf pack, a second wave, a distress call, a convoy or a runner. At least one is a mission.
+- **The threat rises.** The first stop is a skirmish; each one after brings more and better ships, sized against the squadron you can field, not the flagship alone. The briefings say so as it happens.
+- **Two choices.** Before the third stop, refit at the starbase (everything made good, but they send one more ship) or press on. Before the last, strike before they gather (less repair on the way, one fewer ship in her screen) or come in repaired (and meet one more).
+- **The boss.** The last stop is the commander behind the raids, aboard their heaviest class, with a screen and a reserve that drops out of warp when the screen is beaten. Take or destroy the flagship and the tour is won.
+
+The Enterprise is your Dreadnought on every generated tour, as on every other. A generated tour saves and resumes like the rest, and its number is in its description: the same number is always the same patrol.
+
 #### Your own tours
 
 Write your own in `config/tours/<anything>.toml`, in the same format as the shipped ones (`src/begin/content/data/tours.toml`): the stops, their briefings, the enemies, any choices and waves. A tour with the same id as a shipped one replaces it.
@@ -4209,7 +4221,8 @@ Type `coach` or press **H** and pick **Coach**: this page then reads your actual
 - **Wolf at the Door: the Cube.** A cube, with a task force to stop it. Power alone will cost you dearly: survey her, send Worf across, and strike while she sleeps.`, `- **Border Patrol** (The Archanis sector). Patrol the Klingon border, deal with whatever you find, and fall back to Starbase 12 when the Klingons move on it. Six stops, about an hour. *Stops:* Orion raiders → A Klingon on the border → Frigates at Kessik → Romulan ambush → The scouting dreadnought → Starbase Defense.
 - **Neutral Zone Watch** (The Romulan Neutral Zone). Four stops along the Neutral Zone. The Romulans cloak, strike and vanish; Starbase 47 is the line they must not cross. About forty minutes. *Stops:* Silence at Outpost 4 → Frigate screen → The Bird of Prey → The line at Starbase 47.
 - **The Orion Run** (The Orion trade routes). A short hunt for an Orion raiding band: three stops, about twenty minutes. A good first tour. *Stops:* Raid on a convoy → Saboteurs → The Armadillo.
-- **The Collective** (Beyond the Federation's edge). Something is taking whole colonies along the frontier and leaving nothing behind. Find it, learn it, and stop it before it reaches the core worlds. Four stops, about forty-five minutes. *Stops:* The empty colony → The sphere at the rift → The graveyard → The cube.` | the curated battles and the tours of duty |
+- **The Collective** (Beyond the Federation's edge). Something is taking whole colonies along the frontier and leaving nothing behind. Find it, learn it, and stop it before it reaches the core worlds. Four stops, about forty-five minutes. *Stops:* The empty colony → The sphere at the rift → The graveyard → The cube.
+- **A generated patrol** (a new sector each time). One adversary, four stops built from the patrol situations with the threat rising, two choices, and their commander's flagship at the end. See [Tours of duty](#topic-tour).` | the curated battles and the tours of duty |
 | `| Order | Also | Explained in |
 |---|---|---|
 | `abort` | - | [Self-destruct and surrender](#topic-destruct) |

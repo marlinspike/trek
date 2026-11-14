@@ -56,7 +56,7 @@ class RenderMixin(SceneState):
         if alert > 0 and not self._was_alert:
             self.audio.play("alert", time.monotonic(), 0.0, 0.6)
         self._was_alert = alert > 0
-        tick_len = self.session.tick_length
+        tick_len = self.clock.tick_length
         alpha = 1.0 if self.paused else max(0.0, min(1.0, self.acc / tick_len))
         obs = self.obs
         p = self.player
@@ -65,14 +65,14 @@ class RenderMixin(SceneState):
         self.view.draw(surf, obs, self.prev, self.now, alpha, self.player_id,
                        p.target if p else None, p.target_subsystem if p else None, self.selected_ally)
         self.ui.add(self.map_rect, lambda: None)
-        acts = self.session.officer_activity(obs)
-        officer_view.draw_intent(surf, self.cam, obs, p, acts, self.session.officer_name)
+        acts = self.crew.officer_activity(obs)
+        officer_view.draw_intent(surf, self.cam, obs, p, acts, self.crew.officer_name)
         if self.prefs.map_orders:
             order_marks.draw_orders(surf, self.cam, obs, p)
         self._draw_preview(surf)
         comms_view.draw_map(surf, self.cam, self.obs, self.player_id, self.comms, time.monotonic(),
                             self.map_rect, p.target if p else None)
-        mission = self.session.mission()
+        mission = self.crew.mission()
         if mission is not None:
             counsel_view.draw_marks(surf, self.cam, mission, self.now.ships, self.map_rect, time.monotonic())
         shown = self._pick_card()
@@ -82,14 +82,14 @@ class RenderMixin(SceneState):
             area = counsel_view.counsel_rect(self.map_rect)
             if self._proposal_height() and self.map_rect.right - area.right <= 300:
                 area.height -= self._proposal_height() + 14     # no room beside it: the proposal sits below the counsel
-            counsel_box = counsel_view.draw_counsel(surf, area, self.session.counsel(), self.ui,
+            counsel_box = counsel_view.draw_counsel(surf, area, self.crew.counsel(), self.ui,
                                       lambda plan: self._follow(plan, None), self._follow,
                                       lambda: self.toggle_counsel(False), self.counsel_ran, time.monotonic(),
-                                      self.paused, self.session.counsel_goal.text if self.session.counsel_goal else "",
-                                      lambda: self.session.counsel_order("general"))
+                                      self.paused, self.crew.counsel_goal.text if self.crew.counsel_goal else "",
+                                      lambda: self.crew.counsel_order("general"))
         else:
             panel = officer_view.draw_panel(surf, (self.map_rect.x + 14, self.map_rect.y + 36), acts,
-                                            self.session.officer_name, obs.tick, obs.rules.ticks_per_cycle,
+                                            self.crew.officer_name, obs.tick, obs.rules.ticks_per_cycle,
                                             self.subs.speaking)
             cards.append(panel)
         self.counsel_box = counsel_box
@@ -156,7 +156,7 @@ class RenderMixin(SceneState):
 
     def _red_alert(self: BattleScene) -> float:
         """How red the panel borders are right now: a slow pulse while the ship is in a fight, else 0."""
-        if not self.session.in_battle():
+        if not self.clock.in_battle():
             return 0.0
         now = time.monotonic()
         if not self._was_alert:
@@ -168,7 +168,7 @@ class RenderMixin(SceneState):
 
     def _pick_card(self: BattleScene) -> str | None:
         """The one transient card the map shows this frame (see `stage.py`)."""
-        m = self.session.mission()
+        m = self.crew.mission()
         news = None
         if m is not None:
             _, hint, tone, _ = counsel_view.mission_lines(m)
@@ -243,12 +243,12 @@ class RenderMixin(SceneState):
             theme.text(surf, msg, b.center, theme.CAUTION, 14, weight="semibold", anchor="center")
             cards.append(b)
         self._draw_conn_banner(surf, banner_top + (36 if self.paused and not self.obs.outcome.over else 0))
-        title = theme.text(surf, self.session.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
+        title = theme.text(surf, self.clock.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
         rng = theme.text(surf, f"range {self.display_range():,.0f}  ·  F1 controls", (r.right - 14, r.y + 28),
                          theme.TEXT_FAINT, 11, anchor="topright")
         cards += [title.union(rng).inflate(8, 6)]
         y = r.y + 48
-        for names, eta in self.session.inbound():
+        for names, eta in self.readout.inbound():
             # reinforcements on the way: a countdown that pulses as they get close
             close = eta < 15
             pulse = 0.5 + 0.5 * math.sin(time.monotonic() * math.tau / 0.9) if close else 1.0
@@ -263,7 +263,7 @@ class RenderMixin(SceneState):
         r = self.map_rect
         now = time.monotonic()
         out: list[pygame.Rect | None] = []
-        mission = self.session.mission()
+        mission = self.crew.mission()
         self._mission_box = None
         if mission is not None:
             if shown == "mission":
@@ -289,7 +289,7 @@ class RenderMixin(SceneState):
 
     def _draw_conn_banner(self: BattleScene, surf: pygame.Surface, top: int) -> None:
         """Who has the conn, when it isn't the captain; click it to take the bridge back."""
-        ship, o = self.player, self.session.in_command()
+        ship, o = self.player, self.crew.in_command()
         if o is None:
             if ship is not None and ship.evasive:
                 self._draw_evasive_banner(surf, top)
@@ -310,7 +310,7 @@ class RenderMixin(SceneState):
 
     def _draw_evasive_banner(self: BattleScene, surf: pygame.Surface, top: int) -> None:
         """Evasive manoeuvres are on: amber while the helm is dodging; click to end them."""
-        dodging = any(a.role == "evasive" and a.kind == "evade" for a in self.session.officer_activity(self.obs))
+        dodging = any(a.role == "evasive" and a.kind == "evade" for a in self.crew.officer_activity(self.obs))
         msg = "EVASIVE MANOEUVRES  ·  " + ("dodging torpedoes" if dodging else "watching for torpedoes") + \
               "  ·  any helm order ends them"
         box = self._banner(surf, msg, top, theme.CAUTION if dodging else theme.FRIEND)
@@ -574,7 +574,7 @@ class RenderMixin(SceneState):
 
     def _starfleet(self: BattleScene, surf: pygame.Surface) -> None:
         """Starfleet's assessment [E]: the story of the battle. The table of numbers is one click behind it."""
-        a = self.session.starfleet()
+        a = self.readout.starfleet()
         W = min(860, surf.get_width() - 80)
         inner = W - 48
         # what goes on the page, to size it
@@ -612,7 +612,7 @@ class RenderMixin(SceneState):
         r = self._modal(surf, W, h, "Starfleet's assessment", accent)
         theme.text(surf, theme.fit(a.headline, 22, inner, "display", "semibold"), (r.x + 24, r.y + 38), theme.TEXT, 22,
                    "display", weight="semibold")
-        d = self.session.debrief()
+        d = self.readout.debrief()
         verdict = f"In the field: {d.verdict[0].lower() + d.verdict[1:]}" if a.mission else d.verdict
         theme.text(surf, theme.fit(verdict, 13, inner), (r.x + 24, r.y + 72), accent, 13)
         y = r.y + 104
@@ -656,7 +656,7 @@ class RenderMixin(SceneState):
 
     def _debrief(self: BattleScene, surf: pygame.Surface) -> None:
         """The end of the battle: how it went, your ship's record, the officer who stood out, every ship's tally."""
-        d = self.session.debrief()
+        d = self.readout.debrief()
         r = self._modal(surf, 800, 330 + 46 * len(d.sides) + 18 * len(d.ships), "Battle assessment", theme.CAUTION)
         theme.text(surf, d.reason, (r.x + 24, r.y + 36), theme.TEXT, 20, "display", weight="semibold")
         theme.text(surf, d.verdict, (r.x + 24, r.y + 68), theme.CAUTION, 14)
