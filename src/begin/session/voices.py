@@ -92,6 +92,8 @@ class VoicesMixin(SessionState):
             return                              # a green crew only follows orders
         new = self.proposer.next(self.obs, ship, crew.officers, self.world.time, self.prefs.proposals,
                                  self.captain_typing, self.career.offers_while_typing)
+        if new is not None and not new.urgent and self.drill is not None and self.drill.quiet_bridge:
+            return                              # the lesson is speaking: only a warning interrupts it
         if new is not None:
             new.bonus = self.career.proposal_bonus(new.officer)
             self.proposal = new

@@ -201,18 +201,23 @@ class Speaker:
             self.engine.close()
 
     def _start(self) -> None:
-        if self._thread is None or not self._thread.is_alive():
-            self._closed = False
-            self._thread = threading.Thread(target=self._run, daemon=True, name="speech")
-            self._thread.start()
+        # under the lock: a thread that has just decided to end clears `_thread` first, so a line queued in that
+        # moment always gets a thread to say it
+        with self._wake:
+            if self._thread is None or not self._thread.is_alive():
+                self._closed = False
+                self._thread = threading.Thread(target=self._run, daemon=True, name="speech")
+                self._thread.start()
 
     def _next(self) -> _Ask | None:
         with self._wake:
             while not self._waiting and not self._closed:
                 self._wake.wait(timeout=30)
                 if not self._waiting:
-                    return None          # idle: the thread ends, and the next line starts another
+                    self._thread = None  # idle: the thread ends, and the next line starts another
+                    return None
             if self._closed:
+                self._thread = None
                 return None
             ask = self._waiting.pop(0)
             self._speaking = ask

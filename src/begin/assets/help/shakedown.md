@@ -19,7 +19,7 @@ Each lesson ends with winning the fight. The battle starts paused, so read the b
 
 ## The lesson card
 
-The card shows the lesson, a dot for each step (green when done), what the officer asked, and the keys or words that do it. When a new step begins it shows in full for a few seconds, then folds to one line so the map stays calm. Rest the pointer on the line to see it all again. Nothing is forced: if you have already done a step, it is ticked off without being taught, and if a step waits a long time the officer reminds you once.
+The card shows the lesson, a dot for each step (green when done), what the officer asked, and the keys or words that do it. When a new step begins it shows in full for a few seconds, then folds to one line so the map stays calm. Rest the pointer on the line to see it all again. Nothing is forced: if you have already done a step, it is ticked off without being taught, and if a step waits a long time the officer reminds you once. While a lesson runs, the other officers keep their suggestions ("Target her?") to themselves so that one voice teaches at a time; a warning such as an incoming torpedo still comes through, and in the last lesson, which is about them, they speak up as usual.
 
 ## Difficulty
 

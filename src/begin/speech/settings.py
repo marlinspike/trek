@@ -2,7 +2,7 @@
 
 On by default: the officers speak their readbacks, reports and proposals aloud through the computer's own speech
 engine (the voices the Mac, Windows or Linux already has), each officer with a voice cast to suit them. Everything
-here is also in Settings (S on the main menu, Speech) and in battle (Esc, then Bridge voices, or `speech`).
+here is also in Settings (S on the main menu, Speech) and in battle (Esc, then Bridge voices, or `speak`).
 """
 
 from __future__ import annotations
@@ -55,8 +55,8 @@ class SpeechSettings:
         """Whether a line of this kind ("readback", "proposal", "report", "chatter", "hail") is spoken."""
         if not self.enabled or self.engine == "off":
             return False
-        if kind == "hail":
-            return self.captains and self.speak != "urgent" or urgent
+        if kind == "hail":                # an enemy captain: never when the captains are silenced
+            return self.captains and (self.speak != "urgent" or urgent)
         if self.speak == "urgent":
             return urgent
         if self.speak == "orders":

@@ -351,3 +351,28 @@ def test_the_speech_package_never_touches_pygame() -> None:
         names = [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
         names += [n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
         assert not any(n.startswith("pygame") for n in names), f.name
+
+
+# ------------------------------------------------------------------ found by the 2026-11-14 pressure test
+
+def test_silenced_captains_stay_silent_even_when_a_hail_is_urgent() -> None:
+    from begin.speech.settings import SpeechSettings
+
+    off = SpeechSettings(captains=False)
+    assert not off.wants("hail", urgent=True) and not off.wants("hail", urgent=False)
+    on = SpeechSettings(captains=True, speak="urgent")
+    assert on.wants("hail", urgent=True) and not on.wants("hail", urgent=False)
+    assert SpeechSettings().wants("hail", urgent=False)
+
+
+def test_a_speech_thread_that_ends_lets_the_next_line_start_another() -> None:
+    """The thread clears itself under the lock as it decides to end, so a line queued just then is never stranded."""
+    from begin.speech import Speaker
+
+    sp = Speaker.silent()
+    sp._closed = True
+    assert sp._next() is None and sp._thread is None
+    sp._closed = False
+    assert sp.say("Shields holding, Captain.", "worf")
+    assert sp._thread is not None
+    sp.close()
