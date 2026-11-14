@@ -3,6 +3,10 @@ and N generated tours (seeds 1..N).
 
 The player's flagship is flown by its officers (Spock has the conn), every choice takes the first
 option, and one reinforcement is called in the finale. It measures the tours, not the player.
+
+A tour with Borg in it is flown a second time (the "+guile" row) with a scripted captain at the hive stops who
+plays them as the manual teaches (tools/guile.py): the officers alone fight with power, which the Borg are built
+to beat, so the second row is what shows the tour can be won.
 """
 
 from __future__ import annotations
@@ -15,6 +19,8 @@ from ..content import default_content
 from ..sim.commands import TakeConn
 from ..tour import TourRun, check_tour, load_tours
 from ..tour.generate import generate_tour
+from .guile import GuileCaptain
+from .guile import fight as guile_fight
 
 MAX_CYCLES = 1500.0
 
@@ -30,11 +36,12 @@ class TourResult:
     def line(self) -> str:
         n = self.won + self.lost
         avg = sum(self.stops) / max(1, len(self.stops))
-        return f"{self.tour:16s} tours won {self.won:2d}/{n:<2d}  average stops won {avg:4.1f}  finale bases held {self.bases_held}"
+        return f"{self.tour:22s} tours won {self.won:2d}/{n:<2d}  average stops won {avg:4.1f}  finale bases held {self.bases_held}"
 
 
-def play(run: TourRun, officer: str = "spock", call: bool = True) -> None:
-    """Fight every stop of the tour until it is won or lost."""
+def play(run: TourRun, officer: str = "spock", call: bool = True, guile: bool = False) -> None:
+    """Fight every stop of the tour until it is won or lost. With `guile`, the hive stops are fought by the
+    scripted captain of tools/guile.py instead of the officer with the conn."""
     while not run.over:
         if run.needs_choice():
             run.choose(0)
@@ -43,10 +50,13 @@ def play(run: TourRun, officer: str = "spock", call: bool = True) -> None:
         run.prepare(battle)
         w = battle.world
         me = battle.player_ship_id
-        if me is not None:
+        cunning = guile and GuileCaptain.wanted(battle)
+        if me is not None and not cunning:
             w.execute(TakeConn(ship_id=me, officer=officer))
         if call and fight.stop.finale and run.state.calls_left > 0:
             run.reinforcement_arrival(battle, w.ships.get(me) if me is not None else None)
+        if cunning:
+            guile_fight(battle, officer, MAX_CYCLES)
         limit = int(MAX_CYCLES * w.rules.ticks_per_cycle)
         while w.tick < limit and not w.outcome.over:
             w.step()
@@ -77,9 +87,28 @@ def run_tours(n: int, officer: str = "spock", difficulty: str | None = None) -> 
                 tour.stops[-1].finale and len(run.state.results) == len(tour.stops)
         print(r.line(), flush=True)
         out.append(r)
+        if _has_borg(tour, content):
+            out.append(_with_guile(tour, content, n, officer, difficulty))
     out.append(_generated(n, content, officer, difficulty))
     print(f"\n{sum(x.won + x.lost for x in out)} tours in {time.perf_counter() - t0:.0f}s")
     return out
+
+
+def _with_guile(tour, content, n: int, officer: str, difficulty: str | None) -> TourResult:  # type: ignore[no-untyped-def]
+    """The tour again, with the scripted captain at the hive stops."""
+    r = TourResult(f"{tour.id}+guile")
+    for seed in range(1, n + 1):
+        run = TourRun.new(tour, content, _default_escorts(tour, content), seed=seed, difficulty=difficulty)
+        play(run, officer, guile=True)
+        r.won += run.state.over == "won"
+        r.lost += run.state.over != "won"
+        r.stops.append(sum(1 for x in run.state.results if x.outcome == "victory"))
+    print(r.line(), flush=True)
+    return r
+
+
+def _has_borg(tour, content) -> bool:  # type: ignore[no-untyped-def]
+    return any(content.classes[c].faction == "borg" for s in tour.stops for c in s.enemies if c in content.classes)
 
 
 def _generated(n: int, content, officer: str, difficulty: str | None = None) -> TourResult:  # type: ignore[no-untyped-def]
