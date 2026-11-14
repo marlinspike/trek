@@ -19,6 +19,7 @@ from .showpiece import Flybys
 from .starfield import Starfield
 from .manual import ManualView
 from .present import DisplayControl
+from ..speech import Speaker
 from .settings_hub import SettingsHub
 from ..settings import Settings
 from .widgets import UI
@@ -47,7 +48,8 @@ def roster(names: list[str]) -> str:
 class MenuScene:
     def __init__(self, content: ContentDB, settings: Settings, start: Callable[[BattleSetup], object],
                  quit_: Callable[[], None], show_help: Callable[[], None] | None = None,
-                 tours: Callable[[], None] | None = None, display: DisplayControl | None = None) -> None:
+                 tours: Callable[[], None] | None = None, display: DisplayControl | None = None,
+                 speaker: Speaker | None = None) -> None:
         self.content = content
         self.display = display
         self.tours = tours
@@ -80,7 +82,7 @@ class MenuScene:
         from ..paths import config_warning
 
         self.config_warning = config_warning()
-        self.hub = SettingsHub(settings, content, self._close_settings, display, lambda: self._audio)   # the downloaded game sitting where it can't save settings
+        self.hub = SettingsHub(settings, content, self._close_settings, display, lambda: self._audio, speaker)   # the downloaded game sitting where it can't save settings
 
     def open_manual(self, topic: str = "coach") -> None:
         """The coach and the manual, before any battle: the training run and every page, read at leisure."""

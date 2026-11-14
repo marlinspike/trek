@@ -15,6 +15,7 @@ class Utterance:
     text: str
     tone: str = "crew"  # crew | caution | dim
     commands: list[str] = field(default_factory=list)   # suggestions the captain can click or type
+    faction: str | None = None   # an enemy captain's race (their voice is cast by it)
 
 
 # runs a console line on behalf of an officer; returns an error, or None when it was carried out

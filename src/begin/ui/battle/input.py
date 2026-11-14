@@ -68,7 +68,7 @@ class InputMixin(SceneState):
                 self.cam.zoom_at(1.15 ** ev.y, *self.ui.mouse)
 
     def _mouse_down(self: BattleScene, ev: pygame.event.Event) -> None:
-        if self.overlay in ("debrief", "debrief_details", "menu", "manual", "voice"):
+        if self.overlay in ("debrief", "debrief_details", "menu", "manual", "voice", "speech"):
             h = self.ui.hit(ev.pos)
             if h and ev.button == 1:
                 h.action()

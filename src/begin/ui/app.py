@@ -16,6 +16,8 @@ from .menu_scene import MenuScene
 from .present import Presenter, open_presenter, prepare, relaunch_command
 from ..settings import Settings
 from .tour_scene import TourScene
+from .speech_out import play_wav, stop_wav
+from ..speech import Speaker
 
 TARGET_FPS = 60
 
@@ -53,8 +55,10 @@ class App:
         self.clock = pygame.time.Clock()
         self.content = default_content()
         self.running = True
+        # the officers' spoken voices, one speaker for the whole game so two scenes never talk over each other
+        self.speaker = Speaker.silent() if headless else Speaker(self.settings.speech, play_wav, stop_wav)
         self.menu = MenuScene(self.content, self.settings, self.start_battle, self.stop, tours=self.open_tours,
-                              display=self)
+                              display=self, speaker=self.speaker)
         self.menu.layout(self.size)
         self.tours: TourScene | None = None       # made the first time a tour is opened
         self.tour_run: TourRun | None = None      # the tour whose battle is being fought
@@ -103,7 +107,8 @@ class App:
                             hidden=self.settings.hidden, llm=self.settings.llm, chatter=self.settings.chatter,
                             volume=self.settings.volume, muted=self.settings.muted,
                             sounds=self.settings.sounds, hum=self.settings.hum, jolt=self.settings.jolt,
-                            bridge=self.settings.bridge, career=self.settings.career, voice=self.settings.voice)
+                            bridge=self.settings.bridge, career=self.settings.career, voice=self.settings.voice,
+                            speaker=self.speaker)
         scene.speed = float(self.settings.speed) if float(self.settings.speed) in (0.25, 0.5, 1.0, 2.0, 4.0) else 1.0
         self.scene = scene
         return scene
@@ -178,6 +183,7 @@ class App:
         elif isinstance(self.scene, TourScene):
             self.scene.save()
         self.settings.save()
+        self.speaker.close()
         self.presenter.close()
         pygame.quit()
         if self.restarting:

@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from ..widgets import UI
     from .common import LogLine
     from .stage import Stage
+    from ...speech import Speaker
 
 
 class SceneState:
@@ -124,6 +125,8 @@ class SceneState:
     counsel_ran: dict[str, float]
     counsel_box: pygame.Rect | None
     stage: Stage
+    speaker: Speaker
+    _spoken_proposal: object
     _mission_box: pygame.Rect | None
     _wheel_t: float
     completer: Completer

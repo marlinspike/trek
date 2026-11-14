@@ -37,7 +37,9 @@ from .battle.common import CONTROLS, SPEEDS, TONE_COLOR, LogLine
 from .battle.comms import CommsMixin
 from .battle.input import InputMixin
 from .battle.render import RenderMixin
+from .battle.speech import SpeechMixin
 from .battle.stage import Stage
+from ..speech import Speaker
 from .battle.voice import VoiceMixin
 from .camera import Camera
 from .hud import ContactsPanel, CrewPanel, FleetPanel, OwnShipPanel, Panel, TabbedPanel, TargetPanel, WeaponsPanel
@@ -56,13 +58,14 @@ if TYPE_CHECKING:
     from ..crew.counsel import Plan
 
 
-class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
+class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, SpeechMixin, RenderMixin):
     def __init__(self, battle: Battle | Session, size: tuple[int, int], on_exit: Callable[[], None],
                  keys: dict[str, str] | None = None, hidden: dict[str, object] | None = None,
                  llm: dict[str, object] | None = None, chatter: bool = True, volume: float = 0.6,
                  muted: bool = False, sounds: dict[str, str] | None = None, hum: float = 0.35,
                  jolt: bool = True, bridge: dict[str, object] | None = None,
-                 career: dict[str, object] | None = None, voice: dict[str, object] | None = None) -> None:
+                 career: dict[str, object] | None = None, voice: dict[str, object] | None = None,
+                 speaker: Speaker | None = None) -> None:
         # the Bridge setting (full, quiet, classic and its parts), kept in settings.json's "bridge"
         self.bridge_store: dict[str, object] = bridge if bridge is not None else {}
         self.session: Session
@@ -120,6 +123,7 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
         self._preview_key: object = None
         self._preview = None
         self._voice_setup(voice)
+        self._speech_setup(speaker)
         self.wheels = load_wheels(config_dir() / "wheel.toml")
         self.manual: ManualView = ManualView(self._help_context, self._try_command, self._close_manual)
         self.audio: Audio = Audio(volume, muted, sounds, config_dir() / "sounds", hum=hum)
@@ -303,6 +307,7 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
         elif isinstance(item, Voice):
             self._voice(item.speaker, item.text, TONE_COLOR.get(item.tone, theme.CREW), item.station, item.officer,
                         item.urgent)
+            self._speak(item.text, item.officer, item.faction, item.kind, item.urgent)
         elif isinstance(item, Notice):
             self.toast = (item.text, TONE_COLOR.get(item.tone, theme.CAUTION), item.seconds)
         elif isinstance(item, Cue):
@@ -365,6 +370,8 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
             self.bridge_setting(val)
         elif name == "voice":
             self.voice_command(val)
+        elif name == "speak":
+            self.speech_command(val)
         elif name == "hud" and isinstance(val, str) and val.startswith("jolt"):
             self.view.jolt = val.endswith("on")
             self._log("The map jolts when your ship takes a heavy blow." if self.view.jolt else
@@ -385,11 +392,14 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
         s.busy_elsewhere = self.overlay is not None
         if self.toast:
             msg, col, t = self.toast
+            if self.toast is not self._toast_seen and col in (theme.CAUTION, theme.ALERT):
+                self._speak(msg, urgent=True)                                       # the computer says it aloud
             if self.toast is not self._toast_seen and not self.prefs.classic and self.prefs.subtitles != "off":
                 self.subs.say("", msg, col, urgent=col in (theme.CAUTION, theme.ALERT))   # the computer's voice
             self.toast = (msg, col, t - dt) if t - dt > 0 else None
             self._toast_seen = self.toast
         self.subs.update(dt)
+        self._speak_proposal()
         self._focus_update(dt)
         self._voice_poll()
         self.view.update(dt)
@@ -430,6 +440,7 @@ class BattleScene(InputMixin, CommsMixin, BridgeMixin, VoiceMixin, RenderMixin):
     def close(self) -> None:
         """Leaving the battle: the session remembers how the officers feel and stops its LLM requests."""
         self.clock.close()
+        self.speaker.stop()
         self.audio.stop()
 
     # ------------------------------------------------------------ sound

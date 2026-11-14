@@ -164,6 +164,12 @@ class InterfaceVerbs(ParserBase):
         rest = " ".join(tok.rest())
         res.actions.append(("voice", rest or None))
 
+    def _v_speak(self, tok: Tokens, res: ParseResult) -> None:
+        """`speak`: the officers' spoken voices [E]. `speak on|off|all|orders|urgent|hush`, `speak volume|rate <n>`,
+        `speak hear <officer>`."""
+        rest = " ".join(tok.rest())
+        res.actions.append(("speak", rest or None))
+
     def _v_translate(self, tok: Tokens, res: ParseResult) -> None:
         """`translate on|off|always`: plain-English console input through the language model [E]."""
         w = tok.next()
