@@ -19,7 +19,7 @@ import argparse
 import sys
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:  # noqa: C901
     ap = argparse.ArgumentParser(prog="begin", description="Begin: a tactical starship simulation (remake)")
     ap.add_argument("--preset")
     ap.add_argument("--quick", type=int)

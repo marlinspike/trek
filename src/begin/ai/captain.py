@@ -813,7 +813,7 @@ class AICaptain:
             return self._helm(obs, ship, brg + 180.0, max(1.0, min(speed, w + 1.0)))
         return self._helm(obs, ship, crs, max(0.0, min(speed, w)))
 
-    def _standing_orders(self, obs: Observation, ship: Ship, c: ContactView | None, st: AllyStanding,
+    def _standing_orders(self, obs: Observation, ship: Ship, c: ContactView | None, st: AllyStanding,  # noqa: C901
                          out: list[Command]) -> bool:
         """Carry out the flagship's movement order. Returns True when it decided the helm."""
         rules = obs.rules
@@ -1004,7 +1004,7 @@ class AICaptain:
             return self._weave(obs, ship, brg, d)
         return self._helm(obs, ship, brg, c.warp + self.helm_aggression(obs, ship) * AI_APPROACH_WARP_AGGR)
 
-    def _maneuver(self, obs: Observation, ship: Ship, c: ContactView | None,
+    def _maneuver(self, obs: Observation, ship: Ship, c: ContactView | None,  # noqa: C901
                   st: AllyStanding | None = None) -> Command | None:
         if ship.cls.is_base or not ship.can_move() or ship.docked_to is not None:
             return None

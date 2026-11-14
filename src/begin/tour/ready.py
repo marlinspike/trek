@@ -35,7 +35,7 @@ def _weight(cls: ShipClass) -> float:
     return 1.0 + cls.banks * cls.banks_range / 1000.0 + cls.tubes * 6.0 + cls.mass / 40.0
 
 
-def ready_counsel(run: TourRun) -> list[ReadyView]:
+def ready_counsel(run: TourRun) -> list[ReadyView]:  # noqa: C901
     """Each officer's two sentences on the next stop ([] when the tour is over)."""
     stop = run.stop
     if stop is None or run.over:

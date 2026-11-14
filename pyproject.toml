@@ -50,5 +50,11 @@ target-version = "py310"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-# syntax errors and pyflakes (unused imports and variables, undefined names); CI runs `ruff check`
-select = ["E9", "F"]
+# syntax errors, pyflakes (unused imports and variables, undefined names) and a cap on function complexity;
+# CI runs `ruff check`
+select = ["E9", "F", "C901"]
+
+[tool.ruff.lint.mccabe]
+# A function with more independent paths than this is hard to hold in your head and to test, so split it into
+# small cases instead. The few older functions above it carry `# noqa: C901` until they are broken up; don't add more.
+max-complexity = 25

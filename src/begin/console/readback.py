@@ -54,7 +54,7 @@ def _at(target: int | None, name_of: NameOf, system: str | None = None) -> str:
     return f" at the {name_of(target)}{aim}"
 
 
-def readback(cmd: Command, name_of: NameOf) -> str:
+def readback(cmd: Command, name_of: NameOf) -> str:  # noqa: C901
     """One sentence that says exactly what this order will do."""
     if isinstance(cmd, SetHelm):
         if cmd.warp == 0.0 and cmd.course is None:
