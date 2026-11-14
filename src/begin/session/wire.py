@@ -24,7 +24,6 @@ from enum import Enum
 from functools import lru_cache
 from typing import Any, Literal, Union
 
-from ..sim import commands as _commands
 from ..sim.commands import Command
 
 JSON = dict[str, Any]
@@ -55,7 +54,7 @@ def _fields(cls: type[Command]) -> tuple[tuple[str, Any], ...]:
     """(name, type hint) of the fields that make up an order of this type."""
     got = _FIELDS.get(cls)
     if got is None:
-        hints = typing.get_type_hints(cls, vars(_commands))
+        hints = typing.get_type_hints(cls)   # each class's own module resolves its hints
         got = _FIELDS[cls] = tuple((f.name, hints[f.name]) for f in dataclasses.fields(cls)
                                    if f.init and hints[f.name] is not object)
     return got

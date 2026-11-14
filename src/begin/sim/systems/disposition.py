@@ -11,7 +11,7 @@ a stubborn captain comes round after seeing their friends battered.
 Fear makes a captain break off sooner and strike their colours more readily;
 anger makes them fight harder and go after whoever they blame (ai/captain.py).
 
-The captain of a ship can hail an enemy (`Hail` in sim/commands.py). This
+The captain of a ship can hail an enemy (`Hail` in sim/commands/operations.py). This
 module decides the answer from the enemy captain's state of mind, their own
 damage, their crew's morale, the odds as they see them and how persuasive the
 hail was. A captain who surrenders lowers their shields and their weapons go
