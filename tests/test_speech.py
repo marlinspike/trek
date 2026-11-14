@@ -12,6 +12,7 @@ import pytest
 
 from begin.speech import CAST, OFFICERS, RACES, Speaker, SpeechSettings, VoiceInfo, cast_voice, choices, part_for, speakable
 from begin.speech.engines import Espeak, MacSay, Spoken, parse_say_voices, sapi_rate, sapi_ssml
+from begin.speech.casting import cast_all
 
 MAC = [VoiceInfo(n, lang) for n, lang in (
     ("Albert", "en_US"), ("Daniel", "en_GB"), ("Fred", "en_US"), ("Karen", "en_AU"), ("Moira", "en_IE"),
@@ -97,6 +98,18 @@ def test_each_officer_is_cast_to_suit_the_part_from_what_the_computer_has() -> N
     assert all(CAST[p].manner for p in CAST)
 
 
+def test_no_two_officers_share_a_voice_while_there_are_enough() -> None:
+    cast = cast_all("mac", MAC, {})
+    assert cast["computer"] == "Samantha" and cast["seven"] == "Karen"     # a stock Mac: Seven isn't the computer
+    officers = [cast[p] for p in OFFICERS]
+    assert len(set(officers)) == len(officers) - 1    # four men's voices and Yuri for six men: one pair shares
+    assert cast_all("mac", MAC, {"seven": "Samantha"})["computer"] != "Samantha"   # the player's choice comes first
+    win = [VoiceInfo("Microsoft David Desktop", "en-US", False), VoiceInfo("Microsoft Zira Desktop", "en-US", True)]
+    two = cast_all("windows", win, {})
+    assert two["seven"] == two["computer"] == "Microsoft Zira Desktop"     # one woman's voice: shared, pitch apart
+    assert CAST["seven"].pitch != CAST["computer"].pitch or CAST["seven"].rate != CAST["computer"].rate
+
+
 def test_who_speaks_a_line() -> None:
     assert part_for("worf") == "worf"
     assert part_for(None) == "computer"
@@ -155,6 +168,50 @@ def test_one_voice_at_a_time_warnings_first_and_stale_lines_dropped() -> None:
     assert _wait(lambda: len(eng.spoken) == 4, 3.0)
     assert [x.text for x in eng.spoken[2:]] == ["Routine 2.", "Routine 3."]   # the older routine ones were dropped
     sp.close()
+
+
+def test_answers_outlast_remarks_repeats_are_said_once_and_old_warnings_lapse() -> None:
+    eng = FakeEngine(took=0.4)
+    sp = Speaker({}, engine=eng)
+    sp.say("First.", "spock")
+    assert _wait(lambda: len(eng.spoken) == 1)
+    sp.say("Warp 6.", "sulu", kind="readback")
+    sp.say("Warp 6.", "sulu", kind="readback")              # said twice in a breath: heard once
+    sp.say("A remark.", "geordi")
+    sp.say("Another remark.", "geordi")                      # the queue is full: a remark goes, not the answer
+    assert _wait(lambda: len(eng.spoken) == 3, 3.0)
+    assert [x.text for x in eng.spoken[1:]] == ["Warp 6.", "Another remark."]
+    for i in range(4):
+        sp.say(f"Warning {i}!", "worf", urgent=True)
+    assert _wait(lambda: len(eng.spoken) >= 5, 4.0)
+    time.sleep(0.6)
+    warned = [x.text for x in eng.spoken if x.text.startswith("Warning")]
+    assert len(warned) <= 3 and "Warning 3!" in warned          # the newest, not a backlog of four
+    sp.close()
+
+
+def test_a_cut_that_lands_before_the_engine_starts_is_not_lost() -> None:
+    class Late(FakeEngine):
+        def speak(self, line: Spoken) -> None:
+            time.sleep(0.08)                                 # the process is still starting when the cut comes
+            super().speak(line)
+
+    eng = Late(took=2.0)
+    sp = Speaker({}, engine=eng)
+    sp.say("A long routine report about nothing in particular.", "spock")
+    time.sleep(0.02)
+    sp.say("Incoming torpedoes!", "worf", urgent=True)
+    assert _wait(lambda: any(x.text == "Incoming torpedoes!" for x in eng.spoken), 1.5)
+    sp.close()
+
+
+def test_figures_and_noughts_are_for_the_eye_only() -> None:
+    assert speakable("Target out of phaser range (12,467 > 2,000).") == "Target out of phaser range."
+    assert speakable("Course 202, warp 4.0 of 9.5 attainable.") == "Course 202, warp 4 of 9.5 attainable."
+    assert speakable("Fire on #3 (Y makes it so, N belays)") == "Fire on contact 3"
+    from begin.speech.engines import ESPEAK_VOICES
+
+    assert {c.espeak for c in CAST.values()} <= set(ESPEAK_VOICES)   # Settings offers every voice the cast uses
 
 
 def test_the_settings_decide_what_is_said_and_how() -> None:

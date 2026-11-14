@@ -8,7 +8,7 @@ see: bridge, voice-orders, sound, settings
 ---
 Your officers speak aloud. Every order you give is read back in the voice of the officer who carries it out. Their reports, warnings and proposals are spoken too, and the ship's computer speaks its warnings. Enemy captains answer your hails in voices of their own. It's on from the first battle and uses the speech engine your computer already has: macOS's voices on a Mac, Windows' voices on Windows, and eSpeak NG on Linux. Subtitles still show every line, and the log still keeps every word.
 
-One voice speaks at a time. A warning goes to the front and cuts short whatever routine line is being spoken. A routine line that has waited too long is no longer news, so it is dropped rather than read out late. **M** hushes the bridge along with every other sound.
+One voice speaks at a time. A warning goes to the front and cuts short whatever routine line is being spoken. A routine line that has waited too long is no longer news, so it is dropped rather than read out late; when lines pile up in a busy fight, an officer's remark gives way before an answer to one of your orders, and only the newest warnings wait. A line said twice in a breath is spoken once. Figures in brackets, such as `(12,467 > 2,000)`, are for the eye and aren't read out. **M** hushes the bridge along with every other sound.
 
 ## Who sounds like whom
 
@@ -26,7 +26,7 @@ Each officer is cast from the voices your computer has, to suit the part as writ
 | Ship's computer | even, cool, unhurried |
 | Klingon, Romulan and Orion captains, the Borg | by race: harsh and low, cold and silky, sly and fast, many voices as one |
 
-These are castings, not impressions. No actor's voice is copied, only the qualities of the part: accent, pitch and pace. Each part lists the voices it would like best, and the first one your computer has is used. When none of them is there, a voice of the right kind stands in, and each part's own pitch and pace keep two officers on the same voice sounding apart.
+These are castings, not impressions. No actor's voice is copied, only the qualities of the part: accent, pitch and pace. Each part lists the voices it would like best, and the first one your computer has is used. No two officers share a voice while your computer has enough to go round: the ship's computer is cast first, then each officer takes the first voice they asked for that nobody has yet. On a Mac with only the voices it ships with, for example, the computer is Samantha and Seven of Nine is Karen. When none of a part's voices is free, a voice of the right kind stands in, and each part's own pitch and pace keep two officers on the same voice sounding apart.
 
 More voices make a better cast. On a Mac, open System Settings, then Accessibility, Spoken Content, System voice, Manage Voices, and add a few English voices (Evan, Nathan, Allison, Ava, Daniel) and Yuri for Chekov. On Windows, use Settings, then Time & language, Speech, Add voices. On Linux, install `espeak-ng`.
 
