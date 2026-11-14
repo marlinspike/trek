@@ -2,7 +2,7 @@
 title: Tours of duty
 category: Game
 order: 5
-aliases: tour, tours, tour of duty, generated tour, another patrol, boss, officers' view, request, request reinforcements, reinforcements, ready room, squadron, captain's log, log, waves
+aliases: tour, tours, tour of duty, starting squadron, starting squadrons, squadrons, perks, generated tour, another patrol, boss, officers' view, request, request reinforcements, reinforcements, ready room, squadron, captain's log, log, waves
 summary: Linked battles with a squadron you choose: damage, crews, torpedoes and prizes carry from one stop to the next.
 see: after-battle, crew, dock, fleet
 ---
@@ -13,6 +13,20 @@ Your squadron carries everything that matters from one fight to the next: hull a
 ## The squadron
 
 Before the tour you choose the escorts that sail with the flagship. Each class costs its mass from the tour's fleet budget, so one heavy cruiser costs about as much as two destroyers and an interceptor. The flagship herself, the Enterprise, is a Dreadnought and costs nothing.
+
+### Starting squadrons
+
+Below the yard are the **starting squadrons**: named escort groups you earn as your officers come to trust you ([[styles|trust]]) and as you bring tours home. Pick one and it fills your escorts, at their usual cost, and brings a perk for the whole tour. Add more ships if the budget allows; send one of the squadron's ships back and the perk goes with her.
+
+| Squadron | Ships | Perk | Earned with |
+|---|---|---|---|
+| Destroyer screen | a destroyer and an interceptor | none | always there |
+| Worf's strike group | two destroyers | **veteran**: their crews start in high spirits and settle back there, not to the usual, between stops | Worf's trust (Trusted) |
+| La Forge's tender group | a destroyer and an interceptor | **tender**: a supply ship sails with you, an extra quarter of a reload for every ship at every stop | La Forge's trust (Trusted) |
+| Spock's survey wing | two interceptors | **liaison**: one more call to Starfleet for reinforcements | Spock's trust (Trusted) |
+| Starfleet detachment | a heavy cruiser | **veteran** and **liaison** | one tour won |
+
+Squadrons are escorts and their perks only: the flagship is always the tour's own, a Dreadnought for the Enterprise. The Ready Room names the squadron you sailed with.
 
 ## The Ready Room
 
