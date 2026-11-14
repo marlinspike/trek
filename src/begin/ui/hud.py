@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Callable, ClassVar
 
 import pygame
 
-from ..core.angles import bearing, norm180, norm360
+from ..core.angles import bearing, in_arc, norm180, norm360
 from ..sim.commands import (
     ConfigureAutoload, ControlProbe, DelegateStation, Dock, Scan, SelectTarget, SetFireMode, SetPhaserSpread,
     SetPointDefense, SetShields, Tractor, Transport,
@@ -69,6 +69,50 @@ class Panel:
 
 
 BANK_GLOW = 0.55      # seconds a phaser bank's button glows after it fires
+PD_TIP = ("Point defense: phasers shoot down incoming torpedoes and probes on their own. Click (or V) cycles "
+          "off, conservative (reserved banks, imminent threats), balanced (reserved banks, plus free ones against a "
+          "dangerous salvo) and aggressive (any idle bank). Right-click turns it off or back on. "
+          "Right-click a phaser bank to reserve it for point defense. Console: 'pd balanced'.")
+
+
+def tube_state(ship: Ship, i: int) -> tuple[str, str]:
+    """What tube `i` holds, as (state, mark): state is loaded, arming, empty, damaged or dry (magazine empty);
+    mark is the ordnance in it, or the one it is loading, in capitals ("MK7")."""
+    t = ship.tubes[i]
+    if t.loaded:
+        return "loaded", t.loaded.ordnance.upper()
+    mark = (t.load_ordnance or "").upper()
+    if not t.intact:
+        return "damaged", mark
+    if ship.torps_remaining <= 0:
+        return "dry", mark
+    if not t.autoload and not t.manual_load_pending:
+        return "empty", mark
+    return "arming", mark
+
+
+def torpedo_summary(ship: Ship) -> tuple[int, int, str]:
+    """(tubes loaded, tubes, the marks loaded or loading, "MK7" or "MK7/MK8"), for the one-line readout."""
+    states = [tube_state(ship, i) for i in range(len(ship.tubes))]
+    marks: list[str] = []
+    for st, mark in states:
+        if mark and st in ("loaded", "arming") and mark not in marks:
+            marks.append(mark)
+    return sum(st == "loaded" for st, _ in states), len(states), "/".join(marks)
+
+
+def pd_button(surf: pygame.Surface, hud: BattleScene, ship: Ship, r: pygame.Rect, short: bool = False) -> None:
+    """One button for point defense: its posture in words, click cycles it, right-click turns it off or back on."""
+    pd = ship.pd_doctrine
+    nxt = PD_CYCLE[(PD_CYCLE.index(pd) + 1) % len(PD_CYCLE)]
+    flip = PDDoctrine.BALANCED if pd == PDDoctrine.OFF else PDDoctrine.OFF
+    word = pd.value
+    room = r.width - 8
+    label = next((t for t in (f"Point defense: {word}", f"PD: {word}", f"PD {word}")
+                  if not short and theme.text_width(t, 12, "display") <= room), f"PD: {word}")
+    hud.ui.button(surf, r, label, lambda: hud.issue(SetPointDefense(ship_id=ship.id, doctrine=nxt)), PD_TIP,
+                  active=pd != PDDoctrine.OFF, accent=theme.GOOD,
+                  right=lambda: hud.issue(SetPointDefense(ship_id=ship.id, doctrine=flip)))
 
 
 def _kv(surf: pygame.Surface, x: int, y: int, k: str, v: str, vcol: theme.Color = theme.TEXT, w: int = 92) -> None:
@@ -253,10 +297,7 @@ class OwnShipPanel(Panel):
         yy += 17
         _drives_row(surf, hud, ship, x, yy, rect.right - x - 104)
         yy += 19
-        if detail:
-            _kv(surf, x, yy, "Magazine", f"{ship.torps_remaining} torp · {ship.probes_remaining} probe")
-        else:
-            theme.text(surf, "hover for detail · 'hud detail'", (x, yy + 1), theme.TEXT_FAINT, 11)
+        _torpedo_row(surf, hud, ship, x, yy, rect.right - x - 92 - 8, detail)
         yy += 18
         rp = repair_words(ship.repair_priority)
         who = hud.crew.repair_officer(ship)
@@ -283,12 +324,29 @@ class OwnShipPanel(Panel):
         anyup = any(s.up for s in ship.shields)
         hud.ui.button(surf, pygame.Rect(x, yy, bw, 22), "Lower shields" if anyup else "Raise shields",
                       lambda: hud.issue(SetShields(ship_id=ship.id, up=not anyup)), "Toggle all shields (G)")
-        pd = ship.pd_doctrine
-        nxt = PD_CYCLE[(PD_CYCLE.index(pd) + 1) % len(PD_CYCLE)]
-        hud.ui.button(surf, pygame.Rect(x + bw + 6, yy, bw, 22), f"PD: {pd.value}",
-                      lambda: hud.issue(SetPointDefense(ship_id=ship.id, doctrine=nxt)),
-                      "Point defense doctrine (V cycles). Reserve banks with right-click on a bank.",
-                      active=pd != PDDoctrine.OFF, accent=theme.GOOD)
+        pd_button(surf, hud, ship, pygame.Rect(x + bw + 6, yy, bw, 22))
+
+
+def _torpedo_row(surf: pygame.Surface, hud: BattleScene, ship: Ship, x: int, y: int, room: int, detail: bool) -> None:
+    """Torpedoes at a glance, on every window size: how many tubes are loaded, with what, and what is left."""
+    loaded, n, marks = torpedo_summary(ship)
+    if not ship.tubes:
+        _kv(surf, x, y, "Torpedoes", "none fitted", theme.TEXT_DIM)
+        return
+    left = "" if ship.cls.torps_carried >= 1000 else f"{ship.torps_remaining} left"
+    tries = [" · ".join(w for w in (f"{loaded}/{n} loaded", marks, left) if w),
+             " · ".join(w for w in (f"{loaded}/{n}", marks, left) if w), f"{loaded}/{n} {marks}".strip(), f"{loaded}/{n}"]
+    if detail:
+        tries.insert(0, tries[0] + f" · {ship.probes_remaining} probes")
+    words = next((t for t in tries if theme.text_width(t, 12, "mono") <= room), tries[-1])
+    arming = any(tube_state(ship, i)[0] == "arming" for i in range(n))
+    col = theme.GOOD if loaded else theme.CAUTION if arming else theme.TEXT_DIM
+    _kv(surf, x, y, "Torpedoes", words, col)
+    hud.ui.add(pygame.Rect(x, y, room + 92, 16), lambda: hud.side_tabs.show(WeaponsPanel),
+               f"{loaded} of {n} tubes loaded"
+               + (f" with {marks}" if marks else "") + (f"; {ship.torps_remaining} torpedoes in the magazine" if left else "")
+               + f"; {ship.probes_remaining} probes. The Weapons panel shows each tube. Hover the panel for more numbers"
+               " ('hud detail' keeps them).")
 
 
 def _drives_row(surf: pygame.Surface, hud: BattleScene, ship: Ship, x: int, y: int, width: int) -> None:
@@ -539,7 +597,7 @@ class TargetPanel(Panel):
 
 class WeaponsPanel(Panel):
     title = "Weapons"
-    min_height = 188
+    min_height = 164
     weight = 0.0
 
     accent: ClassVar[theme.Color] = theme.PHASER
@@ -580,89 +638,97 @@ class WeaponsPanel(Panel):
                        f"{b.fire_mode.value} · {b.role.value}. Click fires, right-click toggles PD reserve.",
                        right=partial(hud.toggle_reserve, i))
         yy = y + 34
-        hud.ui.button(surf, pygame.Rect(x0, yy, 110, 22), "Fire phasers (F)", lambda: hud.fire_phasers(None),
+        inner = rect.right - 12 - x0
+        hud.ui.button(surf, pygame.Rect(x0, yy, 104, 22), "Fire phasers (F)", lambda: hud.fire_phasers(None),
                       "Fire every charged bank that bears on the target", accent=theme.PHASER)
         sp = ship.banks[0].spread if ship.banks else 45.0
-        hud.ui.button(surf, pygame.Rect(x0 + 116, yy, 22, 22), "−",
+        sx = x0 + 108
+        hud.ui.button(surf, pygame.Rect(sx, yy, 22, 22), "−",
                       lambda: hud.issue(SetPhaserSpread(ship_id=ship.id, spread=max(10.0, sp - 5))), "Narrower spread: more damage")
-        theme.text(surf, f"{sp:.0f}°", (x0 + 160, yy + 11), theme.TEXT, 12, "mono", anchor="center")
-        hud.ui.button(surf, pygame.Rect(x0 + 182, yy, 22, 22), "+",
+        theme.text(surf, f"{sp:.0f}°", (sx + 42, yy + 11), theme.TEXT, 12, "mono", anchor="center")
+        hud.ui.button(surf, pygame.Rect(sx + 62, yy, 22, 22), "+",
                       lambda: hud.issue(SetPhaserSpread(ship_id=ship.id, spread=min(45.0, sp + 5))), "Wider spread: easier to hit")
         mode = ship.banks[0].fire_mode if ship.banks else FireMode.MANUAL
         nm = MODE_CYCLE[(MODE_CYCLE.index(mode) + 1) % 3]
-        hud.ui.button(surf, pygame.Rect(x0 + 212, yy, 110, 22), f"Mode: {mode.value}",
+        mx = sx + 88
+        mw = 104
+        hud.ui.button(surf, pygame.Rect(mx, yy, mw, 22), f"Mode: {mode.value}",
                       lambda: hud.issue(SetFireMode(ship_id=ship.id, weapon="phaser", mode=nm)),
                       "Manual: on your order. Assisted: computer fires at your target when the shot is good. "
                       "Automatic: computer picks targets.", active=mode != FireMode.MANUAL, accent=theme.PHASER)
-        # tubes
-        yy += 32
-        theme.text(surf, "Tubes", (x0, yy + 6), theme.TEXT_DIM, 12, weight="medium")
+        pd_button(surf, hud, ship, pygame.Rect(mx + mw + 4, yy, x0 + inner - (mx + mw + 4), 22))
+        # tubes: each one says what it holds (MK7, green when loaded) or what it is arming, filling as it loads
+        yy += 30
+        loaded, n, _ = torpedo_summary(ship)
+        theme.text(surf, "Tubes", (x0, yy + 1), theme.TEXT_DIM, 12, weight="medium")
         n_bear = 0
         for i, t in enumerate(ship.tubes):
             r = pygame.Rect(x0 + 64 + i * (bw + 4), yy, bw, 30)
             bears = False
             if tgt is not None and brg is not None:
                 rel = norm360(brg - ship.course)
-                from ..core.angles import in_arc
                 bears = not hud.obs.rules.tube_arcs or in_arc(rel, t.mount.arc_center, t.mount.arc_width)
+            state, mark = tube_state(ship, i)
             gfx.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
             gfx.draw.rect(surf, theme.GOOD if bears and t.loaded else theme.BORDER, r, 1, border_radius=3)
-            if t.loaded:
+            frac = 1.0 if state == "loaded" else max(0.0, min(1.0, t.charge / 100.0)) if state == "arming" else 0.0
+            if state == "loaded":
                 # loaded but the target is outside this tube's arc: dimmed, so it's clear why it won't fire
-                lab, col = t.loaded.ordnance.upper()[:4], theme.GOOD if bears or tgt is None else theme.TEXT_DIM
-            elif not t.intact:
+                lab, col = mark[:4], theme.GOOD if bears or tgt is None else theme.TEXT_DIM
+            elif state == "damaged":
                 lab, col = "DMG", theme.ALERT
-            elif ship.torps_remaining <= 0:
-                lab, col = "no torp", theme.ALERT
-            elif not t.autoload and not t.manual_load_pending:
-                lab, col = "empty", theme.TEXT_FAINT
+            elif state == "dry":
+                lab, col = "none", theme.ALERT
+            elif state == "empty":
+                lab, col = "—", theme.TEXT_FAINT
             else:
-                lab, col = f"{t.charge:.0f}%", theme.CAUTION
-                fill = r.inflate(-4, -4)       # the tube filling as it loads
-                fill.width = max(0, int(fill.width * max(0.0, min(1.0, t.charge / 100.0))))
-                if fill.width > 0:
-                    gfx.draw.rect(surf, theme.mix(theme.BG_INPUT, theme.CAUTION, 0.18), fill, border_radius=2)
-            theme.text(surf, f"{i + 1}", (r.x + 5, r.y + 3), theme.TEXT, 11, "mono")
-            theme.text(surf, lab, (r.centerx + 4, r.bottom - 12), col, 10, "mono", anchor="center")
+                lab, col = mark[:4] or f"{t.charge:.0f}%", theme.CAUTION
+            theme.text(surf, f"{i + 1}", (r.x + 4, r.y + 2), theme.TEXT_DIM, 10, "mono")
+            theme.text(surf, lab, (r.centerx, r.y + 17), col, 10, "mono", anchor="center")
+            if state in ("loaded", "arming"):    # the same bar as a phaser bank's: full and green when loaded
+                theme.bar(surf, pygame.Rect(r.x + 4, r.bottom - 5, r.width - 8, 3), frac,
+                          theme.GOOD if state == "loaded" else theme.CAUTION)
             prox = t.loaded.prox if t.loaded else t.load_prox
+            what = {"loaded": f"loaded, {mark} prox {prox:.0f}", "arming": f"arming {mark} {t.charge:.0f}%",
+                    "empty": "empty (autoload off: 'load' arms it)", "damaged": "damaged",
+                    "dry": "no torpedoes left to load"}[state]
             hud.ui.add(r, partial(hud.fire_torpedoes, (i,)),
-                       f"Tube {i + 1}: {('loaded ' + t.loaded.ordnance.upper() + f' prox {prox:.0f}') if t.loaded else lab} · "
-                       f"autoload {'on' if t.autoload else 'off'} {t.load_ordnance.upper()}"
+                       f"Tube {i + 1}: {what} · autoload {'on' if t.autoload else 'off'} {t.load_ordnance.upper()}"
                        + (f" · arc {t.mount.arc_width:.0f}°" if hud.obs.rules.tube_arcs else "")
-                       + (" · target outside its arc" if tgt is not None and not bears else ""))
+                       + (" · target outside its arc" if tgt is not None and not bears else "") + ". Click fires it.")
             n_bear += bool(t.loaded and bears)
-        if tgt is not None and ship.tubes:
-            theme.text(surf, f"{n_bear} bear", (x0, yy + 20), theme.GOOD if n_bear else theme.TEXT_FAINT, 10)
+        if ship.tubes:
+            theme.text(surf, f"{loaded}/{n}", (x0, yy + 18),
+                       theme.GOOD if loaded else theme.TEXT_FAINT, 10, "mono")
+            hud.ui.add(pygame.Rect(x0, yy, 60, 30), lambda: None,
+                       f"{loaded} of {n} tubes loaded" + (f"; {n_bear} bear on the target" if tgt is not None else ""))
+        # torpedo and probe buttons share one row
         yy += 34
-        hud.ui.button(surf, pygame.Rect(x0, yy, 110, 22), "Fire torps (T)", lambda: hud.fire_torpedoes(None),
+        tw, lw, dw = 96, 82, 82
+        aw = max(60, inner - tw - lw - dw - 12)
+        hud.ui.button(surf, pygame.Rect(x0, yy, tw, 22), "Fire torps (T)", lambda: hud.fire_torpedoes(None),
                       "Fire every loaded tube whose arc covers the target", accent=theme.TORPEDO, enabled=bool(ship.tubes))
+        ax = x0 + tw + 4
         if ship.tubes:
             t0 = ship.tubes[0]
             on = t0.autoload
             spec = hud.obs.content.torpedoes.get(t0.load_ordnance)
             pr = t0.load_prox or (spec.max_prox if spec else 0)
-            hud.ui.button(surf, pygame.Rect(x0 + 116, yy, 206, 22),
-                          f"Autoload {'on' if on else 'off'} · {t0.load_ordnance.upper()} · prox {pr:.0f}",
+            words = f"Autoload {t0.load_ordnance.upper()} · {pr:.0f}" if on else "Autoload off"
+            hud.ui.button(surf, pygame.Rect(ax, yy, aw, 22), words,
                           lambda: hud.issue(ConfigureAutoload(ship_id=ship.id, weapon="tube", enabled=not on)),
-                          "Autoload keeps tubes loaded; it never fires. Console: 'al tor al mk7 250'",
-                          active=on, accent=theme.GOOD)
-        # probes
-        yy += 30
-        theme.text(surf, "Probes", (x0, yy + 4), theme.TEXT_DIM, 12, weight="medium")
-        lx = x0 + 64
-        step = max(30, min(48, (rect.right - 12 - lx - 184) // max(1, len(ship.launchers))))
-        for i, lch in enumerate(ship.launchers):
-            lab = lch.loaded.code if lch.loaded else ("DMG" if not lch.intact else "…")
-            col = theme.GOOD if lch.loaded else theme.TEXT_FAINT
-            r = pygame.Rect(lx + i * step, yy, step - 4, 22)
-            gfx.draw.rect(surf, theme.BG_INPUT, r, border_radius=3)
-            gfx.draw.rect(surf, theme.BORDER, r, 1, border_radius=3)
-            theme.text(surf, lab, r.center, col, 11, "mono", anchor="center")
-        px = lx + max(1, len(ship.launchers)) * step + 6
-        hud.ui.button(surf, pygame.Rect(px, yy, 86, 22), "Launch (P)", hud.launch_probe,
-                      "Launch a probe at the target", enabled=bool(ship.launchers), accent=theme.PROBE)
+                          f"Autoload {'on' if on else 'off'}: {t0.load_ordnance.upper()}, proximity {pr:.0f}. It keeps "
+                          "the tubes loaded and never fires. Console: 'al tor al mk7 250'", active=on, accent=theme.GOOD)
+        px = ax + aw + 4
+        ready = [lch for lch in ship.launchers if lch.loaded]
+        hud.ui.button(surf, pygame.Rect(px, yy, lw, 22), f"Probe (P) {len(ready)}" if ship.launchers else "Probe (P)",
+                      hud.launch_probe,
+                      "Launch a probe at the target. Launchers: " + (", ".join(
+                          lch.loaded.code if lch.loaded else ("damaged" if not lch.intact else "loading")
+                          for lch in ship.launchers) or "none"),
+                      enabled=bool(ship.launchers), accent=theme.PROBE)
         mine = [p for p in obs.ordnance() if p.friendly and p.kind == "probe" and p.owner == ship.id]
-        hud.ui.button(surf, pygame.Rect(px + 92, yy, 86, 22), f"Detonate ({len(mine)})",
+        hud.ui.button(surf, pygame.Rect(px + lw + 4, yy, dw, 22), f"Detonate {len(mine)}" if mine else "Detonate",
                       lambda: hud.issue(ControlProbe(ship_id=ship.id, detonate=True)), "Detonate all our probes",
                       enabled=bool(mine), accent=theme.ALERT)
 
@@ -968,5 +1034,5 @@ class TabbedPanel(Panel):
 
 __all__ = [
     "ContactsPanel", "CrewPanel", "FLEET_ORDERS", "FleetPanel", "OwnShipPanel", "Panel", "TabbedPanel", "TargetPanel",
-    "WeaponsPanel", "hull_diagram",
+    "WeaponsPanel", "hull_diagram", "pd_button", "torpedo_summary", "tube_state",
 ]

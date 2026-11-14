@@ -1080,7 +1080,7 @@ The page format is described in [Writing help pages](#topic-writing-help).
 
 #### How much the panels show
 
-The panels show what matters at a glance: warp, course, crew, hull, morale, and shield arcs coloured by strength. Hover over the Own ship panel and it shows every number: shield strengths, maximum warp, power in and out, the magazine. Numbers ease to their new value instead of jumping, and flash briefly when they change: brighter for a rise, warmer for a fall.
+The panels show what matters at a glance: warp, course, crew, hull, morale, and shield arcs coloured by strength. The Own ship panel's **Torpedoes** line says how many tubes are loaded and with what ("6/8 loaded · MK7 · 34 left") on every window size, and its **PD** button sets point defense. In the Weapons panel each tube names the torpedo it holds, green and with a full bar when loaded, amber and filling while it arms, "—" when empty and DMG when damaged; the count under **Tubes** is how many are loaded. On a short window the Target panel, and then the Weapons panel, become tabs at the bottom of the column, so nothing runs off the screen. Hover over the Own ship panel and it shows every number: shield strengths, maximum warp, power in and out, the magazine. Numbers ease to their new value instead of jumping, and flash briefly when they change: brighter for a rise, warmer for a fall.
 
 | Command | What it does |
 |---|---|
@@ -1964,7 +1964,7 @@ ft at gorkon
 
 #### Loading, proximity and type
 
-Tubes reload by themselves (**autoload**). Use `load` to change the proximity, `autoload` to change the torpedo type, and `unload` to empty a tube so it can be reloaded with new settings.
+Tubes reload by themselves (**autoload**). Use `load` to change the proximity, `autoload` to change the torpedo type, and `unload` to empty a tube so it can be reloaded with new settings. The Weapons panel shows each tube by number with the torpedo in it (MK7, green with a full bar) or the one it is arming (amber, the bar filling); the Own ship panel's **Torpedoes** line sums it up: tubes loaded, the mark, and how many torpedoes are left in the magazine.
 
 ```text
 load tubes prox 400
@@ -2235,7 +2235,7 @@ pd conservative reserve 5 6
 role banks 1 2 offense
 ```
 
-Press **V** to cycle doctrines, or right-click a bank in the weapons panel to reserve it.
+Press **V** or click the **Point defense** button (in the Weapons panel, and **PD** in the Own ship panel) to cycle doctrines; right-click that button to turn point defense off, or back on at balanced. Right-click a bank in the weapons panel to reserve it.
 
 See also: [Phasers](#topic-phasers), [Torpedoes](#topic-torpedoes).
 
