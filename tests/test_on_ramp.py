@@ -206,3 +206,25 @@ def test_difficulty_is_on_the_menu_and_in_settings(content, tmp_path) -> None:  
         assert any(k.text == "Difficulty" for k in ink)
         assert not collisions(ink, surf), size
         st.difficulty = "captain"
+
+
+def test_a_lesson_keeps_the_officers_suggestions_back_unless_it_teaches_them(content) -> None:  # type: ignore[no-untyped-def]
+    """Found by the 2026-11-14 pressure test: in "First light" Worf offered "Target her? (Y makes it so)" while
+    Spock's lesson card was asking for W. Only warnings interrupt a lesson; the officers' own lesson keeps them."""
+    t = _shakedown()
+    for stop, quiet in zip(t.stops, (True, True, True, False)):
+        from begin.tour.drill import Drill
+        d = Drill(stop.lesson_title, stop.officer, stop.lesson)
+        assert d.quiet_bridge is quiet, stop.id
+    run = TourRun.new(t, content, [], seed=3)
+    fight = run.launch()
+    from begin.session.battle import BattleSession
+    s = BattleSession(build_battle(content, fight.setup))
+    s.join_tour(run)
+    s.paused = False
+    offered = []
+    for _ in range(300):
+        s.update(0.1, 1.0)
+        if s.proposal is not None:
+            offered.append(s.proposal)
+    assert all(p.urgent for p in offered), [p.text for p in offered]

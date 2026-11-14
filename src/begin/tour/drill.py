@@ -96,6 +96,9 @@ class LessonView:
         return None if self.learned else self.steps[self.step]
 
 
+OFFICER_STEPS = {"delegate", "counsel", "follow"}     # a lesson with these teaches the officers, proposals and all
+
+
 @dataclass
 class Drill:
     title: str
@@ -106,6 +109,12 @@ class Drill:
     done_at: float = -1e9            # the cycle the last step was done
     nudged: bool = False
     log: list[str] = field(default_factory=list)
+
+    @property
+    def quiet_bridge(self) -> bool:
+        """While a lesson that isn't about the officers runs, they keep their suggestions to themselves (a warning
+        still comes through): one voice teaching at a time."""
+        return self.step < len(self.steps) and not any(s.done in OFFICER_STEPS for s in self.steps)
 
     def update(self, f: Facts) -> list[str]:
         """The officer's lines this cycle: the next step, praise for one done, or a reminder."""
