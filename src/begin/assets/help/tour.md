@@ -6,7 +6,7 @@ aliases: tour, tours, tour of duty, starting squadron, starting squadrons, squad
 summary: Linked battles with a squadron you choose: damage, crews, torpedoes and prizes carry from one stop to the next.
 see: after-battle, crew, dock, fleet
 ---
-A tour of duty is a patrol of several stops, each one a battle. Open one from the main menu (**Tour of duty**, or **T**).
+A tour of duty is a patrol of several stops, each one a battle. Open one from the main menu (**Tour of duty**, or **T**). New to the game? The first tour on the list, the **[[shakedown|Shakedown Cruise]]**, teaches one part of the ship at each stop. Every tour follows the [[difficulty]] you chose.
 
 Your squadron carries everything that matters from one fight to the next: hull and system damage, casualties, torpedoes and probes fired, morale, and the ships you take as prizes. Shields, batteries, heat and positions start fresh each time. A ship that is destroyed, abandoned, surrendered or boarded is gone for the rest of the tour. If the flagship is lost, the tour is over; at a starbase, so is losing the starbase. Against the Borg, if their drones take the flagship, the tour ends there.
 

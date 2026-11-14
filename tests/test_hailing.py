@@ -248,7 +248,7 @@ def test_handing_over_prisoners_in_the_ready_room(content) -> None:  # type: ign
     from begin.tour.model import load_tours
     from begin.tour.run import TourRun
 
-    tour = load_tours()[0][0]
+    tour = next(t for t in load_tours()[0] if t.id == "border-patrol")
     run = TourRun.new(tour, content, [])
     calls = run.state.calls_left
     assert "no prisoners" in run.hand_over_prisoners().lower()

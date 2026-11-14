@@ -13,7 +13,7 @@ import pygame
 
 from ...console import reports
 from ...sim.ship import Kind
-from .. import comms_view, counsel_view, officer_view, order_marks, theme
+from .. import comms_view, counsel_view, lesson_view, officer_view, order_marks, theme
 from ..hud import TABS_MIN_HEIGHT, Panel, TargetPanel, WeaponsPanel, diagram_legend, hull_diagram
 from ...session.news import ALERT_TONE
 from .common import (TONE_COLOR, CONTROLS, RED_ALERT_FLOOR, RED_ALERT_PERIOD, RED_ALERT_PULSE, RED_ALERT_SETTLE, SPEEDS,
@@ -173,6 +173,8 @@ class RenderMixin(SceneState):
         if m is not None:
             _, hint, tone, _ = counsel_view.mission_lines(m)
             news = news_key(m.state, m.kind, hint, tone)
+        elif (lesson := self.campaign.lesson()) is not None:
+            news = ("lesson", lesson.step)              # a new step is news, like a mission's turn
         sub = self.subs.current
         return self.stage.pick(
             time.monotonic(), counsel=self.counsel_open and not self.obs.outcome.over,
@@ -242,7 +244,9 @@ class RenderMixin(SceneState):
             gfx.draw.rect(surf, theme.CAUTION, b, 1, border_radius=4)
             theme.text(surf, msg, b.center, theme.CAUTION, 14, weight="semibold", anchor="center")
             cards.append(b)
-        self._draw_conn_banner(surf, banner_top + (36 if self.paused and not self.obs.outcome.over else 0))
+        conn = self._draw_conn_banner(surf, banner_top + (36 if self.paused and not self.obs.outcome.over else 0))
+        if conn is not None:
+            cards.append(conn)
         title = theme.text(surf, self.clock.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
         rng = theme.text(surf, f"range {self.display_range():,.0f}  ·  F1 controls", (r.right - 14, r.y + 28),
                          theme.TEXT_FAINT, 11, anchor="topright")
@@ -256,6 +260,10 @@ class RenderMixin(SceneState):
             cards.append(theme.text(surf, f"{names}  ·  ETA {eta:4.0f} cycles", (r.right - 14, y), col, 13, "mono",
                                     anchor="topright"))
             y += 20
+        corner = r.right - 14 - counsel_view.MISSION_W
+        for b in sorted((c for c in cards if c is not None), key=lambda c: c.top):
+            if b.right > corner and b.bottom > y and r.y + 6 < b.top < y + 200:
+                y = b.bottom + 4            # a narrow map: the corner cards start below a banner they would cover
         return cards + self._corner_cards(surf, shown, y)
 
     def _corner_cards(self: BattleScene, surf: pygame.Surface, shown: str | None, y: int) -> list[pygame.Rect | None]:
@@ -265,6 +273,20 @@ class RenderMixin(SceneState):
         out: list[pygame.Rect | None] = []
         mission = self.crew.mission()
         self._mission_box = None
+        lesson = self.campaign.lesson() if mission is None else None
+        if lesson is not None:
+            if shown == "mission":
+                box = lesson_view.draw_lesson(surf, (r.right - 14, y + 4), lesson)
+            else:
+                box = pygame.Rect(r.right - 14 - counsel_view.MISSION_W, y + 4, counsel_view.MISSION_W, 26)
+                if self.counsel_open and box.colliderect(counsel_view.counsel_rect(r)):
+                    box = None
+                else:
+                    box = lesson_view.draw_lesson_strip(surf, (r.right - 14, y + 4), lesson)
+            self._mission_box = box
+            out.append(box)
+            if box is not None:
+                y = box.bottom + 4
         if mission is not None:
             if shown == "mission":
                 box = counsel_view.draw_mission(surf, (r.right - 14, y + 4), mission, now)
@@ -287,16 +309,17 @@ class RenderMixin(SceneState):
                 out.append(comms_view.draw_chip(surf, (r.right - 14, y + 4), self.obs, self.comms, self.ui, now))
         return out
 
-    def _draw_conn_banner(self: BattleScene, surf: pygame.Surface, top: int) -> None:
+    def _draw_conn_banner(self: BattleScene, surf: pygame.Surface, top: int) -> pygame.Rect | None:
         """Who has the conn, when it isn't the captain; click it to take the bridge back."""
         ship, o = self.player, self.crew.in_command()
         if o is None:
             if ship is not None and ship.evasive:
-                self._draw_evasive_banner(surf, top)
-            return
+                return self._draw_evasive_banner(surf, top)
+            return None
         msg = f"{o.name.upper()} HAS THE CONN  ·  say \"I have the bridge\" to take it back"
         box = self._banner(surf, msg, top, theme.CREW)
         self.ui.add(box, lambda: self.run_console("I have the bridge"), "Take the bridge back")
+        return box
 
     def _banner(self: BattleScene, surf: pygame.Surface, msg: str, top: int, col: theme.Color) -> pygame.Rect:
         """A banner across the top of the map, centred: who has the conn, evasive manoeuvres. Returns its box."""
@@ -308,13 +331,14 @@ class RenderMixin(SceneState):
         theme.text(surf, msg, box.center, col, 13, weight="semibold", anchor="center")
         return box
 
-    def _draw_evasive_banner(self: BattleScene, surf: pygame.Surface, top: int) -> None:
+    def _draw_evasive_banner(self: BattleScene, surf: pygame.Surface, top: int) -> pygame.Rect:
         """Evasive manoeuvres are on: amber while the helm is dodging; click to end them."""
         dodging = any(a.role == "evasive" and a.kind == "evade" for a in self.crew.officer_activity(self.obs))
         msg = "EVASIVE MANOEUVRES  ·  " + ("dodging torpedoes" if dodging else "watching for torpedoes") + \
               "  ·  any helm order ends them"
         box = self._banner(surf, msg, top, theme.CAUTION if dodging else theme.FRIEND)
         self.ui.add(box, lambda: self.run_console("evasive off"), "End evasive manoeuvres (or give any helm order)")
+        return box
 
     def _draw_printout(self: BattleScene, surf: pygame.Surface) -> None:
         """The latest Begin text display, in the map's lower-left corner."""

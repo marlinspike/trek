@@ -29,6 +29,7 @@ from ..session.prefs import FOCUS, MODES as BRIDGE_STYLES, PRESETS as BRIDGE_PRE
     SUBTITLES, BridgePrefs
 from ..settings import Settings
 from ..voice.settings import ENGINES, MODELS as WHISPER_MODELS, PTT_KEYS, VoiceSettings
+from ..difficulty import DIFFICULTIES, level
 from ..speech import CAST, OFFICERS, RACES, SPEAK, SPEAK_TITLES, Speaker, SpeechSettings, choices
 from ..speech.settings import RATE_MAX, RATE_MIN
 from . import gfx, theme
@@ -53,7 +54,7 @@ class Section:
 SECTIONS = (
     Section("display", "Display", "How the game is drawn: sharpness on Retina and 4K screens, light and glow.", "D"),
     Section("sound", "Sound", "How loud, which phaser and torpedo you hear, and the ship's hum."),
-    Section("battle", "Battle", "The speed battles start at, your officers' chatter, and the map's jolt."),
+    Section("battle", "Battle", "How hard the enemy fights, the speed battles start at, chatter, and the map's jolt."),
     Section("bridge", "Bridge", "How the bridge talks to you: subtitles, read-backs, the command wheel, proposals."),
     Section("speech", "Officers' voices", "Your officers speak aloud: what they say, how loud, and who sounds like whom."),
     Section("voice", "Speaking orders", "Hold a key and say the order: what hears you, and which key."),
@@ -459,6 +460,15 @@ class SettingsHub:
             setattr(st, key, not getattr(st, key))
             self._save()
 
+        def hardness(v: str) -> None:
+            st.difficulty = v
+            self._save()
+
+        cx = self._label(surf, x, y, "Difficulty")
+        self._choice(surf, (cx, y), [(d.key, d.title, d.blurb) for d in DIFFICULTIES.values()],
+                     level(st.difficulty).key, hardness, min_width=96)
+        y = self._hint(surf, cx, y + 44, f"{level(st.difficulty).blurb} The Enterprise is a Dreadnought at every "
+                       "level. A custom battle keeps the fleets you chose.", width - LABEL_W) + 10
         cx = self._label(surf, x, y, "Starting speed")
         now = float(st.speed) if float(st.speed) in SPEEDS else 1.0
         self._choice(surf, (cx, y), [(str(s), f"{s:g}x", "How fast battle time runs; + and - change it in battle")

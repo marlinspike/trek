@@ -23,6 +23,7 @@ class Settings:
     renderer: str = "auto"                                     # auto (GPU if it can), gpu, or software (see ui/present.py)
     bloom: bool = True                                         # GPU only: soft glow round weapon light, a calm map edge
     speed: float = 1.0
+    difficulty: str = "captain"                                # how hard the enemy fights: ensign, captain, admiral
     custom: dict[str, object] = field(default_factory=dict)
     llm: dict[str, object] = field(default_factory=dict)       # provider settings (no secrets: keys come from env)
     hidden: dict[str, object] = field(default_factory=dict)    # state the game keeps for itself (officer rapport)

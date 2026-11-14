@@ -104,6 +104,7 @@ class VoicesMixin(SessionState):
         if not isinstance(p, Proposal):
             return False
         self.proposal = None
+        self._drill_seen.add("accepted")
         self.career.proposal(p.officer, accepted=True)
         self.run_console(p.line)
         return True

@@ -128,7 +128,7 @@ def test_every_readback_phrase(cmd: Command, said: str) -> None:
 def _ready(content, enemies: tuple[str, ...], escorts: list[str], flagship: str | None = None, torps: int | None = None,
            calls: int | None = None) -> dict[str, str]:  # type: ignore[no-untyped-def]
     tours, _ = load_tours()
-    t = tours[0]
+    t = next(x for x in tours if x.id == "border-patrol")
     stop = dataclasses.replace(t.stops[0], enemies=enemies, choices=(), waves=(), mission=None, add={}, drop={})
     tour = dataclasses.replace(t, stops=(stop,) + t.stops[1:], flagship=flagship or t.flagship,
                                resupply=0.0 if torps is not None else t.resupply)
