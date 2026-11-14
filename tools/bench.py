@@ -59,11 +59,11 @@ def frames(size: tuple[int, int], n: int, profile: bool) -> None:
             scene.draw(app.screen)
             update.append(t1 - t0)
             draw.append(time.perf_counter() - t1)
-            if scene.world.outcome.over:
+            if scene.obs.outcome.over:
                 break
         if prof is not None:
             prof.disable()
-        print(f"  {pid:18} {len(scene.world.ships):2} ships   update {_summary(update)}   draw {_summary(draw)}")
+        print(f"  {pid:18} {len(scene.obs.own_ships()) + len(scene.obs.contacts()):2} ships   update {_summary(update)}   draw {_summary(draw)}")
         scene.close()
         if prof is not None:
             pstats.Stats(prof).sort_stats("tottime").print_stats(20)

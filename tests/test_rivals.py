@@ -318,3 +318,90 @@ def test_an_unlimited_magazine_is_not_counted_in_the_log(content) -> None:  # ty
     battle.world.run(1.0)
     entry = run.finish(battle)
     assert entry.captain and "10000" not in entry.captain and "torpedoes in the magazine" not in entry.captain
+
+
+# ------------------------------------------------------------------ found by the 2026-11-14 pressure test
+
+def test_a_rival_at_the_boss_is_named_everywhere_the_commander_was(content) -> None:  # type: ignore[no-untyped-def]
+    """The battle's title, the reserve's warning and the log page all name the rival, not the generated commander."""
+    tour = generate_tour(content, 5)
+    boss = tour.stops[-1]
+    faction = content.classes[boss.enemies[0]].faction
+    run = TourRun.new(tour, content, [], seed=1)
+    run.state.stop = len(tour.stops) - 1
+    run.choose(0)
+    run.rivals = RivalBook(Career({}))
+    run.rivals.rivals.append(Rival("Velar", faction, boss.enemies[0], "Vengeance"))
+    fight, battle = _fight(content, run)
+    assert "Velar" in fight.setup.title and boss.commander not in fight.setup.title
+    assert fight.setup.arrivals and all("Velar" in a.message and boss.commander not in a.message
+                                        for a in fight.setup.arrivals if a.kind == "wave")
+    battle.world.end_simulation("test")
+    entry = run.finish(battle)
+    assert "Velar" in entry.title and boss.commander not in entry.title
+
+
+def test_a_finished_rivals_name_is_never_worn_by_a_generated_commander(content) -> None:  # type: ignore[no-untyped-def]
+    tour = generate_tour(content, 5)
+    boss = tour.stops[-1]
+    faction = content.classes[boss.enemies[0]].faction
+    run = TourRun.new(tour, content, [], seed=1)
+    run.state.stop = len(tour.stops) - 1
+    run.rivals = RivalBook(Career({}))
+    run.rivals.rivals.append(Rival(boss.commander, faction, boss.enemies[0], "Vengeance", fate="destroyed"))
+    who = run.commander()
+    assert who and who != boss.commander
+    title, text = run.briefing()
+    assert who in title and boss.commander not in text
+    _, battle = _fight(content, run)
+    assert any(s.captain == who for s in battle.world.ships.values())
+    assert not any(s.captain == boss.commander for s in battle.world.ships.values())
+
+
+def test_no_rival_turns_up_in_a_lesson(content) -> None:  # type: ignore[no-untyped-def]
+    shakedown = _tour("shakedown")
+    run = TourRun.new(shakedown, content, [], seed=1)
+    run.rivals = RivalBook(Career({}))
+    run.rivals.rivals.append(Rival("Zeek", "orion", "orion.ra", "Bounty"))
+    assert run.rival() is None and "Zeek" not in run.briefing()[1]
+
+
+def test_a_rival_destroyed_aboard_a_new_ship_is_reported_by_that_ship(content) -> None:  # type: ignore[no-untyped-def]
+    run = TourRun.new(_tour(), content, [], seed=2)
+    run.state.stop = 1
+    book = run.rivals = RivalBook(Career({}))
+    book.rivals.append(_kor(ship_name="Old Klothos"))
+    fight, battle = _fight(content, run)
+    ship = next(s for s in battle.world.ships.values() if s.captain == "Kor")
+    ship.status = ShipStatus.DESTROYED
+    news = book.after_battle(battle, "Kessik", "Border Patrol", fight.rival)
+    assert ship.name in news and "Old Klothos" not in news
+    assert book.rivals[0].ship_name == ship.name and book.rivals[0].ship_class == ship.cls.id
+
+
+@pytest.mark.parametrize("size", [(1024, 640), (1440, 900), (2560, 1440)])
+def test_the_ready_room_chart_shows_every_stop_clear_of_the_panels(content, size) -> None:  # type: ignore[no-untyped-def]
+    """The boss's stop, far right on the chart, used to sit under the squadron panel at every window size."""
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    pygame = pytest.importorskip("pygame")
+    pygame.init()
+    from begin.settings import Settings
+    from begin.ui.tour_art import chart_point
+    from begin.ui.tour_scene import TourScene
+
+    surf = pygame.display.set_mode(size)
+    for tour in (generate_tour(content, 7), _tour()):
+        ts = TourScene(content, Settings(), lambda run: None, lambda: None)
+        ts.open()
+        ts.tours = [tour]
+        ts.tour_i, ts.escorts = 0, []
+        ts.commission()
+        ts.layout(size)
+        ts.draw(surf)
+        ts.draw(surf)
+        assert ts._route is not None, size
+        panes = list(ts._panes)
+        for stop in tour.stops:
+            x, y = chart_point(ts._route, stop.chart)
+            assert ts._route.collidepoint(x, y)
+            assert not any(p.collidepoint(x, y) for p in panes), (tour.id, stop.id, size)

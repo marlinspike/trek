@@ -64,7 +64,7 @@ def facts_of(run: TourRun, battle: Battle, fight: Fight, outcome: str, captured:
     disabled = sum(s.stats.subsystems_disabled for s in ours)
     objectives = [ev for ev in battle.deeds if isinstance(ev, ObjectiveEnded)]
     f: dict[str, Any] = {
-        "stop": fight.stop.title, "system": fight.stop.system, "outcome": outcome,
+        "stop": fight.title or fight.stop.title, "system": fight.stop.system, "outcome": outcome,
         "cycles": round(w.time), "stardate": run.state.stardate(),
         "enemy": _force(kinds) or "no enemy",
         "destroyed": destroyed, "escaped": escaped, "surrendered": surrendered, "captured": captured, "lost": lost,
@@ -289,7 +289,7 @@ def captain_draft(f: dict[str, Any]) -> str:
 def draft_entry(run: TourRun, battle: Battle, fight: Fight, outcome: str, captured: list[str], lost: list[str],
                 standout: str) -> LogEntry:
     f = facts_of(run, battle, fight, outcome, captured, lost, standout)
-    return LogEntry(fight.stop.id, fight.stop.title, f["stardate"], outcome, station_entries(f), captain_reports(f),
+    return LogEntry(fight.stop.id, fight.title or fight.stop.title, f["stardate"], outcome, station_entries(f), captain_reports(f),
                     captain_draft(f), facts=f)
 
 

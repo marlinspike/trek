@@ -78,7 +78,7 @@ lesson_title = "Torpedoes"
 briefing = """
 A Klingon escort is testing our patrol line at Tau Ceti. She is fast and will try to stay out of phaser range. This
 is a fight for torpedoes: they reach much farther than phasers, but they need room to arm, and a nimble ship can
-dodge them. Worf will show you.
+dodge them. I will show you.
 """
 enemies = ["klingon.es"]
 enemy_center = [0, 18000]
@@ -121,7 +121,7 @@ shields_down = true
 briefing = """
 Two Klingon frigates are waiting at Archanis, and they will hit us. This time the lesson is keeping the ship alive:
 six shields, each guarding a sixty-degree slice; reinforcing the one that faces them; and the power every raised
-shield costs. Geordi will talk you through it.
+shield costs. I'll talk you through it.
 """
 enemies = ["klingon.fr", "klingon.fr"]
 enemy_center = [0, 15000]
@@ -568,7 +568,7 @@ officer = "seven"
 seed = 7101
 briefing = """
 The colony on Deneb V is gone: not destroyed, removed. Every building has been cut out of the ground. Two small
-ships are still in orbit. Seven of Nine knows them: Borg probes. Captain, they will learn every weapon we use on
+ships are still in orbit. I know them: Borg probes. Captain, they will learn every weapon we use on
 them. Scan them first, let me find the relay, and only then strike. What we learn here, we will need later.
 """
 enemies = ["borg.pr", "borg.pr"]
