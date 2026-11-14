@@ -214,6 +214,8 @@ They use the AI captain's judgement for one station each, but they never pick a 
 
 **Character voices [E].** An optional second language model can speak for the game's characters only (enemy captains answering hails or taunting, the officers' chatter and their parts of the captain's log), for richer Klingon, Romulan and other alien speech. Everything that must follow the rules (the console, plain-English orders, judging a hail) stays with the main model, and a failure falls back to it (`llm/routing.py`).
 
+**Split fire [E].** Begin let each bank and tube be locked on its own ship, one `lock` order at a time. Here `split tubes 1-4 on <ship>, rest on <ship>` sets them all in one order, F and T and assisted fire send each mount at its own lock, and `engage <ship> and <ship>` gives the tactical officer a standing order to divide the weapons between two ships by what each can reach and keep them divided. A ship destroyed or gone hands her mounts to the target instead of leaving them on manual.
+
 ## The manual and coach
 
 The in-game manual is our own writing, organised by station, with clickable examples. The coach reads the live battle and suggests next steps. Begin's manual is copyrighted and isn't reproduced; see [LICENSING.md](../LICENSING.md).

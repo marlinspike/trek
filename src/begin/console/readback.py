@@ -14,6 +14,7 @@ to `Command.describe()`.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any, Callable
 
 from ..sim.objectives import STRIKE_GROUPS
@@ -21,7 +22,7 @@ from ..sim.commands import (
     AllyOrder, CeaseFire, Command, ConfigureAutoload, DelegateStation, DeflectorPulse, Dock, EngineBoost, EndObjective, Evasive,
     FireBait, FirePhasers, FireTorpedoes, LaunchProbe, LoadTubes, LockWeapons, ManageRepairs, OpenFire, Pursue,
     ReinforceShield, Scan, SelectTarget, SetBanks, SetCloak, SetHelm, SetObjective, SetPhaserSpread, SetPointDefense,
-    SetRepairPriority, SetShields, StandDown, StartProject, TakeConn, Tractor, Transport, TurnMounts,
+    SetRepairPriority, SetShields, SplitFire, StandDown, StartProject, TakeConn, Tractor, Transport, TurnMounts,
 )
 
 NameOf = Callable[[int], str]
@@ -155,6 +156,46 @@ def _repair_priority(cmd: SetRepairPriority, name_of: NameOf) -> str:
     return "Repair crews spread across the ship." if cmd.kind is None else f"Repair crews to the {kind} first."
 
 
+def runs(idx: Sequence[int]) -> str:
+    """'1-4', '1, 2 and 5', '3' from zero-based indices."""
+    nums = sorted(i + 1 for i in idx)
+    if not nums:
+        return ""
+    parts: list[str] = []
+    start = prev = nums[0]
+    for n in [*nums[1:], None]:
+        if n is not None and n == prev + 1:
+            prev = n
+            continue
+        parts.extend([str(start)] if start == prev else [str(start), str(prev)] if prev == start + 1 else [f"{start}-{prev}"])
+        if n is not None:
+            start = prev = n
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
+def split_words(banks: Mapping[int, Sequence[int]], tubes: Mapping[int, Sequence[int]],
+                name_of: Callable[[int], str]) -> str:
+    """Words for where the weapons are: "Tubes 1-4 on the Talon, 5-8 on the Wraith; phasers on the Talon."
+    A weapon all on one ship is named without numbers."""
+    def part(plural: str, given: Mapping[int, Sequence[int]]) -> str:
+        groups = {t: g for t, g in given.items() if g}
+        if not groups:
+            return ""
+        if len(groups) == 1:
+            ((t, _),) = groups.items()
+            return f"{plural} on the {name_of(t)}"
+        bits = [f"{runs(g)} on the {name_of(t)}" for t, g in sorted(groups.items(), key=lambda kv: min(kv[1]))]
+        return f"{plural} {', '.join(bits)}" if len(bits) > 2 else f"{plural} {bits[0]}, {bits[1]}"
+    t = part("tubes", tubes)
+    b = part("phasers", banks)
+    text = "; ".join(x for x in (t, b) if x)
+    return (text[0].upper() + text[1:] + ".") if text else ""
+
+
+def _split_fire(cmd: SplitFire, name_of: NameOf) -> str:
+    return "Splitting fire. " + split_words(dict(cmd.banks), dict(cmd.tubes), name_of)
+
+
 def _set_objective(cmd: SetObjective, name_of: NameOf) -> str:
     many = len(cmd.targets)
     ships = f"the {name_of(cmd.targets[0])}" if many == 1 else f"{many} ships"
@@ -163,6 +204,10 @@ def _set_objective(cmd: SetObjective, name_of: NameOf) -> str:
             f"Knocking out the {cmd.group} on {ships}."
     if cmd.goal == "hunt":
         return f"Hunting for {ships}."
+    if cmd.goal == "engage":
+        named = [f"the {name_of(t)}" for t in cmd.targets]
+        both = " and ".join(named) if len(named) < 3 else ", ".join(named[:-1]) + " and " + named[-1]
+        return f"Engaging {both}. I'll divide our fire between them."
     if cmd.goal == "strike":
         what = "" if cmd.group == "hull" else f"'s {STRIKE_GROUPS.get(cmd.group, cmd.group)}"
         return f"Sweep and strike: the moment the seeker lands, a salvo into {ships}{what}."
@@ -190,6 +235,7 @@ _PHRASES: tuple[tuple[type[Command], Callable[[Any, NameOf], str]], ...] = (
     (LaunchProbe, _launch_probe),
     (SelectTarget, _select_target),
     (LockWeapons, _lock_weapons),
+    (SplitFire, _split_fire),
     (TurnMounts, lambda cmd, name_of: f"Turning mounts to mark {cmd.mark:g}."),
     (SetPhaserSpread, lambda cmd, name_of: f"Phaser spread {cmd.spread:g}."),
     (SetBanks, _set_banks),
@@ -231,4 +277,4 @@ def readback(cmd: Command, name_of: NameOf) -> str:
     return d[0].upper() + d[1:] + "."
 
 
-__all__ = ["STATION_TITLES", "mounts", "readback"]
+__all__ = ["STATION_TITLES", "mounts", "readback", "runs", "split_words"]

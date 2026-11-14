@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 from ..console.readback import STATION_TITLES, readback
 from ..crew.officers import station_of
 from ..crew.proposals import Proposal
-from ..sim.commands import Command
+from ..sim.commands import Command, SetObjective
 from .news import Voice
 from .state import SessionState
 
@@ -57,6 +57,9 @@ class VoicesMixin(SessionState):
             self._log(f"  {cmd.describe()}: acknowledged", "dim")
             return
         station = station_of(cmd)
+        if isinstance(cmd, SetObjective) and cmd.officer and self.bridge is not None:
+            # a standing objective is read back by the officer who will do the work, not by the station's
+            station = next((st for st, o in self.bridge.crew.officers.items() if o.id == cmd.officer), station)
         name, oid = self._station_officer(station)
         line = readback(cmd, self.ship_name)
         self._log(f"  {name + ': ' if name else ''}{line}", "readback", channel="bridge")

@@ -467,8 +467,10 @@ class RenderMixin(SceneState):
             y += h + gap
 
     def column_panels(self: BattleScene, height: int, gap: int = 8) -> list[Panel]:
-        """The panels down the right-hand column. A window too short for all of them moves Weapons, then Target,
-        into the tabs at the bottom, so every panel keeps the height its contents need."""
+        """The panels down the right-hand column. A window too short for all of them moves Target, then Weapons,
+        into the tabs at the bottom, so every panel keeps the height its contents need. Weapons stays out longest:
+        the tubes' loads and marks are what a captain glances at most (and the Own ship panel's torpedo line keeps
+        them in view even when Weapons is a tab)."""
         shown = list(self.panels)
         folded: list[Panel] = []
 
@@ -476,7 +478,7 @@ class RenderMixin(SceneState):
             tabs_h = max([TABS_MIN_HEIGHT] + [p.min_height for p in folded])
             return sum(p.min_height if p is not self.side_tabs else tabs_h for p in shown) + gap * (len(shown) - 1)
 
-        for cls in (WeaponsPanel, TargetPanel):
+        for cls in (TargetPanel, WeaponsPanel):
             if need() <= height:
                 break
             p = next((q for q in shown if isinstance(q, cls)), None)

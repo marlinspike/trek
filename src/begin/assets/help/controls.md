@@ -73,7 +73,7 @@ see: console, keys
 
 ## How much the panels show
 
-The panels show what matters at a glance: warp, course, crew, hull, morale, and shield arcs coloured by strength. Hover over the Own ship panel and it shows every number: shield strengths, maximum warp, power in and out, the magazine. Numbers ease to their new value instead of jumping, and flash briefly when they change: brighter for a rise, warmer for a fall.
+The panels show what matters at a glance: warp, course, crew, hull, morale, and shield arcs coloured by strength. The Own ship panel's **Torpedoes** line says how many tubes are loaded and with what ("6/8 loaded · MK7 · 34 left") on every window size, and its **PD** button sets point defense. In the Weapons panel each tube names the torpedo it holds, green and with a full bar when loaded, amber and filling while it arms, "—" when empty and DMG when damaged; the count under **Tubes** is how many are loaded. On a short window the Target panel, and then the Weapons panel, become tabs at the bottom of the column, so nothing runs off the screen. Hover over the Own ship panel and it shows every number: shield strengths, maximum warp, power in and out, the magazine. Numbers ease to their new value instead of jumping, and flash briefly when they change: brighter for a rise, warmer for a fall.
 
 | Command | What it does |
 |---|---|

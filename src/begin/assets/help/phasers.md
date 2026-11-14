@@ -4,7 +4,7 @@ category: Weapons
 order: 1
 aliases: phaser, phasers, banks, bank, spread, enable, disable, role
 summary: Short-range beams that hit instantly but weaken with distance.
-see: fire, lock, firecontrol, shields
+see: fire, lock, firecontrol, shields, split-fire
 ---
 Phasers are beam weapons mounted in **banks**. A hit lands the instant you fire, but it weakens with distance and is useless beyond the bank's range, which is about 2,000 for most ships. After firing, a bank recharges by itself from the ship's power.
 
