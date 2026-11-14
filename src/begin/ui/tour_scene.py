@@ -26,6 +26,7 @@ import pygame
 from ..content.schema import ContentDB
 from ..paths import config_dir
 from ..tour.log import OFFICER_ORDER, OFFICER_TITLES, read_markdown_edits, voice_request, write_markdown
+from ..tour import generate
 from ..tour.model import TourDef, check_tour, load_tours
 from ..tour.ready import ReadyView, ready_counsel
 from ..tour.run import TourRun
@@ -78,6 +79,7 @@ class TourScene:
         self._asked: dict[int, tuple[int, str]] = {}
         self._ready_key: tuple[object, ...] | None = None   # what the officers' view was last worked out for
         self._ready_cache: list[ReadyView] = []
+        self.gen_seed: int | None = None        # [E] the generated tour on offer (tour/generate.py)
         self.refresh()
 
     # ------------------------------------------------------------ tours and saving
@@ -87,6 +89,9 @@ class TourScene:
         classes = set(self.content.classes)
         self.tours = [t for t in tours if not check_tour(t, classes)]
         self.problems = problems + [p for t in tours for p in check_tour(t, classes)]
+        gen = generate.current(self.content, tours_dir(), self.gen_seed)     # a fresh patrol, or the one under way
+        self.gen_seed = generate.seed_of(gen.id)
+        self.tours.append(gen)
         self.tour_i = min(self.tour_i, max(0, len(self.tours) - 1))
 
     def open(self) -> None:
@@ -387,8 +392,10 @@ class TourScene:
         for i, t in enumerate(self.tours):
             st = self.saved(t)
             mark = "  ·  under way" if st is not None and not st.over else "  ·  completed" if st is not None and st.over == "won" else ""
+            tip = "A new patrol each time: four stops, rising threat, and their commander at the end" \
+                if t.source == "generated" else t.source if t.source != "shipped" else ""
             self.ui.button(surf, pygame.Rect(x, y, 340, 40), t.title + mark, partial(self._pick, i),
-                           t.source if t.source != "shipped" else "", active=i == self.tour_i, size=14, face="display")
+                           tip, active=i == self.tour_i, size=14, face="display")
             y += 48
         self.ui.button(surf, pygame.Rect(x, y + 14, 160, 36), "Back", self.close, "Esc", size=13)
         if self.problems:
@@ -429,9 +436,20 @@ class TourScene:
         else:
             self.ui.button(surf, pygame.Rect(r.x, by, 260, 42), "Assemble the squadron", self.new_tour, size=14,
                            accent=theme.GOOD)
+            bx = r.x + 276
             if st is not None:
-                self.ui.button(surf, pygame.Rect(r.x + 276, by, 240, 42), "Read the last log", lambda: self._read_old(tour),
+                self.ui.button(surf, pygame.Rect(bx, by, 240, 42), "Read the last log", lambda: self._read_old(tour),
                                size=14)
+                bx += 256
+            if generate.is_generated(tour.id):
+                self.ui.button(surf, pygame.Rect(bx, by, 200, 42), "Another patrol", self.reroll,
+                               "Make a different patrol: another sector, adversary and set of stops", size=14)
+
+    def reroll(self) -> None:
+        """A different generated tour in place of the one on offer (only when none is under way)."""
+        self.gen_seed = generate.fresh_seed()
+        self.refresh()
+        self.tour_i = len(self.tours) - 1
 
     def _pick(self, i: int) -> None:
         self.tour_i = i
