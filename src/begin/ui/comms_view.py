@@ -11,7 +11,9 @@ ship to theirs; every enemy captain we have heard from wears a small mark by
 their ship: a flame when enraged, a falling chevron when shaken, a wave when
 wavering, a white flag once they have surrendered, an arrow while they leave.
 Each mark has its own shape as well as its own colour, so they can be told
-apart without colour.
+apart without colour. In a crowded fight the usual moods (rage, wavering,
+calm) shrink to a small dot, except on the target and the captain on the
+channel, so a fleet of angry Klingons doesn't bury the map in flames.
 """
 
 from __future__ import annotations
@@ -89,11 +91,17 @@ def mood_mark(surf: pygame.Surface, mood: str, x: float, y: float, s: float = 7.
         gfx.draw.circle(surf, col, (int(x), int(y)), int(s * 0.7), 2)
 
 
-def draw_map(surf: pygame.Surface, cam: Camera, obs: Observation, player_id: int | None, comms: Comms,
-             now: float, clip: pygame.Rect) -> None:
-    """Mood marks by the enemy ships we have heard from, and the rings of a channel being opened."""
-    old = surf.get_clip()
-    surf.set_clip(clip)
+QUIET_MOODS = ("enraged", "wavering", "calm")    # a fight's usual moods: in a crowd, only a small dot
+CROWD_MARKS = 3             # more marks than this on the map and the usual moods shrink to dots
+MARK_HALO = 15              # pixels: half the size of a full mark's halo
+
+
+def mood_marks(obs: Observation, cam: Camera, comms: Comms, clip: pygame.Rect,
+               target_id: int | None = None) -> list[tuple[float, float, str, bool]]:
+    """Where the mood marks go: (x, y, mood, full). In a crowded fight the usual moods (rage, wavering, calm) shrink
+    to a small dot, except on the target and the captain on the channel; a mood the captain can act on (shaken,
+    broken, withdrawing, surrendered) always shows in full."""
+    found: list[tuple[float, float, str, int]] = []
     for c in obs.contacts().values():
         if not c.visible or c.side == obs.side:
             continue
@@ -107,7 +115,32 @@ def draw_map(surf: pygame.Surface, cam: Camera, obs: Observation, player_id: int
         if not clip.collidepoint(sx, sy):
             continue
         r = 18 + max(0.0, 40 * cam.zoom * 2.0)
-        mx, my = sx - r - 12, sy - r - 6
+        found.append((sx - r - 12, sy - r - 6, mood, c.id))
+    crowd = len(found) > CROWD_MARKS
+    return [(x, y, mood, not crowd or mood not in QUIET_MOODS or sid in (target_id, comms.focus))
+            for x, y, mood, sid in found]
+
+
+def mark_rects(marks: list[tuple[float, float, str, bool]]) -> list[pygame.Rect]:
+    """The room each mood mark takes, so ships' names keep off them."""
+    out = []
+    for x, y, _, full in marks:
+        if full:
+            out.append(pygame.Rect(int(x - MARK_HALO), int(y - MARK_HALO), 2 * MARK_HALO, 2 * MARK_HALO))
+        else:
+            out.append(pygame.Rect(int(x + 4), int(y + 4), 8, 8))
+    return out
+
+
+def draw_map(surf: pygame.Surface, cam: Camera, obs: Observation, player_id: int | None, comms: Comms,
+             now: float, clip: pygame.Rect, target_id: int | None = None) -> None:
+    """Mood marks by the enemy ships we have heard from, and the rings of a channel being opened."""
+    old = surf.get_clip()
+    surf.set_clip(clip)
+    for mx, my, mood, full in mood_marks(obs, cam, comms, clip, target_id):
+        if not full:
+            gfx.draw.circle(surf, theme.dim(mood_color(mood), 0.8), (int(mx + 8), int(my + 8)), 3)
+            continue
         halo = gfx.Surface((30, 30), pygame.SRCALPHA)
         gfx.draw.circle(halo, (*theme.BG, 170), (15, 15), 13)
         gfx.draw.circle(halo, (*mood_color(mood), 110), (15, 15), 13, 1)
@@ -180,6 +213,39 @@ def showing(comms: Comms, obs: Observation) -> Channel | None:
     if ch.status == "hailing" or quiet < SHOW_CYCLES or comms.pinned:
         return ch
     return None
+
+
+def talking(comms: Comms, obs: Observation, fresh_cycles: float) -> bool:
+    """Someone on the shown channel is hailing, spoke in the last `fresh_cycles`, or the captain brought it up."""
+    ch = showing(comms, obs)
+    if ch is None:
+        return False
+    quiet = (obs.tick - ch.tick) / obs.rules.ticks_per_cycle
+    return ch.status == "hailing" or quiet < fresh_cycles or comms.pinned
+
+
+def draw_chip(surf: pygame.Surface, top_right: tuple[int, int], obs: Observation, comms: Comms, ui: UI,
+              now: float) -> pygame.Rect | None:
+    """The comms card folded to one line while another card has the map: who is on the channel and their mood.
+    Click it to bring the card back. Returns the area it covers."""
+    ch = showing(comms, obs)
+    if ch is None:
+        return None
+    mood = "surrendered" if obs.fate(ch.ship_id) == "surrendered" else ch.mood
+    name = f"{ch.title} {ch.captain}" if ch.captain and ch.captain != "unknown" else ch.title
+    label = mood_label(mood).upper()
+    box = pygame.Rect(top_right[0] - CARD_W, top_right[1], CARD_W, 26)
+    theme.shadow(surf, box, 4)
+    gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=6)
+    gfx.draw.rect(surf, theme.dim(FACTION_ACCENT.get(ch.faction, theme.HAIL), 0.6), box, 1, border_radius=6)
+    gfx.draw.circle(surf, theme.HAIL if ch.status != "closed" else theme.TEXT_FAINT, (box.x + 14, box.centery), 3)
+    lw = theme.text_width(label, 10, weight="semibold")
+    room = box.width - 40 - lw - 28
+    theme.text(surf, theme.fit(f"{name}  ·  {ch.ship}", 12, room), (box.x + 24, box.y + 5), theme.TEXT_DIM, 12)
+    mood_mark(surf, mood, box.right - lw - 22, box.centery, 4.0, now)
+    theme.text(surf, label, (box.right - 12, box.y + 7), mood_color(mood), 10, weight="semibold", anchor="topright")
+    ui.add(box, partial(comms.show, ch.ship_id), "Bring up the comms card")
+    return box
 
 
 def draw_card(surf: pygame.Surface, top_right: tuple[int, int], obs: Observation, player_id: int | None,
@@ -293,4 +359,4 @@ def draw_card(surf: pygame.Surface, top_right: tuple[int, int], obs: Observation
     return box
 
 
-__all__ = ["draw_card", "draw_map", "emblem", "mood_color", "mood_mark", "showing"]
+__all__ = ["draw_card", "draw_chip", "talking", "draw_map", "emblem", "mark_rects", "mood_color", "mood_mark", "mood_marks", "showing"]

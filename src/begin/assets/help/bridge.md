@@ -14,6 +14,14 @@ Every order you give through the console (and the wheel, a proposal or your voic
 
 Officers' words show low on the map, one voice at a time, with their station's mark: helm a chevron, tactical a diamond, engineering a hexagon, science a ring. The log keeps every word in two columns: **Bridge** (who said what) and **Computer** (everything else).
 
+## One card at a time
+
+A big fight is when you most need a calm screen, so the map shows one card at a time, in this order: the counsel when you open it, an officer's proposal waiting for your yes or no, the comms card while someone on the channel is talking, an urgent warning, the mission card when the mission has news, and then the officers' everyday lines. Whatever isn't the one waits: a subtitle goes to the log (which keeps every word), and the mission and comms cards fold to a single line at the top right. Rest the pointer on the mission's line to see the whole card, or click the comms line to bring the channel back.
+
+## Names in a crowded fight
+
+Every ship's name looks for a clear place beside her: to the right, to the left, at a corner, or a row further out, with a faint line back to her. It keeps clear of other names, other hulls and the cards on the map, and keeps the same side while that side stays clear, so names don't hop about. Your own ship, your target and the ally you've selected always have their name; a ship with nowhere clear to put hers goes without (she's still drawn, and the contacts list has her). Ships flying in close formation share one name (*"Wraith (DR)  +3"*), and when the map is crowded, the names of ships far from yours fade, so the fight near you stands out.
+
 ## The command wheel
 
 Right-click a ship (or press `E` for your target) and pick an order. Eight slices, always in the same places for an enemy: Phasers, Torpedoes, Disable, Close to, Hail, Board, Elude, Target. Rest on a slice with a `›` for its second ring. Keys `1`-`8` pick a slice too. Your own ships and your own ship have wheels of their own.

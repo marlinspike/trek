@@ -45,7 +45,7 @@ A captain who agrees to **withdraw** holds fire and leaves the field. Fire on th
 
 ## The comms panel
 
-When you hail a ship, or a captain hails you, the comms card shows who is on the channel, their mood, and the last few words exchanged. Enemy ships whose captain you have heard from carry a small mood mark on the map: a red flame when enraged, amber when shaken, blue when wavering, and a white flag once they have surrendered.
+When you hail a ship, or a captain hails you, the comms card shows who is on the channel, their mood, and the last few words exchanged. Enemy ships whose captain you have heard from carry a small mood mark on the map: a red flame when enraged, amber when shaken, blue when wavering, and a white flag once they have surrendered. In a crowded fight the everyday moods (rage, wavering, calm) shrink to a small dot in the mood's colour, except on your target and the captain on the channel; a mood you can act on (shaken, broken, withdrawing, surrendered) always shows in full.
 
 Your science officer reads each answer for you ("They are close to giving way, Captain"), and your tactical officer tells you what a surrender or withdrawal means for your next move.
 

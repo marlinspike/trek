@@ -175,6 +175,7 @@ def main(argv: list[str] | None = None) -> int:
             _stage(scene, args)
         app.scene.update(0.0)
         app.scene.draw(app.screen)
+        app.scene.draw(app.screen)        # a second frame: the map's names keep off the cards the first one drew
         pygame.image.save(app.screen, args.screenshot)
         print(f"saved {args.screenshot}")
         return 0

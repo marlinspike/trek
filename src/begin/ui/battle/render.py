@@ -18,6 +18,7 @@ from ..hud import TABS_MIN_HEIGHT, Panel, TargetPanel, WeaponsPanel, diagram_leg
 from ...session.news import ALERT_TONE
 from .common import (TONE_COLOR, CONTROLS, RED_ALERT_FLOOR, RED_ALERT_PERIOD, RED_ALERT_PULSE, RED_ALERT_SETTLE, SPEEDS,
                      LogLine, ratio)
+from .stage import COMMS_FRESH, news_key
 from .state import SceneState
 from .. import gfx
 
@@ -59,6 +60,8 @@ class RenderMixin(SceneState):
         alpha = 1.0 if self.paused else max(0.0, min(1.0, self.acc / tick_len))
         obs = self.obs
         p = self.player
+        marks = comms_view.mood_marks(obs, self.cam, self.comms, self.map_rect, p.target if p else None)
+        self.view.keep_out = self.stage.cards + comms_view.mark_rects(marks)    # names keep off the cards and marks
         self.view.draw(surf, obs, self.prev, self.now, alpha, self.player_id,
                        p.target if p else None, p.target_subsystem if p else None, self.selected_ally)
         self.ui.add(self.map_rect, lambda: None)
@@ -68,11 +71,12 @@ class RenderMixin(SceneState):
             order_marks.draw_orders(surf, self.cam, obs, p)
         self._draw_preview(surf)
         comms_view.draw_map(surf, self.cam, self.obs, self.player_id, self.comms, time.monotonic(),
-                            self.map_rect)
+                            self.map_rect, p.target if p else None)
         mission = self.session.mission()
         if mission is not None:
             counsel_view.draw_marks(surf, self.cam, mission, self.now.ships, self.map_rect, time.monotonic())
-        self._map_overlay_text(surf)
+        shown = self._pick_card()
+        cards = self._map_overlay_text(surf, shown)
         counsel_box = None
         if self.counsel_open and not obs.outcome.over:
             area = counsel_view.counsel_rect(self.map_rect)
@@ -84,17 +88,22 @@ class RenderMixin(SceneState):
                                       self.paused, self.session.counsel_goal.text if self.session.counsel_goal else "",
                                       lambda: self.session.counsel_order("general"))
         else:
-            officer_view.draw_panel(surf, (self.map_rect.x + 14, self.map_rect.y + 36), acts, self.session.officer_name,
-                                    obs.tick, obs.rules.ticks_per_cycle, self.subs.speaking)
+            panel = officer_view.draw_panel(surf, (self.map_rect.x + 14, self.map_rect.y + 36), acts,
+                                            self.session.officer_name, obs.tick, obs.rules.ticks_per_cycle,
+                                            self.subs.speaking)
+            cards.append(panel)
         self.counsel_box = counsel_box
+        cards.append(counsel_box)
         self._draw_printout(surf)
         self._draw_focus(surf)
         lift = self._proposal_height()
         area = self.map_rect.inflate(0, -lift).move(0, -lift // 2) if lift else self.map_rect
         if counsel_box is not None:      # subtitles keep to the open part of the map
             area = area.clip(pygame.Rect(counsel_box.right + 8, area.y, area.right - counsel_box.right - 8, area.height))
-        self.subs.draw(surf, area, self._keep_clear(p))
-        self._draw_proposal(surf)
+        if self.stage.subtitle:          # one card at a time: otherwise the line waits in the log
+            cards.append(self.subs.draw(surf, area, self._keep_clear(p)))
+        cards.append(self._draw_proposal(surf))
+        self.stage.cards = [c for c in cards if c is not None]
         self._draw_wheel(surf)
         self._bottom(surf)
         self._column(surf)
@@ -157,7 +166,25 @@ class RenderMixin(SceneState):
         beat = 0.5 + 0.5 * math.sin((now - self._alert_since) * math.tau / RED_ALERT_PERIOD)
         return RED_ALERT_FLOOR + RED_ALERT_PULSE * ((1 - settle) * beat + settle * 0.35)
 
-    def _map_overlay_text(self: BattleScene, surf: pygame.Surface) -> None:
+    def _pick_card(self: BattleScene) -> str | None:
+        """The one transient card the map shows this frame (see `stage.py`)."""
+        m = self.session.mission()
+        news = None
+        if m is not None:
+            _, hint, tone, _ = counsel_view.mission_lines(m)
+            news = news_key(m.state, m.kind, hint, tone)
+        sub = self.subs.current
+        return self.stage.pick(
+            time.monotonic(), counsel=self.counsel_open and not self.obs.outcome.over,
+            proposal=self._proposal_height() > 0,
+            comms=comms_view.talking(self.comms, self.obs, COMMS_FRESH),
+            urgent=sub is not None and sub.urgent, news=news,
+            hover=self._mission_box is not None and self._mission_box.collidepoint(self.ui.mouse),
+            subtitle=sub is not None)
+
+    def _map_overlay_text(self: BattleScene, surf: pygame.Surface, shown: str | None) -> list[pygame.Rect | None]:
+        """The map's own writing (the clock, the speed, the banners, the title) and the cards in its top right
+        corner. Returns the areas they cover, so ships' names keep off them."""
         r = self.map_rect
         t = self.obs.time
         state = "PAUSED" if self.paused else f"{self.speed:g}×"
@@ -192,6 +219,7 @@ class RenderMixin(SceneState):
             theme.text(surf, "RED ALERT", (x, r.y + 12), theme.mix(theme.TEXT_DIM, theme.ALERT, 0.8), 11,
                        weight="semibold")
             x += theme.text_width("RED ALERT", 11, weight="semibold") + 16
+        cards: list[pygame.Rect | None] = [pygame.Rect(r.x + 8, r.y + 6, x - r.x - 8, 24)]
         banner_top = r.y + 10
         if self.paused and not self.obs.outcome.over:
             # hard to miss: nothing moves, charges or reloads while paused
@@ -213,23 +241,51 @@ class RenderMixin(SceneState):
             gfx.draw.rect(surf, theme.BG_PANEL_HI, b, border_radius=4)
             gfx.draw.rect(surf, theme.CAUTION, b, 1, border_radius=4)
             theme.text(surf, msg, b.center, theme.CAUTION, 14, weight="semibold", anchor="center")
+            cards.append(b)
         self._draw_conn_banner(surf, banner_top + (36 if self.paused and not self.obs.outcome.over else 0))
-        theme.text(surf, self.session.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
-        theme.text(surf, f"range {self.display_range():,.0f}  ·  F1 controls", (r.right - 14, r.y + 28), theme.TEXT_FAINT,
-                   11, anchor="topright")
+        title = theme.text(surf, self.session.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
+        rng = theme.text(surf, f"range {self.display_range():,.0f}  ·  F1 controls", (r.right - 14, r.y + 28),
+                         theme.TEXT_FAINT, 11, anchor="topright")
+        cards += [title.union(rng).inflate(8, 6)]
         y = r.y + 48
         for names, eta in self.session.inbound():
             # reinforcements on the way: a countdown that pulses as they get close
             close = eta < 15
             pulse = 0.5 + 0.5 * math.sin(time.monotonic() * math.tau / 0.9) if close else 1.0
             col = theme.mix(theme.TEXT_DIM, theme.GOOD, 0.4 + 0.6 * pulse)
-            theme.text(surf, f"{names}  ·  ETA {eta:4.0f} cycles", (r.right - 14, y), col, 13, "mono", anchor="topright")
+            cards.append(theme.text(surf, f"{names}  ·  ETA {eta:4.0f} cycles", (r.right - 14, y), col, 13, "mono",
+                                    anchor="topright"))
             y += 20
+        return cards + self._corner_cards(surf, shown, y)
+
+    def _corner_cards(self: BattleScene, surf: pygame.Surface, shown: str | None, y: int) -> list[pygame.Rect | None]:
+        """The mission and comms cards, in full when it is their turn, else folded to a line each."""
+        r = self.map_rect
+        now = time.monotonic()
+        out: list[pygame.Rect | None] = []
         mission = self.session.mission()
+        self._mission_box = None
         if mission is not None:
-            y = counsel_view.draw_mission(surf, (r.right - 14, y + 4), mission, time.monotonic()).bottom + 4
-        comms_view.draw_card(surf, (r.right - 14, y + 4), self.obs, self.player_id, self.comms, self.ui,
-                             time.monotonic(), self._comms_button)
+            if shown == "mission":
+                box = counsel_view.draw_mission(surf, (r.right - 14, y + 4), mission, now)
+            else:
+                box = pygame.Rect(r.right - 14 - counsel_view.MISSION_W, y + 4, counsel_view.MISSION_W, 26)
+                if self.counsel_open and box.colliderect(counsel_view.counsel_rect(r)):
+                    box = None            # the counsel is the mission's plans: no room for the strip beside it
+                else:
+                    box = counsel_view.draw_mission_strip(surf, (r.right - 14, y + 4), mission)
+            self._mission_box = box
+            out.append(box)
+            if box is not None:
+                y = box.bottom + 4
+        if shown == "comms":
+            out.append(comms_view.draw_card(surf, (r.right - 14, y + 4), self.obs, self.player_id, self.comms, self.ui,
+                                            now, self._comms_button))
+        else:
+            chip = pygame.Rect(r.right - 14 - comms_view.CARD_W, y + 4, comms_view.CARD_W, 26)
+            if not (self.counsel_open and chip.colliderect(counsel_view.counsel_rect(r))):
+                out.append(comms_view.draw_chip(surf, (r.right - 14, y + 4), self.obs, self.comms, self.ui, now))
+        return out
 
     def _draw_conn_banner(self: BattleScene, surf: pygame.Surface, top: int) -> None:
         """Who has the conn, when it isn't the captain; click it to take the bridge back."""
