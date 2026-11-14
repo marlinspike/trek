@@ -345,7 +345,7 @@ class TacticalView:
             return
         self._draw(surf, obs, prev, now, alpha, player_id, target_id, selected_sub, selected_ally, (0.0, 0.0))
 
-    def _draw(self, surf: pygame.Surface, obs: Observation, prev: Snapshot | None, now: Snapshot, alpha: float,
+    def _draw(self, surf: pygame.Surface, obs: Observation, prev: Snapshot | None, now: Snapshot, alpha: float,  # noqa: C901
               player_id: int | None, target_id: int | None, selected_sub: str | None, selected_ally: int | None,
               jolt: tuple[float, float]) -> None:
         cam = self.cam
@@ -897,7 +897,7 @@ class TacticalView:
             gfx.draw.polygon(overlay, (*col, alpha), pts)
         gfx.draw.line(overlay, (*col, 200), a, b, 1)
 
-    def _own_ship(self, surf: pygame.Surface, overlay: pygame.Surface, s: Ship, p: Pose, is_player: bool,
+    def _own_ship(self, surf: pygame.Surface, overlay: pygame.Surface, s: Ship, p: Pose, is_player: bool,  # noqa: C901
                   obs: Observation, selected: bool = False, names: dict[int, str] | None = None) -> None:
         cam = self.cam
         if not cam.visible(p[0], p[1], 200):
@@ -1021,7 +1021,7 @@ class TacticalView:
                     continue
             placed.append((sid, x, y))
 
-    def _contact(self, surf: pygame.Surface, c: ContactView, p: Pose, targeted: bool, sub: str | None,
+    def _contact(self, surf: pygame.Surface, c: ContactView, p: Pose, targeted: bool, sub: str | None,  # noqa: C901
                  overlay: pygame.Surface | None = None, hive: HiveMark | None = None) -> None:
         cam = self.cam
         if not cam.visible(p[0], p[1], 200):

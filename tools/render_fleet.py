@@ -202,7 +202,7 @@ def build_borg(hull: HullDef, px: float, seed: int) -> Baked:
     return Baked(px, x, y, H, ship, base, em, mat.rim, parts)
 
 
-def build(hull: HullDef, faction: str, px: float, seed: int) -> Baked:
+def build(hull: HullDef, faction: str, px: float, seed: int) -> Baked:  # noqa: C901
     if faction == "borg":
         return build_borg(hull, px, seed)
     mat = MATERIALS.get(faction, MATERIALS["federation"])
