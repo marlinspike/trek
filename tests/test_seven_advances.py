@@ -199,3 +199,36 @@ def test_a_careful_captain_never_launches_a_probe_their_beams_can_burst_on_us(co
             w.step()
         launched[competence] = n
     assert launched[0.9] == 0 and launched[0.2] > 0
+
+
+def test_borg_tuned_torpedoes_hit_harder_and_the_hive_learns_them_slowly(content) -> None:  # type: ignore[no-untyped-def]
+    """Reuben asked (2026-11-14) whether they were explosive enough. They weren't: the cube learned them in full
+    in every fight, after which each hit did a quarter of its damage."""
+    def after(guided: bool) -> tuple[float, float]:
+        _, w, us, them = _borg(content, "borg.cu")
+        if guided:
+            us.borg_tech.add("guided")
+        first = collective.incoming(w, them, us, "torpedo")[0]
+        collective.learn(w, them, us, "torpedo", 500.0, 500.0)
+        return first, collective.mind(w, them.faction).level(collective.weapon_key("torpedo", us))
+    (plain_hit, plain_learned), (tuned_hit, tuned_learned) = after(False), after(True)
+    assert tuned_hit == plain_hit * collective.GUIDED_DAMAGE
+    assert tuned_learned < plain_learned * 0.5
+
+
+def test_officers_aim_at_a_found_relay_and_load_harmonics_once_cracked(content) -> None:  # type: ignore[no-untyped-def]
+    from begin.sim.commands import TakeConn
+
+    _, w, us, them = _borg(content, "borg.sp")
+    w.execute(TakeConn(ship_id=us.id, officer="spock"))
+    for _ in range(40):
+        collective.on_scan(w, us, them, "seven")             # her relay and her harmonics are ours
+    aimed = harmonics = False
+    for _ in range(int(30 * w.rules.ticks_per_cycle)):
+        w.step()
+        aimed = aimed or (us.target == them.id and us.target_subsystem == "relay")
+        harmonics = harmonics or "harmonic" in us.projects or any(
+            t.loaded is not None and t.loaded.ordnance == "harmonic" for t in us.tubes)
+        if aimed and harmonics:
+            break
+    assert aimed and harmonics
