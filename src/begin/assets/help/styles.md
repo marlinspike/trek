@@ -33,4 +33,4 @@ Each officer's trust in you grows as you fight together, and stays with you betw
 
 An officer earns 2 for each proposal you make so, 2 for each battle won at their post (3 if you'd handed them the station), and 4 for standing out in the debrief. Belaying a proposal costs nothing: you decide.
 
-Trust also earns **starting squadrons** for your tours of duty: when Worf, La Forge or Spock reach Trusted, they each put their name to a group of escorts, and a tour won earns a Starfleet detachment. See [[tour|Tours of duty]].
+Trust also earns **starting squadrons** for your tours of duty: when Worf, La Forge or Spock reach Trusted, they each put their name to a group of escorts, and a tour won earns a Starfleet detachment. It also decides how much they can tell you about a returning enemy captain. See [[tour|Tours of duty]].

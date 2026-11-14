@@ -2,7 +2,7 @@
 title: Tours of duty
 category: Game
 order: 5
-aliases: tour, tours, tour of duty, starting squadron, starting squadrons, squadrons, perks, generated tour, another patrol, boss, officers' view, request, request reinforcements, reinforcements, ready room, squadron, captain's log, log, waves
+aliases: tour, tours, tour of duty, rival, rivals, returning captain, old enemies, nemesis, starting squadron, starting squadrons, squadrons, perks, generated tour, another patrol, boss, officers' view, request, request reinforcements, reinforcements, ready room, squadron, captain's log, log, waves
 summary: Linked battles with a squadron you choose: damage, crews, torpedoes and prizes carry from one stop to the next.
 see: after-battle, crew, dock, fleet
 ---
@@ -64,6 +64,20 @@ The last tour on the list is made for you: a generated patrol, different each ti
 - **The boss.** The last stop is the commander behind the raids, aboard their heaviest class, with a screen and a reserve that drops out of warp when the screen is beaten. Take or destroy the flagship and the tour is won.
 
 The Enterprise is your Dreadnought on every generated tour, as on every other. A generated tour saves and resumes like the rest, and its number is in its description: the same number is always the same patrol.
+
+## Old enemies
+
+Enemy captains remember you, and you meet some of them again. When a stop ends with the enemy's commander still free (the captain of their heaviest ship got away, or held the field when you withdrew), they become a **rival**, and they stay one from tour to tour.
+
+A rival comes back on a later tour, once a tour, at the first stop against their own navy (on a generated tour they wait for the last stop, and take the place of the commander there). They command the heaviest ship there, fight better each time you meet, and fight the way they got away: one who ran will break off sooner than most, one who held the field will stand longer. No other enemy captain ever wears a rival's name. The briefing tells you they're coming, and in battle they hail you by name. How much your bridge can tell you about them depends on trust ([[styles|trust]]):
+
+| The officer who knows that navy (Worf for Klingons and Orions, Spock for Romulans) | What you're told |
+|---|---|
+| Green | the computer says the enemy flagship is under a captain we've fought before |
+| Steady | they name the captain, how many times you've met, and where you last met |
+| Trusted | ...and how they got away last time, so you can be ready for it |
+
+A rival you destroy or take prisoner is finished: the Ready Room says so, and they never return.
 
 ## Your own tours
 

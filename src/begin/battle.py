@@ -37,6 +37,7 @@ class ShipSpec:
     y: float | None = None
     course: float | None = None
     personality: dict[str, float] | None = None
+    captain: str | None = None       # [E] a named captain (a returning rival, tour/rivals.py); None: one at random
 
 
 @dataclass
@@ -57,6 +58,7 @@ class BattleSetup:
     arrivals: list[Arrival] = field(default_factory=list)   # waves and reinforcements that join later [E]
     personalities: dict[int, dict[str, float]] = field(default_factory=dict)  # side -> captains' leanings (a tour's memory) [E]
     mission: MissionDef | None = None   # a goal beyond holding the field: rescue, escort or intercept (sim/mission.py) [E]
+    reserved_captains: tuple[str, ...] = ()   # [E] names no random captain draws (a tour's rivals)
 
     @property
     def player_side(self) -> int:
@@ -168,6 +170,7 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
     flagship_name = _player_flagship_name(content, setup)
     if flagship_name:
         world.reserved_names.add(flagship_name)  # no other ship draws the flagship's name
+    world.reserved_captains |= set(setup.reserved_captains) | {s.captain for f in setup.fleets for s in f.ships if s.captain}
     rng = Rng(setup.seed).derive("setup")
     n = len(setup.fleets)
     player_ship: int | None = None
@@ -194,7 +197,8 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
             cls = content.classes[spec.class_id]
             warp = 0.0 if cls.is_base else min(cls.cruise_warp, 3.0)
             name = spec.name or (flagship_name if fleet.player and si == 0 else None)
-            ship = world.add_ship(spec.class_id, fleet.side, x, y, course=course, warp=warp, name=name)
+            ship = world.add_ship(spec.class_id, fleet.side, x, y, course=course, warp=warp, name=name,
+                                  captain=spec.captain)
             faction = content.factions[cls.faction]
             ship.pd_doctrine = PDDoctrine(faction.doctrine.point_defense)
             comp = ShipComputer(ship.id, fleet.side, world.rng.derive(f"computer:{ship.id}"), phase=ship.id % 2)
