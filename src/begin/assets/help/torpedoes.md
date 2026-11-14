@@ -42,7 +42,7 @@ ft at gorkon
 
 ## Loading, proximity and type
 
-Tubes reload by themselves (**autoload**). Use `load` to change the proximity, `autoload` to change the torpedo type, and `unload` to empty a tube so it can be reloaded with new settings.
+Tubes reload by themselves (**autoload**). Use `load` to change the proximity, `autoload` to change the torpedo type, and `unload` to empty a tube so it can be reloaded with new settings. The Weapons panel shows each tube by number with the torpedo in it (MK7, green with a full bar) or the one it is arming (amber, the bar filling); the Own ship panel's **Torpedoes** line sums it up: tubes loaded, the mark, and how many torpedoes are left in the magazine.
 
 ```console
 load tubes prox 400

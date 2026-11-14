@@ -186,7 +186,7 @@ def test_a_short_window_moves_panels_into_the_tabs_rather_than_off_the_screen(co
     assert len(tall.column_panels(tall.col_rect.height)) == 4 and not tall.side_tabs.folded
     short = BattleScene(build_battle(content, load_presets()[0].setup()), (1024, 640), lambda: None)
     shown = short.column_panels(short.col_rect.height)
-    assert [type(p) for p in short.side_tabs.folded] == [TargetPanel, WeaponsPanel]
+    assert [type(p) for p in short.side_tabs.folded] == [WeaponsPanel, TargetPanel]
     assert sum(p.min_height for p in shown) + 8 * (len(shown) - 1) <= short.col_rect.height
     short.side_tabs.show(WeaponsPanel)
     assert isinstance(short.side_tabs.tabs[short.side_tabs.active], WeaponsPanel)

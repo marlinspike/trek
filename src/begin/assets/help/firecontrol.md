@@ -41,4 +41,4 @@ pd conservative reserve 5 6
 role banks 1 2 offense
 ```
 
-Press **V** to cycle doctrines, or right-click a bank in the weapons panel to reserve it.
+Press **V** or click the **Point defense** button (in the Weapons panel, and **PD** in the Own ship panel) to cycle doctrines; right-click that button to turn point defense off, or back on at balanced. Right-click a bank in the weapons panel to reserve it.
