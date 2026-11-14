@@ -6,6 +6,205 @@
 # and `eta` is how long Starfleet's reinforcements take to reach it.
 
 [[tour]]
+id = "shakedown"
+title = "Shakedown Cruise"
+sector = "The Sol system and the Tau Ceti approaches"
+description = "Your first tour: four short fights, each teaching one part of the ship, with an officer at your side. Helm and phasers, then torpedoes, then shields and power, then your officers and their counsel. About half an hour."
+flagship = "federation.dn"
+budget = 0
+reinforcement_calls = 1
+reinforcements = ["federation.de"]
+starbase = "Utopia Planitia"
+
+[[tour.stop]]
+id = "first-light"
+title = "First light"
+system = "Mars, Utopia Planitia"
+chart = [0.12, 0.62]
+transit = 40
+eta = 60
+officer = "spock"
+seed = 101
+lesson_title = "Helm and phasers"
+briefing = """
+A lone Orion raider has been shadowing the yards. She is no match for us, which makes her the ideal first
+opponent. I will be at your side, Captain: we will get under way, close with her, and use the phasers.
+
+Nothing here is hurried. The battle starts paused; Space starts the clock.
+"""
+enemies = ["orion.ra"]
+enemy_center = [0, 16000]
+
+[[tour.stop.lesson]]
+say = "We are coasting at warp three, Captain. Take us to warp five: W raises our speed a step at a time, S lowers it."
+do = "press W twice, or type warp 5"
+done = "warp"
+praise = "Warp five. She answers well. Above her cruising speed the drives run hot, so ease off when you can."
+
+[[tour.stop.lesson]]
+say = "Now bring us round to her. Right-click on the map where you want to go, or type pursue and her name."
+do = "right-click toward her, or type pursue and her name"
+done = "turn"
+praise = "Closing on her."
+
+[[tour.stop.lesson]]
+say = "Lock on to her: Tab targets the nearest enemy."
+do = "press Tab"
+done = "target"
+praise = "Locked on."
+
+[[tour.stop.lesson]]
+say = "Our phasers reach about two thousand, and hit far harder up close. When she is inside that, press F."
+do = "press F, or type fire, once she is inside two thousand"
+done = "phaser_hit"
+praise = "A hit. Each bank needs a moment to recharge between shots."
+
+[[tour.stop.lesson]]
+say = "Keep her inside our arcs and keep firing until she breaks off or strikes her colours."
+do = "keep firing with F"
+done = "win"
+praise = "Well done, Captain. That is the helm and the phasers."
+
+[[tour.stop]]
+id = "long-reach"
+title = "Long reach"
+system = "Tau Ceti"
+chart = [0.36, 0.40]
+transit = 80
+eta = 80
+officer = "worf"
+seed = 103
+lesson_title = "Torpedoes"
+briefing = """
+A Klingon escort is testing our patrol line at Tau Ceti. She is fast and will try to stay out of phaser range. This
+is a fight for torpedoes: they reach much farther than phasers, but they need room to arm, and a nimble ship can
+dodge them. Worf will show you.
+"""
+enemies = ["klingon.es"]
+enemy_center = [0, 18000]
+
+[[tour.stop.lesson]]
+say = "Captain, lock on to the Klingon: Tab."
+do = "press Tab"
+done = "target"
+praise = "Target locked."
+
+[[tour.stop.lesson]]
+say = "Torpedoes need room to arm, so do not fire too close. When the shot is on, press T."
+do = "press T, or type torp"
+done = "torpedo"
+praise = "Torpedoes away!"
+
+[[tour.stop.lesson]]
+say = "Watch them run. She will try to dodge: fire as she turns toward us, or when she is too close to slip aside."
+do = "press T again when the tubes have reloaded"
+done = "torpedo_hit"
+praise = "A hit! Her shields will not take many more."
+
+[[tour.stop.lesson]]
+say = "Finish her. Torpedoes at range, phasers if she closes."
+do = "T for torpedoes, F for phasers"
+done = "win"
+praise = "A warrior's victory, Captain."
+
+[[tour.stop]]
+id = "shields-and-power"
+title = "Shields and power"
+system = "Archanis"
+chart = [0.60, 0.58]
+transit = 90
+eta = 90
+officer = "geordi"
+seed = 107
+lesson_title = "Shields and power"
+shields_down = true
+briefing = """
+Two Klingon frigates are waiting at Archanis, and they will hit us. This time the lesson is keeping the ship alive:
+six shields, each guarding a sixty-degree slice; reinforcing the one that faces them; and the power every raised
+shield costs. Geordi will talk you through it.
+"""
+enemies = ["klingon.fr", "klingon.fr"]
+enemy_center = [0, 15000]
+
+[[tour.stop.lesson]]
+say = "We came out of warp with the shields down, Captain. Shields first: G raises them all at once."
+do = "press G, or type raise all"
+done = "shields_up"
+praise = "Shields are up."
+
+[[tour.stop.lesson]]
+say = "Reinforce the shield facing them. It loses strength half as fast, for four times the power. Type reinforce."
+do = "type reinforce"
+done = "reinforce"
+praise = "Reinforced. Keep turning so that shield stays toward them."
+
+[[tour.stop.lesson]]
+say = "Every raised shield costs power. While they are all ahead of us, lower the aft three and the drives get it."
+do = "type lower 4 5 6"
+done = "shields_trim"
+praise = "That's power back for the drives. Raise them again if anyone gets behind us."
+
+[[tour.stop.lesson]]
+say = "If you need speed, I can nurse the drives for a while: say boost. Repairs go slower while we do."
+do = "type boost"
+done = "boost"
+praise = "Giving her all she's got, Captain."
+
+[[tour.stop.lesson]]
+say = "They're splitting up to come round behind us. Raise every shield again: G, or raise all."
+do = "press G, or type raise all"
+done = "shields_up"
+praise = "All six up. That's the trade, Captain: shields or speed, and you choose as the fight turns."
+
+[[tour.stop.lesson]]
+say = "Now fight them. Keep your strongest shield toward the one doing the hitting."
+do = "turn a fresh shield toward them as one weakens"
+done = "win"
+praise = "And she's still in one piece. Nice flying, Captain."
+
+[[tour.stop]]
+id = "the-bridge-crew"
+title = "The bridge crew"
+system = "Kessik"
+chart = [0.84, 0.36]
+transit = 100
+eta = 90
+officer = "spock"
+seed = 109
+lesson_title = "Your officers and their counsel"
+briefing = """
+A Klingon battle cruiser and her escort are holding Kessik. This is a real fight, Captain, and you need not fight it
+alone. Your officers can run their stations for you, and when you are unsure what to do next, each of us will lay out
+a way forward. Now and then one of us will propose something: Y makes it so, N belays it.
+"""
+enemies = ["klingon.bc", "klingon.es"]
+enemy_center = [0, 15000]
+
+[[tour.stop.lesson]]
+say = "You need not do everything yourself, Captain. Hand tactical to Worf: type delegate tactical."
+do = "type delegate tactical, or say Worf, take tactical"
+done = "delegate"
+praise = "Worf has tactical. He will pick targets and fire as he sees fit."
+
+[[tour.stop.lesson]]
+say = "When you are unsure, ask us. Press O for the counsel: each of us lays out a way forward."
+do = "press O, or type counsel"
+done = "counsel"
+praise = "Four ways forward, built from the fight as it stands."
+
+[[tour.stop.lesson]]
+say = "Choose one. All in, or the keys one to four, runs that officer's whole plan. Or click a single step."
+do = "press 1 to 4, or click All in"
+done = "follow"
+praise = "Orders given."
+
+[[tour.stop.lesson]]
+say = "Carry on, Captain. Take back a station with assume, or ask the counsel again whenever the fight turns."
+do = "fight on; assume tactical takes it back"
+done = "win"
+praise = "That concludes the shakedown, Captain. The ship, and the crew, are yours."
+
+[[tour]]
 id = "border-patrol"
 title = "Border Patrol"
 sector = "The Archanis sector"

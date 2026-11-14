@@ -18,7 +18,7 @@
 
 **Part Two: The ship's manual**
 
-- Getting started: [Welcome aboard](#topic-index), [Keyboard and mouse](#topic-controls), [The command console](#topic-console), [Your first battle](#topic-first-battle), [Orders in plain English](#topic-plain-english), [The bridge](#topic-bridge), [Speaking orders](#topic-voice-orders), [Officers' voices](#topic-speech)
+- Getting started: [Welcome aboard](#topic-index), [Keyboard and mouse](#topic-controls), [Shakedown Cruise](#topic-shakedown), [The command console](#topic-console), [Your first battle](#topic-first-battle), [Orders in plain English](#topic-plain-english), [The bridge](#topic-bridge), [Speaking orders](#topic-voice-orders), [Officers' voices](#topic-speech)
 - Coach: [Coach](#topic-coach), [Choosing weapons](#topic-weapons-guide), [Tactics](#topic-tactics)
 - Helm: [Course and speed](#topic-helm), [Pursue and elude](#topic-pursue)
 - Weapons: [Fire](#topic-fire), [Phasers](#topic-phasers), [Torpedoes](#topic-torpedoes), [Cease fire](#topic-ceasefire), [Probes](#topic-probes), [Lock and turn](#topic-lock), [Loading and autoload](#topic-loading), [Fire control and point defense](#topic-firecontrol), [Targeting](#topic-targeting), [Who fired what](#topic-weapon-colors)
@@ -27,7 +27,7 @@
 - Ship systems: [Repair](#topic-repair), [Engine boost](#topic-boost), [Tractor beam](#topic-tractor), [Docking](#topic-dock), [Cloaking device](#topic-cloak), [Tachyon detector torpedo](#topic-tachyon), [Transporters and boarding](#topic-transport), [Deflector tachyon pulse](#topic-deflector), [Self-destruct and surrender](#topic-destruct)
 - Allies: [Ally orders](#topic-tell), [Fleet and groups](#topic-fleet)
 - Crew: [Bridge officers](#topic-crew), [Giving an officer the bridge](#topic-conn), [Talking to your officers](#topic-talking), [Disabling or taking out enemy ships](#topic-disable), [Officers and language models](#topic-llm), [Crew morale](#topic-morale), [Hailing enemy captains](#topic-hailing), [Counsel from the bridge](#topic-counsel), [Away teams and the shuttle](#topic-away-team)
-- Game: [Time, pause and quitting](#topic-time), [Key macros](#topic-keys), [Settings](#topic-settings), [Named tactical orders](#topic-orders), [Alert conditions](#topic-alert), [Sound](#topic-sound), [After the battle](#topic-after-battle), [Command styles and trust](#topic-styles), [Missions](#topic-missions), [Tours of duty](#topic-tour), [Patrols](#topic-patrol), [Display and sharpness](#topic-display), [Fighting the Borg](#topic-borg), [Writing help pages](#topic-writing-help)
+- Game: [Time, pause and quitting](#topic-time), [Key macros](#topic-keys), [Settings](#topic-settings), [Difficulty](#topic-difficulty), [Named tactical orders](#topic-orders), [Alert conditions](#topic-alert), [Sound](#topic-sound), [After the battle](#topic-after-battle), [Command styles and trust](#topic-styles), [Missions](#topic-missions), [Tours of duty](#topic-tour), [Patrols](#topic-patrol), [Display and sharpness](#topic-display), [Fighting the Borg](#topic-borg), [Writing help pages](#topic-writing-help)
 
 **Appendices**
 
@@ -918,6 +918,7 @@ Your reputation travels ahead of you:
 
 After every stop your officers write up their stations, each captain in the squadron reports on her ship, and your own entry is drafted for you to keep or rewrite. A tour ends as the story of the patrol you actually flew.
 
+- **Shakedown Cruise** (The Sol system and the Tau Ceti approaches). Your first tour: four short fights, each teaching one part of the ship, with an officer at your side. Helm and phasers, then torpedoes, then shields and power, then your officers and their counsel. About half an hour. *Stops:* First light → Long reach → Shields and power → The bridge crew.
 - **Border Patrol** (The Archanis sector). Patrol the Klingon border, deal with whatever you find, and fall back to Starbase 12 when the Klingons move on it. Six stops, about an hour. *Stops:* Orion raiders → A Klingon on the border → Frigates at Kessik → Romulan ambush → The scouting dreadnought → Starbase Defense.
 - **Neutral Zone Watch** (The Romulan Neutral Zone). Four stops along the Neutral Zone. The Romulans cloak, strike and vanish; Starbase 47 is the line they must not cross. About forty minutes. *Stops:* Silence at Outpost 4 → Frigate screen → The Bird of Prey → The line at Starbase 47.
 - **The Orion Run** (The Orion trade routes). A short hunt for an Orion raiding band: three stops, about twenty minutes. A good first tour. *Stops:* Raid on a convoy → Saboteurs → The Armadillo.
@@ -1108,6 +1109,35 @@ Each button shows its key at its right end.
 Left alone, the menu shows a pass that meets an enemy every few passes: the Borg cube first, a few seconds after the menu opens, then the Klingon and the Borg taking turns.
 
 See also: [The command console](#topic-console), [Key macros](#topic-keys).
+
+<a id="topic-shakedown"></a>
+
+### Shakedown Cruise
+
+*Your first tour: four short fights, each teaching one part of the ship, with an officer walking you through it.*
+
+The **Shakedown Cruise** is the first tour on the list (main menu, **Tour of duty**, or **T**). It is four short fights, and each one teaches one part of the ship. The officer for that stop talks you through it a step at a time, out loud and on the **lesson card** in the map's top right corner.
+
+| Stop | Lesson | Officer | What you do |
+|---|---|---|---|
+| First light | Helm and phasers | Spock | change speed with **W** and **S**, steer with a right-click or `pursue`, lock on with **Tab**, fire phasers with **F** inside two thousand |
+| Long reach | Torpedoes | Worf | lock on, fire torpedoes with **T** once they have room to arm, land a hit on a ship that dodges |
+| Shields and power | Shields and power | La Forge | raise all shields with **G**, `reinforce` the one facing them, `lower 4 5 6` to give power to the drives, `boost` the engines, raise all again when they come round |
+| The bridge crew | Your officers and their counsel | Spock | `delegate tactical` to Worf, open the counsel with **O**, follow a plan with **1** to **4** |
+
+Each lesson ends with winning the fight. The battle starts paused, so read the briefing and press **Space** when you're ready.
+
+#### The lesson card
+
+The card shows the lesson, a dot for each step (green when done), what the officer asked, and the keys or words that do it. When a new step begins it shows in full for a few seconds, then folds to one line so the map stays calm. Rest the pointer on the line to see it all again. Nothing is forced: if you have already done a step, it is ticked off without being taught, and if a step waits a long time the officer reminds you once.
+
+#### Difficulty
+
+The Shakedown is fought with the ships it was written with at every level, so the lessons stay the same. At [Ensign](#topic-difficulty) the enemy captains are slower and less sure; at Admiral they are quicker and sharper. The Enterprise is a Dreadnought throughout, as on every tour.
+
+When you have finished it, Border Patrol is the next tour, and **H** is the manual whenever you want more.
+
+See also: [Tours of duty](#topic-tour), [Your first battle](#topic-first-battle), [Coach](#topic-coach), [Difficulty](#topic-difficulty).
 
 <a id="topic-console"></a>
 
@@ -1387,7 +1417,7 @@ See also: [The bridge](#topic-bridge), [The command console](#topic-console), [O
 
 Your officers speak aloud. Every order you give is read back in the voice of the officer who carries it out. Their reports, warnings and proposals are spoken too, and the ship's computer speaks its warnings. Enemy captains answer your hails in voices of their own. It's on from the first battle and uses the speech engine your computer already has: macOS's voices on a Mac, Windows' voices on Windows, and eSpeak NG on Linux. Subtitles still show every line, and the log still keeps every word.
 
-One voice speaks at a time. A warning goes to the front and cuts short whatever routine line is being spoken. A routine line that has waited too long is no longer news, so it is dropped rather than read out late. **M** hushes the bridge along with every other sound.
+One voice speaks at a time. A warning goes to the front and cuts short whatever routine line is being spoken. A routine line that has waited too long is no longer news, so it is dropped rather than read out late; when lines pile up in a busy fight, an officer's remark gives way before an answer to one of your orders, and only the newest warnings wait. A line said twice in a breath is spoken once. Figures in brackets, such as `(12,467 > 2,000)`, are for the eye and aren't read out. **M** hushes the bridge along with every other sound.
 
 #### Who sounds like whom
 
@@ -1405,7 +1435,7 @@ Each officer is cast from the voices your computer has, to suit the part as writ
 | Ship's computer | even, cool, unhurried |
 | Klingon, Romulan and Orion captains, the Borg | by race: harsh and low, cold and silky, sly and fast, many voices as one |
 
-These are castings, not impressions. No actor's voice is copied, only the qualities of the part: accent, pitch and pace. Each part lists the voices it would like best, and the first one your computer has is used. When none of them is there, a voice of the right kind stands in, and each part's own pitch and pace keep two officers on the same voice sounding apart.
+These are castings, not impressions. No actor's voice is copied, only the qualities of the part: accent, pitch and pace. Each part lists the voices it would like best, and the first one your computer has is used. No two officers share a voice while your computer has enough to go round: the ship's computer is cast first, then each officer takes the first voice they asked for that nobody has yet. On a Mac with only the voices it ships with, for example, the computer is Samantha and Seven of Nine is Karen. When none of a part's voices is free, a voice of the right kind stands in, and each part's own pitch and pace keep two officers on the same voice sounding apart.
 
 More voices make a better cast. On a Mac, open System Settings, then Accessibility, Spoken Content, System voice, Manage Voices, and add a few English voices (Evan, Nathan, Allison, Ava, Daniel) and Yuri for Chekov. On Windows, use Settings, then Time & language, Speech, Add voices. On Linux, install `espeak-ng`.
 
@@ -3576,7 +3606,7 @@ Every change is saved the moment you make it, to the same plain text files the g
 
 - **Display**: the renderer (automatic, graphics card or software) and *Light and glow*. **D** on the main menu opens this section. See [Display and sharpness](#topic-display).
 - **Sound**: sound on or off, the volume and the engine hum (drag the slider; **Hear it** plays a sample), and which version of the phaser and torpedo launch you hear: each letter plays it as you pick it. See [Sound](#topic-sound).
-- **Battle**: the speed a battle starts at, your officers' chatter, and the map's jolt when the ship takes a heavy blow.
+- **Battle**: the [Difficulty](#topic-difficulty) (Ensign, Captain or Admiral), the speed a battle starts at, your officers' chatter, and the map's jolt when the ship takes a heavy blow.
 - **Bridge**: the bridge style (full, quiet or classic) and each of its parts. The same choices as `hud bridge` in battle. See [The bridge](#topic-bridge).
 - **Speaking orders**: on or off, what hears you (Mac speech, Whisper on this computer, a Whisper server or a cloud service, each with what it still needs), the push-to-talk key, the Whisper model and its download, and the server's address. Test the microphone in battle with `voice`. See [Speaking orders](#topic-voice-orders).
 - **Language model**: the provider (or Off), the model, an address for Ollama on another machine, thinking, plain English at the console, and the debug logs. **Test it** asks the model one question and shows its answer. Cloud keys are never kept in the config folder: the page says whether the environment has one. See [Officers and language models](#topic-llm).
@@ -3587,6 +3617,35 @@ Every change is saved the moment you make it, to the same plain text files the g
 Battle settings changed in battle (the speed, **M** for mute, `hud bridge`, `voice`) are kept the same way and show here next time.
 
 See also: [Display and sharpness](#topic-display), [Sound](#topic-sound), [The bridge](#topic-bridge), [Speaking orders](#topic-voice-orders), [Officers and language models](#topic-llm), [Bridge officers](#topic-crew).
+
+<a id="topic-difficulty"></a>
+
+### Difficulty
+
+*Ensign, Captain or Admiral: how many ships the enemy brings and how well their captains fight. The Enterprise never changes.*
+
+The enemy can fight at three levels. Change it on the main menu (the **Difficulty** button under the side switch) or in **Settings › Battle**. It takes effect from the next battle.
+
+| Level | Enemy ships | Enemy captains and crews |
+|---|---|---|
+| **Ensign** | about a third fewer (never fewer than one) | slower to react, poorer at reading the fight, aiming and dodging |
+| **Captain** | as the battle was written | as their navy trains them |
+| **Admiral** | about a third more | quicker, sharper, harder to hit |
+
+Difficulty only changes the other side. Your own ship is the same at every level: the Enterprise is a Dreadnought, with the same weapons, shields, crew and officers. Your escorts and Starfleet's reinforcements are never changed either.
+
+#### What changes, exactly
+
+- **How many.** Each enemy fleet loses or gains a third of its ships, rounded: one ship stays one ship, three become two or four, six become four or eight. Ships are taken from the end of the fleet's list and added by repeating the fleet's own kinds, so a Klingon squadron is still Klingon. Waves that warp in later are scaled the same way. Starbases are never added or taken away, an intercept mission always keeps the ship that runs, and a battle never goes past the ship limit.
+- **How well.** Every enemy captain's competence (reading the situation, timing, aim, dodging torpedoes) and crew competence (how fast orders are carried out) moves down at Ensign and up at Admiral. A Klingon captain is still hot-headed at Ensign and still proud at Admiral: temper, bravery and doctrine don't change.
+
+#### Where it applies
+
+Quick battles, patrols, preset battles and tours of duty follow the difficulty. A **custom battle** is fought with exactly the fleets you chose, so only its enemy captains' skill follows the difficulty. The **[Shakedown Cruise](#topic-shakedown)** teaches with the fleets it was written with; its captains follow the difficulty too.
+
+> **Tip** Start at Ensign while you learn the controls, play Captain for the game as designed, and try Admiral once a preset feels easy. Tours are long: their later stops at Admiral are a real test.
+
+See also: [Tours of duty](#topic-tour), [Settings](#topic-settings), [Your first battle](#topic-first-battle), [Shakedown Cruise](#topic-shakedown).
 
 <a id="topic-orders"></a>
 
@@ -3860,7 +3919,7 @@ See also: [Counsel from the bridge](#topic-counsel), [Transporters and boarding]
 
 *Linked battles with a squadron you choose: damage, crews, torpedoes and prizes carry from one stop to the next.*
 
-A tour of duty is a patrol of several stops, each one a battle. Open one from the main menu (**Tour of duty**, or **T**).
+A tour of duty is a patrol of several stops, each one a battle. Open one from the main menu (**Tour of duty**, or **T**). New to the game? The first tour on the list, the **[Shakedown Cruise](#topic-shakedown)**, teaches one part of the ship at each stop. Every tour follows the [Difficulty](#topic-difficulty) you chose.
 
 Your squadron carries everything that matters from one fight to the next: hull and system damage, casualties, torpedoes and probes fired, morale, and the ships you take as prizes. Shields, batteries, heat and positions start fresh each time. A ship that is destroyed, abandoned, surrendered or boarded is gone for the rest of the tour. If the flagship is lost, the tour is over; at a starbase, so is losing the starbase. Against the Borg, if their drones take the flagship, the tour ends there.
 
@@ -4309,7 +4368,8 @@ Type `coach` or press **H** and pick **Coach**: this page then reads your actual
 - **Starbase Defense.** Hold the line at the starbase against three Klingon waves: frigates, then three battle cruisers, then two dreadnoughts with their escort. Between waves, damaged ships can dock to repair (2.0 rules).
 - **First Contact: a Borg Probe.** A lone Borg probe is surveying the sector. Small, but it learns: watch its adaptation, remodulate, and let Seven scan it.
 - **The Sphere.** A Borg sphere and its probe. Tune the shields before the drones come, find the vinculum relay, and put her to sleep.
-- **Wolf at the Door: the Cube.** A cube, with a task force to stop it. Power alone will cost you dearly: survey her, send Worf across, and strike while she sleeps.`, `- **Border Patrol** (The Archanis sector). Patrol the Klingon border, deal with whatever you find, and fall back to Starbase 12 when the Klingons move on it. Six stops, about an hour. *Stops:* Orion raiders → A Klingon on the border → Frigates at Kessik → Romulan ambush → The scouting dreadnought → Starbase Defense.
+- **Wolf at the Door: the Cube.** A cube, with a task force to stop it. Power alone will cost you dearly: survey her, send Worf across, and strike while she sleeps.`, `- **Shakedown Cruise** (The Sol system and the Tau Ceti approaches). Your first tour: four short fights, each teaching one part of the ship, with an officer at your side. Helm and phasers, then torpedoes, then shields and power, then your officers and their counsel. About half an hour. *Stops:* First light → Long reach → Shields and power → The bridge crew.
+- **Border Patrol** (The Archanis sector). Patrol the Klingon border, deal with whatever you find, and fall back to Starbase 12 when the Klingons move on it. Six stops, about an hour. *Stops:* Orion raiders → A Klingon on the border → Frigates at Kessik → Romulan ambush → The scouting dreadnought → Starbase Defense.
 - **Neutral Zone Watch** (The Romulan Neutral Zone). Four stops along the Neutral Zone. The Romulans cloak, strike and vanish; Starbase 47 is the line they must not cross. About forty minutes. *Stops:* Silence at Outpost 4 → Frigate screen → The Bird of Prey → The line at Starbase 47.
 - **The Orion Run** (The Orion trade routes). A short hunt for an Orion raiding band: three stops, about twenty minutes. A good first tour. *Stops:* Raid on a convoy → Saboteurs → The Armadillo.
 - **The Collective** (Beyond the Federation's edge). Something is taking whole colonies along the frontier and leaving nothing behind. Find it, learn it, and stop it before it reaches the core worlds. Four stops, about forty-five minutes. *Stops:* The empty colony → The sphere at the rift → The graveyard → The cube.

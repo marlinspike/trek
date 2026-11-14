@@ -12,7 +12,7 @@ Every change is saved the moment you make it, to the same plain text files the g
 
 - **Display**: the renderer (automatic, graphics card or software) and *Light and glow*. **D** on the main menu opens this section. See [[display]].
 - **Sound**: sound on or off, the volume and the engine hum (drag the slider; **Hear it** plays a sample), and which version of the phaser and torpedo launch you hear: each letter plays it as you pick it. See [[sound]].
-- **Battle**: the speed a battle starts at, your officers' chatter, and the map's jolt when the ship takes a heavy blow.
+- **Battle**: the [[difficulty]] (Ensign, Captain or Admiral), the speed a battle starts at, your officers' chatter, and the map's jolt when the ship takes a heavy blow.
 - **Bridge**: the bridge style (full, quiet or classic) and each of its parts. The same choices as `hud bridge` in battle. See [[bridge]].
 - **Speaking orders**: on or off, what hears you (Mac speech, Whisper on this computer, a Whisper server or a cloud service, each with what it still needs), the push-to-talk key, the Whisper model and its download, and the server's address. Test the microphone in battle with `voice`. See [[voice-orders]].
 - **Language model**: the provider (or Off), the model, an address for Ollama on another machine, thinking, plain English at the console, and the debug logs. **Test it** asks the model one question and shows its answer. Cloud keys are never kept in the config folder: the page says whether the environment has one. See [[llm]].

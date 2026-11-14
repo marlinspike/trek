@@ -58,6 +58,7 @@ class SessionState:
     ribbon_won: str | None
     _career_done: bool
     ever_delegated: set[str]
+    _drill_seen: set[str]
     trust_news: list[str]
     phrasebook: dict[str, list[str]]
     chart_auto: bool

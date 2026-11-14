@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from ..sim.commands import Command
     from ..sim.observation import Observation
     from ..sim.ship import Ship
+    from ..tour.drill import LessonView
     from ..tour.run import TourRun
     from .command import Recording
     from .assessment import StarfleetAssessment
@@ -146,6 +147,7 @@ class Campaign(Protocol):
 
     def join_tour(self, run: TourRun) -> None: ...
     def finish_tour(self, run: TourRun) -> None: ...
+    def lesson(self) -> LessonView | None: ...
 
 
 class Session(Clock, Orders, Crew, Channels, Display, Campaign, Protocol):

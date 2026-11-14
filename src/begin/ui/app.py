@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pygame
 
-from ..battle import BattleSetup, build_battle
+from ..battle import BattleSetup, at_difficulty, build_battle
 from ..content import default_content
 from ..tour.run import TourRun
 from .battle_scene import BattleScene
@@ -102,7 +102,7 @@ class App:
             print(f"Begin: couldn't restart ({e}); start the game again to use the new renderer")
 
     def start_battle(self, setup: BattleSetup) -> BattleScene:
-        battle = build_battle(self.content, setup)
+        battle = build_battle(self.content, at_difficulty(self.content, setup, self.settings.difficulty))
         scene = BattleScene(battle, self.screen.get_size(), self.back_to_menu, keys=self.settings.keys,
                             hidden=self.settings.hidden, llm=self.settings.llm, chatter=self.settings.chatter,
                             volume=self.settings.volume, muted=self.settings.muted,

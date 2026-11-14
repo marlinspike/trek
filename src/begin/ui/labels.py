@@ -23,7 +23,6 @@ EDGE = 4               # pixels kept from the map's edge
 NAME_ROW = 8           # a name sits this far above its ship's centre line
 HULL_COST = 1.0        # a name over another ship's hull
 OWN_COST = 3.0         # a name over its own ship (only when pushed in by the map's edge)
-CHROME_COST = 6.0      # a name over the map's own writing (the clock, the title)
 SLOT_COST = 0.02       # a little for each place further down the list, so the first clear one wins
 KEEP_BONUS = 0.5       # the place a name had last frame, while it is still clear
 
@@ -93,9 +92,11 @@ class Placer:
         for a in sorted(asks, key=lambda a: (not a.must, a.rank, a.key)):
             if not area.collidepoint(a.x, a.y):
                 continue                     # off the map: no half a name cut by its edge
+            if any(k.collidepoint(a.x, a.y) for k in keep_out):
+                continue                     # the ship is under a card: so is her name
             spot = self._best(a, area, hulls, keep_out, taken)
             if spot is None and a.must:
-                spot = self._pushed(a, area, taken)
+                spot = self._pushed(a, area, taken + list(keep_out))
             if spot is None:
                 continue
             placed[a.key] = spot
@@ -109,20 +110,20 @@ class Placer:
         kept = self.last.get(a.key)
         for i, (slot, x, y) in enumerate(slots(a)):
             r = _fit(pygame.Rect(int(x), int(y), a.w, a.h), area)
-            if r.collidelist(taken) >= 0:
-                continue
+            if r.collidelist(taken) >= 0 or r.collidelist(keep_out) >= 0:
+                continue                     # never over another name, nor over a card or the map's writing
             cost = i * SLOT_COST - (KEEP_BONUS if slot == kept else 0.0)
             for key, hx, hy, hr in hulls:
                 if _hull_hit(r, hx, hy, hr):
                     cost += OWN_COST if key == a.key else HULL_COST
-            cost += CHROME_COST * sum(1 for k in keep_out if r.colliderect(k))
             if best is None or cost < best[0]:
                 best = (cost, Spot(r.x, r.y, r.w, r.h, slot))
         return best[1] if best is not None else None
 
     @staticmethod
-    def _pushed(a: Ask, area: pygame.Rect, taken: list[pygame.Rect]) -> Spot:
-        """A name that must show: on her right, pushed down past the names in the way (or up, at the map's foot)."""
+    def _pushed(a: Ask, area: pygame.Rect, taken: list[pygame.Rect]) -> Spot | None:
+        """A name that must show: on her right, pushed down past the names and cards in the way (or up, at the
+        map's foot). None when there is no clear line for it at all."""
         slot, x, y = slots(a)[0]
         r = _fit(pygame.Rect(int(x), int(y), a.w, a.h), area)
         for _ in range(16):
@@ -137,6 +138,8 @@ class Placer:
                 if hit < 0:
                     break
                 r.bottom = taken[hit].top - 1
+        if r.collidelist(taken) >= 0 or not area.contains(r):
+            return None
         return Spot(r.x, r.y, r.w, r.h, slot)
 
 

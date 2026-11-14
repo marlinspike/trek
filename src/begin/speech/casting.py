@@ -42,7 +42,7 @@ CAST: dict[str, Cast] = {
                    ("Aaron", "Nathan", "Tom", "Eddy (English (US))", "Alex"),
                    ("Mark", "Guy", "David"), "en-us+m2", ("bryce", "kusal", "joe", "ryan"), 1.06, 1.04),
     "seven": Cast("Seven of Nine", "cool, precise, level", True,
-                  ("Allison", "Ava", "Susan", "Samantha", "Shelley (English (US))"),
+                  ("Allison", "Ava", "Susan", "Zoe", "Karen", "Tessa", "Samantha"),
                   ("Zira", "Aria", "Jenny"), "en-us+f3", ("amy", "kristin", "ljspeech", "hfc_female"), 0.94, 0.96),
     "sulu": Cast("Sulu", "smooth, sure, steady", False,
                  ("Nathan", "Evan", "Tom", "Alex", "Reed (English (US))"),
@@ -152,20 +152,40 @@ def cast_voice(part: str, kind: str, voices: list[VoiceInfo], chosen: str | None
     return pick[sum(map(ord, part)) % len(pick)].name   # parts without a match spread over what there is
 
 
+CAST_ORDER = ("computer", "spock", "worf", "seven", "geordi", "sulu", "chekov", "doctor")
+
+
 def cast_all(kind: str, voices: list[VoiceInfo], chosen: dict[str, str]) -> dict[str, str | None]:
-    """The whole cast at once, so that officers who must stand in for their first choices take voices no other
-    officer has, while there are enough to go round. Enemy captains may share with anyone."""
+    """The whole cast at once, so that no two officers share a voice while there are enough to go round.
+
+    The player's own choices stand first. Then each officer, in `CAST_ORDER` (the ship's computer first: it speaks
+    most), takes the first voice they asked for that no officer has yet; failing that, a stand-in of the right kind
+    that no officer has; failing that, their first choice, shared (pitch and pace still keep the two apart). Enemy
+    captains may share with anyone."""
     out: dict[str, str | None] = {}
-    later = []
-    for part in OFFICERS:             # first, every officer who gets a voice they asked for (or the player chose)
-        cast = CAST[part]
-        if chosen.get(part) and any(v.name == chosen[part] for v in voices) or kind == "espeak" or any(
-                _matches(w, v, kind) for w in _wanted(cast, kind) for v in voices):
-            out[part] = cast_voice(part, kind, voices, chosen.get(part))
-        else:
-            later.append(part)
-    for part in later:                # then the stand-ins, kept apart from those already cast
-        out[part] = cast_voice(part, kind, voices, None, frozenset(v for v in out.values() if v))
+    for part in CAST_ORDER:
+        want = chosen.get(part)
+        if want and any(v.name == want for v in voices):
+            out[part] = want
+    hits: dict[str, list[str]] = {}
+    for part in CAST_ORDER:           # first, every officer who can have a voice they asked for, not yet taken
+        if part in out:
+            continue
+        if kind == "espeak":
+            out[part] = cast_voice(part, kind, voices)
+            continue
+        hits[part] = [hit.name for w in _wanted(CAST[part], kind)
+                      if (hit := next((v for v in voices if _matches(w, v, kind)), None)) is not None]
+        free = [h for h in hits[part] if h not in out.values()]
+        if free:
+            out[part] = free[0]
+    for part in CAST_ORDER:           # then stand-ins, kept apart from those already cast
+        if part in out:
+            continue
+        taken = frozenset(v for v in out.values() if v)
+        others = [v for v in voices if v.name not in hits[part]]
+        stand_in = cast_voice(part, kind, others, None, taken)
+        out[part] = stand_in if stand_in not in taken or not hits[part] else hits[part][0]
     for part in CAST:
         if part not in out:
             out[part] = cast_voice(part, kind, voices, chosen.get(part))
@@ -181,4 +201,4 @@ def choices(part: str, voices: list[VoiceInfo]) -> list[str]:
     return sorted(dict.fromkeys(out), key=str.lower)
 
 
-__all__ = ["CAST", "OFFICERS", "RACES", "Cast", "VoiceInfo", "cast_all", "cast_voice", "choices", "part_for"]
+__all__ = ["CAST", "CAST_ORDER", "OFFICERS", "RACES", "Cast", "VoiceInfo", "cast_all", "cast_voice", "choices", "part_for"]

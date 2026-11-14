@@ -343,7 +343,8 @@ class TourRun:
                             description=f"{stop.system}: {self.tour.title}, stop {self.state.stop + 1} of "
                                         f"{len(self.tour.stops)}.",
                             arrivals=arrivals + called, personalities={1: lean} if lean else {},
-                            mission=stop.mission, reserved_captains=self.rivals.names() if self.rivals else ())
+                            mission=stop.mission, reserved_captains=self.rivals.names() if self.rivals else (),
+                            fixed_fleets=bool(stop.lesson))   # a lesson is fought as written
         self.fight = Fight(stop, setup, active, rival=rival)
         self.fight.called.extend(called)
         return self.fight
@@ -418,6 +419,9 @@ class TourRun:
             apply_record(w.ships[sid], rec)
         if fight.ship_ids:
             w.ships[fight.ship_ids[0]].prisoners = self.state.prisoners   # the brig comes along
+            if fight.stop.shields_down:                 # a lesson that starts with raising them [E]
+                for sh in w.ships[fight.ship_ids[0]].shields:
+                    sh.up = False
         self._recall_hive(battle)
         self._greet(battle)
 

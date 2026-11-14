@@ -17,6 +17,7 @@ from .ai.personality import Personality
 from .content.schema import ContentDB, ShipClass
 from .core.rng import Rng
 from .crew.characters import load_officers
+from .difficulty import DEFAULT, level, scaled, skilled
 from .crew.officers import Crew, default_crew
 from .paths import config_dir
 from .sim.arrivals import Arrival
@@ -58,6 +59,8 @@ class BattleSetup:
     arrivals: list[Arrival] = field(default_factory=list)   # waves and reinforcements that join later [E]
     personalities: dict[int, dict[str, float]] = field(default_factory=dict)  # side -> captains' leanings (a tour's memory) [E]
     mission: MissionDef | None = None   # a goal beyond holding the field: rescue, escort or intercept (sim/mission.py) [E]
+    difficulty: str = DEFAULT           # how hard the enemy fights: ensign, captain or admiral (difficulty.py) [E]
+    fixed_fleets: bool = False          # a custom battle: the fleets are fought as chosen, whatever the difficulty
     reserved_captains: tuple[str, ...] = ()   # [E] names no random captain draws (a tour's rivals)
 
     @property
@@ -103,9 +106,10 @@ class Battle:
         self.computers[ship.id] = comp
         w.add_controller(comp)
         prng = w.rng.derive(f"captain:{ship.id}")
-        cap = _captain_class(faction)(ship.id, ship.side,
-                                      Personality.roll(faction, prng, self.setup.personalities.get(ship.side)),
-                                      prng, phase=ship.id % 2)
+        pers = Personality.roll(faction, prng, self.setup.personalities.get(ship.side))
+        if ship.side != self.setup.player_side:
+            pers = skilled(pers, level(self.setup.difficulty))
+        cap = _captain_class(faction)(ship.id, ship.side, pers, prng, phase=ship.id % 2)
         self.captains[ship.id] = cap
         w.add_controller(cap)
 
@@ -162,6 +166,56 @@ def _captain_class(faction: object) -> type[AICaptain]:
     return BorgCaptain if getattr(faction, "collective", None) is not None else AICaptain
 
 
+def at_difficulty(content: ContentDB, setup: BattleSetup, key: str | None) -> BattleSetup:
+    """The battle as the difficulty has it: the enemy's fleets and waves scaled (unless the fleets are fixed), and
+    the difficulty noted for the captains `build_battle` rolls. The player's side is never changed."""
+    d = level(key)
+    setup = dataclasses.replace(setup, difficulty=d.key)
+    if setup.fixed_fleets or not d.fleet:
+        return setup
+    me = setup.player_side
+    room = MAX_OBJECTS - sum(len(f.ships) for f in setup.fleets) - sum(len(a.ships) for a in setup.arrivals) - 1
+    runner_keep = setup.mission.runner + 1 if setup.mission is not None and setup.mission.kind == "intercept" else 1
+    fleets = []
+    first_enemy = True
+    for f in setup.fleets:
+        if f.player or f.side == me:
+            fleets.append(f)
+            continue
+        keep = runner_keep if first_enemy else 1
+        first_enemy = False
+        bases = {i for i, s in enumerate(f.ships) if content.classes[s.class_id].is_base}
+        named = {i for i, s in enumerate(f.ships) if s.captain}
+        picks = scaled(len(f.ships), bases, d, keep, named)
+        ships, seen, clones = [], set(), 0
+        for i in picks:
+            spec = f.ships[i]
+            if i in seen:                          # a second ship of the kind: her own name and her own station
+                if room <= 0:
+                    continue
+                room -= 1
+                clones += 1
+                off = 2200.0 * ((clones + 1) // 2) * (1 if clones % 2 else -1)
+                spec = dataclasses.replace(spec, name=None, captain=None, personality=None,
+                                           x=None if spec.x is None else spec.x + off)
+            seen.add(i)
+            ships.append(spec)
+        fleets.append(dataclasses.replace(f, ships=ships))
+    arrivals = []
+    for a in setup.arrivals:
+        if a.side == me or a.kind != "wave" or not a.ships:
+            arrivals.append(a)
+            continue
+        bases = {i for i, cid in enumerate(a.ships) if content.classes[cid].is_base}
+        picks = scaled(len(a.ships), bases, d)
+        while len(picks) > len(a.ships) and len(picks) - len(a.ships) > max(0, room):
+            picks.pop()
+        room -= max(0, len(picks) - len(a.ships))
+        names = tuple(a.names[i] if i < len(a.names) and picks.index(i) == j else None for j, i in enumerate(picks))
+        arrivals.append(dataclasses.replace(a, ships=tuple(a.ships[i] for i in picks), names=names))
+    return dataclasses.replace(setup, fleets=fleets, arrivals=arrivals)
+
+
 def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
     total = sum(len(f.ships) for f in setup.fleets)
     if total > MAX_OBJECTS:
@@ -210,6 +264,8 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
             prng = world.rng.derive(f"captain:{ship.id}")
             leanings = {**setup.personalities.get(fleet.side, {}), **(spec.personality or {})}
             pers = Personality.roll(faction, prng, leanings or None)
+            if fleet.side != setup.player_side:
+                pers = skilled(pers, level(setup.difficulty))
             cap = _captain_class(faction)(ship.id, fleet.side, pers, prng, phase=ship.id % 2)
             captains[ship.id] = cap
             world.add_controller(cap)

@@ -5,8 +5,10 @@ says it and what kind of line it is. The speaker casts it (see `casting.py`), cl
 through the engine, one voice at a time:
 
 - an urgent line (a warning, a refusal) goes to the front and cuts short a routine one being spoken;
-- routine lines still waiting when two more have queued behind them are dropped, and a line that has waited more
-  than a few seconds is no longer news and is dropped too: the log keeps every word, the voice only what is current;
+- routine lines still waiting when two more have queued behind them are dropped (an officer's remark before an
+  answer to the captain), and a line that has waited more
+  than a few seconds is no longer news and is dropped too (a warning keeps a little longer, and only the two newest
+  wait): the log keeps every word, the voice only what is current;
 - nothing is spoken that the settings don't ask for (see `SpeechSettings.wants`).
 
 It never blocks the game: the engine speaks on the speaker's thread.
@@ -26,18 +28,25 @@ from .settings import SpeechSettings
 
 MAX_WAITING = 2       # routine lines waiting beyond this are dropped
 FIXED = "<fixed>"
+CUT_EVERY = 0.05      # seconds between tries at stopping a line being cut short
+CUT_TRIES = 20
+URGENT_STALE = 10.0   # a warning still waiting after this long has been overtaken by events
 STALE = 6.0           # seconds a routine line may wait before it's no longer worth saying
 
 _HINT = re.compile(r"\s*\((?:[YN] |Ctrl|press|type|say )[^)]*\)")     # "(Y makes it so, N belays)"
 _CLASS = re.compile(r"\s*\((?:[A-Z]{2,3})\)")                          # "Sandstorm (FR)"
 _CONTACT = re.compile(r"#(\d+)")
 _UNITS = re.compile(r"(\d),(\d{3})")
+_FIGURES = re.compile(r"\s*\([\d\s,.<>=≥≤/%×-]*\)")                     # "(12,467 > 2,000)": for the eye only
+_POINT_NOUGHT = re.compile(r"\b(\d+)\.0\b")                             # "warp 4.0" is "warp 4"
 
 
 def speakable(text: str) -> str:
     """A line as it should be heard: no key hints or class codes in brackets, contacts by number, plain dashes."""
     t = _HINT.sub("", text)
     t = _CLASS.sub("", t)
+    t = _FIGURES.sub("", t)
+    t = _POINT_NOUGHT.sub(r"\1", t)
     t = _CONTACT.sub(r"contact \1", t)
     t = _UNITS.sub(r"\1\2", t)
     t = t.replace("›", "").replace("·", ",").replace("—", ", ").replace("–", " to ").replace("×", " times ")
@@ -50,6 +59,8 @@ class _Ask:
     text: str
     urgent: bool
     at: float
+    cut: bool = False
+    kind: str = "report"
 
 
 @dataclass
@@ -129,16 +140,22 @@ class Speaker:
         """Queue a line, if the settings want it said. True when it was queued."""
         if not self.settings.wants(kind, urgent) or not text.strip():
             return False
-        ask = _Ask(part_for(officer, faction), text, urgent, time.monotonic())
+        ask = _Ask(part_for(officer, faction), text, urgent, time.monotonic(), kind=kind)
         with self._wake:
             if urgent:
                 self._waiting.insert(0, ask)
                 if self._speaking is not None and not self._speaking.urgent:
-                    threading.Thread(target=self._cut, daemon=True).start()
+                    self._cut_short(self._speaking)
+            elif any(a.text == text for a in self._waiting) or (
+                    self._speaking is not None and self._speaking.text == text and not self._speaking.cut):
+                return False                     # already about to be said, or being said: once is enough
             else:
                 self._waiting.append(ask)
-            while sum(1 for a in self._waiting if not a.urgent) > MAX_WAITING:
-                self._waiting.remove(next(a for a in self._waiting if not a.urgent))
+            while sum(1 for a in self._waiting if not a.urgent) > MAX_WAITING:     # remarks go before answers
+                routine = [a for a in self._waiting if not a.urgent]
+                self._waiting.remove(next((a for a in routine if a.kind == "report"), routine[0]))
+            while sum(1 for a in self._waiting if a.urgent) > MAX_WAITING:     # the newest warnings, not a backlog
+                self._waiting.remove(next(a for a in reversed(self._waiting) if a.urgent))
             self._wake.notify()
         self._start()
         return True
@@ -152,16 +169,28 @@ class Speaker:
             self._wake.notify()
         self._start()
 
-    def _cut(self) -> None:
-        eng = self.engine
-        if eng is not None:
-            eng.stop()
+    def _cut_short(self, ask: _Ask) -> None:
+        """Cut short the line being said (call with `_wake` held). The engine is told to stop until the line is
+        over: a stop that lands just before the engine has started its process would otherwise be lost."""
+        ask.cut = True
+        threading.Thread(target=self._stop_engine, args=(ask,), daemon=True).start()
+
+    def _stop_engine(self, ask: _Ask) -> None:
+        for _ in range(CUT_TRIES):
+            eng = self.engine
+            if eng is not None:
+                eng.stop()
+            time.sleep(CUT_EVERY)
+            with self._wake:
+                if self._speaking is not ask:
+                    return
 
     def stop(self) -> None:
         """Hush: drop everything waiting and cut short what is being said."""
         with self._wake:
             self._waiting.clear()
-        self._cut()
+            if self._speaking is not None:
+                self._cut_short(self._speaking)
 
     def close(self) -> None:
         with self._wake:
@@ -195,8 +224,11 @@ class Speaker:
             if ask is None:
                 return
             try:
-                if ask.urgent or time.monotonic() - ask.at <= STALE:
+                if time.monotonic() - ask.at <= (URGENT_STALE if ask.urgent else STALE):
                     line = self.line_for(ask.part, ask.text)
+                    with self._wake:
+                        if ask.cut:
+                            continue
                     self.said.append((ask.part, line.text))
                     del self.said[:-50]
                     self._engine().speak(line)
@@ -224,4 +256,4 @@ SAMPLES = {
 }
 
 
-__all__ = ["MAX_WAITING", "SAMPLES", "STALE", "Speaker", "speakable"]
+__all__ = ["CUT_EVERY", "MAX_WAITING", "URGENT_STALE", "SAMPLES", "STALE", "Speaker", "speakable"]

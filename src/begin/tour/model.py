@@ -63,6 +63,7 @@ from pathlib import Path
 from typing import Any
 from ..battle import PLAYER_FLAGSHIP_CLASSES
 from ..sim.mission import MissionDef
+from .drill import Step
 
 try:
     import tomllib
@@ -117,6 +118,9 @@ class Stop:
     commander: str = ""                 # [E] the captain of the heaviest enemy ship, if the briefing names them
     seed: int = 1
     mission: MissionDef | None = None   # [E] a goal beyond holding the field (sim/mission.py)
+    lesson: tuple[Step, ...] = ()       # [E] a stop that teaches: the officer's steps (tour/drill.py)
+    lesson_title: str = ""
+    shields_down: bool = False          # [E] the flagship arrives with her shields down (a lesson in raising them)
 
     def enemy_ships(self, flags: set[str]) -> list[str]:
         ships = list(self.enemies)
@@ -198,6 +202,8 @@ def parse_tour(t: dict[str, Any], source: str = "shipped") -> TourDef:
             commander=str(s.get("commander", "")),
             seed=int(s.get("seed", 1000 + i)),
             mission=MissionDef.from_dict(s["mission"]) if "mission" in s else None,
+            lesson=tuple(Step.from_dict(x) for x in s.get("lesson", [])), lesson_title=str(s.get("lesson_title", "")),
+            shields_down=bool(s.get("shields_down", False)),
         ))
     return TourDef(
         id=str(t["id"]), title=str(t["title"]), description=str(t.get("description", "")).strip(),

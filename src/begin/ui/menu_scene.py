@@ -10,6 +10,7 @@ from typing import Any, Callable, cast
 import pygame
 
 from ..battle import BattleSetup, FleetSpec, ShipSpec
+from ..difficulty import LEVELS, level
 from ..modes import MODES, Mode
 from ..content.schema import ContentDB
 from ..help.coach import HelpContext
@@ -183,6 +184,12 @@ class MenuScene:
                 return m
         return None
 
+    def _harder(self) -> None:
+        """The next difficulty round: Ensign, Captain, Admiral."""
+        i = LEVELS.index(level(self.settings.difficulty).key)
+        self.settings.difficulty = LEVELS[(i + 1) % len(LEVELS)]
+        self.settings.save()
+
     def _tours(self) -> None:
         if self.tours is not None:
             self.tours()
@@ -198,7 +205,7 @@ class MenuScene:
         return BattleSetup(
             [FleetSpec(0, mine, player=True, center=(0.0, -12000.0)), FleetSpec(1, theirs, center=(0.0, 12000.0))],
             seed=c["seed"], title="Custom battle",
-            description=f"{len(mine)} {pn} vs {len(theirs)} {en}",
+            description=f"{len(mine)} {pn} vs {len(theirs)} {en}", fixed_fleets=True,
         )
 
     def _cycle(self, key: str, options: list[str], step: int = 1) -> None:
@@ -263,7 +270,7 @@ class MenuScene:
             ("Quit", self.quit, "Leave the game (or Esc twice)", "Esc"),
         ]
         # a short window: closer together, and small enough that the side switch below still fits on screen
-        step = max(28, min(49, (surf.get_height() - y - 64) // len(items)))
+        step = max(28, min(49, (surf.get_height() - y - 100) // len(items)))
         for label, act, tip, key in items:
             self.ui.button(surf, pygame.Rect(x, y, 300, step - 7), label.upper(), act, tip, size=16 if step >= 38 else 14,
                            key=key)
@@ -272,6 +279,9 @@ class MenuScene:
         self.ui.button(surf, pygame.Rect(x, y + 12, 300, 30), f"QUICK BATTLE SIDE: {self.content.factions[pf].name.upper()}",
                        lambda: self._cycle("player_faction", FACTIONS), "Which faction you command in a quick battle or a patrol",
                        size=12, face="display")
+        d = level(self.settings.difficulty)
+        self.ui.button(surf, pygame.Rect(x, y + 48, 300, 30), f"DIFFICULTY: {d.title.upper()}", self._harder,
+                       f"{d.blurb} Click to change (Ensign, Captain, Admiral)", size=12, face="display")
         if self.t - self._quit_armed < QUIT_CONFIRM:
             theme.text(surf, "Press Esc again to quit", (x + 316, y - step + 2 + (step - 7) // 2 - 8), theme.CAUTION, 13)
         if self.config_warning:

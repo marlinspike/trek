@@ -262,6 +262,10 @@ class WindowsSapi:
 
 # ------------------------------------------------------------------ Linux
 
+ESPEAK_VOICES = ("en-us", "en-gb", "en-gb-scotland", "en-us+f1", "en-us+f2", "en-us+f3", "en-us+f4", "en-us+m1",
+                 "en-us+m2", "en-us+m3", "en-us+m4", "en-us+m5", "en-us+m6", "en-us+m7", "en-gb+m2", "en-gb+m3")
+
+
 @dataclass
 class Espeak:
     kind: str = "espeak"
@@ -278,8 +282,7 @@ class Espeak:
         return "no speech engine found: install espeak-ng (or set up Piper)"
 
     def voices(self) -> list[VoiceInfo]:
-        return [VoiceInfo(v, "en") for v in ("en-us", "en-gb", "en-gb-scotland", "en-us+f2", "en-us+f3", "en-us+m1",
-                                              "en-us+m3", "en-us+m5", "en-gb+m3")]
+        return [VoiceInfo(v, "en") for v in ESPEAK_VOICES]
 
     def speak(self, line: Spoken) -> None:
         prog = self.program()

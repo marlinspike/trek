@@ -46,6 +46,8 @@ from ..sim.ship import BankRole, Ship
 from ..sim.systems.sensors import ScanRecord
 from ..sim.systems.repair import in_battle
 from ..sim.world import World
+from ..core.angles import norm180
+from ..tour.drill import Drill, Facts, LessonView
 from ..tour.run import TourRun
 from .command import CommandMixin, Recording, load_alerts, load_phrasebook
 from .comms import CommsMixin
@@ -107,6 +109,10 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
         self.ribbon_won: str | None = None
         self._career_done = False
         self.ever_delegated: set[str] = set()
+        self.drill: Drill | None = None        # [E] a stop that teaches (tour/drill.py)
+        self._drill_course = 0.0
+        self._drill_warp = 0.0
+        self._drill_seen: set[str] = set()     # what the captain has done that the ship's state doesn't show
         self.trust_news: list[str] = []
         self.phrasebook = load_phrasebook()
         self.deeds: list[Event] = []
@@ -383,6 +389,8 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
         if self.bridge is None or self.world.outcome.over:
             return []
         tick = self.world.tick
+        if force:
+            self._drill_seen.add("counsel")
         if force or tick - self._counsel_tick >= self.world.rules.ticks_per_cycle or tick < self._counsel_tick:
             s = self.situation()
             if self.counsel_goal is not None and s is not None and self.counsel_goal.achieved(s):
@@ -424,6 +432,7 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
         run = lines if lines is not None else plan.lines
         if not run:
             return
+        self._drill_seen.add("followed")
         whole = lines is None or len(run) == len(plan.steps)
         self._log(f"{plan.name}'s counsel{'' if whole else ' (in part)'}: {plan.title}.", "dim")
         for line in run:
@@ -497,6 +506,7 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
         self._advance_order()
         self._proposals_tick(dt)
         self._style_tick()
+        self._drill_tick()
         if self.paused or self.world.outcome.over:
             self.acc = 0.0
             self.obs = self.world.observe(self.side)
@@ -512,6 +522,7 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
             if self.world.outcome.over:
                 self._emit(Show("debrief"))
                 self._crew_outcome()
+                self._drill_tick()           # the lesson's last word, with the victory
                 break
         if steps >= MAX_STEPS_PER_UPDATE:
             self.acc = 0.0
@@ -528,6 +539,40 @@ class BattleSession(ConsoleMixin, OrdersMixin, CommsMixin, CommandMixin, VoicesM
         run.prepare(self.battle)
         self.tour = run
         self.obs = self.world.observe(self.side)
+        stop = run.stop
+        if stop is not None and stop.lesson:
+            self.drill = Drill(stop.lesson_title or stop.title, stop.officer, stop.lesson)
+            p = self.player
+            self._drill_course = p.desired_course if p is not None else 0.0
+            self._drill_warp = p.desired_warp if p is not None else 0.0
+
+    def lesson(self) -> LessonView | None:
+        """The lesson this stop teaches, for the lesson card (None: not a teaching stop)."""
+        return self.drill.view() if self.drill is not None else None
+
+    def _drill_tick(self) -> None:
+        p = self.player
+        if self.drill is None or p is None:
+            return
+        out = self.world.outcome
+        foes = [s for s in self.world.ships.values() if s.side != self.side and s.alive]
+        st = p.stats
+        f = Facts(
+            cycle=self.world.time, warp=p.desired_warp, warp_change=abs(p.desired_warp - self._drill_warp), turned=abs(norm180(p.desired_course - self._drill_course)),
+            pursuing=p.helm_target is not None, targeted=p.target is not None,
+            phaser_shots=st.phaser_shots, phaser_hits=st.phaser_hits, torpedoes=st.torpedoes_fired,
+            torpedo_hits=st.torpedo_hits, shields_up=sum(1 for sh in p.shields if sh.up), shields=len(p.shields),
+            reinforced=any(sh.reinforced for sh in p.shields), boost=p.engine_boost > 0,
+            delegated=len(p.delegated), counsel="counsel" in self._drill_seen, followed="followed" in self._drill_seen,
+            accepted="accepted" in self._drill_seen,
+            beaten=(out.over and out.winner == self.side) or not foes)
+        lines = self.drill.update(f)
+        if not lines:
+            return
+        o = self.find_officer(self.drill.officer)
+        name = o.name if o is not None else self.drill.officer.title()
+        for line in lines:
+            self._voice(name, line, "crew", o.station if o is not None else None, o.id if o is not None else None)
 
     def finish_tour(self, run: TourRun) -> None:
         """The battle is over (or left): the tour takes its squadron back, with the officers' record."""
