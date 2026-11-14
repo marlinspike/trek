@@ -40,7 +40,7 @@ returning rival (tour/rivals.py) takes that name's place in the briefing. A stop
 there (`friends`, e.g. the starbase), drop enemies when a flag is set
 (`[tour.stop.drop] dreadnought-beaten = ["klingon.dr"]`) or add them
 (`[tour.stop.add] refit = ["klingon.bc"]`). A win can give Seven Borg technology [E] (`advances = ["sensors"]`, any
-of sim/collective.ADVANCES): from then on the officers offer to bring it online against the Borg.
+of sim/collective.ADVANCES): from then on it is online against the Borg. A tour's own `advances` are carried from the start.
 
 A stop can carry a mission [E] (sim/mission.py), a goal beyond holding the field:
 
@@ -161,6 +161,7 @@ class TourDef:
     starbase: str = "Starbase 12"
     sector: str = ""
     resupply: float = 0.5               # share of a full magazine a supply run restores between stops
+    advances: tuple[str, ...] = ()      # [E] Seven's advancements the flagship carries from the start
     source: str = "shipped"             # or the file it came from
 
 
@@ -214,6 +215,7 @@ def parse_tour(t: dict[str, Any], source: str = "shipped") -> TourDef:
         budget=int(t.get("budget", 300)), reinforcement_calls=int(t.get("reinforcement_calls", 2)),
         reinforcements=tuple(t.get("reinforcements", ())), starbase=str(t.get("starbase", "Starbase 12")),
         sector=str(t.get("sector", "")), resupply=float(t.get("resupply", 0.5)), source=source,
+        advances=tuple(str(a) for a in t.get("advances", ())),
     )
 
 

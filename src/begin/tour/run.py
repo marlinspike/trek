@@ -98,7 +98,7 @@ class TourRun:
             ships.append(ShipRecord(cid, _name(content, cid, used, rng), role="escort",
                                     captain=_captain(content, cid, rng, captains)))
         state = TourState(tour.id, ships, calls_left=tour.reinforcement_calls, seed=seed,
-                          difficulty=level(difficulty).key)
+                          difficulty=level(difficulty).key, advances=list(tour.advances))
         squadrons.apply(squadron, state, content)
         return TourRun(tour, state, content)
 
@@ -474,25 +474,26 @@ class TourRun:
         ins = collective.insight(w, w.player_side)
         ins.experience = self.state.lessons.get("insight:experience", ins.experience)
         ins.vigilance = self.state.lessons.get("insight:vigilance", ins.vigilance)
-        ins.advances = set(self.state.advances)
-        self._offer_advances(battle)
+        ins.advances = set(self.state.advances) | set(self.tour.advances)   # a tour saved before they were given
+        self._fit_advances(battle)
 
-    def _offer_advances(self, battle: Battle) -> None:
-        """[E] Facing the Borg with advancements in hand, Seven says what she can do and how to ask for it: a new
-        captain has no other way to know."""
+    def _fit_advances(self, battle: Battle) -> None:
+        """[E] Facing the Borg, Seven has her advancements online on the flagship from the first moment, and says so."""
+        from ..sim.projects import PROJECTS
+
         w = battle.world
         fight = self.fight
         me = w.ships.get(fight.ship_ids[0]) if fight is not None and fight.ship_ids else None
-        if me is None or not self.state.advances:
+        have = [a for a in collective.ADVANCES if a in collective.insight(w, w.player_side).advances]
+        if me is None or not have:
             return
         if not any(collective.is_hive(w, s) for s in w.ships.values() if s.side != w.player_side):
             return
-        have = [a for a in collective.ADVANCES if a in self.state.advances]
-        words = ("Captain, from what we have taken from the Borg I can give us "
-                 + _listed([ADVANCE_NAMES[a] for a in have]) + ". Order "
-                 + _listed([f"'design {a}'" for a in have], "or")
-                 + " and I will bring it online, or delegate science to me and I will see to all of it.")
-        w.say(me, words, "crew", speaker=OFFICER_NAMES["seven"])
+        for a in have:
+            PROJECTS[a].finish(w, me, PROJECTS[a])
+        w.say(me, "Captain, my advancements are online: " + _listed([ADVANCE_NAMES[a] for a in have])
+              + ". The Collective will find us harder to read, to outrun and to board.", "crew",
+              speaker=OFFICER_NAMES["seven"])
 
     def _remember_hive(self, battle: Battle) -> None:
         w = battle.world
