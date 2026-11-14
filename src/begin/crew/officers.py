@@ -83,6 +83,7 @@ class OfficerBrain(AICaptain):
     station: str = "helm"              # or "bridge": every station, for the officer with the conn
     title: str = ""
     officer_id: str = ""
+    own_aim: str | None = None             # the subsystem this officer chose to aim at (never the captain's) [E]
     last_scan: dict[int, int] = field(default_factory=dict)
     last_repair_check: int = -999
     helm_plan: HelmPlan | None = None      # what the officer at the helm is doing, for reports and the display
@@ -134,6 +135,11 @@ class OfficerBrain(AICaptain):
         captains = obs.contact(ship.target) if ship.target is not None else None
         if captains is not None:
             best = captains
+            relay = self._relay_aim(obs, best) if self.station in ("tactical", "bridge") else None
+            if relay is not None and ship.target_subsystem != relay and ship.target_subsystem in (None, self.own_aim):
+                # [E] a found relay beats whatever system the officer picked (never one the captain named)
+                self.own_aim = relay
+                out.append(self._cmd(SelectTarget, ship, target=best.id, subsystem=relay))
         else:
             best, best_score = None, 0.0
             probed, focused = self._scoring_sets(obs, ship)
@@ -142,7 +148,8 @@ class OfficerBrain(AICaptain):
                 if s > best_score:
                     best, best_score = c, s
             if best is not None and self.station in ("tactical", "bridge"):
-                out.append(self._cmd(SelectTarget, ship, target=best.id, subsystem=self._subsystem_choice(obs, ship, best)))
+                self.own_aim = self._relay_aim(obs, best) or self._subsystem_choice(obs, ship, best)
+                out.append(self._cmd(SelectTarget, ship, target=best.id, subsystem=self.own_aim))
         self.target = best.id if best is not None else None
         if (self.station in ("tactical", "bridge") and best is not None and best.cls is not None and ship.tubes
                 and self.autoload_set_for != best.id):
@@ -314,6 +321,15 @@ def repair_priority(ship: Ship, obs: Observation) -> RepairTarget | None:
     return None
 
 
+def _harmonics_wanted(obs: Observation, ship: Ship, hives: list[ContactView]) -> bool:
+    """[E] Seven has cracked a hive ship's shield harmonics and no harmonic round is loaded or being made."""
+    if "harmonic" in ship.projects or not any(t.intact for t in ship.tubes):
+        return False
+    if any(t.loaded is not None and t.loaded.ordnance == "harmonic" for t in ship.tubes):
+        return False
+    return any(obs.insight().has_code(c.id) and obs.dormant(c.id) <= 0 for c in hives)
+
+
 def unfitted(obs: Observation, ship: Ship) -> list[str]:
     """Seven's advancements [E] our side has earned that this ship hasn't brought online (or begun to) against the
     hive ships in sight; empty when there are none to fight."""
@@ -469,6 +485,8 @@ class Crew:
             offline = unfitted(obs, ship)
             if offline:                                 # her own advancements: she brings them online unasked
                 out.append(cmd(StartProject, sci, project=offline[0]))
+            elif _harmonics_wanted(obs, ship, hives):   # their harmonics are ours: rounds that pass their shields
+                out.append(cmd(StartProject, sci, project="harmonic"))
         if ship.duty == "harmonics" and unsurveyed and obs.tick - self.hive_at >= HIVE_SCAN_CYCLES * tpc:
             reach = ship.sensor_range() * obs.rules.scan_range_fraction
             near = [c for c in unsurveyed if c.distance_to(ship.x, ship.y) <= reach]

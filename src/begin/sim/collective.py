@@ -68,6 +68,8 @@ TUNE_BLOCKS_BEAMING = 0.5                 # tuning at which their transporters c
 ADVANCES = ("sensors", "guided", "adaptive")
 SENSOR_GAIN = 2.0                         # × each scan's worth, with her Borg sensor array online
 GUIDED_SPEED = 1.5                        # × a torpedo's speed at a hive ship, with her Borg-tuned guidance
+GUIDED_DAMAGE = 1.5                       # × what a Borg-tuned torpedo does to a hive ship
+GUIDED_LEARN = 0.3                        # × how fast the hive learns a Borg-tuned torpedo (it re-tunes every salvo)
 ADAPTIVE_RATE = 3.0                       # × how fast the shields tune, with her adaptive shield harmonics
 ADAPTIVE_KEEP = 0.7                       # of the tuning kept when the hive shifts its beams (0.35 without them)
 SHIFT_KEEP = 0.35
@@ -183,7 +185,8 @@ def incoming(world: World, target: Ship, attacker: Ship | None, family: str) -> 
         if family == "harmonic" and not pierce:
             family = "torpedo"                      # a harmonic round tuned to someone else: just a torpedo
         lvl = mind(world, target.faction).level(weapon_key(family, attacker))
-        return 1.0 - (1.0 - rules.floor) * lvl, pierce
+        tuned = GUIDED_DAMAGE if family == "torpedo" and "guided" in attacker.borg_tech else 1.0
+        return (1.0 - (1.0 - rules.floor) * lvl) * tuned, pierce
     att_rules = rules_of(world, attacker)
     if att_rules is not None and target.tuning > 0.0:
         return 1.0 - att_rules.tune_cut * target.tuning, False
@@ -214,7 +217,7 @@ def learn(world: World, target: Ship, attacker: Ship | None, family: str, raw: f
         teach = rules.adapt.get(family, 0.0)
         if teach <= 0:
             return
-        speed = 1.0
+        speed = GUIDED_LEARN if family == "torpedo" and "guided" in attacker.borg_tech else 1.0
         if family == "phaser":
             mastered = sum(1 for k, v in m.levels.items()
                            if k.startswith(f"phaser:{attacker.side}:") and k != key and v >= 0.5)

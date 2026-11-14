@@ -590,7 +590,7 @@ Your officers can build rounds no armoury carries:
 - **The deflector pulse** (`design deflector`). Not a round: the main dish set up to sweep a 60° cone ahead of your bow, out to 15,000 units. It is reusable every 30 cycles. See [Deflector tachyon pulse](#topic-deflector).
 - **The plasma-seeker** (`design seeker`, Seven and Spock). A torpedo that flies a damaged ship's plasma trail, every turn she made, and homes on her at the end of it. When it hits, you have a six-second firing solution on her, cloak or no cloak: `strike <ship> <system>` has Seven fire it and spend that window for you. See [Cloaking device](#topic-cloak).
 - **Harmonic torpedoes** (`design harmonic`). Against a Borg ship whose shield harmonics Seven has learned, they pass straight through her shields. See [Fighting the Borg](#topic-borg).
-- **Borg-tuned torpedo guidance** (`design guided`). One of Seven's advancements, online in every Borg battle of The Collective tour: your torpedoes fly half as fast again at any Borg ship. Her **Borg sensors** (`design sensors`) and **adaptive shields** (`design adaptive`) come the same way. See [Fighting the Borg](#topic-borg).
+- **Borg-tuned torpedo guidance** (`design guided`). One of Seven's advancements, online in every Borg battle of The Collective tour: your torpedoes fly half as fast again at any Borg ship, hit it half as hard again, and the hive learns them about three times more slowly. Her **Borg sensors** (`design sensors`) and **adaptive shields** (`design adaptive`) come the same way. See [Fighting the Borg](#topic-borg).
 
 ### Other tools
 
@@ -4172,7 +4172,7 @@ duty off
 ```
 
 - **Shields** (`tune shields`): she tunes your shield harmonics against their cutting beams. Tuned past halfway, their transporters can't lock on, so no drones come aboard. In time they shift frequency and she has to start again.
-- **Harmonics** (`duty harmonics`): she keeps scanning their ships. Halfway through the survey she finds the ship's **vinculum relay**. When it is complete she has the ship's **shield harmonics**, and `design harmonic` builds torpedoes that pass straight through her shields. When Seven runs the science station on her own, she takes this duty herself and reports her progress. The gauge in the Borg panel shows how far she has got.
+- **Harmonics** (`duty harmonics`): she keeps scanning their ships. Halfway through the survey she finds the ship's **vinculum relay**. When it is complete she has the ship's **shield harmonics**, and `design harmonic` builds torpedoes that pass straight through her shields. When Seven runs the science station on her own, she takes this duty herself, reports her progress, and loads harmonic torpedoes the moment she has the harmonics. The gauge in the Borg panel shows how far she has got.
 - If Seven is away or hurt, Spock takes the science station and the duties, a little more slowly.
 
 #### Seven's advancements
@@ -4180,14 +4180,14 @@ duty off
 On **The Collective** tour the Enterprise carries three of Seven's advancements, built from Borg technology. They come online the moment a Borg battle begins, and Seven tells you when they are up:
 
 - **Borg sensors**: every scan of a Borg ship counts twice, so she finds the relay and the harmonics in half the time.
-- **Borg-tuned torpedoes**: your torpedoes fly half as fast again at a Borg ship. A sphere is as fast as the Enterprise but can't outrun them.
+- **Borg-tuned torpedoes**: your torpedoes fly half as fast again at a Borg ship and hit it half as hard again, and because the guidance re-tunes every salvo the hive learns them about three times more slowly. A sphere is as fast as the Enterprise but can't outrun them.
 - **Adaptive shields**: your shields are tuned against their transporters from the first moment, and they tune three times as fast. When the hive shifts its beams you keep most of your tuning, and you never lose the block on their transporters.
 
 A tour you write yourself can hand them out too: from the start (`advances` on the tour) or as the prize for winning a stop (`advances` on the stop). Either way they come online at the start of each Borg battle. If one is ever offline, `design sensors`, `design guided` or `design adaptive` brings it back, and Seven offers to do that herself.
 
 #### The weak point
 
-Every Borg ship routes its vinculum relay through some unremarkable system: a battery, a transporter, a probe launcher. Once your scans have found it, aim at it: `target cube relay` (or "Worf, target their relay"). Destroy it and **every drone aboard goes dormant**. The ship goes dark: no shields, no weapons, no helm, and no healing.
+Every Borg ship routes its vinculum relay through some unremarkable system: a battery, a transporter, a probe launcher. Once your scans have found it, aim at it: `target cube relay` (or "Worf, target their relay"). An officer running tactical on their own aims at it the moment it is found, unless you have named another system. Destroy it and **every drone aboard goes dormant**. The ship goes dark: no shields, no weapons, no helm, and no healing.
 
 While she sleeps:
 

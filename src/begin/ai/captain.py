@@ -308,6 +308,7 @@ class AICaptain:
             self._log(obs, f"target -> {best.label if best else 'none'} (score {best_score:.1f})")
             self.target = new_target
         wanted = self.wishes[1].get(self.target) if self.target is not None else None
+        wanted = wanted or self._relay_aim(obs, best)
         if self.target is not None and (ship.target != self.target or
                                         (wanted is not None and ship.target_subsystem != wanted)):
             sub = wanted or self._subsystem_choice(obs, ship, best)
@@ -469,6 +470,13 @@ class AICaptain:
                     and o.distance_to(c.x, c.y) < AI_SCREEN_RANGE for o in obs.hostile_contacts()):
                 score *= AI_BASE_SCREENED
         return score
+
+    def _relay_aim(self, obs: Observation, c: ContactView | None) -> str | None:
+        """[E] A competent captain who knows where a hive ship's vinculum relay runs aims at it while she is awake:
+        it puts her whole crew to sleep."""
+        if c is None or self.personality.competence < DANGER_CLOSE_COMPETENCE or not obs.is_hive(c.id):
+            return None
+        return "relay" if obs.weak_point(c.id) is not None and obs.dormant(c.id) <= 0 else None
 
     def _subsystem_choice(self, obs: Observation, ship: Ship, c: ContactView | None) -> str | None:
         """Competent captains of disabling doctrines aim at weapons or engines [E]."""
