@@ -22,6 +22,7 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from ..core.words import the
 from ..core.angles import bearing
 from ..sim.observation import Observation
 from ..sim.ship import Ship
@@ -132,10 +133,10 @@ def candidates(obs: Observation, ship: Ship, officers: dict[str, OfficerProfile]
             loaded = [t for t in ship.tubes if t.enabled and t.loaded is not None]
             name = _name(obs, tgt.id)
             if d <= ship.cls.banks_range and len(ready) >= max(2, len(ship.banks) // 2):
-                say("tactical", f"{len(ready)} phasers bear on the {name} and she's in range. Fire?",
+                say("tactical", f"{len(ready)} phasers bear on {the(name)} and she's in range. Fire?",
                     f"fire all phasers at {name}")
             elif d <= TORPEDO_REACH and len(loaded) >= max(2, len(ship.tubes) // 2):
-                say("tactical", f"{len(loaded)} tubes loaded and the {name} is {d:,.0f} out. Torpedoes?",
+                say("tactical", f"{len(loaded)} tubes loaded and {the(name)} is {d:,.0f} out. Torpedoes?",
                     f"fire all torpedoes at {name}")
     # science: an enemy close by that we haven't scanned
     for c in sorted(hostile, key=lambda c: c.distance_to(ship.x, ship.y)):

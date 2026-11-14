@@ -851,9 +851,11 @@ class CrewPanel(Panel):
             name_r = pygame.Rect(rect.x + 100, ry, rect.width - 214, rh - 2)
             hover = name_r.collidepoint(hud.ui.mouse)
             shown = holder if holder is not None and on else o   # the commander runs every station they hold
-            theme.text(surf, shown.title, (name_r.x, ry + 3), theme.CREW if on or hover else theme.TEXT, 12)
-            # how far this officer trusts the captain (crew/career.py)
-            theme.text(surf, hud.crew.trust(o.id), (rect.right - 114, ry + 4), theme.TEXT_FAINT, 10, anchor="topright")
+            trust = hud.crew.trust(o.id)                          # how far this officer trusts the captain (crew/career.py)
+            room = rect.right - 114 - theme.text_width(trust, 10) - 8 - name_r.x
+            label = shown.title if theme.text_width(shown.title, 12) <= room else shown.name   # rank goes first
+            theme.text(surf, theme.fit(label, 12, room), (name_r.x, ry + 3), theme.CREW if on or hover else theme.TEXT, 12)
+            theme.text(surf, trust, (rect.right - 114, ry + 4), theme.TEXT_FAINT, 10, anchor="topright")
             hud.ui.add(name_r, partial(hud.address, o.aliases[0] if o.aliases else o.id),
                        f"Talk to {o.name} (type after the comma)")
             btn = pygame.Rect(rect.right - 106, ry, 94, rh - 3)

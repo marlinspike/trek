@@ -433,6 +433,7 @@ class TacticalView:
                       now: Snapshot, alpha: float) -> None:
         """Torpedoes and probes in flight, with their trails and the warning of one coming at us."""
         live: set[int] = set()
+        tags: list[pygame.Rect] = []                     # salvo counts already written this frame
         for o in obs.ordnance():
             b = now.ordnance.get(o.id)
             if b is None:
@@ -449,7 +450,7 @@ class TacticalView:
                         if near < INCOMING_SOUND and o.id not in self._warned:
                             self._warned.add(o.id)            # heard once per round, as it closes
                             self._sounds.append(("incoming", p[0], p[1]))
-            self._ordnance(surf, o, p, f, overlay)
+            self._ordnance(surf, o, p, f, overlay, tags)
         for oid in [k for k in self.torp_trails if k not in live]:
             del self.torp_trails[oid]
         self._warned &= live
@@ -1289,7 +1290,7 @@ class TacticalView:
         return "  ·  ".join(parts)
 
     def _ordnance(self, surf: pygame.Surface, o: OrdnanceView, p: Pose, f: Faction | None,
-                  overlay: pygame.Surface | None = None) -> None:
+                  overlay: pygame.Surface | None = None, tags: list[pygame.Rect] | None = None) -> None:
         cam = self.cam
         if not cam.visible(p[0], p[1], 20):
             return
@@ -1301,9 +1302,11 @@ class TacticalView:
             if overlay is not None:
                 draw_round(surf, overlay, sx, sy, p[2], col, style, size, self.clock, o.id, o.armed)
             tag = f"×{o.count}"
-            if o.count > 1 and cam.rect.contains(pygame.Rect(int(sx + size * 2 + 4), int(sy - 6),
-                                                             theme.text_width(tag, 10, "mono"), 14)):
+            box = pygame.Rect(int(sx + size * 2 + 4), int(sy - 6), theme.text_width(tag, 10, "mono"), 14)
+            if o.count > 1 and cam.rect.contains(box) and (tags is None or box.collidelist(tags) < 0):
                 theme.text(surf, tag, (sx + size * 2 + 4, sy - 6), theme.dim(col, 0.9), 10, "mono")
+                if tags is not None:
+                    tags.append(box)                       # two salvos side by side: one count, never one over another
         else:
             col = f.torpedo_color if f is not None else theme.PROBE
             gfx.draw.circle(surf, col, (int(sx), int(sy)), 4, 1)

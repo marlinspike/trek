@@ -128,7 +128,7 @@ class Chatter:
         elif isinstance(ev, (TorpedoLaunched, PhaserFired)) and ev.ship_id == s.id and s.objectives:
             pass       # the officer working the objective says what she is firing and why
         elif isinstance(ev, TorpedoLaunched) and ev.ship_id == s.id and commander is not None:
-            self._maybe(out, obs, "", "bridge_torpedoes", 0.5, officer=commander)
+            self._maybe(out, obs, "", "bridge_torpedoes", 0.5, gap=20.0, officer=commander)   # not every volley
         elif isinstance(ev, TorpedoLaunched) and ev.ship_id == s.id and "tactical" in s.delegated:
             self._maybe(out, obs, "tactical", "torpedoes", 0.6)
         elif isinstance(ev, PhaserFired) and ev.ship_id == s.id and "tactical" in s.delegated:

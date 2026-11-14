@@ -232,3 +232,36 @@ def test_officers_aim_at_a_found_relay_and_load_harmonics_once_cracked(content) 
         if aimed and harmonics:
             break
     assert aimed and harmonics
+
+
+def test_a_cube_takes_longer_to_survey_than_a_sphere(content) -> None:  # type: ignore[no-untyped-def]
+    """Pressure test (2026-11-14): with the advancements online the officers read a cube in 9 cycles and killed her
+    in 30, untouched. A cube is a great deal of ship to read, so the fight now builds before the blow lands."""
+    def progress(enemy: str) -> float:
+        _, w, us, them = _borg(content, enemy)
+        collective.on_scan(w, us, them, "seven")
+        return collective.insight(w, us.side).survey(them.id).progress
+    sphere, cube = progress("borg.sp"), progress("borg.cu")
+    assert cube < sphere * 0.4
+    assert sphere == progress("borg.pr")                     # the small ships are read as before
+
+
+def test_harmonic_torpedoes_are_loaded_in_the_tubes_that_hold_them(content) -> None:  # type: ignore[no-untyped-def]
+    _, w, us, them = _borg(content)
+    for _ in range(40):
+        collective.on_scan(w, us, them, "seven")
+    said = _said(type("B", (), {"world": w})())
+    w.execute(StartProject(ship_id=us.id, project="harmonic"))
+    for _ in range(int(30 * w.rules.ticks_per_cycle)):
+        w.step()
+        if any("harmonic torpedoes" in x for x in said):
+            break
+    line = next(x for x in said if x.startswith("The harmonic torpedoes"))
+    assert line.startswith("The harmonic torpedoes are loaded in tubes ") and " is " not in line.split(".")[0]
+
+
+def test_a_numbered_ship_takes_no_article() -> None:
+    from begin.core.words import the
+
+    assert the("Cube 228") == "Cube 228" and the("#12") == "#12"
+    assert the("Hornet") == "the Hornet" and the("Hornet", cap=True) == "The Hornet"

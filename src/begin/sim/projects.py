@@ -36,6 +36,11 @@ class ProjectDef:
     can_start: Callable[[World, Ship], str | None] | None = None   # why it can't be started now (None: it can)
     rounds: int = 1                                        # special rounds it loads
 
+    @property
+    def loaded_line(self) -> str:
+        """What the crew says when its rounds are in the tubes."""
+        return f"The {self.title} {'are' if self.rounds > 1 else 'is'} loaded"
+
 
 def _free_tube(ship: Ship, ordnance: str) -> Tube | None:
     """The tube a special round goes into: an empty one first, else one holding an ordinary torpedo."""
@@ -187,7 +192,8 @@ PROJECTS: dict[str, ProjectDef] = {
     "guided": ProjectDef("guided", "Borg-tuned torpedo guidance", 12.0, _fit("guided"),
                          can_start=_earned("guided", "Borg-tuned torpedo guidance"),
                          is_ready=lambda ship: "guided" in ship.borg_tech,
-                         hint="Our torpedoes fly half as fast again at any Borg ship: a sphere can't outrun them."),
+                         hint="Our torpedoes fly half as fast again at any Borg ship, hit half as hard "
+                              "again, and the hive is slow to learn them: a sphere can't outrun them."),
     "adaptive": ProjectDef("adaptive", "adaptive shield harmonics", 14.0, _fit("adaptive"),
                            can_start=_earned("adaptive", "adaptive shield harmonics"),
                            is_ready=lambda ship: "adaptive" in ship.borg_tech,
@@ -199,6 +205,14 @@ PROJECTS: dict[str, ProjectDef] = {
 def project_loaded(ship: Ship, proj: ProjectDef) -> int | None:
     """Index of a tube already holding this project's round, if any."""
     return next((t.index for t in ship.tubes if t.loaded is not None and t.loaded.ordnance == proj.ordnance), None)
+
+
+def _tubes_holding(ship: Ship, ordnance: str, first: int) -> str:
+    """'tube 2', or 'tubes 1, 2 and 4' when a project loaded several."""
+    held = [t.index + 1 for t in ship.tubes if t.loaded is not None and t.loaded.ordnance == ordnance] or [first + 1]
+    if len(held) == 1:
+        return f"tube {held[0]}"
+    return "tubes " + ", ".join(map(str, held[:-1])) + f" and {held[-1]}"
 
 
 def update_projects(world: World, ship: Ship, dt: float) -> None:
@@ -216,7 +230,7 @@ def update_projects(world: World, ship: Ship, dt: float) -> None:
         if proj.ordnance and tube is None:
             text = f"The {proj.title} is ready, but no tube can take it."
         elif tube is not None:
-            text = f"The {proj.title} is loaded in tube {tube + 1}. {proj.hint}".strip()
+            text = f"{proj.loaded_line} in {_tubes_holding(ship, proj.ordnance, tube)}. {proj.hint}".strip()
         else:
             text = f"The {proj.title} is ready. {proj.hint}".strip()
         world.emit(Message(world.tick, text, Tone.GOOD, ship_id=ship.id, visible_to=frozenset({ship.side})))
