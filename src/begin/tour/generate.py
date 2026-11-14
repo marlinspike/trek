@@ -35,9 +35,9 @@ PREFIX = "generated-"
 STOPS = 4                          # before the boss
 BUDGET = 240                       # fleet points for escorts
 # each stop's threat as a share of the squadron's strength (flagship mass + budget): rising to the boss
-THREAT = (0.42, 0.55, 0.68, 0.80)
-BOSS_THREAT = 0.85                 # the boss and her screen
-BOSS_WAVE = 0.45                   # the wave that comes when they are beaten
+THREAT = (0.50, 0.68, 0.85, 1.00)
+BOSS_THREAT = 1.10                 # the boss and her screen
+BOSS_WAVE = 0.60                   # the wave that comes when they are beaten
 SITUATIONS = ("ambush", "wolfpack", "waves", "rescue", "convoy", "runner")
 MISSIONS = ("rescue", "convoy", "runner")
 OFFICERS = ("spock", "worf", "seven", "geordi")      # the officers who brief in the Ready Room
