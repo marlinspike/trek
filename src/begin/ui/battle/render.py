@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 import time
 from functools import lru_cache, partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 import pygame
 
@@ -88,7 +88,12 @@ class RenderMixin(SceneState):
                                       self.paused, self.crew.counsel_goal.text if self.crew.counsel_goal else "",
                                       lambda: self.crew.counsel_order("general"))
         else:
-            panel = officer_view.draw_panel(surf, (self.map_rect.x + 14, self.map_rect.y + 36), acts,
+            left, top = self.map_rect.x + 14, self.map_rect.y + 36
+            span = pygame.Rect(left, top, officer_view.PANEL_W, 1)
+            for c in sorted((c for c in cards if c is not None), key=lambda c: c.top):
+                if c.top > self.map_rect.y + 6 and c.left < span.right and c.right > span.left and c.bottom > top:
+                    top = c.bottom + 4          # below the banners and corner cards it would cover
+            panel = officer_view.draw_panel(surf, (left, top), acts,
                                             self.crew.officer_name, obs.tick, obs.rules.ticks_per_cycle,
                                             self.subs.speaking)
             cards.append(panel)
@@ -222,14 +227,18 @@ class RenderMixin(SceneState):
                        weight="semibold")
             x += theme.text_width("RED ALERT", 11, weight="semibold") + 16
         cards: list[pygame.Rect | None] = [pygame.Rect(r.x + 8, r.y + 6, x - r.x - 8, 24)]
+        title = theme.text(surf, self.clock.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
+        rng = theme.text(surf, f"range {self.display_range():,.0f}  ·  F1 controls", (r.right - 14, r.y + 28),
+                         theme.TEXT_FAINT, 11, anchor="topright")
+        cards += [title.union(rng).inflate(8, 6)]
         banner_top = r.y + 10
         if self.paused and not self.obs.outcome.over:
             # hard to miss: nothing moves, charges or reloads while paused
             msg = "PAUSED  ·  press Space to run"
             b = pygame.Rect(0, 0, theme.text_width(msg, 14, weight="semibold") + 32, 30)
             b.midtop = (r.centerx, banner_top)
-            if b.left < x:                  # a narrow map: below the status line rather than over it
-                banner_top = b.top = r.y + 34
+            _below(b, cards)                # a narrow map: below the status line and the title rather than over them
+            banner_top = b.top
             if self.counsel_open:           # beside the counsel, or at the foot of the map if there's no room
                 c = counsel_view.counsel_rect(r)
                 if b.colliderect(c):
@@ -244,13 +253,10 @@ class RenderMixin(SceneState):
             gfx.draw.rect(surf, theme.CAUTION, b, 1, border_radius=4)
             theme.text(surf, msg, b.center, theme.CAUTION, 14, weight="semibold", anchor="center")
             cards.append(b)
-        conn = self._draw_conn_banner(surf, banner_top + (36 if self.paused and not self.obs.outcome.over else 0))
+        conn = self._draw_conn_banner(surf, banner_top + (36 if self.paused and not self.obs.outcome.over else 0),
+                                      [c for c in cards if c is not None])
         if conn is not None:
             cards.append(conn)
-        title = theme.text(surf, self.clock.title, (r.right - 14, r.y + 10), theme.TEXT_DIM, 12, anchor="topright")
-        rng = theme.text(surf, f"range {self.display_range():,.0f}  ·  F1 controls", (r.right - 14, r.y + 28),
-                         theme.TEXT_FAINT, 11, anchor="topright")
-        cards += [title.union(rng).inflate(8, 6)]
         y = r.y + 48
         for names, eta in self.readout.inbound():
             # reinforcements on the way: a countdown that pulses as they get close
@@ -309,34 +315,39 @@ class RenderMixin(SceneState):
                 out.append(comms_view.draw_chip(surf, (r.right - 14, y + 4), self.obs, self.comms, self.ui, now))
         return out
 
-    def _draw_conn_banner(self: BattleScene, surf: pygame.Surface, top: int) -> pygame.Rect | None:
+    def _draw_conn_banner(self: BattleScene, surf: pygame.Surface, top: int,
+                          avoid: list[pygame.Rect] | None = None) -> pygame.Rect | None:
         """Who has the conn, when it isn't the captain; click it to take the bridge back."""
         ship, o = self.player, self.crew.in_command()
         if o is None:
             if ship is not None and ship.evasive:
-                return self._draw_evasive_banner(surf, top)
+                return self._draw_evasive_banner(surf, top, avoid)
             return None
         msg = f"{o.name.upper()} HAS THE CONN  ·  say \"I have the bridge\" to take it back"
-        box = self._banner(surf, msg, top, theme.CREW)
+        box = self._banner(surf, msg, top, theme.CREW, avoid)
         self.ui.add(box, lambda: self.run_console("I have the bridge"), "Take the bridge back")
         return box
 
-    def _banner(self: BattleScene, surf: pygame.Surface, msg: str, top: int, col: theme.Color) -> pygame.Rect:
-        """A banner across the top of the map, centred: who has the conn, evasive manoeuvres. Returns its box."""
+    def _banner(self: BattleScene, surf: pygame.Surface, msg: str, top: int, col: theme.Color,
+                avoid: list[pygame.Rect] | None = None) -> pygame.Rect:
+        """A banner across the top of the map, centred: who has the conn, evasive manoeuvres. It drops below
+        anything in `avoid` it would cover (the status line and the title, on a narrow map). Returns its box."""
         box = pygame.Rect(0, 0, theme.text_width(msg, 13, weight="semibold") + 32, 28)
         box.midtop = (self.map_rect.centerx, top)
+        _below(box, avoid or [])
         theme.shadow(surf, box)
         gfx.draw.rect(surf, theme.BG_PANEL_HI, box, border_radius=4)
         gfx.draw.rect(surf, col, box, 2, border_radius=4)
         theme.text(surf, msg, box.center, col, 13, weight="semibold", anchor="center")
         return box
 
-    def _draw_evasive_banner(self: BattleScene, surf: pygame.Surface, top: int) -> pygame.Rect:
+    def _draw_evasive_banner(self: BattleScene, surf: pygame.Surface, top: int,
+                             avoid: list[pygame.Rect] | None = None) -> pygame.Rect:
         """Evasive manoeuvres are on: amber while the helm is dodging; click to end them."""
         dodging = any(a.role == "evasive" and a.kind == "evade" for a in self.crew.officer_activity(self.obs))
         msg = "EVASIVE MANOEUVRES  ·  " + ("dodging torpedoes" if dodging else "watching for torpedoes") + \
               "  ·  any helm order ends them"
-        box = self._banner(surf, msg, top, theme.CAUTION if dodging else theme.FRIEND)
+        box = self._banner(surf, msg, top, theme.CAUTION if dodging else theme.FRIEND, avoid)
         self.ui.add(box, lambda: self.run_console("evasive off"), "End evasive manoeuvres (or give any helm order)")
         return box
 
@@ -744,6 +755,15 @@ class RenderMixin(SceneState):
         self.ui.button(surf, pygame.Rect(r.right - 224, r.bottom - 46, 200, 30), self.exit_label, self.on_exit, size=13)
         self.ui.button(surf, pygame.Rect(r.right - 392, r.bottom - 46, 160, 30), "Starfleet's assessment",
                        lambda: setattr(self, "overlay", "debrief"), size=13)
+
+
+def _below(box: pygame.Rect, others: Sequence[pygame.Rect | None]) -> None:
+    """Move `box` down until it covers none of `others`."""
+    for _ in range(8):
+        hit = [o for o in others if o is not None and box.colliderect(o)]
+        if not hit:
+            return
+        box.top = max(o.bottom for o in hit) + 4
 
 
 __all__ = ["RenderMixin"]
