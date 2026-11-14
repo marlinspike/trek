@@ -95,6 +95,8 @@ class TourState:
     prisoners: int = 0                              # prisoners of war held in the flagship's brig [E]
     cloak_questions: int = 0                        # [E] times Starfleet has asked why the flagship is cloaked
     seed: int = 1
+    squadron_key: str = ""                          # [E] the starting squadron picked (tour/squadrons.py), if any
+    perks: list[str] = field(default_factory=list)  # [E] its perks: veteran, tender, liaison
 
     # ------------------------------------------------------------ queries
 
