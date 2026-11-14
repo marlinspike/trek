@@ -77,4 +77,5 @@ Everything here works in the game today. None of it is on a button, and most of 
 - **Evasive manoeuvres beat aimed torpedoes.** Enemy rounds are aimed where you would be if you held course, so any turn as they launch makes them miss. `evasive`
 - **Change ships to fight on.** `beam <ally>` moves you and your command, and your officers come with you.
 - **Veteran officers act for you.** Once trust reaches Veteran, an urgent proposal you leave unanswered, such as evasive manoeuvres or shields up, is carried out.
+- **Earn your officers' trust before you meet an old enemy again.** At Trusted, Worf or Spock tells you how a returning rival got away last time; block that escape route and you can finish them for good. One who ran last time will run again early: close the distance before their nerve breaks.
 - **Record what worked.** `record last 3 as strike` turns your last three orders into a named order you can run again with one word.

@@ -65,15 +65,16 @@ def _clamp01(x: float) -> float:
     return max(0.0, min(1.0, x))
 
 
-def scaled(n: int, bases: set[int], d: Difficulty, keep: int = 1) -> list[int]:
+def scaled(n: int, bases: set[int], d: Difficulty, keep: int = 1, named: set[int] | None = None) -> list[int]:
     """Which of a fleet's `n` ships come at this difficulty, as indices into it (an index twice is a second ship of
     that kind). Starbases (`bases`) stay as they are; ships come off the end, keeping at least the first `keep` that
-    can move, or are added by repeating the fleet's own ships in order."""
+    can move and never one under a `named` captain (a tour's commander or rival), or are added by repeating the
+    fleet's own ships in order."""
     mobile = [i for i in range(n) if i not in bases]
     delta = change(len(mobile), d.fleet)
     out = list(range(n))
     if delta < 0:
-        for i in sorted(mobile[max(1, keep):], reverse=True)[:-delta]:
+        for i in sorted((i for i in mobile[max(1, keep):] if i not in (named or set())), reverse=True)[:-delta]:
             out.remove(i)
     elif delta > 0 and mobile:
         out += [mobile[i % len(mobile)] for i in range(delta)]

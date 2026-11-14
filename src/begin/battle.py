@@ -38,6 +38,7 @@ class ShipSpec:
     y: float | None = None
     course: float | None = None
     personality: dict[str, float] | None = None
+    captain: str | None = None       # [E] a named captain (a returning rival, tour/rivals.py); None: one at random
 
 
 @dataclass
@@ -60,6 +61,7 @@ class BattleSetup:
     mission: MissionDef | None = None   # a goal beyond holding the field: rescue, escort or intercept (sim/mission.py) [E]
     difficulty: str = DEFAULT           # how hard the enemy fights: ensign, captain or admiral (difficulty.py) [E]
     fixed_fleets: bool = False          # a custom battle: the fleets are fought as chosen, whatever the difficulty
+    reserved_captains: tuple[str, ...] = ()   # [E] names no random captain draws (a tour's rivals)
 
     @property
     def player_side(self) -> int:
@@ -183,7 +185,8 @@ def at_difficulty(content: ContentDB, setup: BattleSetup, key: str | None) -> Ba
         keep = runner_keep if first_enemy else 1
         first_enemy = False
         bases = {i for i, s in enumerate(f.ships) if content.classes[s.class_id].is_base}
-        picks = scaled(len(f.ships), bases, d, keep)
+        named = {i for i, s in enumerate(f.ships) if s.captain}
+        picks = scaled(len(f.ships), bases, d, keep, named)
         ships, seen, clones = [], set(), 0
         for i in picks:
             spec = f.ships[i]
@@ -193,7 +196,8 @@ def at_difficulty(content: ContentDB, setup: BattleSetup, key: str | None) -> Ba
                 room -= 1
                 clones += 1
                 off = 2200.0 * ((clones + 1) // 2) * (1 if clones % 2 else -1)
-                spec = dataclasses.replace(spec, name=None, x=None if spec.x is None else spec.x + off)
+                spec = dataclasses.replace(spec, name=None, captain=None, personality=None,
+                                           x=None if spec.x is None else spec.x + off)
             seen.add(i)
             ships.append(spec)
         fleets.append(dataclasses.replace(f, ships=ships))
@@ -220,6 +224,7 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
     flagship_name = _player_flagship_name(content, setup)
     if flagship_name:
         world.reserved_names.add(flagship_name)  # no other ship draws the flagship's name
+    world.reserved_captains |= set(setup.reserved_captains) | {s.captain for f in setup.fleets for s in f.ships if s.captain}
     rng = Rng(setup.seed).derive("setup")
     n = len(setup.fleets)
     player_ship: int | None = None
@@ -246,7 +251,8 @@ def build_battle(content: ContentDB, setup: BattleSetup) -> Battle:
             cls = content.classes[spec.class_id]
             warp = 0.0 if cls.is_base else min(cls.cruise_warp, 3.0)
             name = spec.name or (flagship_name if fleet.player and si == 0 else None)
-            ship = world.add_ship(spec.class_id, fleet.side, x, y, course=course, warp=warp, name=name)
+            ship = world.add_ship(spec.class_id, fleet.side, x, y, course=course, warp=warp, name=name,
+                                  captain=spec.captain)
             faction = content.factions[cls.faction]
             ship.pd_doctrine = PDDoctrine(faction.doctrine.point_defense)
             comp = ShipComputer(ship.id, fleet.side, world.rng.derive(f"computer:{ship.id}"), phase=ship.id % 2)

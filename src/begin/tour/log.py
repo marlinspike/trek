@@ -121,6 +121,7 @@ def _mission_line(f: dict[str, Any]) -> str:
 
 
 NUMBERS = ("no", "a", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten")
+UNLIMITED = 1000            # a magazine this deep is never counted aloud (the Dreadnought's)
 
 
 def _force(kinds: dict[str, int]) -> str:
@@ -280,7 +281,8 @@ def captain_draft(f: dict[str, Any]) -> str:
               }.get(m["kind"], f"The {m['runner']} got away with what she carried. ")
     if f["standout"]:
         t += f"{f['standout']} "
-    t += f"The {f['flagship']} stands at {_pct(f['hull'])} hull with {f['torps_left']} torpedoes in the magazine."
+    t += f"The {f['flagship']} stands at {_pct(f['hull'])} hull" + (
+        f" with {f['torps_left']} torpedoes in the magazine." if f["torps_left"] < UNLIMITED else ".")
     return t.strip()
 
 

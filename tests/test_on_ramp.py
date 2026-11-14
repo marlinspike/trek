@@ -65,6 +65,11 @@ def test_a_custom_battle_keeps_its_fleets_and_waves_scale_with_the_enemy(content
     run = MissionDef(kind="intercept", runner=2)
     s = at_difficulty(content, BattleSetup([mine, theirs], mission=run), "ensign")
     assert len(s.fleets[1].ships) == 3                             # the runner (the third) is kept
+    rival = FleetSpec(1, [ShipSpec("klingon.fr"), ShipSpec("klingon.fr"), ShipSpec("klingon.bc", captain="Kor")])
+    s = at_difficulty(content, BattleSetup([mine, rival]), "ensign")
+    assert [x.captain for x in s.fleets[1].ships].count("Kor") == 1     # a rival is never the ship sent home
+    s = at_difficulty(content, BattleSetup([mine, FleetSpec(1, [ShipSpec("klingon.bc", captain="Kor")] * 3)]), "admiral")
+    assert [x.captain for x in s.fleets[1].ships].count("Kor") == 3     # ... nor cloned (the added ship has none)
     big = BattleSetup([mine, FleetSpec(1, [ShipSpec("klingon.fr") for _ in range(57)])])
     assert sum(len(f.ships) for f in at_difficulty(content, big, "admiral").fleets) <= 60
 
