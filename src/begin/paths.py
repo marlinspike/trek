@@ -11,7 +11,8 @@ build (a single program made by PyInstaller) keeps the same files in a
 `Begin config` folder beside the program, never in the home folder: beside
 `Begin.exe` on Windows, beside the `begin` file on Linux, and beside
 `Begin.app` on macOS (not inside the bundle, which macOS treats as sealed).
-When the game is installed without its project folder, it falls back to `~/.begin-remake`.
+Installed without its project folder (a bare `pip install`), the game has nowhere of its own to keep
+them, so it refuses to start and says how to run it (`NoConfigHome`), rather than write into the home folder.
 Versions before this one kept everything in `~/.begin-remake`; the first
 run brings those files into `config/` (the old folder is left untouched).
 """
@@ -27,7 +28,14 @@ from pathlib import Path
 LEGACY_DIR = Path.home() / ".begin-remake"
 PACKAGED_DIR_NAME = "Begin config"
 _FILES = ("settings.json", "begin2.key")
-_seeded: list[Path] = []      # the packaged config folder has been given its README and examples this run
+_seeded: list[Path] = []
+NO_HOME = ("BEGIN : TREK keeps its settings inside its own folder, and this copy has none. Run it from the "
+           "project folder (python -m begin in the checkout) or from the downloaded game, or set BEGIN_HOME "
+           "to a folder for its settings.")
+
+
+class NoConfigHome(RuntimeError):
+    """The game was installed without a folder of its own to keep settings in."""      # the packaged config folder has been given its README and examples this run
 
 
 def is_packaged() -> bool:
@@ -128,7 +136,7 @@ def config_dir() -> Path:
         return target
     root = project_root()
     if root is None:
-        return LEGACY_DIR
+        raise NoConfigHome(NO_HOME)
     target = root / "config"
     migrate_legacy(LEGACY_DIR, target)
     return target
@@ -193,5 +201,5 @@ def _merge_settings(old: Path, new: Path) -> bool:
     return changed
 
 
-__all__ = ["LEGACY_DIR", "PACKAGED_DIR_NAME", "config_dir", "config_warning", "config_writable", "is_packaged",
+__all__ = ["LEGACY_DIR", "NO_HOME", "PACKAGED_DIR_NAME", "NoConfigHome", "config_dir", "config_warning", "config_writable", "is_packaged",
            "migrate_legacy", "open_folder", "packaged_home", "project_root", "seed_config", "seed_dir"]
