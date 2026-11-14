@@ -61,7 +61,7 @@ class VoiceMixin(SceneState):
     def _voice_hints(self: BattleScene) -> list[str]:
         names = [s.name for s in self.obs.own_ships()]
         names += [c.label.split(" (")[0] for c in self.obs.contacts().values() if c.identified]
-        names += [o.name for o in self.session.officers().values()]
+        names += [o.name for o in self.crew.officers().values()]
         return list(dict.fromkeys(names))
 
     # ------------------------------------------------------------ push to talk
@@ -128,7 +128,7 @@ class VoiceMixin(SceneState):
     def spoken(self: BattleScene, text: str) -> None:
         """Words heard from the captain: run them as typed, unless nothing could make sense of them."""
         line = self._with_pointing(text, self.pointed_ship())
-        err = self.session.understood(line)
+        err = self.orders.understood(line)
         if err is not None:
             self.type_line(line)        # never guessed at: it waits to be fixed
             self.toast = (f'Heard "{text}": {err} Fix it and press Enter.', theme.CAUTION, 5.0)
