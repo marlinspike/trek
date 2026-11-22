@@ -74,6 +74,8 @@ tell excalibur leave
 group
 ```
 
+The preset **Two Fronts** is built to practise this: two Klingon squadrons close from opposite flanks, so put your allies in two groups and send each group to its own front.
+
 ## Checking on allies
 
 `tell <ally> report` prints that ship's report, with its current mission. `fleet` lists every ally with its state and orders. See [[fleet]].

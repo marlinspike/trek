@@ -898,6 +898,7 @@ Each of these was set up to teach something:
 - **Dreadnought Duel.** Two Klingon dreadnoughts, two battle cruisers and a frigate against yours. Manage your shields and your power budget.
 - **Outpost Assault.** Break a Klingon outpost's defensive screen. The outpost cannot move but carries eight phaser banks.
 - **Fleet Action.** Seven ships against ten. Your wingmen fight on their own; use 'tell <ship> attack <target>' to direct them.
+- **Two Fronts.** Two Klingon squadrons close from either flank at once. Split your ships into groups with 'tell <ship> join 1', then send each group to its own front with 'tell 1 attack <target>'.
 - **Three-Way Standoff.** Federation, Klingon and Romulan ships meet over a disputed system. Everyone is hostile to everyone.
 - **Starbase Defense.** Hold the line at the starbase against three Klingon waves: frigates, then three battle cruisers, then two dreadnoughts with their escort. Between waves, damaged ships can dock to repair (2.0 rules).
 - **First Contact: a Borg Probe.** A lone Borg probe is surveying the sector. Small, but it learns: watch its adaptation, remodulate, and let Seven scan it.
@@ -3068,6 +3069,8 @@ tell excalibur leave
 group
 ```
 
+The preset **Two Fronts** is built to practise this: two Klingon squadrons close from opposite flanks, so put your allies in two groups and send each group to its own front.
+
 #### Checking on allies
 
 `tell <ally> report` prints that ship's report, with its current mission. `fleet` lists every ally with its state and orders. See [Fleet and groups](#topic-fleet).
@@ -4488,6 +4491,7 @@ Type `coach` or press **H** and pick **Coach**: this page then reads your actual
 - **Dreadnought Duel.** Two Klingon dreadnoughts, two battle cruisers and a frigate against yours. Manage your shields and your power budget.
 - **Outpost Assault.** Break a Klingon outpost's defensive screen. The outpost cannot move but carries eight phaser banks.
 - **Fleet Action.** Seven ships against ten. Your wingmen fight on their own; use 'tell <ship> attack <target>' to direct them.
+- **Two Fronts.** Two Klingon squadrons close from either flank at once. Split your ships into groups with 'tell <ship> join 1', then send each group to its own front with 'tell 1 attack <target>'.
 - **Three-Way Standoff.** Federation, Klingon and Romulan ships meet over a disputed system. Everyone is hostile to everyone.
 - **Starbase Defense.** Hold the line at the starbase against three Klingon waves: frigates, then three battle cruisers, then two dreadnoughts with their escort. Between waves, damaged ships can dock to repair (2.0 rules).
 - **First Contact: a Borg Probe.** A lone Borg probe is surveying the sector. Small, but it learns: watch its adaptation, remodulate, and let Seven scan it.

@@ -6,6 +6,7 @@ import math
 
 from begin.battle import BattleSetup, FleetSpec, ShipSpec, build_battle
 from begin.console.parser import ParseContext, parse
+from begin.presets import load_presets
 
 
 def _battle(content, enemy_at=(0.0, 30000.0), loyal=1.0):  # type: ignore[no-untyped-def]
@@ -131,3 +132,34 @@ def test_group_orders(content) -> None:  # type: ignore[no-untyped-def]
     r = order(b, "tell 1 course 180")
     assert len(r.commands) == 2
     assert all(b.world.ally_orders[ship(b, n).id].movement == "course" for n in ("Agena", "Terra"))
+
+
+def test_two_fronts_teaches_groups(content) -> None:  # type: ignore[no-untyped-def]
+    preset = next(p for p in load_presets() if p.id == "two-fronts")
+    assert preset.title == "Two Fronts"
+    assert "join" in preset.description and "tell 1" in preset.description
+    mine = next(f for f in preset.fleets if f.get("player"))
+    fronts = [f for f in preset.fleets if f["side"] == 1]
+
+    def bearing(f) -> float:  # type: ignore[no-untyped-def]
+        return math.degrees(math.atan2(f["center"][0] - mine["center"][0], f["center"][1] - mine["center"][1]))
+
+    apart = [abs((bearing(a) - bearing(b) + 180) % 360 - 180) for i, a in enumerate(fronts) for b in fronts[i + 1:]]
+    assert max(apart) >= 90, apart
+
+    b = build_battle(content, preset.setup())
+    w = b.world
+    me = w.ships[b.player_ship_id]
+    assert me.name == "Enterprise"
+    allies = sorted((s for s in w.ships.values() if s.side == me.side and s.id != me.id), key=lambda s: s.id)
+    assert len(allies) >= 3
+    targets = [min((s for s in w.ships.values() if s.side == 1),
+                   key=lambda s: math.hypot(s.x - f["center"][0], s.y - f["center"][1])) for f in fronts[:2]]
+    groups = {a.id: 1 if i < 2 else 2 for i, a in enumerate(allies)}
+    for a in allies:
+        order(b, f"tell {a.name.lower()} join {groups[a.id]}")
+    order(b, f"tell 1 attack {targets[0].name.lower()}")
+    order(b, f"tell 2 attack {targets[1].name.lower()}")
+    for a in allies:
+        st = w.ally_orders[a.id]
+        assert (st.group, st.target) == (groups[a.id], targets[groups[a.id] - 1].id), a.name

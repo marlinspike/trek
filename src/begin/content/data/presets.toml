@@ -65,6 +65,17 @@ fleets = [
 ]
 
 [[preset]]
+id = "two-fronts"
+title = "Two Fronts"
+description = "Two Klingon squadrons close from either flank at once. Split your ships into groups with 'tell <ship> join 1', then send each group to its own front with 'tell 1 attack <target>'."
+seed = 6060
+fleets = [
+  {side = 0, player = true, center = [0, -3000], ships = ["federation.dn", "federation.de", "federation.de", "federation.in"]},
+  {side = 1, center = [-14000, 5000], ships = ["klingon.dr", "klingon.dr", "klingon.bc", "klingon.bc", "klingon.fr"]},
+  {side = 1, center = [14000, 5000], ships = ["klingon.dr", "klingon.dr", "klingon.bc", "klingon.bc", "klingon.bc", "klingon.fr"]},
+]
+
+[[preset]]
 id = "three-way"
 title = "Three-Way Standoff"
 description = "Federation, Klingon and Romulan ships meet over a disputed system. Everyone is hostile to everyone."
