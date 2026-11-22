@@ -1,0 +1,92 @@
+{
+  "project": "trek",
+  "week": "2026-W47",
+  "from": "2026-11-15T23:01:57.256Z",
+  "to": "2026-11-22T23:01:57.256Z",
+  "shipped": [
+    {
+      "id": "trek-67",
+      "title": "add a line to the readme to mention that trek DevOps is managed by AI Software …",
+      "issue": 67,
+      "requester": "marlinspike",
+      "rounds": 1,
+      "cost_usd": 0.981095,
+      "promoted": true
+    },
+    {
+      "id": "trek-70",
+      "title": "add one new preset battle that uses fleet groups and ally orders, with a manual…",
+      "issue": 70,
+      "requester": "marlinspike",
+      "rounds": 1,
+      "cost_usd": 1.711499,
+      "promoted": true
+    }
+  ],
+  "rejected": [],
+  "escalations": [
+    {
+      "id": "trek-70",
+      "title": "add one new preset battle that uses fleet groups and ally orders, with a manual…",
+      "question": "",
+      "resolved_minutes": 0,
+      "resolution": "merged"
+    }
+  ],
+  "dependencies": {
+    "merged": 0,
+    "escalated": 0,
+    "security": 0,
+    "security_hours": []
+  },
+  "promotions": [
+    {
+      "id": "promo_UExdsPkmOZQX",
+      "mode": "manual",
+      "merged_by": "reuben",
+      "jobs": 1,
+      "production_check": null,
+      "revert": false
+    },
+    {
+      "id": "promo_ex-Yc_1kPX7j",
+      "mode": "manual",
+      "merged_by": "reuben",
+      "jobs": 1,
+      "production_check": null,
+      "revert": false
+    }
+  ],
+  "cost": {
+    "week_usd": 3.3439470000000004,
+    "previous_week_usd": 0,
+    "by_agent": {
+      "approver": 0.11052300000000001,
+      "builder": 0.790392,
+      "intake": 1.0368600000000001,
+      "orchestrator": 1.21175,
+      "reviewer-code": 0.012626,
+      "spec-writer": 0.18179599999999999
+    },
+    "by_model": {
+      "claude-opus-5-5": 2.119571,
+      "claude-sonnet-5-5": 1.21175,
+      "claude-haiku-5-5": 0.012626
+    },
+    "subscription_week_usd": 0,
+    "value_ratio": null
+  },
+  "autonomy": {
+    "jobs_finished": 2,
+    "escalation_rate": 0.5,
+    "average_rounds": 1,
+    "reverts": 0,
+    "conflicts_resolved": 0,
+    "suggestion": null,
+    "first_round_rate": 1,
+    "cost_per_job_usd": 1.346297
+  },
+  "learned": [],
+  "carried_over": [],
+  "summary": "Trek shipped 2 jobs in week 2026-W47: trek-67 (a README line saying Trek DevOps is managed by AI Software Factory; 1 round, $0.98) and trek-70 (one new preset battle using fleet groups and ally orders; 1 round, $1.71), both promoted through two manual promotions merged by reuben, with no rejections and 0 dependencies merged.\nReuben was needed for 1 escalation (trek-70), which was resolved as merged, giving an escalation rate of 50%, a first-round rate of 100% and an average of 1 round.\nNothing unusual came up: cost was $3.34 (previous week $0) at $1.35 per job, with 0 reverts, 0 conflicts resolved, and nothing learned or carried over."
+}
